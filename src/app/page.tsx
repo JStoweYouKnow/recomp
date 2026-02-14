@@ -271,6 +271,8 @@ export default function Home() {
             }}
             onRegeneratePlan={handleRegeneratePlan}
             planRegenerating={planRegenerating}
+            onNavigateToMeals={() => setView("meals")}
+            onNavigateToWorkouts={() => setView("workouts")}
             onReset={() => {
               localStorage.clear();
               setProfile(null);

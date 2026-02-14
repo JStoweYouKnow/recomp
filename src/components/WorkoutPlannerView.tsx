@@ -1,8 +1,29 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress } from "@/lib/storage";
 import type { FitnessPlan } from "@/lib/types";
+import { CalendarView } from "./CalendarView";
+
+/* ── Exercise GIF cache (shared key with Dashboard) ── */
+const EX_CACHE_KEY = "recomp_exercise_gifs";
+interface ExerciseGif {
+  gifUrl: string;
+  name: string;
+  targetMuscles?: string[];
+  instructions?: string[];
+}
+function getGifCache(): Record<string, ExerciseGif> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(EX_CACHE_KEY) ?? "{}"); } catch { return {}; }
+}
+function setGifCache(cache: Record<string, ExerciseGif>) {
+  try { localStorage.setItem(EX_CACHE_KEY, JSON.stringify(cache)); } catch { /* quota */ }
+}
+
+/** Map a calendar day-of-week (0=Sun..6=Sat) to common day name prefixes */
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function WorkoutPlannerView({
   plan,
@@ -14,6 +35,97 @@ export function WorkoutPlannerView({
   const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  const today = new Date().toISOString().slice(0, 10);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  const [expandedExerciseDemos, setExpandedExerciseDemos] = useState<Set<string>>(() => new Set());
+
+  const [exerciseGifs, setExerciseGifs] = useState<Record<string, ExerciseGif | "loading" | "none">>(() => {
+    const cached = getGifCache();
+    const init: Record<string, ExerciseGif | "loading" | "none"> = {};
+    for (const [k, v] of Object.entries(cached)) init[k] = v;
+    return init;
+  });
+  const fetchExerciseGif = useCallback(async (exerciseName: string) => {
+    const key = exerciseName.toLowerCase().trim();
+    if (exerciseGifs[key] && exerciseGifs[key] !== "none") return;
+    setExerciseGifs((prev) => ({ ...prev, [key]: "loading" }));
+    try {
+      const res = await fetch(`/api/exercises/search?name=${encodeURIComponent(key)}`);
+      if (!res.ok) {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+        return;
+      }
+      const data = await res.json();
+      if (data.gifUrl) {
+        const gif: ExerciseGif = { gifUrl: data.gifUrl, name: data.name, targetMuscles: data.targetMuscles, instructions: data.instructions };
+        setExerciseGifs((prev) => {
+          const next = { ...prev, [key]: gif };
+          const cache = getGifCache();
+          cache[key] = gif;
+          setGifCache(cache);
+          return next;
+        });
+      } else {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+      }
+    } catch {
+      setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+    }
+  }, [exerciseGifs]);
+
+  /**
+   * Try to match a calendar date to a workout day index.
+   * Strategy: match day name ("Monday" → "Monday" / "Mon"), or "Day N" → Nth weekday from Monday.
+   */
+  const matchDayToDate = useCallback(
+    (date: string): number | null => {
+      if (!plan) return null;
+      const d = new Date(date + "T12:00:00");
+      const dow = d.getDay(); // 0=Sun
+      const dayName = WEEKDAY_NAMES[dow].toLowerCase();
+      const shortName = SHORT_WEEKDAY[dow].toLowerCase();
+
+      for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
+        const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
+        if (
+          planDay === dayName ||
+          planDay === shortName ||
+          planDay.startsWith(dayName) ||
+          planDay.startsWith(shortName)
+        ) {
+          return i;
+        }
+      }
+
+      // Fallback: "Day 1" → Monday=0, "Day 2" → Tuesday=1, etc.
+      const mondayBased = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
+      if (mondayBased < plan.workoutPlan.weeklyPlan.length) {
+        return mondayBased;
+      }
+      return null;
+    },
+    [plan]
+  );
+
+  // Dates that have completed exercises (for dot indicators)
+  const completedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const ts of Object.values(progress)) {
+      if (ts) dates.add(ts.slice(0, 10));
+    }
+    return dates;
+  }, [progress]);
+
+  // Auto-expand the matched day when a calendar date is selected
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const match = matchDayToDate(selectedDate);
+    if (match !== null) {
+      setExpandedDay(match);
+    }
+  }, [calendarOpen, selectedDate, matchDayToDate]);
 
   const exerciseKey = (
     day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
@@ -120,20 +232,62 @@ export function WorkoutPlannerView({
           <h2 className="section-title !text-xl">Workout planner</h2>
           <p className="section-subtitle">Tap a day to see the full breakdown. Tap again to collapse.</p>
         </div>
-        <button
-          onClick={() => {
-            updateWeeklyPlan([
-              ...plan.workoutPlan.weeklyPlan,
-              { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", exercises: [] },
-            ]);
-            setExpandedDay(plan.workoutPlan.weeklyPlan.length);
-            setEditingDay(plan.workoutPlan.weeklyPlan.length);
-          }}
-          className="btn-primary px-4 py-2 text-sm"
-        >
-          + Add day
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCalendarOpen((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+              calendarOpen
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+            aria-pressed={calendarOpen}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Calendar
+          </button>
+          <button
+            onClick={() => {
+              updateWeeklyPlan([
+                ...plan.workoutPlan.weeklyPlan,
+                { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", exercises: [] },
+              ]);
+              setExpandedDay(plan.workoutPlan.weeklyPlan.length);
+              setEditingDay(plan.workoutPlan.weeklyPlan.length);
+            }}
+            className="btn-primary px-4 py-2 text-sm"
+          >
+            + Add day
+          </button>
+        </div>
       </div>
+
+      {/* Calendar */}
+      {calendarOpen && (
+        <div className="card p-4 animate-slide-up">
+          <CalendarView
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            dotDates={completedDates}
+            daySummary={
+              matchDayToDate(selectedDate) !== null ? (
+                <div className="text-xs text-[var(--muted)] space-y-0.5">
+                  <p className="font-medium text-[var(--foreground)]">
+                    {plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.day}
+                  </p>
+                  <p>{plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.focus}</p>
+                  <p>
+                    {plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length} exercise{plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--muted)]">No workout scheduled</p>
+              )
+            }
+          />
+        </div>
+      )}
 
       <div className="card p-5">
         <div className="mb-2 flex items-center justify-between text-sm">
@@ -147,10 +301,15 @@ export function WorkoutPlannerView({
 
       <div className="space-y-3">
         {plan.workoutPlan.weeklyPlan.map((day, dayIndex) => {
+          // When calendar is open, only show the matched day
+          const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
+          if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
+          if (calendarOpen && matchedIdx === null) return null;
+
           const total = day.exercises.length;
           const completed = day.exercises.filter((exercise) => Boolean(progress[exerciseKey(day, exercise)])).length;
           const allDone = total > 0 && completed === total;
-          const isExpanded = expandedDay === dayIndex;
+          const isExpanded = calendarOpen ? true : expandedDay === dayIndex;
           const isEditing = editingDay === dayIndex;
 
           return (
@@ -349,9 +508,35 @@ export function WorkoutPlannerView({
                                   placeholder="Notes (e.g. rest: 60s, tempo: 3-1-1)"
                                   className="mt-2 input-base rounded px-2 py-1 text-xs w-full"
                                 />
+                                {(() => {
+                                  const gifKey = exercise.name.toLowerCase().trim();
+                                  const gif = exerciseGifs[gifKey];
+                                  const isExpanded = expandedExerciseDemos.has(gifKey);
+                                  const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                  return (
+                                    <div className="mt-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                          else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                        }}
+                                        className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                      >
+                                        {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                      </button>
+                                      {showGif && gif && typeof gif === "object" && gif.gifUrl && (
+                                        <div className="mt-1.5 space-y-1">
+                                          <img src={gif.gifUrl} alt={exercise.name} className="rounded-lg max-h-28 object-contain bg-[var(--surface-elevated)]" />
+                                          {gif.targetMuscles?.length ? <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p> : null}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </>
                             ) : (
-                              /* ── Read mode: clean layout with reps, sets, rest ── */
+                              /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
                               <div className="flex items-start gap-3">
                                 <input
                                   type="checkbox"
@@ -361,9 +546,29 @@ export function WorkoutPlannerView({
                                   className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
                                 />
                                 <div className="flex-1 min-w-0">
-                                  <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
-                                    {exercise.name}
-                                  </p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
+                                      {exercise.name}
+                                    </p>
+                                    {(() => {
+                                      const gifKey = exercise.name.toLowerCase().trim();
+                                      const gif = exerciseGifs[gifKey];
+                                      const isExpanded = expandedExerciseDemos.has(gifKey);
+                                      const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                            else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                          }}
+                                          className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                        >
+                                          {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
                                   <div className="mt-1.5 flex flex-wrap gap-2">
                                     <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
                                       <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
@@ -380,6 +585,21 @@ export function WorkoutPlannerView({
                                       </span>
                                     )}
                                   </div>
+                                  {(() => {
+                                    const gifKey = exercise.name.toLowerCase().trim();
+                                    const gif = exerciseGifs[gifKey];
+                                    const isExpanded = expandedExerciseDemos.has(gifKey);
+                                    const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                    if (!showGif) return null;
+                                    return (
+                                      <div className="mt-2 space-y-1">
+                                        <img src={gif.gifUrl} alt={exercise.name} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
+                                        {gif.targetMuscles?.length ? (
+                                          <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })()}
                                   {exercise.notes && !restTime && (
                                     <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
                                   )}
@@ -420,6 +640,14 @@ export function WorkoutPlannerView({
             </div>
           );
         })}
+
+        {/* Empty state when calendar is open but no workout matches */}
+        {calendarOpen && matchDayToDate(selectedDate) === null && (
+          <div className="card px-5 py-8 text-center">
+            <p className="text-sm text-[var(--muted)]">No workout scheduled for this day.</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Select a different date or close the calendar to see all days.</p>
+          </div>
+        )}
       </div>
     </div>
   );

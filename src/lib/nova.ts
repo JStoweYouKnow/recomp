@@ -7,11 +7,13 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 
 const NOVA_LITE_DEFAULT = "amazon.nova-2-lite-v1:0";
-const NOVA_LITE =
+/** Nova Lite model ID or inference profile ARN — respects BEDROCK_NOVA_LITE_MODEL_ID env */
+export const NOVA_LITE_MODEL_ID =
   process.env.BEDROCK_NOVA_LITE_MODEL_ID ??
   process.env.NOVA_LITE_MODEL_ID ??
   process.env.BEDROCK_NOVA_LITE_INFERENCE_PROFILE_ARN ??
   NOVA_LITE_DEFAULT;
+const NOVA_LITE = NOVA_LITE_MODEL_ID;
 const NOVA_CANVAS = process.env.BEDROCK_NOVA_CANVAS_MODEL_ID ?? "amazon.nova-canvas-v1:0";
 const NOVA_REEL = process.env.BEDROCK_NOVA_REEL_MODEL_ID ?? "amazon.nova-reel-v1:1";
 const REGION = process.env.AWS_REGION ?? "us-east-1";

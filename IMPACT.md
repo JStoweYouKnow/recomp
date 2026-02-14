@@ -26,6 +26,7 @@ Enterprise and community impact, use cases, and post-hackathon roadmap.
 | **Reduced friction** | Nova Act grocery automation; cooking app webhooks; wearable sync — less manual data entry. |
 | **Motivation** | Reco AI coach, milestones, streak tracking, transformation preview (AI “after” image). |
 
+| **Navigation** | Unified calendar (dashboard, Meals, Workouts) with date-based filtering; "Today at a Glance" and inline exercise demo GIFs reduce context-switching. |
 ---
 
 ## Enterprise Use Cases

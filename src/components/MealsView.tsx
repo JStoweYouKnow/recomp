@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { getMealEmbeddings, saveMealEmbeddings } from "@/lib/storage";
 import type { MealEntry, Macros } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
+import { CalendarView } from "./CalendarView";
 
 export function MealsView({
   meals,
@@ -20,6 +21,46 @@ export function MealsView({
   onAddMeal: (m: MealEntry) => void;
   onDeleteMeal: (id: string) => void;
 }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  // Dates that have meal entries (for dot indicators + counts)
+  const mealDates = useMemo(() => new Set(meals.map((m) => m.date)), [meals]);
+  const mealCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of meals) {
+      map.set(m.date, (map.get(m.date) ?? 0) + 1);
+    }
+    return map;
+  }, [meals]);
+
+  // Meals for the selected date (falls back to todaysMeals when calendar is closed)
+  const displayMeals = useMemo(() => {
+    if (!calendarOpen || selectedDate === today) return todaysMeals;
+    return meals.filter((m) => m.date === selectedDate);
+  }, [calendarOpen, selectedDate, today, todaysMeals, meals]);
+
+  const displayTotals = useMemo(() => {
+    if (!calendarOpen || selectedDate === today) return todaysTotals;
+    return displayMeals.reduce(
+      (acc, m) => ({
+        calories: acc.calories + m.macros.calories,
+        protein: acc.protein + m.macros.protein,
+        carbs: acc.carbs + m.macros.carbs,
+        fat: acc.fat + m.macros.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    );
+  }, [calendarOpen, selectedDate, today, todaysTotals, displayMeals]);
+
+  const isViewingToday = !calendarOpen || selectedDate === today;
+
+  const dateLabel = useMemo(() => {
+    if (isViewingToday) return "Today";
+    const d = new Date(selectedDate + "T12:00:00");
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  }, [isViewingToday, selectedDate]);
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
   const [mealType, setMealType] = useState<MealEntry["mealType"]>("lunch");
@@ -46,8 +87,8 @@ export function MealsView({
   const [cookingImportLoading, setCookingImportLoading] = useState(false);
   const [cookingImportResult, setCookingImportResult] = useState<{ imported: number; meals: MealEntry[] } | null>(null);
 
-  const remainingCal = Math.max(0, targets.calories - todaysTotals.calories);
-  const remainingPro = Math.max(0, targets.protein - todaysTotals.protein);
+  const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
+  const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
 
   const handleSuggest = async () => {
     setSuggestLoading(true);
@@ -155,12 +196,15 @@ export function MealsView({
     e.target.value = "";
   };
 
+  /** Date to assign to new meals — uses calendar selection when open, otherwise today */
+  const activeDate = calendarOpen ? selectedDate : today;
+
   const handleAddReceiptItems = () => {
     const selected = receiptItems.filter((item) => item.selected);
     for (const item of selected) {
       const meal: MealEntry = {
         id: uuidv4(),
-        date: new Date().toISOString().slice(0, 10),
+        date: activeDate,
         mealType: "snack",
         name: item.name,
         macros: { calories: item.calories || 0, protein: item.protein || 0, carbs: item.carbs || 0, fat: item.fat || 0 },
@@ -253,7 +297,7 @@ export function MealsView({
     const c = parseInt(cal) || 0, p = parseInt(pro) || 0, cb = parseInt(carb) || 0, f = parseInt(fat) || 0;
     const meal: MealEntry = {
       id: uuidv4(),
-      date: new Date().toISOString().slice(0, 10),
+      date: activeDate,
       mealType,
       name: name || mealType,
       macros: { calories: c, protein: p, carbs: cb, fat: f },
@@ -272,17 +316,53 @@ export function MealsView({
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h2 className="section-title !text-xl">Meal tracking</h2>
-        <p className="section-subtitle">Log meals, scan photos, and track your daily macros</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="section-title !text-xl">Meal tracking</h2>
+          <p className="section-subtitle">Log meals, scan photos, and track your daily macros</p>
+        </div>
+        <button
+          onClick={() => setCalendarOpen((v) => !v)}
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            calendarOpen
+              ? "bg-[var(--accent)] text-white"
+              : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
+          }`}
+          aria-pressed={calendarOpen}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Calendar
+        </button>
       </div>
+
+      {/* Calendar */}
+      {calendarOpen && (
+        <div className="card p-4 animate-slide-up">
+          <CalendarView
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            dotDates={mealDates}
+            dateCounts={mealCounts}
+            daySummary={
+              displayMeals.length > 0 ? (
+                <div className="text-xs text-[var(--muted)] space-y-0.5">
+                  <p className="font-medium text-[var(--foreground)]">{displayMeals.length} meal{displayMeals.length !== 1 ? "s" : ""} logged</p>
+                  <p>{displayTotals.calories} cal · {displayTotals.protein}g P · {displayTotals.carbs}g C · {displayTotals.fat}g F</p>
+                </div>
+              ) : undefined
+            }
+          />
+        </div>
+      )}
 
       {/* Compact macro summary */}
       <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
         {(["calories", "protein", "carbs", "fat"] as const).map((k) => (
           <div key={k} className="stat-card !p-4">
             <p className="stat-label">{k}</p>
-            <p className="text-lg font-bold">{todaysTotals[k]} <span className="stat-value-dim !text-sm">/ {targets[k]}{k !== "calories" ? "g" : ""}</span></p>
+            <p className="text-lg font-bold">{displayTotals[k]} <span className="stat-value-dim !text-sm">/ {targets[k]}{k !== "calories" ? "g" : ""}</span></p>
           </div>
         ))}
       </div>
@@ -634,12 +714,16 @@ export function MealsView({
       )}
 
       <div>
-        <h3 className="section-title !text-base mb-3">Today&apos;s meals</h3>
-        {todaysMeals.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">No meals logged yet. Use the buttons above to get started.</p>
+        <h3 className="section-title !text-base mb-3">{dateLabel}&apos;s meals</h3>
+        {displayMeals.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">
+            {isViewingToday
+              ? "No meals logged yet. Use the buttons above to get started."
+              : "No meals logged for this date."}
+          </p>
         ) : (
           <ul className="space-y-2">
-            {todaysMeals.map((m) => (
+            {displayMeals.map((m) => (
               <li key={m.id} className="flex items-center justify-between card px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold">{m.name}</p>

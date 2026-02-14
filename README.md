@@ -1,6 +1,6 @@
 # Recomp
 
-**AI-powered body recomposition — diet, workout, and wellness in one app.** Recomp uses the full Amazon Nova AI portfolio on AWS Bedrock to deliver personalized fitness plans, voice-powered meal logging, receipt scanning, agentic weekly reviews, and wearable integration.
+**AI-powered body recomposition — diet, workout, and wellness in one app.** Recomp uses the full Amazon Nova AI portfolio on AWS Bedrock to deliver personalized fitness plans, a unified calendar (dashboard, Meals, Workouts) with date-based filtering and "Today at a Glance," inline exercise demo GIFs, voice-powered meal logging, receipt scanning, agentic weekly reviews, and wearable integration.
 
 Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
@@ -35,16 +35,20 @@ What makes Recomp novel:
 Suggested flow to assess all Nova features (~5–10 min):
 
 1. **Onboarding** — Fill the form and submit. Plan generation uses Nova Lite + extended thinking.
-2. **Dashboard** — Review caloric budget, diet/workout plans, transformation preview (upload photo → generate "after" image via Nova Canvas).
-3. **Meals** — Log a meal: try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
-4. **Reco** — Click the 🧩 button; chat with the AI coach (text or voice via Nova Sonic).
-5. **Weekly review** — Dashboard → "Generate" in the Weekly AI Review card (multi-agent orchestration).
-6. **Adjust** — Navigate to Adjust; add feedback and run plan adjustments (Nova Lite).
-7. **Wearables** — Connect Oura/Fitbit or import health data (optional).
+2. **Dashboard** — "Today at a Glance" (budget, macros, today's workout/diet), unified calendar with diet/workout popups and "Edit plan," transformation preview (upload photo → "after" image via Nova Canvas).
+3. **Meals / Workouts** — Use the calendar to pick a date; view or edit that day's meals or workout. On Workouts, use "Show demo" / "Hide demo" for inline exercise GIFs.
+4. **Meals — Log a meal** — Try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
+5. **Reco** — Click the 🧩 button; chat with the AI coach (text or voice via Nova Sonic).
+6. **Weekly review** — Dashboard → "Generate" in the Weekly AI Review card (multi-agent orchestration).
+7. **Adjust** — Navigate to Adjust; add feedback and run plan adjustments (Nova Lite).
+8. **Wearables** — Connect Oura/Fitbit or import health data (optional).
 
 ## Features
 
 - **Personalized plans** — AI-generated diet and workout plans based on fitness level, goals, restrictions, and more
+- **Unified calendar** — Same calendar on Dashboard, Meals, and Workouts; date-based filtering; single-day workout view; "Edit plan" from calendar popups
+- **Today at a Glance** — Dashboard hero: caloric budget bar, macro pills, today’s workout and diet mini-cards
+- **Exercise demo GIFs** — Inline demos with target muscles on dashboard and Workouts tab; show/hide per exercise
 - **Calorie & macro tracking** — Daily targets and progress bars for calories, protein, carbs, and fat
 - **Meal logging (4 ways)** — Text, voice (Nova Sonic), photo analysis, and receipt scanning
 - **Reco AI Coach** — Conversational fitness coach with text + voice modes (bidirectional Nova Sonic streaming)

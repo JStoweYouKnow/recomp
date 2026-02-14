@@ -1,9 +1,26 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog } from "@/lib/storage";
 import { segmentPersonFromPhoto } from "@/lib/body-segmentation";
+import { CalendarView } from "./CalendarView";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+
+/* ── Exercise GIF cache (localStorage-backed) ── */
+interface ExerciseGif {
+  gifUrl: string;
+  name: string;
+  targetMuscles?: string[];
+  instructions?: string[];
+}
+const EX_CACHE_KEY = "recomp_exercise_gifs";
+function getGifCache(): Record<string, ExerciseGif> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(EX_CACHE_KEY) ?? "{}"); } catch { return {}; }
+}
+function setGifCache(cache: Record<string, ExerciseGif>) {
+  try { localStorage.setItem(EX_CACHE_KEY, JSON.stringify(cache)); } catch { /* quota */ }
+}
 
 export function Dashboard({
   profile,
@@ -17,6 +34,8 @@ export function Dashboard({
   onRegeneratePlan,
   planRegenerating,
   onReset,
+  onNavigateToMeals,
+  onNavigateToWorkouts,
 }: {
   profile: UserProfile;
   plan: FitnessPlan | null;
@@ -29,6 +48,10 @@ export function Dashboard({
   onRegeneratePlan: () => void;
   planRegenerating: boolean;
   onReset: () => void;
+  /** Optional: switch to Meals tab for editing diet */
+  onNavigateToMeals?: () => void;
+  /** Optional: switch to Workouts tab for editing plan */
+  onNavigateToWorkouts?: () => void;
 }) {
   const kgToLbs = (kg: number): number => kg * 2.2046226218;
   const cmToFeetInches = (cm: number): { ft: number; inch: number } => {
@@ -50,15 +73,48 @@ export function Dashboard({
   const [groceryError, setGroceryError] = useState<string | null>(null);
   const [groceryStore, setGroceryStore] = useState<"fresh" | "wholefoods" | "amazon">("fresh");
   const [groceryAddToCart, setGroceryAddToCart] = useState(false);
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [videoStatus, setVideoStatus] = useState<{ status?: string; invocationArn?: string; videoUrl?: string } | null>(null);
-  const [videoThinkingStep, setVideoThinkingStep] = useState(0);
-  const [videoExerciseSelect, setVideoExerciseSelect] = useState<string>("");
   const workoutProgress = getWorkoutProgress();
-  const [dashExpandedWorkout, setDashExpandedWorkout] = useState<number | null>(null);
-  const [dashExpandedDiet, setDashExpandedDiet] = useState<number | null>(null);
-  const [dashEditingDiet, setDashEditingDiet] = useState<number | null>(null);
   const [workoutPrefsEditing, setWorkoutPrefsEditing] = useState(false);
+
+  /* ── Exercise GIF visibility (which demos are expanded) ── */
+  const [expandedExerciseDemos, setExpandedExerciseDemos] = useState<Set<string>>(() => new Set());
+
+  /* ── Exercise GIF state ── */
+  const [exerciseGifs, setExerciseGifs] = useState<Record<string, ExerciseGif | "loading" | "none">>(() => {
+    const cached = getGifCache();
+    const init: Record<string, ExerciseGif | "loading" | "none"> = {};
+    for (const [k, v] of Object.entries(cached)) init[k] = v;
+    return init;
+  });
+
+  const fetchExerciseGif = useCallback(async (exerciseName: string) => {
+    const key = exerciseName.toLowerCase().trim();
+    if (exerciseGifs[key] && exerciseGifs[key] !== "none") return; // already loaded or loading
+    setExerciseGifs((prev) => ({ ...prev, [key]: "loading" }));
+    try {
+      const res = await fetch(`/api/exercises/search?name=${encodeURIComponent(key)}`);
+      if (!res.ok) {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+        return;
+      }
+      const data = await res.json();
+      if (data.gifUrl) {
+        const gif: ExerciseGif = { gifUrl: data.gifUrl, name: data.name, targetMuscles: data.targetMuscles, instructions: data.instructions };
+        setExerciseGifs((prev) => {
+          const next = { ...prev, [key]: gif };
+          // persist to cache
+          const cache = getGifCache();
+          cache[key] = gif;
+          setGifCache(cache);
+          return next;
+        });
+      } else {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+      }
+    } catch {
+      setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+    }
+  }, [exerciseGifs]);
 
   const DASHBOARD_EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
     { value: "bodyweight", label: "Bodyweight" },
@@ -71,41 +127,6 @@ export function Dashboard({
     { value: "pull_up_bar", label: "Pull-up bar" },
     { value: "cable_machine", label: "Cable machine" },
   ];
-
-  /* ── Video generation: thinking message cycling ── */
-  useEffect(() => {
-    if (videoStatus?.status !== "InProgress") return;
-    const id = setInterval(() => setVideoThinkingStep((s) => s + 1), 3800);
-    return () => clearInterval(id);
-  }, [videoStatus?.status]);
-
-  /* ── Video generation: poll when InProgress ── */
-  useEffect(() => {
-    if (videoStatus?.status !== "InProgress" || !videoStatus.invocationArn) return;
-    const poll = async () => {
-      try {
-        const res = await fetch("/api/video/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "poll", invocationArn: videoStatus.invocationArn }),
-        });
-        const data = await res.json();
-        if (data.status === "Completed") {
-          setVideoStatus((v) => (v ? { ...v, status: "Completed", videoUrl: data.videoUrl ?? undefined } : null));
-          return;
-        }
-        if (data.status === "Failed") {
-          setVideoStatus((v) => (v ? { ...v, status: `Failed: ${data.failureMessage ?? "Unknown"}` } : null));
-          return;
-        }
-      } catch {
-        // keep polling
-      }
-    };
-    const id = setInterval(poll, 12000); // every 12s
-    poll(); // immediate first poll
-    return () => clearInterval(id);
-  }, [videoStatus?.status, videoStatus?.invocationArn]);
 
   /* ── Diet plan mutation helpers ── */
   const updateDietDay = (
@@ -163,6 +184,14 @@ export function Dashboard({
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>(() => getActivityLog());
   const [showActivityForm, setShowActivityForm] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
+
+  /* ── Dashboard calendar state ── */
+  const [dashCalendarDate, setDashCalendarDate] = useState(today);
+
+  /* ── Today at a glance expand state ── */
+  const [todayWorkoutExpanded, setTodayWorkoutExpanded] = useState(false);
+  const [todayDietExpanded, setTodayDietExpanded] = useState(false);
+
   const todayActivities = activityLog.filter((e) => e.date === today);
   const todayAdjustment = todayActivities.reduce((sum, e) => sum + e.calorieAdjustment, 0);
   const baseBudget = targets.calories;
@@ -234,40 +263,65 @@ export function Dashboard({
     }
   };
 
-  const weekExercises = plan
-    ? [...new Set(plan.workoutPlan.weeklyPlan.flatMap((d) => d.exercises.map((e) => e.name).filter(Boolean)))]
-    : [];
-  const selectedExercise = videoExerciseSelect && weekExercises.includes(videoExerciseSelect)
-    ? videoExerciseSelect
-    : weekExercises[0] ?? null;
+  /* ── Dashboard calendar helpers ── */
+  const WEEKDAY_NAMES_DASH = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const SHORT_WEEKDAY_DASH = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-  const handleGenerateWorkoutDemo = async () => {
-    if (!plan) return;
-    const exerciseName = selectedExercise ?? "bicep curl";
-    const prompt = `Anime style. Person doing ${exerciseName}. One complete rep, full body visible.`;
+  /** Dates that have meals */
+  const dashMealDates = useMemo(() => new Set(meals.map((m) => m.date)), [meals]);
 
-    setVideoLoading(true);
-    setVideoStatus(null);
-    setVideoThinkingStep(0);
-    try {
-      const res = await fetch("/api/video/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-      const data = await res.json();
-      if (res.status === 503) {
-        setVideoStatus({ status: "S3 bucket not configured — set NOVA_REEL_S3_BUCKET in .env to enable video generation." });
-        return;
-      }
-      if (!res.ok) throw new Error(data.error ?? "Unable to start demo generation");
-      setVideoStatus({ status: "InProgress", invocationArn: data.invocationArn });
-    } catch (err) {
-      setVideoStatus({ status: err instanceof Error ? err.message : "Error" });
-    } finally {
-      setVideoLoading(false);
+  /** Combined dot-dates: meals + completed exercises */
+  const dashDotDates = useMemo(() => {
+    const s = new Set(dashMealDates);
+    for (const ts of Object.values(workoutProgress)) {
+      if (ts) s.add(ts.slice(0, 10));
     }
-  };
+    return s;
+  }, [dashMealDates, workoutProgress]);
+
+  /** Combined counts per date */
+  const dashDateCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of meals) map.set(m.date, (map.get(m.date) ?? 0) + 1);
+    return map;
+  }, [meals]);
+
+  /** Match a selected date to a diet day index */
+  const matchDietDay = useCallback((date: string): number | null => {
+    if (!plan) return null;
+    const d = new Date(date + "T12:00:00");
+    const dow = d.getDay();
+    const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
+    const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
+    for (let i = 0; i < plan.dietPlan.weeklyPlan.length; i++) {
+      const planDay = plan.dietPlan.weeklyPlan[i].day.toLowerCase().trim();
+      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
+    }
+    const mondayBased = dow === 0 ? 6 : dow - 1;
+    return mondayBased < plan.dietPlan.weeklyPlan.length ? mondayBased : null;
+  }, [plan]);
+
+  /** Match a selected date to a workout day index */
+  const matchWorkoutDay = useCallback((date: string): number | null => {
+    if (!plan) return null;
+    const d = new Date(date + "T12:00:00");
+    const dow = d.getDay();
+    const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
+    const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
+    for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
+      const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
+      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
+    }
+    const mondayBased = dow === 0 ? 6 : dow - 1;
+    return mondayBased < plan.workoutPlan.weeklyPlan.length ? mondayBased : null;
+  }, [plan]);
+
+  /** Meals for the calendar-selected date */
+  const dashCalMeals = useMemo(() => meals.filter((m) => m.date === dashCalendarDate), [meals, dashCalendarDate]);
+  const dashCalMealTotals = useMemo(() => dashCalMeals.reduce(
+    (acc, m) => ({ calories: acc.calories + m.macros.calories, protein: acc.protein + m.macros.protein, carbs: acc.carbs + m.macros.carbs, fat: acc.fat + m.macros.fat }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  ), [dashCalMeals]);
 
   const [fullBodyPhotoLoading, setFullBodyPhotoLoading] = useState(false);
   const [goalPhotoLoading, setGoalPhotoLoading] = useState(false);
@@ -397,8 +451,8 @@ export function Dashboard({
             </span>
           </label>
           <div>
-            <h2 className="section-title !text-xl">Welcome back, {profile.name}</h2>
-            <p className="section-subtitle">Here&apos;s your progress today</p>
+            <h2 className="text-h4 text-[var(--foreground)]">Welcome back, {profile.name}</h2>
+            <p className="section-subtitle mt-0.5">Here&apos;s your progress today</p>
           </div>
         </div>
         <div className="flex gap-1.5">
@@ -415,274 +469,450 @@ export function Dashboard({
         </div>
       </div>
 
-      {/* ── Caloric Budget ── */}
-      <div className="card p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div>
-            <h3 className="section-title !text-base">Today&apos;s caloric budget</h3>
-            <p className="section-subtitle">
-              {todayAdjustment === 0
-                ? "Log activity to earn more calories, or track sedentary time"
-                : todayAdjustment > 0
-                  ? `+${todayAdjustment} cal earned from activity`
-                  : `${todayAdjustment} cal from sedentary time`}
-            </p>
-          </div>
-          <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary !text-xs">
-            {showActivityForm ? "Close" : "+ Log activity"}
-          </button>
-        </div>
-
-        {/* Budget bar */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex-1">
-            <div className="flex items-baseline justify-between mb-1">
-              <span className="text-2xl font-bold tabular-nums">{todaysTotals.calories}</span>
-              <span className="text-sm text-[var(--muted)]">
-                of <span className={`font-semibold ${todayAdjustment !== 0 ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>{adjustedBudget}</span> cal
-                {todayAdjustment !== 0 && (
-                  <span className="text-caption ml-1">({baseBudget} base {todayAdjustment > 0 ? "+" : ""}{todayAdjustment})</span>
-                )}
-              </span>
-            </div>
-            <div className="progress-track !mt-0">
-              <div className="progress-fill" style={{ width: `${pct(todaysTotals.calories, adjustedBudget)}%` }} />
-            </div>
-            <p className="text-caption mt-1 tabular-nums">
-              {Math.max(0, adjustedBudget - todaysTotals.calories)} cal remaining
-            </p>
-          </div>
-        </div>
-
-        {/* Macro row */}
-        <div className="grid gap-3 grid-cols-3">
-          {(["protein", "carbs", "fat"] as const).map((key) => (
-            <div key={key} className="card-flat rounded-xl px-3 py-2.5">
-              <p className="stat-label">{key}</p>
-              <p className="text-base font-bold tabular-nums">
-                {todaysTotals[key]}<span className="stat-value-dim !text-xs">g</span>
-                <span className="stat-value-dim !text-xs"> / {targets[key]}g</span>
-              </p>
-              <div className="progress-track !mt-1">
-                <div className="progress-fill" style={{ width: `${pct(todaysTotals[key], targets[key])}%` }} />
+      {/* ── Today at a Glance ── */}
+      <div className="card p-6">
+        <h3 className="section-title !text-base mb-4">Today at a glance</h3>
+        <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+          {/* Left: Budget + macros */}
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-xl font-bold tabular-nums">{todaysTotals.calories}</span>
+                <span className="text-sm text-[var(--muted)]">
+                  of <span className={`font-semibold ${todayAdjustment !== 0 ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>{adjustedBudget}</span> cal
+                  {todayAdjustment !== 0 && (
+                    <span className="text-caption ml-1">({baseBudget} base {todayAdjustment > 0 ? "+" : ""}{todayAdjustment})</span>
+                  )}
+                </span>
               </div>
+              <div className="progress-track !mt-0">
+                <div className="progress-fill" style={{ width: `${pct(todaysTotals.calories, adjustedBudget)}%` }} />
+              </div>
+              <p className="text-caption mt-1 tabular-nums">{Math.max(0, adjustedBudget - todaysTotals.calories)} cal remaining</p>
             </div>
-          ))}
-        </div>
-
-        {/* Today's activity log */}
-        {todayActivities.length > 0 && (
-          <div className="mt-4 border-t border-[var(--border-soft)] pt-3">
-            <p className="stat-label mb-2">Today&apos;s activity</p>
-            <div className="space-y-1.5">
-              {todayActivities.map((a) => (
-                <div key={a.id} className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${a.type === "activity" ? "bg-[var(--accent)]" : "bg-[var(--accent-terracotta)]"}`} />
-                    <span>{a.label}</span>
-                    <span className="text-caption">{a.durationMinutes} min</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium tabular-nums ${a.calorieAdjustment > 0 ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>
-                      {a.calorieAdjustment > 0 ? "+" : ""}{a.calorieAdjustment} cal
-                    </span>
-                    <button onClick={() => removeActivityEntry(a.id)} className="text-[var(--muted)] hover:text-[var(--accent-terracotta)] text-xs">x</button>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {(["calories", "protein", "carbs", "fat"] as const).map((key) => (
+                <div key={key} className="card-flat rounded-lg px-2.5 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
+                  <p className="text-sm font-bold tabular-nums leading-tight">
+                    {key === "calories" ? todaysTotals.calories : `${todaysTotals[key]}g`}
+                    <span className="stat-value-dim !text-[10px]"> / {key === "calories" ? targets.calories : `${targets[key]}g`}</span>
+                  </p>
+                  <div className="progress-track !mt-1 h-1">
+                    <div className="progress-fill" style={{ width: `${pct(todaysTotals[key], targets[key])}%` }} />
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Activity form */}
-        {showActivityForm && (
-          <div className="mt-4 border-t border-[var(--border-soft)] pt-4 animate-fade-in">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="label">Add exercise / activity</p>
-                <div className="space-y-2">
-                  {([
-                    ["30 min walk", "walking", 30, 130],
-                    ["45 min run", "running", 45, 400],
-                    ["60 min workout", "workout", 60, 350],
-                    ["30 min cycling", "cycling", 30, 250],
-                    ["30 min swim", "swimming", 30, 300],
-                    ["20 min HIIT", "hiit", 20, 220],
-                    ["30 min yoga", "yoga", 30, 120],
-                  ] as const).map(([label, cat, mins, cals]) => (
-                    <button
-                      key={label}
-                      onClick={() => {
-                        addActivityEntry({
-                          id: `act_${Date.now()}`,
-                          date: today,
-                          type: "activity",
-                          label,
-                          category: cat,
-                          durationMinutes: mins,
-                          calorieAdjustment: cals,
-                          loggedAt: new Date().toISOString(),
-                        });
-                      }}
-                      className="w-full flex items-center justify-between rounded-lg bg-[var(--accent)]/5 px-3 py-2 text-sm hover:bg-[var(--accent)]/10 transition-colors"
-                    >
-                      <span>{label}</span>
-                      <span className="text-xs font-medium text-[var(--accent)]">+{cals} cal</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="label">Log sedentary time</p>
-                <div className="space-y-2">
-                  {([
-                    ["2 hr desk work", "desk_work", 120, -50],
-                    ["3 hr watching TV", "watching_tv", 180, -75],
-                    ["2 hr gaming", "gaming", 120, -60],
-                    ["1 hr nap", "nap", 60, -30],
-                    ["3 hr travel", "travel", 180, -40],
-                  ] as const).map(([label, cat, mins, cals]) => (
-                    <button
-                      key={label}
-                      onClick={() => {
-                        addActivityEntry({
-                          id: `sed_${Date.now()}`,
-                          date: today,
-                          type: "sedentary",
-                          label,
-                          category: cat,
-                          durationMinutes: mins,
-                          calorieAdjustment: cals,
-                          loggedAt: new Date().toISOString(),
-                        });
-                      }}
-                      className="w-full flex items-center justify-between rounded-lg bg-[var(--accent-terracotta)]/5 px-3 py-2 text-sm hover:bg-[var(--accent-terracotta)]/10 transition-colors"
-                    >
-                      <span>{label}</span>
-                      <span className="text-xs font-medium text-[var(--accent-terracotta)]">{cals} cal</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-caption mt-2 italic">
-                  Sedentary deductions assume your base budget already accounts for your activity level. Only log unusually sedentary periods.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ── Transformation Preview ── */}
-      <div className="card p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h3 className="section-title !text-base">See your transformation</h3>
-            <p className="section-subtitle">
-              Upload a full-body photo and generate an AI &quot;after&quot; image based on your goal
-            </p>
-          </div>
-        </div>
-        <div className="grid gap-6 sm:grid-cols-2">
-          {profile.fullBodyPhotoDataUrl ? (
-            <div className="flex flex-col items-center">
-              <div className="relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--border-soft)] bg-[var(--surface-elevated)]" style={{ minHeight: 180 }}>
-                <img src={profile.fullBodyPhotoDataUrl} alt="You now" className="w-full h-full object-cover" />
-              </div>
-              <p className="mt-2 text-xs font-medium text-[var(--muted)]">You now</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)] py-10 px-4 text-center min-h-[180px]">
-              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-[var(--foreground)]">Add your photo</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">Upload full-body photo to generate after image</p>
-              <div className="mt-3 flex flex-wrap gap-2 justify-center">
-                <label className="btn-primary !text-xs cursor-pointer">
-                  <input type="file" accept="image/*" onChange={handleFullBodyPhotoUpload} className="sr-only" />
-                  {fullBodyPhotoLoading ? "Processing..." : "Upload photo"}
-                </label>
-              </div>
-            </div>
-          )}
-          {/* Right: AI-generated after image or placeholder */}
-          {profile.goalPhotoDataUrl ? (
-            <div className="flex flex-col items-center">
-              <div
-                className={`relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--accent)]/40 bg-[var(--accent)]/5`}
-                style={{ minHeight: 180 }}
-              >
-                <img
-                  src={profile.goalPhotoDataUrl}
-                  alt="Your goal"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute top-2 right-2 rounded-full bg-[var(--accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-white">
-                  Goal
-                </div>
-              </div>
-              <p className="mt-2 text-xs font-medium text-[var(--muted)]">Your goal (AI-generated)</p>
-            </div>
-          ) : profile.fullBodyPhotoDataUrl ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 py-10 px-4 text-center min-h-[180px]">
-              <p className="text-sm font-medium text-[var(--foreground)]">Generate &quot;after&quot; image</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                AI will transform your photo based on goal: {profile.goal.replace(/_/g, " ")}
-              </p>
-              <button
-                onClick={handleGenerateAfterImage}
-                disabled={goalPhotoLoading}
-                className="btn-primary mt-3 !text-xs"
-              >
-                {goalPhotoLoading ? "Generating..." : "Generate after image"}
+            <div className="flex items-center justify-between pt-1">
+              <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary text-xs min-h-[32px]">
+                {showActivityForm ? "Close" : "+ Log activity"}
               </button>
+              {todayActivities.length > 0 && (
+                <span className="text-[10px] text-[var(--muted)]">{todayActivities.length} activity entries</span>
+              )}
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)] py-10 px-4 text-center min-h-[180px]">
-              <p className="text-sm font-medium text-[var(--foreground)]">Upload a photo</p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Add a full-body photo to generate your AI &quot;after&quot; image
-              </p>
-              <p className="mt-2 text-xs text-[var(--muted)]">Goal: {profile.goal.replace(/_/g, " ")}</p>
-            </div>
-          )}
+          </div>
+
+          {/* Right: Today's workout + diet mini-cards */}
+          <div className="space-y-3">
+            {plan ? (
+              <>
+                {/* Today's workout */}
+                <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTodayWorkoutExpanded(!todayWorkoutExpanded)}
+                    className="w-full px-3 py-2.5 text-left flex items-center gap-2 hover:bg-[var(--surface-elevated)] transition-colors"
+                    aria-expanded={todayWorkoutExpanded}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-warm)]/10 text-[var(--accent-warm)]">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                      </svg>
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold">Today&apos;s workout</p>
+                      {(() => {
+                        const idx = matchWorkoutDay(today);
+                        if (idx === null) return <p className="text-[10px] text-[var(--muted)]">Rest day</p>;
+                        const w = plan.workoutPlan.weeklyPlan[idx];
+                        if (!w) return null;
+                        const done = w.exercises.filter((ex) => Boolean(workoutProgress[`${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`])).length;
+                        return <p className="text-[10px] text-[var(--muted)]">{w.focus} · {done}/{w.exercises.length} done</p>;
+                      })()}
+                    </div>
+                    <svg className={`h-4 w-4 text-[var(--muted)] flex-shrink-0 transition-transform ${todayWorkoutExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {todayWorkoutExpanded && plan && (() => {
+                    const idx = matchWorkoutDay(today);
+                    if (idx === null) return <div className="px-3 pb-3 text-xs text-[var(--muted)]">No workout today. Use the calendar below to view other days.</div>;
+                    const w = plan.workoutPlan.weeklyPlan[idx];
+                    if (!w) return null;
+                    const completed = w.exercises.filter((ex) => Boolean(workoutProgress[`${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`])).length;
+                    const total = w.exercises.length;
+                    return (
+                      <div className="border-t border-[var(--border-soft)] px-3 py-2 space-y-1.5">
+                        <div className="progress-track !mt-0">
+                          <div className="progress-fill" style={{ width: `${total > 0 ? Math.round((completed / total) * 100) : 0}%` }} />
+                        </div>
+                        {w.exercises.slice(0, 8).map((ex, i) => {
+                          const key = `${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                          const isDone = Boolean(workoutProgress[key]);
+                          const gifKey = ex.name.toLowerCase().trim();
+                          const gif = exerciseGifs[gifKey];
+                          const isExpanded = expandedExerciseDemos.has(gifKey);
+                          const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                          return (
+                            <div key={i} className="rounded-md border border-[var(--border-soft)] px-2 py-1.5 space-y-1">
+                              <div className="flex items-center gap-2 text-xs">
+                                <span className={`flex-shrink-0 h-3.5 w-3.5 rounded-full border-2 ${isDone ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)]"}`}>
+                                  {isDone && <svg className="h-full w-full text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}><path d="M2.5 6l2.5 2.5 4.5-4.5" /></svg>}
+                                </span>
+                                <span className={`flex-1 min-w-0 truncate ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{ex.name}</span>
+                                <span className="text-[var(--muted)] tabular-nums">{ex.sets}×{ex.reps}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                    else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(ex.name); }
+                                  }}
+                                  className="text-[10px] font-medium text-[var(--accent)] hover:underline flex-shrink-0"
+                                >
+                                  {gif === "loading" ? "…" : showGif ? "Hide demo" : "Show demo"}
+                                </button>
+                              </div>
+                              {showGif && gif && typeof gif === "object" && gif.gifUrl && (
+                                <div className="pl-5 space-y-1">
+                                  <img src={gif.gifUrl} alt={ex.name} className="rounded-lg max-h-24 object-contain bg-[var(--surface-elevated)]" />
+                                  {gif.targetMuscles?.length ? <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p> : null}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {total > 8 && <p className="text-[10px] text-[var(--muted)]">+{total - 8} more · see calendar</p>}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Today's diet */}
+                <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setTodayDietExpanded(!todayDietExpanded)}
+                    className="w-full px-3 py-2.5 text-left flex items-center gap-2 hover:bg-[var(--surface-elevated)] transition-colors"
+                    aria-expanded={todayDietExpanded}
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold">Today&apos;s diet</p>
+                      {(() => {
+                        const logged = meals.filter((m) => m.date === today).length;
+                        const idx = matchDietDay(today);
+                        if (idx === null) return <p className="text-[10px] text-[var(--muted)]">{logged} meal{logged !== 1 ? "s" : ""} logged</p>;
+                        const d = plan.dietPlan.weeklyPlan[idx];
+                        const planCal = d?.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0) ?? 0;
+                        return <p className="text-[10px] text-[var(--muted)]">{logged} logged · plan {planCal} cal</p>;
+                      })()}
+                    </div>
+                    <svg className={`h-4 w-4 text-[var(--muted)] flex-shrink-0 transition-transform ${todayDietExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {todayDietExpanded && plan && (() => {
+                    const idx = matchDietDay(today);
+                    if (idx === null) return <div className="px-3 pb-3 text-xs text-[var(--muted)]">No plan for today. Use the calendar below.</div>;
+                    const d = plan.dietPlan.weeklyPlan[idx];
+                    if (!d) return null;
+                    const logged = meals.filter((m) => m.date === today);
+                    return (
+                      <div className="border-t border-[var(--border-soft)] px-3 py-2 space-y-2">
+                        {logged.length > 0 && (
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase text-[var(--muted)] mb-1">Logged</p>
+                            {logged.slice(0, 4).map((m) => (
+                              <div key={m.id} className="flex justify-between text-xs">
+                                <span className="truncate">{m.name}</span>
+                                <span className="text-[var(--muted)] tabular-nums">{m.macros.calories} cal</span>
+                              </div>
+                            ))}
+                            {logged.length > 4 && <p className="text-[10px] text-[var(--muted)]">+{logged.length - 4} more</p>}
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase text-[var(--muted)] mb-1">Suggested</p>
+                          {d.meals.slice(0, 4).map((m, i) => (
+                            <div key={i} className="flex justify-between text-xs">
+                              <span className="capitalize text-[var(--muted)]">{m.mealType}</span>
+                              <span className="tabular-nums">{m.macros?.calories ?? 0} cal</span>
+                            </div>
+                          ))}
+                          {d.meals.length > 4 && <p className="text-[10px] text-[var(--muted)]">+{d.meals.length - 4} more</p>}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-6 text-center">
+                <p className="text-xs text-[var(--muted)]">Generate a plan to see today&apos;s workout and diet.</p>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <label className="btn-secondary !text-xs cursor-pointer">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFullBodyPhotoUpload}
-              className="sr-only"
-            />
-            {fullBodyPhotoLoading ? "Processing..." : profile.fullBodyPhotoDataUrl ? "Replace body photo" : "Upload full body photo"}
-          </label>
-          {profile.fullBodyPhotoDataUrl && profile.goalPhotoDataUrl && (
-            <button
-              onClick={handleGenerateAfterImage}
-              disabled={goalPhotoLoading}
-              className="btn-secondary !text-xs"
-            >
-              {goalPhotoLoading ? "Regenerating..." : "Regenerate after"}
-            </button>
-          )}
-          {profile.fullBodyPhotoDataUrl && (
-            <button
-              onClick={() => onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: undefined, goalPhotoDataUrl: undefined })}
-              className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]"
-            >
-              Remove photo
-            </button>
-          )}
-          <span className="text-caption text-[var(--muted)]">
-            {profile.fullBodyPhotoDataUrl && profile.goalPhotoDataUrl
-              ? "Right: AI-generated after image based on your goal"
-              : !profile.fullBodyPhotoDataUrl && `Goal: ${profile.goal.replace(/_/g, " ")}`}
-          </span>
-        </div>
+
+        {/* Collapsible activity log + form */}
+        {(todayActivities.length > 0 || showActivityForm) && (
+          <div className="mt-4 border-t border-[var(--border-soft)] pt-4">
+            {todayActivities.length > 0 && (
+              <div className="mb-3">
+                <p className="stat-label mb-2">Today&apos;s activity</p>
+                <div className="space-y-1.5">
+                  {todayActivities.map((a) => (
+                    <div key={a.id} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${a.type === "activity" ? "bg-[var(--accent)]" : "bg-[var(--accent-terracotta)]"}`} aria-hidden="true" />
+                        <span className={`text-[10px] font-medium uppercase ${a.type === "activity" ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>{a.type === "activity" ? "active" : "rest"}</span>
+                        <span>{a.label}</span>
+                        <span className="text-caption">{a.durationMinutes} min</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-medium tabular-nums ${a.calorieAdjustment > 0 ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>{a.calorieAdjustment > 0 ? "+" : ""}{a.calorieAdjustment} cal</span>
+                        <button onClick={() => removeActivityEntry(a.id)} className="text-[var(--muted)] hover:text-[var(--accent-terracotta)] text-xs" aria-label={`Remove ${a.label}`}>
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {showActivityForm && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="label text-xs">Add activity</p>
+                  <div className="space-y-1.5">
+                    {([
+                      ["30 min walk", "walking", 30, 130],
+                      ["45 min run", "running", 45, 400],
+                      ["60 min workout", "workout", 60, 350],
+                      ["30 min cycling", "cycling", 30, 250],
+                      ["20 min HIIT", "hiit", 20, 220],
+                    ] as const).map(([label, cat, mins, cals]) => (
+                      <button
+                        key={label}
+                        onClick={() => addActivityEntry({ id: `act_${Date.now()}`, date: today, type: "activity", label, category: cat, durationMinutes: mins, calorieAdjustment: cals, loggedAt: new Date().toISOString() })}
+                        className="w-full flex items-center justify-between rounded-lg bg-[var(--accent)]/5 px-3 py-1.5 text-xs hover:bg-[var(--accent)]/10"
+                      >
+                        <span>{label}</span>
+                        <span className="text-[var(--accent)]">+{cals} cal</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="label text-xs">Log sedentary</p>
+                  <div className="space-y-1.5">
+                    {([
+                      ["2 hr desk work", "desk_work", 120, -50],
+                      ["3 hr TV", "watching_tv", 180, -75],
+                      ["2 hr gaming", "gaming", 120, -60],
+                    ] as const).map(([label, cat, mins, cals]) => (
+                      <button
+                        key={label}
+                        onClick={() => addActivityEntry({ id: `sed_${Date.now()}`, date: today, type: "sedentary", label, category: cat, durationMinutes: mins, calorieAdjustment: cals, loggedAt: new Date().toISOString() })}
+                        className="w-full flex items-center justify-between rounded-lg bg-[var(--accent-terracotta)]/5 px-3 py-1.5 text-xs hover:bg-[var(--accent-terracotta)]/10"
+                      >
+                        <span>{label}</span>
+                        <span className="text-[var(--accent-terracotta)]">{cals} cal</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-[var(--muted)] mt-1">Only log unusually sedentary periods.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Calendar Navigator ── */}
+      {plan && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="section-title !text-base">Weekly calendar</h3>
+            <p className="section-subtitle">Select a date to view diet and workout for that day</p>
+          </div>
+          <CalendarView
+            selectedDate={dashCalendarDate}
+            onSelectDate={setDashCalendarDate}
+            dotDates={dashDotDates}
+            dateCounts={dashDateCounts}
+            defaultView="week"
+          />
+          <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold">Diet</h4>
+                    <span className="text-[10px] text-[var(--muted)] ml-auto flex items-center gap-2">
+                      {dashCalendarDate === today ? "Today" : new Date(dashCalendarDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      {onNavigateToMeals && (
+                        <button type="button" onClick={onNavigateToMeals} className="text-[var(--accent)] hover:underline text-[10px] font-medium">
+                          Edit plan
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {dashCalMeals.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-1">Logged meals</p>
+                      <div className="space-y-1">
+                        {dashCalMeals.map((m) => (
+                          <div key={m.id} className="flex items-center justify-between text-xs">
+                            <span className="font-medium truncate">{m.name}</span>
+                            <span className="text-[var(--muted)] tabular-nums flex-shrink-0 ml-2">{m.macros.calories} cal</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-1.5 pt-1.5 border-t border-[var(--border-soft)] flex justify-between text-xs font-semibold">
+                        <span>Total</span>
+                        <span className="tabular-nums">{dashCalMealTotals.calories} cal · {dashCalMealTotals.protein}g P · {dashCalMealTotals.carbs}g C · {dashCalMealTotals.fat}g F</span>
+                      </div>
+                    </div>
+                  )}
+                  {(() => {
+                    const idx = matchDietDay(dashCalendarDate);
+                    if (idx === null) return <p className="text-xs text-[var(--muted)]">No diet plan for this day.</p>;
+                    const dietDay = plan.dietPlan.weeklyPlan[idx];
+                    if (!dietDay) return null;
+                    const dayTotal = dietDay.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0);
+                    return (
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-1">Suggested — {dietDay.day}</p>
+                        <div className="space-y-1.5">
+                          {dietDay.meals.map((m, i) => (
+                            <div key={i} className="flex items-start justify-between gap-2 text-xs">
+                              <div className="min-w-0">
+                                <span className="font-medium capitalize">{m.mealType}</span>
+                                <p className="text-[var(--muted)] truncate">{m.description}</p>
+                              </div>
+                              <span className="text-[var(--muted)] tabular-nums flex-shrink-0">{m.macros?.calories ?? 0} cal</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 pt-1.5 border-t border-[var(--border-soft)] text-xs text-[var(--muted)] tabular-nums text-right">
+                          Plan total: <span className="font-semibold text-[var(--foreground)]">{dayTotal} cal</span>
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+                <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-warm)]/10 text-[var(--accent-warm)]">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                      </svg>
+                    </span>
+                    <h4 className="text-sm font-semibold">Workout</h4>
+                    <span className="text-[10px] text-[var(--muted)] ml-auto flex items-center gap-2">
+                      {dashCalendarDate === today ? "Today" : new Date(dashCalendarDate + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+                      {onNavigateToWorkouts && (
+                        <button type="button" onClick={onNavigateToWorkouts} className="text-[var(--accent)] hover:underline text-[10px] font-medium">
+                          Edit plan
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                  {(() => {
+                    const idx = matchWorkoutDay(dashCalendarDate);
+                    if (idx === null) return <p className="text-xs text-[var(--muted)]">No workout scheduled for this day. Rest day!</p>;
+                    const workoutDay = plan.workoutPlan.weeklyPlan[idx];
+                    if (!workoutDay) return null;
+                    const completed = workoutDay.exercises.filter((ex) => {
+                      const key = `${plan.id}:${workoutDay.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                      return Boolean(workoutProgress[key]);
+                    }).length;
+                    const total = workoutDay.exercises.length;
+                    const allDone = total > 0 && completed === total;
+                    return (
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="text-xs font-semibold">{workoutDay.day}</p>
+                            <p className="text-[10px] text-[var(--muted)]">{workoutDay.focus}</p>
+                          </div>
+                          <span className={`badge text-[10px] ${allDone ? "badge-accent" : "badge-muted"}`}>
+                            {completed}/{total} done
+                          </span>
+                        </div>
+                        {total > 0 && (
+                          <div className="progress-track !mt-0 mb-2">
+                            <div className="progress-fill" style={{ width: `${total > 0 ? Math.round((completed / total) * 100) : 0}%` }} />
+                          </div>
+                        )}
+                        <div className="space-y-1">
+                          {workoutDay.exercises.map((ex, i) => {
+                            const key = `${plan.id}:${workoutDay.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                            const isDone = Boolean(workoutProgress[key]);
+                            const gifKey = ex.name.toLowerCase().trim();
+                            const gif = exerciseGifs[gifKey];
+                            const isExpanded = expandedExerciseDemos.has(gifKey);
+                            const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                            return (
+                              <div key={i} className={`rounded-md px-2 py-1 space-y-1 ${isDone ? "bg-[var(--accent)]/5" : ""}`}>
+                                <div className="flex items-center gap-2 text-xs">
+                                  <span className={`flex-shrink-0 h-3.5 w-3.5 rounded-full border-2 ${isDone ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)]"}`}>
+                                    {isDone && (
+                                      <svg className="h-full w-full text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}>
+                                        <path d="M2.5 6l2.5 2.5 4.5-4.5" />
+                                      </svg>
+                                    )}
+                                  </span>
+                                  <span className={`flex-1 min-w-0 truncate ${isDone ? "line-through text-[var(--muted)]" : "font-medium"}`}>{ex.name}</span>
+                                  <span className="text-[var(--muted)] flex-shrink-0 tabular-nums">{ex.sets} x {ex.reps}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                      else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(ex.name); }
+                                    }}
+                                    className="text-[10px] font-medium text-[var(--accent)] hover:underline flex-shrink-0"
+                                  >
+                                    {gif === "loading" ? "…" : showGif ? "Hide demo" : "Show demo"}
+                                  </button>
+                                </div>
+                                {showGif && gif && typeof gif === "object" && gif.gifUrl && (
+                                  <div className="pl-5 space-y-1">
+                                    <img src={gif.gifUrl} alt={ex.name} className="rounded-lg max-h-24 object-contain bg-[var(--surface-elevated)]" />
+                                    {gif.targetMuscles?.length ? <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p> : null}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+        </div>
+      )}
 
       {/* ── Weekly AI Review ── */}
       <div className="card p-6">
@@ -745,518 +975,6 @@ export function Dashboard({
         )}
       </div>
 
-      {plan && (
-        <div className="grid gap-5 lg:grid-cols-2">
-          <div className="card p-6">
-            <div className="flex items-baseline justify-between mb-4">
-              <h3 className="section-title !text-base">This week&apos;s diet</h3>
-              <div className="text-right">
-                <span className="text-caption">Budget: <span className={`font-semibold ${todayAdjustment !== 0 ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>{adjustedBudget}</span> cal/day</span>
-                {todayAdjustment !== 0 && <p className="text-caption">{baseBudget} base {todayAdjustment > 0 ? "+" : ""}{todayAdjustment}</p>}
-              </div>
-            </div>
-            <div className="space-y-2">
-              {plan.dietPlan.weeklyPlan.map((d, dIdx) => {
-                const dayTotal = d.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0);
-                const dayProtein = d.meals.reduce((s, m) => s + (m.macros?.protein ?? 0), 0);
-                const isOpen = dashExpandedDiet === dIdx;
-                const isEditing = dashEditingDiet === dIdx;
-                const withinBudget = dayTotal <= adjustedBudget;
-                const remaining = adjustedBudget - dayTotal;
-                const dayCarbs = d.meals.reduce((s, m) => s + (m.macros?.carbs ?? 0), 0);
-                const dayFat = d.meals.reduce((s, m) => s + (m.macros?.fat ?? 0), 0);
-                /* per-meal calorie target = budget split evenly by meal count */
-                const mealBudget = d.meals.length > 0 ? Math.round(adjustedBudget / d.meals.length) : adjustedBudget;
-                return (
-                  <div key={`diet-${d.day}-${dIdx}`} className="rounded-lg border border-[var(--border-soft)] overflow-hidden transition-all">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDashExpandedDiet(isOpen ? null : dIdx);
-                        if (isOpen) setDashEditingDiet(null);
-                      }}
-                      className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-[var(--surface-elevated)] transition-colors"
-                      aria-expanded={isOpen}
-                    >
-                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${withinBudget ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-[var(--accent-warm)]/10 text-[var(--accent-warm)]"}`}>
-                        {d.day.replace(/^Day\s*/i, "").slice(0, 2)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{d.day}</p>
-                        <p className="text-xs text-[var(--muted)] truncate">
-                          {d.meals.map((m) => m.mealType).join(", ")}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {dayTotal > 0 && (
-                          <span className={`badge ${withinBudget ? "badge-accent" : "badge-warm"}`}>
-                            {dayTotal} cal
-                          </span>
-                        )}
-                        <svg className={`h-3.5 w-3.5 text-[var(--muted)] transition-transform flex-shrink-0 ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </button>
-                    {isOpen && (
-                      <div className="border-t border-[var(--border-soft)] px-4 py-3 space-y-2 bg-[var(--surface)] animate-fade-in">
-                        {/* Day macro summary + remaining */}
-                        <div className="flex flex-wrap items-center gap-3 text-xs mb-1">
-                          <span><span className="font-semibold">{dayTotal}</span> / {adjustedBudget} cal</span>
-                          <span className="text-[var(--border)]">·</span>
-                          <span><span className="font-semibold">{dayProtein}</span>g P</span>
-                          <span className="text-[var(--border)]">·</span>
-                          <span><span className="font-semibold">{dayCarbs}</span>g C</span>
-                          <span className="text-[var(--border)]">·</span>
-                          <span><span className="font-semibold">{dayFat}</span>g F</span>
-                          <span className={`ml-auto font-medium ${remaining >= 0 ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>
-                            {remaining >= 0 ? `${remaining} cal remaining` : `${Math.abs(remaining)} cal over`}
-                          </span>
-                        </div>
-                        {/* Budget bar */}
-                        <div className="progress-track h-1.5">
-                          <div
-                            className="progress-fill h-full transition-all"
-                            style={{ width: `${Math.min(100, adjustedBudget > 0 ? (dayTotal / adjustedBudget) * 100 : 0)}%`, background: withinBudget ? "var(--accent)" : "var(--accent-terracotta)" }}
-                          />
-                        </div>
-                        {/* Action bar */}
-                        <div className="flex items-center gap-2 pt-1">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setDashEditingDiet(isEditing ? null : dIdx); }}
-                            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${isEditing ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"}`}
-                          >
-                            {isEditing ? "Done editing" : "Edit meals"}
-                          </button>
-                          {isEditing && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); addDietMeal(dIdx); }}
-                              className="rounded-lg px-3 py-1.5 text-xs font-medium bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)] transition"
-                            >
-                              + Add meal
-                            </button>
-                          )}
-                          <span className="ml-auto text-[10px] text-[var(--muted)]">~{mealBudget} cal/meal target</span>
-                        </div>
-                        {/* Individual meals */}
-                        {d.meals.map((m, mIdx) => {
-                          const mealCals = m.macros?.calories ?? 0;
-                          const overMealBudget = mealCals > mealBudget + 50; // 50 cal grace
-                          return (
-                            <div key={`${d.day}-meal-${mIdx}`} className="rounded-md px-3 py-2 bg-[var(--surface-elevated)]">
-                              {isEditing ? (
-                                /* ── Edit mode ── */
-                                <div className="space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <select
-                                      value={m.mealType}
-                                      onChange={(e) => updateDietMeal(dIdx, mIdx, { mealType: e.target.value })}
-                                      className="input-base rounded px-2 py-1 text-sm capitalize"
-                                    >
-                                      <option value="breakfast">Breakfast</option>
-                                      <option value="lunch">Lunch</option>
-                                      <option value="dinner">Dinner</option>
-                                      <option value="snack">Snack</option>
-                                    </select>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); removeDietMeal(dIdx, mIdx); }}
-                                      className="ml-auto text-xs text-[var(--accent-terracotta)] hover:underline"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                  <input
-                                    value={m.description}
-                                    onChange={(e) => updateDietMeal(dIdx, mIdx, { description: e.target.value })}
-                                    placeholder="Describe the meal (e.g. Grilled chicken breast with brown rice)"
-                                    className="input-base rounded px-2 py-1.5 text-sm w-full"
-                                  />
-                                  <div className="grid grid-cols-4 gap-2">
-                                    <div>
-                                      <label className="text-[10px] text-[var(--muted)] uppercase tracking-wide">Calories</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={m.macros?.calories ?? 0}
-                                        onChange={(e) => updateDietMealMacro(dIdx, mIdx, "calories", e.target.value)}
-                                        className="input-base rounded px-2 py-1 text-sm w-full tabular-nums"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-[var(--muted)] uppercase tracking-wide">Protein</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={m.macros?.protein ?? 0}
-                                        onChange={(e) => updateDietMealMacro(dIdx, mIdx, "protein", e.target.value)}
-                                        className="input-base rounded px-2 py-1 text-sm w-full tabular-nums"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-[var(--muted)] uppercase tracking-wide">Carbs</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={m.macros?.carbs ?? 0}
-                                        onChange={(e) => updateDietMealMacro(dIdx, mIdx, "carbs", e.target.value)}
-                                        className="input-base rounded px-2 py-1 text-sm w-full tabular-nums"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="text-[10px] text-[var(--muted)] uppercase tracking-wide">Fat</label>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        value={m.macros?.fat ?? 0}
-                                        onChange={(e) => updateDietMealMacro(dIdx, mIdx, "fat", e.target.value)}
-                                        className="input-base rounded px-2 py-1 text-sm w-full tabular-nums"
-                                      />
-                                    </div>
-                                  </div>
-                                  <p className="text-[10px] text-[var(--muted)]">Target ~{mealBudget} cal for this meal</p>
-                                </div>
-                              ) : (
-                                /* ── Read mode ── */
-                                <>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium capitalize">{m.mealType}</span>
-                                    {m.macros && m.macros.calories > 0 && (
-                                      <div className="flex items-center gap-2 text-xs tabular-nums">
-                                        <span className={`font-semibold ${overMealBudget ? "text-[var(--accent-terracotta)]" : ""}`}>{m.macros.calories} cal</span>
-                                        <span className="text-[var(--muted)]">{m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                  {m.description && (
-                                    <p className="mt-1 text-xs text-[var(--muted)] leading-relaxed">{m.description}</p>
-                                  )}
-                                  {m.macros && m.macros.calories > 0 && (
-                                    <div className="mt-1.5 progress-track h-1">
-                                      <div
-                                        className="progress-fill h-full transition-all"
-                                        style={{ width: `${Math.min(100, mealBudget > 0 ? (m.macros.calories / mealBudget) * 100 : 0)}%`, background: overMealBudget ? "var(--accent-terracotta)" : "var(--accent)" }}
-                                      />
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {d.meals.length === 0 && (
-                          <div className="text-center py-3">
-                            <p className="text-xs text-[var(--muted)] mb-2">No meals planned.</p>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); addDietMeal(dIdx); setDashEditingDiet(dIdx); }}
-                              className="btn-secondary !text-xs"
-                            >
-                              + Add first meal
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {plan.dietPlan.tips.length > 0 && (
-              <p className="mt-4 text-caption italic">{plan.dietPlan.tips[0]}</p>
-            )}
-            <div className="mt-4 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={groceryStore}
-                  onChange={(e) => setGroceryStore(e.target.value as "fresh" | "wholefoods" | "amazon")}
-                  className="input-base rounded px-2 py-1 text-xs"
-                >
-                  <option value="fresh">Amazon Fresh</option>
-                  <option value="wholefoods">Whole Foods</option>
-                  <option value="amazon">Amazon.com</option>
-                </select>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={groceryAddToCart}
-                    onChange={(e) => setGroceryAddToCart(e.target.checked)}
-                    className="rounded border-[var(--border)]"
-                  />
-                  Add to cart
-                </label>
-              </div>
-              {groceryAddToCart && (
-                <p className="text-[10px] text-[var(--muted)]">
-                  Items will be added to your Amazon cart. One-time: run <code className="text-[9px] bg-[var(--surface-elevated)] px-1 rounded">setup_amazon_login.py</code> (see README). Uses up to 2 items.
-                </p>
-              )}
-              <button
-                onClick={handleFindIngredients}
-                disabled={groceryLoading}
-                className="btn-secondary !text-xs"
-              >
-                {groceryLoading ? "Preparing grocery shortlist..." : "Build grocery shortlist"}
-              </button>
-              <p className="text-[10px] text-[var(--muted)] mt-1">Nova Act automation. Requires <code className="bg-[var(--surface-elevated)] px-1 rounded">pip install nova-act</code>.</p>
-              {groceryError && <p className="mt-2 text-xs text-[var(--accent-terracotta)]">{groceryError}</p>}
-              {groceryResults && groceryResults.length > 0 && (
-                <div className="mt-2 max-h-32 space-y-1 overflow-y-auto rounded-lg border border-[var(--border-soft)] p-2">
-                  {groceryResults.slice(0, 6).map((r, i) => (
-                    <div key={`${r.searchTerm}-${i}`} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="min-w-0 truncate">{r.searchTerm}</span>
-                      <span className={`flex-shrink-0 ${r.found ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-                        {r.found ? (r.product?.price || "Found") : "Not found"}
-                        {r.addedToCart !== undefined && (
-                          r.addedToCart ? " · In cart" : (r.addToCartError ? ` · ${r.addToCartError.slice(0, 30)}…` : " · Cart skipped")
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="card rounded-xl p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <h3 className="text-lg font-semibold">This week&apos;s workouts</h3>
-              <div className="flex items-center gap-2">
-                {workoutPrefsEditing ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setWorkoutPrefsEditing(false)}
-                      className="btn-ghost !text-xs"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setWorkoutPrefsEditing(false)}
-                      className="btn-secondary !text-xs"
-                    >
-                      Done
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setWorkoutPrefsEditing(true)}
-                    className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
-                  >
-                    Workout prefs
-                  </button>
-                )}
-              </div>
-            </div>
-            {workoutPrefsEditing ? (
-              <div className="mb-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
-                <div>
-                  <label className="label">Where you work out</label>
-                  <select
-                    value={profile.workoutLocation ?? "gym"}
-                    onChange={(e) => onProfileUpdate({ ...profile, workoutLocation: e.target.value as WorkoutLocation })}
-                    className="input-base w-full max-w-xs"
-                  >
-                    <option value="home">Home</option>
-                    <option value="gym">Gym</option>
-                    <option value="outside">Outside</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Equipment</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DASHBOARD_EQUIPMENT_OPTIONS.map(({ value, label }) => (
-                      <label key={value} className="flex items-center gap-1.5 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={(profile.workoutEquipment ?? []).includes(value)}
-                          onChange={() => {
-                            const curr = profile.workoutEquipment ?? [];
-                            const next = curr.includes(value) ? curr.filter((e) => e !== value) : [...curr, value];
-                            onProfileUpdate({ ...profile, workoutEquipment: next });
-                          }}
-                          className="rounded border-[var(--border)]"
-                        />
-                        <span className="text-sm">{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setWorkoutPrefsEditing(false); onRegeneratePlan(); }}
-                  disabled={planRegenerating}
-                  className="btn-secondary !text-xs"
-                >
-                  {planRegenerating ? "Regenerating..." : "Apply and regenerate plan"}
-                </button>
-              </div>
-            ) : (
-              <p className="text-xs text-[var(--muted)] mb-3">
-                {profile.workoutLocation ?? "Gym"}
-                {typeof profile.workoutDaysPerWeek === "number" && ` · ${profile.workoutDaysPerWeek} days/week`}
-                {profile.workoutTimeframe && profile.workoutTimeframe !== "flexible" && ` · ${profile.workoutTimeframe}`}
-                {" · "}
-                {(profile.workoutEquipment ?? []).length > 0
-                  ? (profile.workoutEquipment ?? []).map((e) => e.replace(/_/g, " ")).join(", ")
-                  : "General equipment"}
-              </p>
-            )}
-            <div className="space-y-2">
-              {plan.workoutPlan.weeklyPlan.map((d, dIdx) => {
-                const total = d.exercises.length;
-                const completed = d.exercises.filter((e) => {
-                  const key = `${plan.id}:${d.day}:${e.name}:${e.sets}:${e.reps}:${e.notes ?? ""}`;
-                  return Boolean(workoutProgress[key]);
-                }).length;
-                const done = total > 0 && completed === total;
-                const isOpen = dashExpandedWorkout === dIdx;
-                return (
-                  <div key={`${d.day}-${dIdx}`} className="rounded-lg border border-[var(--border-soft)] overflow-hidden transition-all">
-                    <button
-                      type="button"
-                      onClick={() => setDashExpandedWorkout(isOpen ? null : dIdx)}
-                      className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-[var(--surface-elevated)] transition-colors"
-                      aria-expanded={isOpen}
-                    >
-                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "bg-[var(--surface-elevated)] text-[var(--foreground)]"}`}>
-                        {done ? "✓" : d.day.replace(/^Day\s*/i, "").slice(0, 2)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm truncate">{d.day}</p>
-                          <span className="text-xs text-[var(--accent)] font-medium">{d.focus}</span>
-                        </div>
-                        <p className="text-xs text-[var(--muted)] truncate">
-                          {d.exercises.slice(0, 3).map((e) => e.name).join(", ")}
-                          {total > 3 ? ` +${total - 3}` : ""}
-                        </p>
-                      </div>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0 ${done ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "bg-[var(--surface-elevated)] text-[var(--muted)]"}`}>
-                        {completed}/{total}
-                      </span>
-                      <svg className={`h-3.5 w-3.5 text-[var(--muted)] transition-transform flex-shrink-0 ${isOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {isOpen && (
-                      <div className="border-t border-[var(--border-soft)] px-4 py-3 space-y-2 bg-[var(--surface)]">
-                        {d.exercises.map((e, eIdx) => {
-                          const key = `${plan.id}:${d.day}:${e.name}:${e.sets}:${e.reps}:${e.notes ?? ""}`;
-                          const isDone = Boolean(workoutProgress[key]);
-                          const restMatch = e.notes?.match(/rest[:\s]*(\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?)/i);
-                          const restTime = restMatch ? restMatch[1].trim() : null;
-                          const otherNotes = e.notes?.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim();
-                          return (
-                            <div key={`${e.name}-${eIdx}`} className={`rounded-md px-3 py-2 text-sm ${isDone ? "bg-[var(--accent)]/5" : "bg-[var(--surface-elevated)]"}`}>
-                              <div className="flex items-center gap-2">
-                                <span className={`${isDone ? "text-[var(--accent)] line-through" : "text-[var(--foreground)]"} font-medium`}>
-                                  {e.name}
-                                </span>
-                                {isDone && <span className="text-[10px] text-[var(--accent)]">✓</span>}
-                              </div>
-                              <div className="mt-1 flex flex-wrap gap-2">
-                                <span className="inline-flex items-center gap-1 text-xs">
-                                  <span className="font-semibold">{e.sets}</span>
-                                  <span className="text-[var(--muted)]">sets</span>
-                                </span>
-                                <span className="text-[var(--border)] text-xs">·</span>
-                                <span className="inline-flex items-center gap-1 text-xs">
-                                  <span className="font-semibold">{e.reps}</span>
-                                  <span className="text-[var(--muted)]">reps</span>
-                                </span>
-                                {restTime && (
-                                  <>
-                                    <span className="text-[var(--border)] text-xs">·</span>
-                                    <span className="inline-flex items-center gap-1 text-xs text-[var(--accent-warm)]">
-                                      <span className="font-semibold">{restTime}</span>
-                                      <span>rest</span>
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                              {otherNotes && (
-                                <p className="mt-1 text-[10px] text-[var(--muted)] italic">{otherNotes}</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {d.exercises.length === 0 && (
-                          <p className="text-xs text-[var(--muted)] py-2">No exercises scheduled.</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            {plan.workoutPlan.tips.length > 0 && (
-              <p className="mt-4 text-sm text-[var(--muted)]">{plan.workoutPlan.tips[0]}</p>
-            )}
-            <div className="mt-4">
-              <div className="flex flex-wrap items-center gap-2">
-                {weekExercises.length > 0 ? (
-                  <select
-                    value={selectedExercise ?? ""}
-                    onChange={(e) => setVideoExerciseSelect(e.target.value)}
-                    disabled={videoLoading || videoStatus?.status === "InProgress"}
-                    className="input-base text-sm py-1.5 px-2 max-w-[200px]"
-                  >
-                    {weekExercises.map((ex) => (
-                      <option key={ex} value={ex}>{ex}</option>
-                    ))}
-                  </select>
-                ) : null}
-                <button
-                  onClick={handleGenerateWorkoutDemo}
-                  disabled={videoLoading || videoStatus?.status === "InProgress"}
-                  className="btn-secondary px-3 py-1 text-sm disabled:opacity-50"
-                >
-                  {videoLoading ? "Starting..." : videoStatus?.status === "InProgress" ? "Generating..." : "Generate form demo clip"}
-                </button>
-              </div>
-              {videoStatus && (
-                <div className="mt-2 space-y-2">
-                  {videoStatus.status === "InProgress" ? (
-                    <div className="animate-thinking-pulse rounded-xl border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-4 py-3">
-                      <p className="text-sm text-[var(--foreground)]">
-                        {[
-                          "Analyzing the exercise",
-                          "Setting up the scene",
-                          "Generating motion",
-                          "Rendering frames",
-                          "Finalizing the clip",
-                        ][videoThinkingStep % 5]}
-                        <span className="thinking-dots">
-                          <span className="thinking-dot">.</span>
-                          <span className="thinking-dot">.</span>
-                          <span className="thinking-dot">.</span>
-                        </span>
-                      </p>
-                      <p className="mt-1 text-[10px] text-[var(--muted)]">
-                        This usually takes 1–2 minutes
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-[var(--muted)]">
-                      {videoStatus.status}
-                      {videoStatus.invocationArn ? ` (${videoStatus.invocationArn.slice(-12)})` : ""}
-                    </p>
-                  )}
-                  {videoStatus.status === "Completed" && videoStatus.videoUrl && (
-                    <video
-                      src={videoStatus.videoUrl}
-                      controls
-                      playsInline
-                      className="w-full max-w-md rounded-lg bg-black aspect-video"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {wearableData && wearableData.length > 0 && (
         <div className="card p-6">
           <h3 className="section-title !text-base mb-4">Wearable data</h3>
@@ -1275,7 +993,87 @@ export function Dashboard({
         </div>
       )}
 
-      <div className="pt-4">
+      {/* ── Transformation Preview ── */}
+      <div className="card p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="section-title !text-base">See your transformation</h3>
+            <p className="section-subtitle">
+              Upload a full-body photo and generate an AI &quot;after&quot; image based on your goal
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-6 sm:grid-cols-2">
+          {profile.fullBodyPhotoDataUrl ? (
+            <div className="flex flex-col items-center">
+              <div className="relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--border-soft)] bg-[var(--surface-elevated)]" style={{ minHeight: 180 }}>
+                <img src={profile.fullBodyPhotoDataUrl} alt="You now" className="w-full h-full object-cover" />
+              </div>
+              <p className="mt-2 text-xs font-medium text-[var(--muted)]">You now</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)] py-10 px-4 text-center min-h-[180px]">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-[var(--foreground)]">Add your photo</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Upload full-body photo to generate after image</p>
+              <div className="mt-3 flex flex-wrap gap-2 justify-center">
+                <label className="btn-primary !text-xs cursor-pointer">
+                  <input type="file" accept="image/*" onChange={handleFullBodyPhotoUpload} className="sr-only" />
+                  {fullBodyPhotoLoading ? "Processing..." : "Upload photo"}
+                </label>
+              </div>
+            </div>
+          )}
+          {profile.goalPhotoDataUrl ? (
+            <div className="flex flex-col items-center">
+              <div className="relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--accent)]/40 bg-[var(--accent)]/5" style={{ minHeight: 180 }}>
+                <img src={profile.goalPhotoDataUrl} alt="Your goal" className="w-full h-full object-cover" />
+                <div className="absolute top-2 right-2 rounded-full bg-[var(--accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-white">Goal</div>
+              </div>
+              <p className="mt-2 text-xs font-medium text-[var(--muted)]">Your goal (AI-generated)</p>
+            </div>
+          ) : profile.fullBodyPhotoDataUrl ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 py-10 px-4 text-center min-h-[180px]">
+              <p className="text-sm font-medium text-[var(--foreground)]">Generate &quot;after&quot; image</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">AI will transform your photo based on goal: {profile.goal.replace(/_/g, " ")}</p>
+              <button onClick={handleGenerateAfterImage} disabled={goalPhotoLoading} className="btn-primary mt-3 !text-xs">
+                {goalPhotoLoading ? "Generating..." : "Generate after image"}
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)] py-10 px-4 text-center min-h-[180px]">
+              <p className="text-sm font-medium text-[var(--foreground)]">Upload a photo</p>
+              <p className="mt-1 text-xs text-[var(--muted)]">Add a full-body photo to generate your AI &quot;after&quot; image</p>
+              <p className="mt-2 text-xs text-[var(--muted)]">Goal: {profile.goal.replace(/_/g, " ")}</p>
+            </div>
+          )}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <label className="btn-secondary !text-xs cursor-pointer">
+            <input type="file" accept="image/*" onChange={handleFullBodyPhotoUpload} className="sr-only" />
+            {fullBodyPhotoLoading ? "Processing..." : profile.fullBodyPhotoDataUrl ? "Replace body photo" : "Upload full body photo"}
+          </label>
+          {profile.fullBodyPhotoDataUrl && profile.goalPhotoDataUrl && (
+            <button onClick={handleGenerateAfterImage} disabled={goalPhotoLoading} className="btn-secondary !text-xs">
+              {goalPhotoLoading ? "Regenerating..." : "Regenerate after"}
+            </button>
+          )}
+          {profile.fullBodyPhotoDataUrl && (
+            <button onClick={() => onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: undefined, goalPhotoDataUrl: undefined })} className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]">
+              Remove photo
+            </button>
+          )}
+          <span className="text-caption text-[var(--muted)]">
+            {profile.fullBodyPhotoDataUrl && profile.goalPhotoDataUrl ? "Right: AI-generated after image based on your goal" : !profile.fullBodyPhotoDataUrl && `Goal: ${profile.goal.replace(/_/g, " ")}`}
+          </span>
+        </div>
+      </div>
+
+      <div className="pt-6 mt-2 border-t border-[var(--border-soft)]">
         <button onClick={onReset} className="btn-ghost text-xs text-[var(--muted)]">
           Start over with new profile
         </button>

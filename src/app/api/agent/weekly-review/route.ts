@@ -5,9 +5,8 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import type { Tool, ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import type { MealEntry, Macros, WearableDaySummary } from "@/lib/types";
+import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
-
-const NOVA_LITE = "amazon.nova-2-lite-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 const MAX_TOOL_ROUNDS = 4;
 
@@ -330,7 +329,7 @@ async function runAgent(
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await client.send(
       new ConverseCommand({
-        modelId: NOVA_LITE,
+        modelId: NOVA_LITE_MODEL_ID,
         messages,
         system: [{ text: systemPrompt }],
         toolConfig,
@@ -444,7 +443,7 @@ export async function POST(req: NextRequest) {
 
     const coordinatorResponse = await client.send(
       new ConverseCommand({
-        modelId: NOVA_LITE,
+        modelId: NOVA_LITE_MODEL_ID,
         messages: [
           {
             role: "user",

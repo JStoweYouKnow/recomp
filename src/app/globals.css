@@ -296,6 +296,7 @@ h6 {
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
   letter-spacing: -0.01em;
+  min-height: 36px; /* WCAG touch target */
   transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
   cursor: pointer;
 }
@@ -324,6 +325,7 @@ h6 {
   padding: 0.4375rem 0.75rem;
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
+  min-height: 36px; /* WCAG touch target */
   transition: background var(--transition-fast), color var(--transition-fast);
   cursor: pointer;
 }
