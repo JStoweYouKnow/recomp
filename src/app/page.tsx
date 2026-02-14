@@ -1,0 +1,415 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer } from "@/lib/storage";
+import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+import { computeMilestones } from "@/lib/milestones";
+import { MilestonesView } from "@/components/MilestonesView";
+import { RicoChat } from "@/components/RicoChat";
+import { LandingPage } from "@/components/LandingPage";
+import { ProfileView } from "@/components/ProfileView";
+import { WearablesView } from "@/components/WearablesView";
+import { AdjustView } from "@/components/AdjustView";
+import { Dashboard } from "@/components/Dashboard";
+import { MealsView } from "@/components/MealsView";
+import { WorkoutPlannerView } from "@/components/WorkoutPlannerView";
+import { v4 as uuidv4 } from "uuid";
+
+export default function Home() {
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [plan, setPlan] = useState<FitnessPlan | null>(null);
+  const [meals, setMeals] = useState<MealEntry[]>([]);
+  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "wearables" | "milestones" | "profile">("onboard");
+  const [loading, setLoading] = useState(false);
+  const [planRegenerating, setPlanRegenerating] = useState(false);
+  const [adjustFeedback, setAdjustFeedback] = useState("");
+  const [adjustResult, setAdjustResult] = useState<Record<string, unknown> | null>(null);
+  const [ricoOpen, setRicoOpen] = useState(false);
+  const [milestones, setMilestonesState] = useState(getMilestones());
+  const [xp, setXp] = useState(getXP());
+  const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});
+  const [isDemoMode, setIsDemoMode] = useState(false);
+
+  useEffect(() => {
+    const p = getProfile();
+    setProfile(p);
+    if (p) {
+      setPlan(getPlan());
+      setMeals(getMeals());
+      setMilestonesState(getMilestones());
+      setXp(getXP());
+      setView(p ? "dashboard" : "onboard");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!plan || meals.length === 0) return;
+    const targets = plan.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+    const conns = getWearableConnections();
+    const wData = getWearableData();
+    const wearableCount = conns.length + (wData.length > 0 ? 1 : 0);
+    const stored = getMilestones();
+    const earned = new Set(stored.map((m) => m.id));
+    const { newMilestones, xpGained, progress } = computeMilestones(
+      meals,
+      plan,
+      targets,
+      wearableCount,
+      getHasAdjustedPlan(),
+      earned
+    );
+    if (newMilestones.length > 0) {
+      const next = [...stored, ...newMilestones];
+      setMilestonesState(next);
+      saveMilestones(next);
+    }
+    if (xpGained > 0) {
+      const currentXp = getXP();
+      const nextXp = currentXp + xpGained;
+      setXp(nextXp);
+      saveXP(nextXp);
+    }
+    setMilestoneProgress(progress);
+  }, [meals, plan]);
+
+  useEffect(() => {
+    if (!profile) return;
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => setIsDemoMode(data.authenticated === false))
+      .catch(() => setIsDemoMode(false));
+  }, [profile]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todaysMeals = meals.filter((m) => m.date === today);
+  const todaysTotals = todaysMeals.reduce(
+    (acc, m) => ({
+      calories: acc.calories + m.macros.calories,
+      protein: acc.protein + m.macros.protein,
+      carbs: acc.carbs + m.macros.carbs,
+      fat: acc.fat + m.macros.fat,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+  const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+
+  const handleOnboard = async (data: Partial<UserProfile>) => {
+    const newProfile: UserProfile = {
+      id: uuidv4(),
+      name: data.name || "User",
+      age: data.age || 30,
+      weight: data.weight || 70,
+      height: data.height || 170,
+      gender: data.gender || "other",
+      fitnessLevel: data.fitnessLevel || "intermediate",
+      goal: data.goal || "maintain",
+      dietaryRestrictions: data.dietaryRestrictions || [],
+      injuriesOrLimitations: data.injuriesOrLimitations || [],
+      dailyActivityLevel: data.dailyActivityLevel || "moderate",
+      workoutLocation: data.workoutLocation ?? "gym",
+      workoutEquipment: data.workoutEquipment ?? ["free_weights", "machines"],
+      workoutDaysPerWeek: data.workoutDaysPerWeek ?? 4,
+      workoutTimeframe: data.workoutTimeframe ?? "flexible",
+      createdAt: new Date().toISOString(),
+    };
+    saveProfile(newProfile);
+    setProfile(newProfile);
+    setLoading(true);
+    try {
+      // Register user in DynamoDB and set auth cookie
+      const regRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProfile),
+      }).catch(() => null);
+      if (regRes?.ok) setIsDemoMode(false);
+
+      const res = await fetch("/api/plans/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProfile),
+      });
+      const p = await res.json();
+      if (p.error) throw new Error(p.error);
+      savePlan(p);
+      setPlan(p);
+      setView("dashboard");
+      syncToServer(); // persist to DynamoDB
+    } catch (e) {
+      console.error(e);
+      alert("Plan generation failed. Check AWS credentials and try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRegeneratePlan = async () => {
+    if (!profile) return;
+    setPlanRegenerating(true);
+    try {
+      const res = await fetch("/api/plans/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      const p = await res.json();
+      if (p.error) throw new Error(p.error);
+      savePlan(p);
+      setPlan(p);
+      syncToServer();
+    } catch (e) {
+      console.error(e);
+      alert("Plan generation failed. Try again.");
+    } finally {
+      setPlanRegenerating(false);
+    }
+  };
+
+  const handleAdjust = async () => {
+    if (!plan) return;
+    setLoading(true);
+    setAdjustResult(null);
+    try {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const recentMeals = meals.filter((m) => new Date(m.date) >= weekAgo);
+      const avgCal = recentMeals.length
+        ? recentMeals.reduce((s, m) => s + m.macros.calories, 0) / 7
+        : null;
+      const avgProt = recentMeals.length
+        ? recentMeals.reduce((s, m) => s + m.macros.protein, 0) / 7
+        : null;
+
+      const res = await fetch("/api/plans/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan,
+          mealsThisWeek: recentMeals,
+          feedback: adjustFeedback,
+          avgDailyCalories: avgCal,
+          avgDailyProtein: avgProt,
+        }),
+      });
+      const r = await res.json();
+      if (r.error) throw new Error(r.error);
+      setAdjustResult(r);
+    } catch (e) {
+      console.error(e);
+      alert("Adjustment failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (profile === null && view === "onboard") {
+    return <LandingPage onSubmit={handleOnboard} loading={loading} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {/* ── Sticky header ── */}
+      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
+          <button onClick={() => setView("dashboard")} className="flex items-baseline gap-2 group">
+            <span className="text-lg">🧩</span>
+            <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
+            <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
+          </button>
+
+          <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
+            {([
+              ["dashboard", "Dashboard"],
+              ["meals", "Meals"],
+              ["workouts", "Workouts"],
+              ["adjust", "Adjust"],
+              ["wearables", "Wearables"],
+              ["milestones", "Progress"],
+              ["profile", "Profile"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setView(key)}
+                className={`nav-item ${view === key ? "nav-item-active" : ""}`}
+                aria-current={view === key ? "page" : undefined}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      {isDemoMode && (
+        <div
+          className="mx-auto max-w-5xl px-5 py-2 bg-[var(--accent-warm)]/15 border-b border-[var(--accent-warm)]/30 text-center text-sm text-[var(--foreground)]"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="font-medium">Demo mode</span> — Data stored locally. Sign in or complete onboarding to sync across devices.
+        </div>
+      )}
+
+      <main id="main-content" className="mx-auto max-w-5xl px-5 py-8" role="main">
+        {view === "dashboard" && (
+          <Dashboard
+            profile={profile!}
+            plan={plan}
+            meals={meals}
+            todaysTotals={todaysTotals}
+            targets={targets}
+            wearableData={getWearableData()}
+            onProfileUpdate={(updated) => {
+              saveProfile(updated);
+              setProfile(updated);
+              syncToServer();
+            }}
+            onPlanUpdate={(updated) => {
+              savePlan(updated);
+              setPlan(updated);
+              syncToServer();
+            }}
+            onRegeneratePlan={handleRegeneratePlan}
+            planRegenerating={planRegenerating}
+            onReset={() => {
+              localStorage.clear();
+              setProfile(null);
+              setPlan(null);
+              setMeals([]);
+              setMilestonesState([]);
+              setXp(0);
+              setMilestoneProgress({});
+              saveWearableData([]);
+              saveWearableConnections([]);
+              setView("onboard");
+            }}
+          />
+        )}
+        {view === "meals" && (
+          <MealsView
+            meals={meals}
+            todaysMeals={todaysMeals}
+            todaysTotals={todaysTotals}
+            targets={targets}
+            onAddMeal={(m) => {
+              const next = [...meals, m];
+              setMeals(next);
+              saveMeals(next);
+            }}
+            onDeleteMeal={(id) => {
+              const next = meals.filter((x) => x.id !== id);
+              setMeals(next);
+              saveMeals(next);
+            }}
+          />
+        )}
+        {view === "workouts" && (
+          <WorkoutPlannerView
+            plan={plan}
+            onUpdatePlan={(updated) => {
+              savePlan(updated);
+              setPlan(updated);
+              syncToServer();
+            }}
+          />
+        )}
+        {view === "wearables" && (
+          <WearablesView
+            onDataFetched={(data) => {
+              const existing = getWearableData();
+              const merged = [...existing];
+              data.forEach((d: WearableDaySummary) => {
+                const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                if (i >= 0) merged[i] = { ...merged[i], ...d };
+                else merged.push(d);
+              });
+              saveWearableData(merged);
+            }}
+          />
+        )}
+        {view === "milestones" && (
+          <MilestonesView
+            milestones={milestones}
+            xp={xp}
+            progress={milestoneProgress}
+          />
+        )}
+        {view === "adjust" && (
+          <AdjustView
+            plan={plan}
+            goal={profile?.goal ?? "maintain"}
+            feedback={adjustFeedback}
+            setFeedback={setAdjustFeedback}
+            result={adjustResult}
+            loading={loading}
+            onAdjust={handleAdjust}
+            onApplyAdjustments={(newTargets) => {
+              if (plan && newTargets) {
+                setHasAdjustedPlan();
+                const updated = {
+                  ...plan,
+                  dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
+                };
+                savePlan(updated);
+                setPlan(updated);
+                setAdjustResult(null);
+                setAdjustFeedback("");
+              }
+            }}
+          />
+        )}
+        {view === "profile" && profile && (
+          <ProfileView
+            profile={profile}
+            onProfileUpdate={(updated) => {
+              saveProfile(updated);
+              setProfile(updated);
+              syncToServer();
+            }}
+          />
+        )}
+      </main>
+
+      {profile && view !== "onboard" && (
+        <>
+          <button
+            onClick={() => setRicoOpen(true)}
+            className="fixed bottom-6 right-6 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95"
+            aria-label="Chat with Reco"
+          >
+            🧩
+          </button>
+          <RicoChat
+            userName={profile.name}
+            context={{
+              streak: getCurrentStreakFromMeals(meals),
+              mealsLogged: meals.length,
+              xp,
+              goal: profile.goal,
+              recentMilestones: milestones.slice(-5).map((m) => m.id),
+            }}
+            isOpen={ricoOpen}
+            onClose={() => setRicoOpen(false)}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function getCurrentStreakFromMeals(meals: MealEntry[]): number {
+  const dates = new Set(meals.map((m) => m.date));
+  const today = new Date().toISOString().slice(0, 10);
+  if (!dates.has(today)) return 0;
+  const sorted = Array.from(dates).sort().reverse();
+  let streak = 0;
+  let prev: number | null = null;
+  for (const d of sorted) {
+    const t = new Date(d).getTime();
+    if (prev === null || prev - t === 86400000) streak++;
+    else break;
+    prev = t;
+  }
+  return streak;
+}
+
