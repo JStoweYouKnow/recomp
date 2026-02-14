@@ -25,7 +25,9 @@ Complete these before submitting on Devpost.
 
 ## 6. Repo Access for Judges
 
-If the repo is **private**:
+**Repo URL:** https://github.com/JStoweYouKnow/recomp (public)
+
+If you switch the repo to **private**:
 
 - [ ] Add `testing@devpost.com` as collaborator (Settings → Collaborators)
 - [ ] Add `Amazon-Nova-hackathon@amazon.com` as collaborator

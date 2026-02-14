@@ -4,6 +4,8 @@
 
 Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
+**Repository:** [github.com/JStoweYouKnow/recomp](https://github.com/JStoweYouKnow/recomp)
+
 ## Impact
 
 Recomp makes body recomposition (simultaneously building muscle and losing fat) accessible to anyone with a browser. **Community impact**: Fitness and nutrition guidance are often siloed, expensive, or generic. Recomp uses Nova to deliver personalized plans and real-time meal logging (voice, photo, receipt scan, text) at no per-use cost beyond AWS. **Enterprise potential**: Wearable integration (Oura, Fitbit, Apple Health) enables employers and health plans to offer AI-powered wellness without app sprawl.
