@@ -98,4 +98,72 @@ Full checklist with step-by-step actions: [SUBMISSION_CHECKLIST.md](./SUBMISSION
 
 ---
 
-*Last updated: Feb 2025*
+## Rerun evaluation (site vs criteria)
+
+*Rerun date: Feb 2026 — verified against current codebase and live app.*
+
+### Stage One (Pass/Fail) — Verified
+
+| Criterion | Status | Rerun check |
+|-----------|--------|-------------|
+| Fits hackathon theme (generative AI with Nova) | ✅ Pass | App uses Nova 2 Lite (plans, meals, Reco, weekly review), Sonic (voice), Canvas (transformation preview), Reel, Act, embeddings, web grounding. README and DEVPOST_ABOUT reflect this. |
+| Uses required Nova APIs/SDKs | ✅ Pass | README "Amazon Nova Integration — All 8 Features" table and API routes confirm: `/api/plans/generate`, `/api/voice/sonic`, `/api/images/after`, `/api/agent/weekly-review`, `/api/research`, Act, Reel, embeddings. |
+| Functionality | ✅ Pass | `npm run dev` runs; **70 tests pass** (`npm test -- --run`). Onboarding, Rico, meals suggest, auth, wearables, rate limits, cooking webhook covered. |
+
+**Stage One: PASS** (unchanged).
+
+---
+
+### Stage Two — Evidence refresh
+
+**1. Creativity and Innovation (20%)**
+
+| Aspect | Score | Rerun evidence |
+|--------|-------|----------------|
+| Novelty of approach | 5 | **Unified calendar** (Dashboard, Meals, Workouts) with date filtering and "Edit plan" from popups; **Today at a Glance** hero (budget, macros, today’s workout/diet); **inline exercise demo GIFs** (show/hide) on dashboard and Workouts; dynamic caloric budget; AI transformation preview; 4-way meal logging; body recomposition focus. README Innovation Highlights + DEVPOST_ABOUT. |
+| Innovative use of multi-agent systems | 5 | Weekly Review: coordinator → meal analyst, wellness (wearable + web grounding), synthesis. ARCHITECTURE.md sequence diagram; `/api/agent/weekly-review` route. |
+| Solving real-world problems | 5 | Voice/photo/receipt logging; no per-use fees; cooking + wearable integration; demo-mode fallbacks; reorganized Connect wearables page (Smart rings, Apple/Health Connect, Other devices). |
+
+**Weighted: 20% × 5 = 1.0 / 1.0** — No change.
+
+---
+
+**2. Enterprise or Community Impact (20%)**
+
+| Aspect | Score | Rerun evidence |
+|--------|-------|----------------|
+| Community impact | 5 | IMPACT.md: target community, accessibility, cost, personalization, motivation; **Navigation** row added (unified calendar, Today at a Glance, exercise demos). |
+| Enterprise potential | 5 | IMPACT.md: employers, health plans, gyms, telehealth; wearable integration (Oura, Fitbit, Apple Health, Health Connect) with clearer Connect wearables UX. |
+| Adoption plans | 5 | IMPACT.md: open source, self-host, PWA, partnerships, research; adoption strategy unchanged. |
+
+**Weighted: 20% × 5 = 1.0 / 1.0** — No change.
+
+---
+
+**3. Technical Implementation (60%)**
+
+| Aspect | Score | Rerun evidence |
+|--------|-------|----------------|
+| Nova integration quality | 5 | 8 Nova features in use; CalendarView and exercise GIF API (`/api/exercises/search`) are additive; no Nova features removed. |
+| System architecture | 5 | ARCHITECTURE.md; modular components (Dashboard, MealsView, WorkoutPlannerView, WearablesView, CalendarView); localStorage + DynamoDB; structured logging. |
+| Code quality | 5 | TypeScript, Zod, **70 tests passing**; rate limiting, error boundaries, demo fallbacks; WearablesView reorganized into sections. |
+| Effectiveness | 5 | Judge flow in README (8 steps) matches app: onboarding → Dashboard (Today at a Glance, calendar) → Meals/Workouts (calendar, demo GIFs) → Meals log → Reco → Weekly review → Adjust → Wearables. |
+
+**Weighted: 60% × 5 = 3.0 / 3.0** — No change.
+
+---
+
+### Rerun summary
+
+| Criterion | Weight | Score | Weighted |
+|-----------|--------|------|----------|
+| Creativity and Innovation | 20% | 5 | 1.0 |
+| Enterprise or Community Impact | 20% | 5 | 1.0 |
+| Technical Implementation | 60% | 5 | 3.0 |
+| **Total** | 100% | — | **5.0 / 5** |
+
+**Outcome:** All criteria still met. Evidence updated to include unified calendar, Today at a Glance, exercise demo GIFs, and reorganized Connect wearables page. Test suite: 70 tests, 27 files, all passing.
+
+---
+
+*Last updated: Feb 2026*

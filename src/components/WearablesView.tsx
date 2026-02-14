@@ -98,63 +98,101 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
 
   return (
     <div className="space-y-10">
-      <h2 className="text-2xl font-bold">Connect wearables</h2>
-      <p className="text-[var(--muted)]">Sync activity, sleep, and heart rate from Oura, Fitbit, Apple Watch, and Android watches.</p>
+      <header>
+        <h2 className="section-title">Connect wearables</h2>
+        <p className="section-subtitle mt-0.5">
+          Sync activity, sleep, and heart rate to your dashboard and Weekly AI Review.
+        </p>
+      </header>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <div className="card rounded-xl p-6">
-          <h3 className="mb-3 font-semibold text-[var(--accent-terracotta)]">Oura Ring</h3>
-          <p className="mb-3 text-sm text-[var(--muted)]">Get a Personal Access Token from cloud.ouraring.com</p>
-          <input
-            type="password"
-            value={ouraToken}
-            onChange={(e) => setOuraToken(e.target.value)}
-            placeholder="Oura token"
-            className="mb-2 w-full input-base rounded-lg px-3 py-2 text-sm text-[var(--foreground)]"
-          />
-          <div className="flex gap-2">
-            <button onClick={connectOura} disabled={loading.oura || !ouraToken} className="btn-primary px-3 py-1 text-sm disabled:opacity-50">Connect</button>
-            <button onClick={fetchOura} disabled={loading.ouraFetch} className="btn-secondary px-3 py-1 text-sm disabled:opacity-50">Fetch data</button>
+      {/* Smart rings & trackers */}
+      <section>
+        <h3 className="section-title !text-base mb-1">Smart rings & trackers</h3>
+        <p className="section-subtitle mb-4">Oura and Fitbit connect here; data appears on your dashboard after you fetch.</p>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="card rounded-xl p-6">
+            <h4 className="mb-2 font-semibold text-[var(--accent-terracotta)]">Oura Ring</h4>
+            <p className="mb-4 text-sm text-[var(--muted)]">Get a Personal Access Token from cloud.ouraring.com and paste it below.</p>
+            <input
+              type="password"
+              value={ouraToken}
+              onChange={(e) => setOuraToken(e.target.value)}
+              placeholder="Oura token"
+              className="mb-3 w-full input-base rounded-lg px-3 py-2 text-sm text-[var(--foreground)]"
+            />
+            <div className="flex flex-wrap gap-2">
+              <button onClick={connectOura} disabled={loading.oura || !ouraToken} className="btn-primary px-3 py-2 text-sm disabled:opacity-50">Connect</button>
+              <button onClick={fetchOura} disabled={loading.ouraFetch} className="btn-secondary px-3 py-2 text-sm disabled:opacity-50">Fetch data</button>
+            </div>
+          </div>
+
+          <div className="card rounded-xl p-6">
+            <h4 className="mb-2 font-semibold text-[var(--accent)]">Fitbit & compatible</h4>
+            <p className="mb-4 text-sm text-[var(--muted)]">Fitbit trackers and watches. Many Android watches sync via the Fitbit app.</p>
+            <div className="flex flex-wrap gap-2">
+              <a href="/api/wearables/fitbit/auth" className="btn-primary inline-flex items-center px-4 py-2 text-sm">Connect Fitbit (OAuth)</a>
+              <button onClick={fetchFitbit} disabled={loading.fitbitFetch} className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">Fetch data</button>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div className="card rounded-xl p-6">
-          <h3 className="mb-3 font-semibold text-[var(--accent)]">Fitbit & compatible</h3>
-          <p className="mb-3 text-sm text-[var(--muted)]">Fitbit trackers and watches. Many Android watches sync via Fitbit app.</p>
-          <a href="/api/wearables/fitbit/auth" className="btn-primary inline-block px-4 py-2 text-sm">Connect Fitbit (OAuth)</a>
-          <button onClick={fetchFitbit} disabled={loading.fitbitFetch} className="btn-secondary ml-2 px-3 py-1 text-sm disabled:opacity-50">Fetch data</button>
+      {/* Apple Watch & Health Connect */}
+      <section>
+        <h3 className="section-title !text-base mb-1">Apple Watch & Health Connect</h3>
+        <p className="section-subtitle mb-4">Sync from an iOS companion app or import exported JSON from Apple Health / Health Connect.</p>
+        <div className="card rounded-xl p-6 space-y-6">
+          <div>
+            <h4 className="mb-2 font-medium text-[var(--foreground)]">Sync from iOS app</h4>
+            <p className="mb-3 text-sm text-[var(--muted)]">If you use our iOS app with the HealthKit bridge, sync here.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={syncAppleHealthSdk}
+                disabled={loading.appleSdk || !appleSdkAvailable}
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+              >
+                {loading.appleSdk ? "Syncing…" : "Sync Apple Health (SDK)"}
+              </button>
+              <span className="text-xs text-[var(--muted)]">
+                {appleSdkAvailable ? "Bridge detected" : "Bridge not in browser — use import below"}
+              </span>
+            </div>
+          </div>
+          <hr className="border-[var(--border-soft)]" />
+          <div>
+            <h4 className="mb-2 font-medium text-[var(--foreground)]">Import from export</h4>
+            <p className="mb-3 text-sm text-[var(--muted)]">Upload a .json file or paste exported Apple Health / Health Connect data.</p>
+            <div className="space-y-3">
+              <input
+                type="file"
+                accept=".json"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+                className="block w-full max-w-xs text-sm text-[var(--muted)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--surface-elevated)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[var(--foreground)]"
+              />
+              <textarea
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder='Or paste JSON: {"data": [{"date": "2025-02-10", "steps": 5000, ...}]}'
+                rows={3}
+                className="input-base w-full rounded-lg px-3 py-2 font-mono text-sm resize-y min-h-[80px]"
+              />
+              <button onClick={importHealth} disabled={loading.import} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">Import</button>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <div className="rounded-xl card p-6 sm:col-span-2">
-          <h3 className="mb-3 font-semibold text-[var(--accent-warm)]">Apple Watch & Health Connect</h3>
-          <p className="mb-3 text-sm text-[var(--muted)]">
-            Sync directly from an iOS HealthKit bridge app, or import exported JSON from Apple Health / Health Connect.
+      {/* Other devices */}
+      <section>
+        <h3 className="section-title !text-base mb-1">Other devices</h3>
+        <div className="card-flat rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-[var(--muted)]">
+            <strong className="text-[var(--foreground)]">Garmin</strong> — Health API access required.{" "}
+            <strong className="text-[var(--foreground)]">Android / Health Connect</strong> — Export via compatible apps or use Fitbit if your watch syncs there.
           </p>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button
-              onClick={syncAppleHealthSdk}
-              disabled={loading.appleSdk || !appleSdkAvailable}
-              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {loading.appleSdk ? "Syncing Apple Health..." : "Sync Apple Health (SDK)"}
-            </button>
-            <span className="text-xs text-[var(--muted)]">
-              {appleSdkAvailable
-                ? "HealthKit bridge detected in iOS app"
-                : "SDK bridge not detected in browser (JSON import still works)"}
-            </span>
-          </div>
-          <input type="file" accept=".json" onChange={(e) => setImportFile(e.target.files?.[0] ?? null)} className="mb-2 text-sm text-[var(--muted)]" />
-          <textarea value={importJson} onChange={(e) => setImportJson(e.target.value)} placeholder='Paste JSON: {"data": [{"date": "2025-02-10", "steps": 5000, ...}]}' rows={4} className="input-base mb-2 w-full px-3 py-2 font-mono text-sm" />
-          <button onClick={importHealth} disabled={loading.import} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">Import</button>
+          <a href="https://developer.garmin.com/gc-developer-program/health-api/" target="_blank" rel="noreferrer" className="text-sm font-medium text-[var(--accent-slate)] hover:underline whitespace-nowrap">Garmin Developer Portal →</a>
         </div>
-
-        <div className="rounded-xl card p-6 sm:col-span-2">
-          <h3 className="mb-2 font-semibold text-[var(--accent-slate)]">Garmin & Android watches</h3>
-          <p className="text-sm text-[var(--muted)]">Garmin: Requires Garmin Health API access. Android/Health Connect: Export via compatible apps or use Fitbit if your watch syncs there.</p>
-          <a href="https://developer.garmin.com/gc-developer-program/health-api/" target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-[var(--accent-slate)] hover:underline">Garmin Developer Portal →</a>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }
