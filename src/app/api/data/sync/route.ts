@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, mode: "judge-fallback", persisted: false });
     }
 
-    const userId = await getUserId(req.headers);
+    const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
     const body = await req.json();

@@ -7,8 +7,9 @@ import type {
   WearableConnection,
   WearableDaySummary,
   WeeklyReview,
-  WorkoutProgressMap,
 } from "./types";
+
+type WorkoutProgressMap = Record<string, string>;
 
 export interface DemoSeedData {
   profile: UserProfile;
