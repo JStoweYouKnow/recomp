@@ -8,6 +8,7 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+import { isJudgeMode } from "@/lib/judgeMode";
 
 const S3_BUCKET = process.env.NOVA_REEL_S3_BUCKET;
 const S3_PREFIX = process.env.NOVA_REEL_S3_PREFIX ?? "recomp-videos";
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  if (!S3_BUCKET) {
+  if (!S3_BUCKET && !isJudgeMode()) {
     return NextResponse.json(
       { error: "NOVA_REEL_S3_BUCKET not configured. Set env var for video generation." },
       { status: 503 }
@@ -53,6 +54,36 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { prompt, action, invocationArn } = body;
     const arn = invocationArn ?? (action === "poll" ? prompt : undefined);
+
+    if (isJudgeMode()) {
+      if (action === "poll") {
+        const res = NextResponse.json({
+          status: "Completed",
+          outputLocation: "s3://judge-mode/reel/demo-output/",
+          videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+          failureMessage: null,
+          source: "judge-fallback",
+        });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+
+      const fakeArn = `arn:aws:bedrock:judge-mode:reel:${Date.now()}`;
+      const res = NextResponse.json({
+        invocationArn: fakeArn,
+        s3Uri: "s3://judge-mode/reel/demo-output/",
+        message: "JUDGE_MODE deterministic fallback: video generation simulated.",
+        source: "judge-fallback",
+      });
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
 
     if (action === "poll" && arn) {
       const { status, outputLocation, failureMessage } = await getNovaReelStatus(arn);

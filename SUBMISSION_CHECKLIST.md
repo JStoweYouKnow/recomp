@@ -18,6 +18,7 @@ Complete these before submitting on Devpost.
 - [ ] Log in: `vercel login` (if not already)
 - [ ] Deploy: `cd recomp && vercel --prod`
 - [ ] Set env vars in Vercel dashboard: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optionally `DYNAMODB_TABLE_NAME`
+- [ ] Set `JUDGE_MODE=true` in demo deployment for deterministic optional integrations
 - [ ] Add the live URL to your Devpost submission
 - [ ] Update README "Judge Access" section with the live URL
 
@@ -52,6 +53,8 @@ If the repo is **public**: no action needed.
 - [ ] Take 1–3 screenshots: Dashboard, Meals (voice/photo flow), Reco chat
 - [ ] Add screenshots to Devpost submission (optional but recommended)
 - [ ] Verify demo mode works: visit live URL in incognito → should see "Demo mode" banner and full app
+- [ ] Verify `/api/judge/health` returns expected statuses
+- [ ] Verify golden path (README): pre-seeded demo → dashboard → log meal → weekly review → Reco
 - [ ] Verify "How to Evaluate" flow (README): onboarding → dashboard → meals → Reco → weekly review → Adjust
 
 ---

@@ -32,9 +32,13 @@ const FEATURES = [
 export function LandingPage({
   onSubmit,
   loading,
+  onUsePreseededDemo,
+  onResetDemoData,
 }: {
   onSubmit: (d: Partial<UserProfile>) => void;
   loading: boolean;
+  onUsePreseededDemo: () => void;
+  onResetDemoData: () => void;
 }) {
   const poundsToKg = (lbs: number): number => lbs * 0.45359237;
   const feetInchesToCm = (feet: number, inches: number): number => (feet * 12 + inches) * 2.54;
@@ -266,6 +270,20 @@ export function LandingPage({
               A few quick questions to get started
             </p>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">Takes about 2 minutes. You can change anything later in Profile.</p>
+            <button
+              type="button"
+              onClick={onUsePreseededDemo}
+              className="mt-3 text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] underline underline-offset-4"
+            >
+              Try pre-seeded demo user (instant dashboard)
+            </button>
+            <button
+              type="button"
+              onClick={onResetDemoData}
+              className="mt-2 block w-full text-[11px] text-[var(--muted)] hover:text-[var(--foreground)]"
+            >
+              Reset local demo data
+            </button>
           </div>
           {/* Voice / Form toggle — only after mount to avoid hydration mismatch */}
           {showVoiceToggle && (

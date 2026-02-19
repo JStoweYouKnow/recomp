@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer } from "@/lib/storage";
+import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
 import { computeMilestones } from "@/lib/milestones";
+import { buildDemoSeed } from "@/lib/demoSeed";
 import { MilestonesView } from "@/components/MilestonesView";
 import { RicoChat } from "@/components/RicoChat";
 import { LandingPage } from "@/components/LandingPage";
@@ -202,36 +203,86 @@ export default function Home() {
     }
   };
 
+  const handleUsePreseededDemo = () => {
+    const seed = buildDemoSeed();
+
+    saveProfile(seed.profile);
+    savePlan(seed.plan);
+    saveMeals(seed.meals);
+    saveWearableConnections(seed.wearableConnections);
+    saveWearableData(seed.wearableData);
+    saveMilestones(seed.milestones);
+    saveXP(seed.xp);
+    saveWeeklyReview(seed.weeklyReview);
+    saveActivityLog(seed.activityLog);
+    saveWorkoutProgress(seed.workoutProgress);
+
+    setProfile(seed.profile);
+    setPlan(seed.plan);
+    setMeals(seed.meals);
+    setMilestonesState(seed.milestones);
+    setXp(seed.xp);
+    setMilestoneProgress({});
+    setView("dashboard");
+    setIsDemoMode(true);
+  };
+
+  const handleResetDemoData = () => {
+    if (typeof window !== "undefined") {
+      localStorage.clear();
+    }
+    setProfile(null);
+    setPlan(null);
+    setMeals([]);
+    setMilestonesState([]);
+    setXp(0);
+    setMilestoneProgress({});
+    setAdjustFeedback("");
+    setAdjustResult(null);
+    setRicoOpen(false);
+    setView("onboard");
+    setIsDemoMode(false);
+  };
+
   if (profile === null && view === "onboard") {
-    return <LandingPage onSubmit={handleOnboard} loading={loading} />;
+    return (
+      <LandingPage
+        onSubmit={handleOnboard}
+        loading={loading}
+        onUsePreseededDemo={handleUsePreseededDemo}
+        onResetDemoData={handleResetDemoData}
+      />
+    );
   }
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {/* ── Sticky header ── */}
-      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm" role="banner">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
-          <button onClick={() => setView("dashboard")} className="flex items-baseline gap-2 group">
-            <span className="text-lg">🧩</span>
+          <button onClick={() => setView("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
+            <span className="text-lg" aria-hidden="true">🧩</span>
             <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
             <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
           </button>
+          <span className="hidden md:inline-flex items-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">Amazon Nova AI</span>
 
           <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
             {([
-              ["dashboard", "Dashboard"],
-              ["meals", "Meals"],
-              ["workouts", "Workouts"],
-              ["adjust", "Adjust"],
-              ["wearables", "Wearables"],
-              ["milestones", "Progress"],
-              ["profile", "Profile"],
-            ] as const).map(([key, label]) => (
+              ["dashboard", "Dashboard", "Go to dashboard"],
+              ["meals", "Meals", "Log meals and track macros"],
+              ["workouts", "Workouts", "View and edit workout plan"],
+              ["adjust", "Adjust", "Get AI plan adjustments"],
+              ["wearables", "Wearables", "Connect devices"],
+              ["milestones", "Progress", "View progress and milestones"],
+              ["profile", "Profile", "Edit your profile"],
+            ] as const).map(([key, label, title]) => (
               <button
                 key={key}
                 onClick={() => setView(key)}
                 className={`nav-item ${view === key ? "nav-item-active" : ""}`}
                 aria-current={view === key ? "page" : undefined}
+                title={title}
               >
                 {label}
               </button>
@@ -242,11 +293,14 @@ export default function Home() {
 
       {isDemoMode && (
         <div
-          className="mx-auto max-w-5xl px-5 py-2 bg-[var(--accent-warm)]/15 border-b border-[var(--accent-warm)]/30 text-center text-sm text-[var(--foreground)]"
+          className="mx-auto max-w-5xl px-5 py-2.5 flex items-center justify-center gap-2"
           role="status"
           aria-live="polite"
         >
-          <span className="font-medium">Demo mode</span> — Data stored locally. Sign in or complete onboarding to sync across devices.
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-elevated)] border border-[var(--border-soft)] px-3 py-1.5 text-sm text-[var(--muted-foreground)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--accent-warm)] animate-pulse" aria-hidden />
+            <span><strong className="text-[var(--foreground)] font-medium">Demo mode</strong> — Data stored locally. Complete onboarding to sync.</span>
+          </span>
         </div>
       )}
 
@@ -363,6 +417,7 @@ export default function Home() {
         {view === "profile" && profile && (
           <ProfileView
             profile={profile}
+            isDemoMode={isDemoMode}
             onProfileUpdate={(updated) => {
               saveProfile(updated);
               setProfile(updated);
@@ -376,8 +431,9 @@ export default function Home() {
         <>
           <button
             onClick={() => setRicoOpen(true)}
-            className="fixed bottom-6 right-6 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)] text-xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95"
+            className="fixed bottom-6 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
             aria-label="Chat with Reco"
+            title="Chat with Reco"
           >
             🧩
           </button>

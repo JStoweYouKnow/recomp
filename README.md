@@ -1,26 +1,40 @@
 # Recomp
 
-**AI-powered body recomposition — diet, workout, and wellness in one app.** Recomp uses the full Amazon Nova AI portfolio on AWS Bedrock to deliver personalized fitness plans, a unified calendar (dashboard, Meals, Workouts) with date-based filtering and "Today at a Glance," inline exercise demo GIFs, voice-powered meal logging, receipt scanning, agentic weekly reviews, and wearable integration.
+**A multi-agent, multimodal AI system built on the full Amazon Nova portfolio** — 8 Nova features (Lite, Sonic, Canvas, Reel, Act, Embeddings, Web Grounding, Extended Thinking) orchestrated into a cohesive body recomposition app. Dynamic agent routing, bidirectional voice streaming, browser automation, and tool-use agentic loops demonstrate Nova's capabilities as a full-stack AI platform.
 
 Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
 **Repository:** [github.com/JStoweYouKnow/recomp](https://github.com/JStoweYouKnow/recomp)
 
+## Why This Architecture Matters
+
+Most Nova integrations use one or two models for text generation. Recomp demonstrates how the **entire Nova portfolio** can be composed into a single cohesive experience:
+
+- **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
+- **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
+- **Browser automation** via Nova Act — end-to-end grocery search and add-to-cart on Amazon Fresh
+- **Multimodal understanding** — plate photos, receipt scans, body segmentation, and text all processed by Nova Lite
+- **Extended thinking** for complex reasoning during plan generation
+
+The result: a production-grade app that treats Nova not as a text generator, but as an **AI operating system**.
+
 ## Impact
 
-Recomp makes body recomposition (simultaneously building muscle and losing fat) accessible to anyone with a browser. **Community impact**: Fitness and nutrition guidance are often siloed, expensive, or generic. Recomp uses Nova to deliver personalized plans and real-time meal logging (voice, photo, receipt scan, text) at no per-use cost beyond AWS. **Enterprise potential**: Wearable integration (Oura, Fitbit, Apple Health) enables employers and health plans to offer AI-powered wellness without app sprawl.
+Recomp makes body recomposition accessible to anyone with a browser. **Community impact**: Fitness guidance is often siloed, expensive, or generic. Recomp uses Nova for personalized plans and real-time meal logging (voice, photo, receipt scan, text) at no per-use cost beyond AWS. **Enterprise potential**: Wearable integration (Oura, Fitbit, Apple Health) enables employer wellness without app sprawl.
 
 **Impact & roadmap:** See [IMPACT.md](./IMPACT.md) for use cases, adoption strategy, and post-hackathon plans.
 
 ## Innovation Highlights
 
-What makes Recomp novel:
+What makes Recomp novel — both technically and as a product:
 
+- **Dynamic agent routing** — The weekly review coordinator examines available data (meals, wearables) and selectively invokes specialist agents. No wearable data? Skip the biometrics agent, run research-only. No meals logged? Skip meal analysis. This is genuinely adaptive agentic behavior.
+- **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
 - **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
-- **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal (lose weight, build muscle, etc.). Body segmentation ensures clean compositing.
-- **End-to-end automation** — Nova Act searches Amazon Fresh/Whole Foods for diet-plan ingredients and can add to cart; USDA nutrition lookup with web-grounding fallback when Act is unavailable.
-- **Multi-agent weekly review** — Coordinator delegates to meal analyst, wellness (wearable + web research), and synthesis agents; 3–5 tool-call rounds produce actionable recommendations.
-- **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow; no switching apps.
+- **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal. Body segmentation ensures clean compositing.
+- **End-to-end automation** — Nova Act searches Amazon Fresh/Whole Foods for diet-plan ingredients and can add to cart; USDA nutrition lookup with web-grounding fallback.
+- **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
+- **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
 
 ## Judge Access
 
@@ -28,7 +42,18 @@ What makes Recomp novel:
 - **Repo access (if private)**: Add `testing@devpost.com` and `Amazon-Nova-hackathon@amazon.com` as collaborators (GitHub → Settings → Collaborators), or make the repo public.
 - **AWS**: For a hosted demo, configure Bedrock credentials in the deployment environment. For local evaluation, judges can run `npm run dev` with their own AWS credentials (see Setup).
 - **Demo mode**: When running without auth (e.g., first-time visit or cleared cookies), the app stores data in localStorage and shows a "Demo mode" banner. Complete onboarding to register and sync to the server.
+- **Judge reliability mode**: Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations (Nova Act, Nova Reel, DynamoDB sync, wearables). Check readiness at `/api/judge/health`.
 - **Submission checklist**: [SUBMISSION_CHECKLIST.md](./SUBMISSION_CHECKLIST.md) — demo video, live URL, repo access, Devpost, screenshots.
+
+### 2-minute golden path (judges)
+
+1. Open app and click **Try pre-seeded demo user (instant dashboard)** on landing.
+2. Confirm Dashboard widgets populate (Today at a Glance, calories/macros, weekly cards).
+3. Open Meals and add one text meal.
+4. Return to Dashboard and click **Generate** in Weekly AI Review.
+5. Open Reco chat (🧩) and send one text prompt.
+
+If optional dependencies are unavailable, enable `JUDGE_MODE=true` and re-run the same path for deterministic fallback behavior.
 
 ### How to Evaluate (judges)
 
@@ -101,6 +126,7 @@ FITBIT_CLIENT_ID=...
 FITBIT_CLIENT_SECRET=...
 APPLE_HEALTH_INGEST_KEY=...
 NOVA_ACT_API_KEY=...
+JUDGE_MODE=false
 ```
 
 Configure AWS credentials (e.g. `~/.aws/credentials` or environment variables).
@@ -139,6 +165,7 @@ If `nova-act` is not installed, the Act endpoints return realistic demo data via
 | **Nova Reel (video)** | S3 bucket | Set `NOVA_REEL_S3_BUCKET`; otherwise returns 503 with message |
 | **Transformation preview** | Bedrock + Nova Canvas | Upload photo → generate "after" image |
 | **DynamoDB sync** | Optional | App works with localStorage only; table needed for cross-device sync |
+| **Judge reliability mode** | Yes | Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations and use `/api/judge/health` to verify status |
 
 **Amazon login for add-to-cart:** To add grocery items to your Amazon cart, Nova Act needs a persisted browser profile with your login. One-time setup:
 

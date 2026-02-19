@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
+import { isJudgeMode } from "@/lib/judgeMode";
 import {
   dbSavePlan,
   dbSaveMeal,
   dbSaveMilestones,
+  dbGetMeta,
   dbSaveMeta,
   dbSaveWearableData,
   dbSaveWearableConnection,
@@ -16,7 +18,12 @@ export async function POST(req: NextRequest) {
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {
-    const userId = await getUserId();
+    if (isJudgeMode()) {
+      await req.json().catch(() => ({}));
+      return NextResponse.json({ ok: true, mode: "judge-fallback", persisted: false });
+    }
+
+    const userId = await getUserId(req.headers);
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
     const body = await req.json();
@@ -38,11 +45,15 @@ export async function POST(req: NextRequest) {
 
     if (xp !== undefined || hasAdjusted !== undefined || ricoHistory) {
       promises.push(
-        dbSaveMeta(userId, {
-          xp: xp ?? 0,
-          hasAdjusted: hasAdjusted ?? false,
-          ricoHistory: (ricoHistory as RicoMessage[])?.slice(-50) ?? [],
-        })
+        (async () => {
+          const existing = await dbGetMeta(userId);
+          await dbSaveMeta(userId, {
+            ...existing,
+            xp: xp ?? existing.xp,
+            hasAdjusted: hasAdjusted ?? existing.hasAdjusted,
+            ricoHistory: (ricoHistory as RicoMessage[])?.slice(-50) ?? existing.ricoHistory ?? [],
+          });
+        })()
       );
     }
 
