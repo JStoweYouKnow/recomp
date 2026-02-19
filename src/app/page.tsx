@@ -417,7 +417,6 @@ export default function Home() {
         {view === "profile" && profile && (
           <ProfileView
             profile={profile}
-            isDemoMode={isDemoMode}
             onProfileUpdate={(updated) => {
               saveProfile(updated);
               setProfile(updated);
