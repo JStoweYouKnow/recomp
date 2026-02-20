@@ -10,8 +10,14 @@ import {
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 
-const S3_BUCKET = process.env.NOVA_REEL_S3_BUCKET;
-const S3_PREFIX = process.env.NOVA_REEL_S3_PREFIX ?? "recomp-videos";
+/** Strip s3:// prefix and trailing slashes if the user accidentally included them */
+function normalizeBucket(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  return raw.replace(/^s3:\/\//, "").split("/")[0].replace(/\/+$/, "");
+}
+
+const S3_BUCKET = normalizeBucket(process.env.NOVA_REEL_S3_BUCKET);
+const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "recomp-videos").replace(/^\/|\/$/g, "");
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
 /** Parse s3://bucket/key into { bucket, key } */
