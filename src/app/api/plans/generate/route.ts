@@ -12,6 +12,9 @@ import {
 } from "@/lib/server-rate-limit";
 import { z } from "zod";
 
+const PLAN_TIMEOUT_MS = 35_000;
+const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
 const SYSTEM_PROMPT = `You are an expert fitness and nutrition coach powered by Amazon Nova AI. Your role is to create personalized, safe, and effective diet and workout plans.
 
 Guidelines:
@@ -30,6 +33,88 @@ function parseJsonResponse(text: string): unknown {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON found in response");
   return JSON.parse(match[0]);
+}
+
+function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
+  const goalTargets: Record<UserProfile["goal"], Macros> = {
+    lose_weight: { calories: 1900, protein: 150, carbs: 170, fat: 60 },
+    maintain: { calories: 2300, protein: 140, carbs: 260, fat: 75 },
+    build_muscle: { calories: 2600, protein: 165, carbs: 300, fat: 80 },
+    improve_endurance: { calories: 2400, protein: 135, carbs: 310, fat: 70 },
+  };
+  const dailyTargets = goalTargets[profile.goal] ?? goalTargets.maintain;
+  const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
+
+  const dietPlanDays = WEEK_DAYS.map((day) => ({
+    day,
+    meals: [
+      {
+        mealType: "Breakfast",
+        description: "Protein-rich breakfast with fruit and whole grains",
+        macros: { calories: Math.round(dailyTargets.calories * 0.28), protein: Math.round(dailyTargets.protein * 0.28), carbs: Math.round(dailyTargets.carbs * 0.3), fat: Math.round(dailyTargets.fat * 0.3) },
+      },
+      {
+        mealType: "Lunch",
+        description: "Lean protein bowl with complex carbs and vegetables",
+        macros: { calories: Math.round(dailyTargets.calories * 0.34), protein: Math.round(dailyTargets.protein * 0.34), carbs: Math.round(dailyTargets.carbs * 0.35), fat: Math.round(dailyTargets.fat * 0.33) },
+      },
+      {
+        mealType: "Dinner",
+        description: "Balanced plate: protein, vegetables, and quality carbs",
+        macros: { calories: Math.round(dailyTargets.calories * 0.3), protein: Math.round(dailyTargets.protein * 0.3), carbs: Math.round(dailyTargets.carbs * 0.28), fat: Math.round(dailyTargets.fat * 0.3) },
+      },
+      {
+        mealType: "Snack",
+        description: "High-protein snack (yogurt, nuts, or shake)",
+        macros: { calories: Math.round(dailyTargets.calories * 0.08), protein: Math.round(dailyTargets.protein * 0.08), carbs: Math.round(dailyTargets.carbs * 0.07), fat: Math.round(dailyTargets.fat * 0.07) },
+      },
+    ],
+  }));
+
+  const workoutPlanDays = WEEK_DAYS.map((day, idx) => {
+    if (idx >= workoutDays) {
+      return {
+        day,
+        focus: "Recovery / Mobility",
+        exercises: [{ name: "Mobility flow", sets: "1", reps: "15-20 min", notes: "Light stretching and walking" }],
+      };
+    }
+    const focus =
+      idx % 3 === 0 ? "Upper Body Strength" : idx % 3 === 1 ? "Lower Body Strength" : "Conditioning + Core";
+    return {
+      day,
+      focus,
+      exercises: [
+        { name: "Compound lift variation", sets: "3", reps: "6-10" },
+        { name: "Accessory movement", sets: "3", reps: "10-15" },
+        { name: "Conditioning finisher", sets: "1", reps: "10-15 min", notes: "Moderate pace" },
+      ],
+    };
+  });
+
+  return {
+    id: uuidv4(),
+    userId,
+    createdAt: new Date().toISOString(),
+    dietPlan: {
+      dailyTargets,
+      weeklyPlan: dietPlanDays,
+      tips: [
+        "Prioritize protein at each meal to support your goal.",
+        "Adjust portion sizes based on hunger, recovery, and progress.",
+        "Hydrate consistently and aim for regular meal timing.",
+      ],
+    },
+    workoutPlan: {
+      weeklyPlan: workoutPlanDays,
+      tips: [
+        "Use progressive overload week to week when form is solid.",
+        "Keep one or two reps in reserve on most sets.",
+        "Take at least one complete recovery day each week.",
+      ],
+    },
+    reasoning: "Starter plan returned while full Nova generation exceeded the timeout window.",
+  };
 }
 
 const PlanRequestSchema = z.object({
@@ -52,7 +137,7 @@ const PlanRequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getUserId();
+    const userId = await getUserId(req.headers);
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
@@ -136,13 +221,29 @@ Respond with this exact JSON structure:
   "workoutTips": ["tip1", "tip2"]
 }`;
 
-    // Extended thinking for complex plan reasoning
-    const raw = await invokeNovaWithExtendedThinking(
-      SYSTEM_PROMPT,
-      userMessage,
-      "high",
-      { maxTokens: 8192 }
-    );
+    // Extended thinking for complex plan reasoning, with timeout fallback.
+    const timeoutToken = "__PLAN_TIMEOUT__";
+    const raw = await Promise.race<string | typeof timeoutToken>([
+      invokeNovaWithExtendedThinking(
+        SYSTEM_PROMPT,
+        userMessage,
+        "high",
+        { maxTokens: 8192 }
+      ),
+      new Promise<typeof timeoutToken>((resolve) => {
+        setTimeout(() => resolve(timeoutToken), PLAN_TIMEOUT_MS);
+      }),
+    ]);
+
+    if (raw === timeoutToken) {
+      const fallbackPlan = buildStarterPlan(profile, userId);
+      logInfo("Plan generation timeout fallback", { route: "plans/generate", userId, timeoutMs: PLAN_TIMEOUT_MS });
+      return NextResponse.json({
+        ...fallbackPlan,
+        source: "fallback-timeout",
+        message: "Starter plan returned quickly while the full personalized generation continues in the background.",
+      });
+    }
 
     const parsed = parseJsonResponse(raw) as {
       dailyTargets: Macros;

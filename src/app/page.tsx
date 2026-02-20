@@ -30,6 +30,7 @@ export default function Home() {
   const [xp, setXp] = useState(getXP());
   const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [planLoadingMessage, setPlanLoadingMessage] = useState("Amazon Nova is generating your personalized diet and workout plan…");
 
   useEffect(() => {
     const p = getProfile();
@@ -115,7 +116,22 @@ export default function Home() {
     };
     saveProfile(newProfile);
     setProfile(newProfile);
+    setView("dashboard");
+    setPlanRegenerating(true);
     setLoading(true);
+    const progressMessages = [
+      "Analyzing your profile and goal…",
+      "Calibrating calorie and macro targets…",
+      "Drafting your weekly workout split…",
+      "Finalizing your personalized plan…",
+    ];
+    let progressIndex = 0;
+    setPlanLoadingMessage(progressMessages[progressIndex]);
+    const progressTimer = setInterval(() => {
+      progressIndex = (progressIndex + 1) % progressMessages.length;
+      setPlanLoadingMessage(progressMessages[progressIndex]);
+    }, 3200);
+
     try {
       // Register user in DynamoDB and set auth cookie
       const regRes = await fetch("/api/auth/register", {
@@ -134,13 +150,15 @@ export default function Home() {
       if (p.error) throw new Error(p.error);
       savePlan(p);
       setPlan(p);
-      setView("dashboard");
       syncToServer(); // persist to DynamoDB
     } catch (e) {
       console.error(e);
-      alert("Plan generation failed. Check AWS credentials and try again.");
+      alert("Plan generation took longer than expected. You can continue in the dashboard and regenerate when ready.");
     } finally {
+      clearInterval(progressTimer);
       setLoading(false);
+      setPlanRegenerating(false);
+      setPlanLoadingMessage("Amazon Nova is generating your personalized diet and workout plan…");
     }
   };
 
@@ -325,6 +343,7 @@ export default function Home() {
             }}
             onRegeneratePlan={handleRegeneratePlan}
             planRegenerating={planRegenerating}
+            planLoadingMessage={planLoadingMessage}
             onNavigateToMeals={() => setView("meals")}
             onNavigateToWorkouts={() => setView("workouts")}
             onReset={() => {
