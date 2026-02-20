@@ -137,7 +137,7 @@ const PlanRequestSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getUserId(req.headers);
+    const userId = await getUserId();
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
