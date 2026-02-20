@@ -111,6 +111,7 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (err) {
     console.error("Video gen error:", err);
-    return NextResponse.json({ error: "Video generation failed" }, { status: 500 });
+    const detail = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: "Video generation failed", detail }, { status: 500 });
   }
 }
