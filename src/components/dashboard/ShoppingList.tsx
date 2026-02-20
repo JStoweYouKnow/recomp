@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { getShoppingList, saveShoppingList } from "@/lib/storage";
 import { buildShoppingListFromPlan } from "@/lib/shopping-list";
 import type { FitnessPlan } from "@/lib/types";
 
@@ -22,6 +21,22 @@ const STORE_OPTIONS: { value: "fresh" | "wholefoods" | "amazon"; label: string }
 
 const BATCH_SIZE_SEARCH = 3;
 const BATCH_SIZE_ADD_TO_CART = 2;
+
+function getShoppingList(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("recomp_shopping_list");
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveShoppingList(items: string[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("recomp_shopping_list", JSON.stringify(items));
+}
 
 export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
   const [items, setItems] = useState<string[]>([]);
