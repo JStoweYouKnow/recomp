@@ -20,7 +20,9 @@ export function getBadgeInfo() {
 
 function getDaysWithMeals(meals: MealEntry[]): Set<string> {
   const dates = new Set<string>();
-  meals.forEach((m) => dates.add(m.date));
+  meals.forEach((m) => {
+    if (m?.date && typeof m.date === "string") dates.add(m.date);
+  });
   return dates;
 }
 
@@ -89,9 +91,13 @@ export function computeMilestones(
 
   const daysWithMacros = new Set<string>();
   meals.forEach((m) => {
+    if (!m?.date || !m?.macros || typeof m.macros !== "object") return;
     const t = targets;
-    const calOk = Math.abs(m.macros.calories - t.calories) <= t.calories * 0.15;
-    const proOk = m.macros.protein >= t.protein * 0.9;
+    const cal = Number(m.macros.calories);
+    const pro = Number(m.macros.protein);
+    if (!Number.isFinite(cal) || !Number.isFinite(pro)) return;
+    const calOk = Math.abs(cal - t.calories) <= t.calories * 0.15;
+    const proOk = pro >= t.protein * 0.9;
     if (calOk && proOk) daysWithMacros.add(m.date);
   });
   const macroStreak = Array.from(daysWithMacros).sort().reverse();

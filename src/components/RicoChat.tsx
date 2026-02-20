@@ -279,7 +279,11 @@ export function RicoChat({
           {messages.length === 0 && (
             <p className="text-center text-sm text-[var(--muted)]">
               Hi{userName ? ` ${userName}` : ""}! Ask me anything – motivation, macros, or a gentle nudge when you need it.
-              {audioSupported && " Try voice mode for a real conversation powered by Nova Sonic."}
+              {audioSupported && (
+                <span className="block mt-2 text-xs">
+                  <strong>Voice demo:</strong> Switch to Voice above, then hold the mic button to speak. Nova Sonic streams your voice to Bedrock and plays the response aloud.
+                </span>
+              )}
             </p>
           )}
           {messages.map((m, i) => {

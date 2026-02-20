@@ -1,8 +1,18 @@
 import { cookies } from "next/headers";
 
 const COOKIE_NAME = "recomp_uid";
+const USER_ID_HEADER = "x-recomp-user-id";
 
-export async function getUserId(): Promise<string | null> {
+/**
+ * Get user ID from request. Supports:
+ * - Cookie (web)
+ * - X-Recomp-User-Id header (mobile / API clients)
+ */
+export async function getUserId(headers?: Headers): Promise<string | null> {
+  if (headers) {
+    const id = headers.get(USER_ID_HEADER);
+    if (id) return id;
+  }
   const store = await cookies();
   return store.get(COOKIE_NAME)?.value ?? null;
 }

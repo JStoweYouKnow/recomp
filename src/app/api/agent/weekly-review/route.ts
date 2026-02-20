@@ -3,6 +3,9 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+
+/** Multi-agent review with web grounding needs extended timeout */
+export const maxDuration = 60;
 import type { Tool, ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import type { MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
@@ -400,42 +403,87 @@ export async function POST(req: NextRequest) {
     const safeName = userName || "the user";
 
     // -----------------------------------------------------------------------
-    // Step 1 & 2: Run Meal Agent and Wellness Agent in PARALLEL
+    // Dynamic agent routing: examine available data to decide which
+    // specialist agents to invoke, rather than always running all.
     // -----------------------------------------------------------------------
 
-    const mealAgentPromise = runAgent(
-      client,
-      MEAL_AGENT_SYSTEM,
-      `Analyze the meal data for ${safeName}. Their goal is ${safeGoal}.\nDaily targets: ${JSON.stringify(safeTargets)}.\n\nUse the analyze_meals tool with focus 'all' to get the full picture, then produce your report.`,
-      buildMealAgentTools(),
-      async (name, input) => {
-        if (name === "analyze_meals") {
-          return executeMealAnalysis(safeMeals, safeTargets, (input as { focus: string }).focus);
-        }
-        return JSON.stringify({ error: `Unknown tool: ${name}` });
-      }
-    );
+    const hasMealData = safeMeals.length > 0;
+    const hasWearableData = safeWearable.length > 0;
 
-    const wellnessAgentPromise = runAgent(
-      client,
-      WELLNESS_AGENT_SYSTEM,
-      `Analyze wellness data for ${safeName}. Their goal is ${safeGoal}.\n\nUse check_wearables with metric 'all' to review their biometrics, then use research_nutrition to find relevant guidelines for their goal. Produce a comprehensive wellness report.`,
-      buildWellnessAgentTools(),
-      async (name, input) => {
-        if (name === "check_wearables") {
-          return executeWearableAnalysis(safeWearable, (input as { metric: string }).metric);
-        }
-        if (name === "research_nutrition") {
-          return await executeResearch((input as { query: string }).query);
-        }
-        return JSON.stringify({ error: `Unknown tool: ${name}` });
-      }
-    );
+    const agentPromises: Promise<{ agent: string; result: AgentResult }>[] = [];
 
-    const [mealResult, wellnessResult] = await Promise.all([
-      mealAgentPromise,
-      wellnessAgentPromise,
-    ]);
+    // Run meal agent only when meal data exists
+    if (hasMealData) {
+      agentPromises.push(
+        runAgent(
+          client,
+          MEAL_AGENT_SYSTEM,
+          `Analyze the meal data for ${safeName}. Their goal is ${safeGoal}.\nDaily targets: ${JSON.stringify(safeTargets)}.\n\nUse the analyze_meals tool with focus 'all' to get the full picture, then produce your report.`,
+          buildMealAgentTools(),
+          async (name, input) => {
+            if (name === "analyze_meals") {
+              return executeMealAnalysis(safeMeals, safeTargets, (input as { focus: string }).focus);
+            }
+            return JSON.stringify({ error: `Unknown tool: ${name}` });
+          }
+        ).then((result) => ({ agent: "Meal Analyst", result }))
+      );
+    }
+
+    // Run wellness agent with wearables, or research-only variant without
+    if (hasWearableData) {
+      agentPromises.push(
+        runAgent(
+          client,
+          WELLNESS_AGENT_SYSTEM,
+          `Analyze wellness data for ${safeName}. Their goal is ${safeGoal}.\n\nUse check_wearables with metric 'all' to review their biometrics, then use research_nutrition to find relevant guidelines for their goal. Produce a comprehensive wellness report.`,
+          buildWellnessAgentTools(),
+          async (name, input) => {
+            if (name === "check_wearables") {
+              return executeWearableAnalysis(safeWearable, (input as { metric: string }).metric);
+            }
+            if (name === "research_nutrition") {
+              return await executeResearch((input as { query: string }).query);
+            }
+            return JSON.stringify({ error: `Unknown tool: ${name}` });
+          }
+        ).then((result) => ({ agent: "Wellness Agent", result }))
+      );
+    } else {
+      // No wearable data — run research-only wellness agent
+      agentPromises.push(
+        runAgent(
+          client,
+          WELLNESS_AGENT_SYSTEM,
+          `The user ${safeName} has not connected a wearable device. Their goal is ${safeGoal}.\n\nSkip check_wearables (no data available). Instead, use research_nutrition to find current evidence-based guidelines relevant to their goal. Produce a wellness report focused on research findings.`,
+          buildWellnessAgentTools(),
+          async (name, input) => {
+            if (name === "check_wearables") {
+              return JSON.stringify({ message: "No wearable data available. User has not connected a device." });
+            }
+            if (name === "research_nutrition") {
+              return await executeResearch((input as { query: string }).query);
+            }
+            return JSON.stringify({ error: `Unknown tool: ${name}` });
+          }
+        ).then((result) => ({ agent: "Wellness Agent (research-only)", result }))
+      );
+    }
+
+    const agentResults = await Promise.all(agentPromises);
+
+    // Build specialist reports map
+    const mealResult = agentResults.find((r) => r.agent.startsWith("Meal"))?.result
+      ?? { output: `No meal data available for ${safeName} this week. They haven't logged any meals yet.`, steps: [] };
+    const wellnessResult = agentResults.find((r) => r.agent.startsWith("Wellness"))?.result
+      ?? { output: "No wellness data available.", steps: [] };
+
+    // Track routing decision for transparency
+    const routingDecision = {
+      mealAgentRun: hasMealData,
+      wellnessMode: hasWearableData ? "full" : "research-only",
+      agentsInvoked: agentResults.map((r) => r.agent),
+    };
 
     // -----------------------------------------------------------------------
     // Step 3: Coordinator synthesizes specialist reports into final review
@@ -531,9 +579,10 @@ Now synthesize these into a single structured JSON review. Respond with valid JS
     return NextResponse.json({
       ...review,
       agentSteps,
+      routingDecision,
       agents: {
-        mealAnalyst: { report: mealResult.output.slice(0, 500), toolCalls: mealResult.steps.length },
-        wellnessAgent: { report: wellnessResult.output.slice(0, 500), toolCalls: wellnessResult.steps.length },
+        mealAnalyst: { report: mealResult.output.slice(0, 500), toolCalls: mealResult.steps.length, skipped: !hasMealData },
+        wellnessAgent: { report: wellnessResult.output.slice(0, 500), toolCalls: wellnessResult.steps.length, mode: hasWearableData ? "full" : "research-only" },
         coordinator: { synthesized: true },
       },
       id: crypto.randomUUID(),

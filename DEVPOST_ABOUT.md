@@ -2,45 +2,55 @@
 
 ## Inspiration
 
-Fitness and nutrition apps are fragmented — one for meal logging, another for workouts, a third for wearables. Most are either expensive, require tedious manual entry, or offer generic advice. We wanted a single app that feels like having a personal coach: voice-powered meal logging, AI plans that adapt to you, and an agent that actually analyzes your week instead of just showing charts.
+We wanted to answer: **what happens when you orchestrate the entire Amazon Nova portfolio — voice, vision, agents, automation, embeddings, and grounding — into one cohesive application?** Not as isolated demos, but as a real product where features reinforce each other.
 
-Body recomposition (building muscle while losing fat) is achievable for most people, but it demands consistency and personalization. Recomp makes that accessible with Amazon Nova — no gym membership, no trainer fees, just a browser.
+Fitness and nutrition was the ideal domain: it demands multimodal input (voice, photos, receipts), agentic reasoning (analyzing a week of data across multiple dimensions), browser automation (grocery shopping), and personalized generation (plans, coaching). Most fitness apps are fragmented, expensive, or generic. Recomp shows that Nova can be a full-stack AI platform.
+
+Body recomposition (building muscle while losing fat) is achievable for most people, but demands consistency and personalization. Recomp makes that accessible with Amazon Nova — no gym membership, no trainer fees, just a browser.
 
 ## What it does
 
-Recomp is an AI-powered body recomposition app that runs entirely in the browser. Users complete onboarding (age, goals, restrictions), and Nova Lite generates a personalized diet and workout plan. A **unified calendar** on the dashboard, Meals, and Workouts tabs lets them jump to any date: the dashboard shows "Today at a Glance" (caloric budget, macros, today’s workout and diet) and a weekly calendar with popup cards; selecting a date on Meals or Workouts filters to that day, and workout cards can show **inline exercise demo GIFs** (show/hide per exercise). They log meals four ways: **text**, **voice** (Nova Sonic), **photo** (Nova Lite vision), or **receipt scan**. A dynamic caloric budget adjusts in real time — log activity to earn calories, sedentary time to deduct. The **Reco** AI coach answers questions via text or voice. A **multi-agent weekly review** coordinates meal analysis, wearable trends, and web research into actionable recommendations. Nova Act can search Amazon Fresh for diet-plan groceries and add to cart. Nova Canvas powers an AI transformation preview — upload a full-body photo and see a goal-based "after" image.
+Recomp is an AI-powered body recomposition app that runs in the browser. Users complete onboarding (age, goals, restrictions), and Nova Lite generates a personalized diet and workout plan. A **unified calendar** on the dashboard, Meals, and Workouts tabs lets them jump to any date; the dashboard shows **Today at a Glance** (caloric budget, macros, today’s workout and diet) and a weekly calendar with popup cards. They log meals four ways: **text**, **voice** (Nova Sonic), **photo** (Nova Lite vision), or **receipt scan**. A dynamic caloric budget adjusts in real time. The **Reco** AI coach answers via text or voice. A **multi-agent weekly review** coordinates meal analysis, wearable trends, and web research into actionable recommendations.
+
+**Three standout Nova innovations:**
+
+1. **Nova Act grocery automation** — Search Amazon Fresh/Whole Foods for diet-plan ingredients and add to cart. End-to-end UI automation; no other fitness app does this with Nova Act.
+
+2. **Multi-agent weekly review** — A coordinator agent delegates to specialist agents (meal analyst, wellness, research). Each uses Nova tool use; the coordinator synthesizes a final review. Adaptive: no wearables? Skip biometrics. No meals? Skip meal analysis. True agentic orchestration.
+
+3. **Nova Canvas transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal. Body segmentation ensures clean compositing. A powerful motivation tool.
 
 ## How we built it
 
-We used **Next.js 16** (App Router, React 19) for the frontend and API routes. All AI runs on **Amazon Nova on Bedrock**: Nova 2 Lite (plans, meal suggestions, photo analysis, Reco coach, weekly review agents), Nova 2 Sonic (bidirectional voice for chat and meal logging), Nova Canvas (images), Nova Reel (video), Nova Act (grocery/nutrition automation), multimodal embeddings, and web grounding. We store user data in **DynamoDB** (single-table design) with cookie-based auth, falling back to localStorage for demo mode and offline support. The weekly review uses a multi-agent orchestration pattern: a coordinator delegates to meal analyst and wellness agents, each with tool use, running 3–5 rounds before synthesis. TypeScript, Tailwind CSS v4, Zod validation, and 70+ Vitest tests round out the stack.
+**Tech stack:** Next.js 16 (App Router, React 19), Amazon Nova on Bedrock — Nova 2 Lite (plans, meal suggestions, photo analysis, Reco coach, weekly review agents), Nova 2 Sonic (bidirectional voice for chat and meal logging), Nova Canvas (images, transformation preview), Nova Reel (video), Nova Act (grocery/nutrition automation), multimodal embeddings, and web grounding. DynamoDB for persistence (single-table), cookie-based auth, localStorage fallback for demo mode.
+
+The weekly review uses a **multi-agent orchestration pattern**: a coordinator delegates to meal analyst and wellness agents; each runs Converse tool-use loops. The coordinator examines available data and selectively invokes specialists — dynamic routing, not hardcoded pipelines.
 
 ## Challenges we ran into
 
-- **Nova Act integration**: The Act SDK runs as a Python subprocess; wiring it to Next.js API routes required careful process management and demo-mode fallbacks when the SDK isn't installed.
-- **Voice streaming**: Bidirectional Nova Sonic streaming (user speaks while the model responds) needed robust handling of audio chunks, base64 encoding, and WebSocket-style flows over HTTP.
-- **Multi-agent coordination**: Getting the weekly review agents to reliably delegate, share context, and produce a coherent final output took several prompt and tool-design iterations.
-- **Partial setup**: Judges may run without full AWS, DynamoDB, or Act. We built graceful fallbacks (localStorage, web grounding for nutrition, fuzzy food matching) so the app stays usable.
+- **Nova Act integration** — The Act SDK runs as a Python subprocess; wiring it to Next.js API routes required process management and demo-mode fallbacks when the SDK isn't installed.
+- **Voice streaming** — Bidirectional Nova Sonic streaming (user speaks while the model responds) needed robust handling of audio chunks, base64 encoding, and HTTP streaming.
+- **Multi-agent coordination** — Getting the weekly review agents to reliably delegate, share context, and produce coherent output took several prompt and tool-design iterations.
+- **Partial setup** — Judges may run without full AWS, DynamoDB, or Act. We built graceful fallbacks (localStorage, web grounding for nutrition, fuzzy food matching) so the app stays usable.
 
 ## Accomplishments that we're proud of
 
-- **All 8 Nova features** integrated in one cohesive app: Sonic, Lite, Canvas, Reel, Act, embeddings, web grounding, extended thinking.
-- **4-way meal logging** in a single flow — no app switching.
-- **Dynamic caloric budget** that adapts to activity instead of a rigid daily target.
-- **AI transformation preview** using body segmentation and Nova Canvas for goal-based "after" images.
-- **Multi-agent weekly review** with real tool use and web grounding.
-- **Unified calendar** — One calendar on dashboard, Meals, and Workouts; date-based filtering and single-day workout view; "Edit plan" from calendar popups to jump into editing.
-- **Exercise demo GIFs** — Inline demos with target-muscle info on dashboard and Workouts tab; show/hide per exercise with correct state.
-- **Demo mode** that lets anyone try the full app without auth or server setup.
-- **70+ tests** including integration tests for onboarding, Rico, and meals flows.
+- **All 8 Nova features** in one cohesive app — voice feeds into text analysis, photos feed into nutrition lookup, agents use web grounding autonomously.
+- **Nova Act grocery automation** — Full end-to-end browser automation for diet-plan shopping on Amazon Fresh/Whole Foods.
+- **Multi-agent weekly review** — Coordinator + meal analyst + wellness agent with adaptive routing based on data availability.
+- **Nova Canvas transformation preview** — Upload photo → goal-based "after" image; unique use of image generation for motivation.
+- **4-way meal logging** — Text, voice (Nova Sonic), photo, receipt scan in a single flow.
+- **Evidence & Results section** — Dashboard card showing sample outcomes (macro adherence, weekly score, streak) from the pre-seeded demo.
+- **70+ unit/integration tests** and WCAG accessibility.
 
 ## What we learned
 
-We learned how to orchestrate multiple Nova models in one request flow, how to design prompts for agentic tool use, and how to structure fallbacks so the app degrades gracefully when optional services (Act, DynamoDB, S3) aren't configured. We also saw how powerful voice + vision + text multimodal input is for lowering friction in meal logging.
+We learned how to orchestrate multiple Nova models in one flow, design prompts for agentic tool use, and structure fallbacks so the app degrades gracefully when optional services (Act, DynamoDB, S3) aren't configured. Voice + vision + text multimodal input dramatically lowers friction in meal logging.
 
 ## What's next for Recomp
 
-- **Open source** the project with contribution guidelines and community channels.
+- **Open source** with contribution guidelines and community channels.
 - **Self-host option** — Docker Compose + Terraform for one-click AWS deploy.
-- **Mobile PWA** — offline-first, installable, with push notifications for milestones.
+- **Mobile PWA** — offline-first, installable, push notifications for milestones.
 - **Integrations** with Cronometer, MyFitnessPal, and health plan pilots.
 - **Research** on Nova multi-agent patterns and body recomposition adherence.

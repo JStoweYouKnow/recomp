@@ -128,4 +128,14 @@ describe("POST /api/cooking/import", () => {
     const res = await POST(req);
     expect(res.status).toBe(422);
   });
+
+  it("returns 500 when body is not valid JSON (stress)", async () => {
+    const req = new NextRequest("http://localhost/api/cooking/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not json {",
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(500);
+  });
 });

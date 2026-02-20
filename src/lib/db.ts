@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DynamoDBDocumentClient,
@@ -188,11 +189,12 @@ export async function dbSaveMilestones(userId: string, milestones: Milestone[]):
   }
 }
 
-// ── Meta (xp, hasAdjusted, ricoHistory) ──────────────────
+// ── Meta (xp, hasAdjusted, ricoHistory, calendarFeedToken) ──────────────────
 export interface UserMeta {
   xp: number;
   hasAdjusted: boolean;
   ricoHistory: RicoMessage[];
+  calendarFeedToken?: string;
 }
 
 export async function dbGetMeta(userId: string): Promise<UserMeta> {
@@ -230,6 +232,134 @@ export async function dbSaveWeeklyReview(userId: string, review: WeeklyReview): 
     new PutCommand({
       TableName: TABLE,
       Item: { PK: `USER#${userId}`, SK: "WEEKLY_REVIEW", data: review, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Calendar feed token (for iCal / Google Calendar subscribe) ─────────────────
+export async function dbGetUserIdByCalendarToken(token: string): Promise<string | null> {
+  if (!token || token.length > 64) return null;
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `CALENDAR#${token}`, SK: `CALENDAR#${token}` } })
+  );
+  return Item?.userId ?? null;
+}
+
+export async function dbSetCalendarToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  const meta = await dbGetMeta(userId);
+  await Promise.all([
+    doc.send(
+      new PutCommand({
+        TableName: TABLE,
+        Item: {
+          PK: `CALENDAR#${token}`,
+          SK: `CALENDAR#${token}`,
+          userId,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+    ),
+    dbSaveMeta(userId, { ...meta, calendarFeedToken: token }),
+  ]);
+}
+
+// ── Push subscriptions (Web Push) ─────────────────────────────────────────
+export interface PushSubscriptionRecord {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  userAgent?: string;
+  createdAt: string;
+}
+
+function pushSubscriptionSk(endpoint: string): string {
+  const hash = createHash("sha256").update(endpoint).digest("base64url").slice(0, 32);
+  return `PUSH#${hash}`;
+}
+
+export async function dbSavePushSubscription(userId: string, subscription: PushSubscriptionRecord): Promise<void> {
+  const doc = getDocClient();
+  const sk = pushSubscriptionSk(subscription.endpoint);
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `USER#${userId}`,
+        SK: sk,
+        data: subscription,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function dbGetPushSubscriptions(userId: string): Promise<PushSubscriptionRecord[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "PUSH#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as PushSubscriptionRecord);
+}
+
+export async function dbDeletePushSubscription(userId: string, endpoint: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new DeleteCommand({
+      TableName: TABLE,
+      Key: { PK: `USER#${userId}`, SK: pushSubscriptionSk(endpoint) },
+    })
+  );
+}
+
+// ── Expo Push Tokens (mobile app) ─────────────────────────────────────────
+export interface ExpoPushTokenRecord {
+  token: string;
+  createdAt: string;
+}
+
+function expoTokenSk(token: string): string {
+  const hash = createHash("sha256").update(token).digest("base64url").slice(0, 32);
+  return `PUSH_EXPO#${hash}`;
+}
+
+export async function dbSaveExpoPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `USER#${userId}`,
+        SK: expoTokenSk(token),
+        data: { token, createdAt: new Date().toISOString() },
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function dbGetExpoPushTokens(userId: string): Promise<ExpoPushTokenRecord[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "PUSH_EXPO#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as ExpoPushTokenRecord);
+}
+
+export async function dbDeleteExpoPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new DeleteCommand({
+      TableName: TABLE,
+      Key: { PK: `USER#${userId}`, SK: expoTokenSk(token) },
     })
   );
 }

@@ -46,4 +46,15 @@ describe("Rico flow integration", () => {
     expect(res.status).toBe(400);
     expect(data.error).toBeDefined();
   });
+
+  it("returns 500 when body is not valid JSON", async () => {
+    const { POST } = await import("@/app/api/rico/route");
+    const req = new Request("http://localhost/api/rico", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not json",
+    });
+    const res = await POST(req as import("next/server").NextRequest);
+    expect(res.status).toBe(500);
+  });
 });

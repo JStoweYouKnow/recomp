@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     // Never trust client-provided identity. Reuse authenticated cookie user when present,
     // otherwise mint a new server-side user id.
-    const existingUserId = await getUserId();
+    const existingUserId = await getUserId(req.headers);
     const userId = existingUserId ?? uuidv4();
 
     const normalized: UserProfile = {

@@ -118,4 +118,66 @@ describe("computeMilestones", () => {
     expect(progress.streak_3).toBeDefined();
     expect(progress.streak_3).toBeLessThanOrEqual(100);
   });
+
+  it("handles empty meals without throwing", () => {
+    const { newMilestones, progress } = computeMilestones(
+      [],
+      null,
+      targets,
+      0,
+      false,
+      new Set()
+    );
+    expect(newMilestones).toEqual([]);
+    expect(progress).toBeDefined();
+  });
+
+  it("skips meals with missing date (malformed data)", () => {
+    const malformed = [
+      { ...makeMeal("2025-02-10"), date: undefined },
+    ] as unknown as MealEntry[];
+    const { newMilestones } = computeMilestones(
+      malformed,
+      null,
+      targets,
+      0,
+      false,
+      new Set()
+    );
+    expect(newMilestones).not.toContainEqual(expect.objectContaining({ id: "first_meal" }));
+  });
+
+  it("skips meals with missing macros without throwing", () => {
+    const malformed = [
+      { id: "1", date: "2025-02-10", mealType: "lunch" as const, name: "X", macros: undefined, loggedAt: new Date().toISOString() },
+    ] as unknown as MealEntry[];
+    const { progress } = computeMilestones(
+      malformed,
+      null,
+      targets,
+      0,
+      false,
+      new Set()
+    );
+    expect(progress.macro_week).toBeDefined();
+  });
+
+  it("handles large meals array without throwing (stress: 5000 meals)", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const meals = Array.from({ length: 5000 }, (_, i) => {
+      const d = new Date(Date.now() - i * 86400000);
+      return makeMeal(d.toISOString().slice(0, 10));
+    });
+    const { newMilestones, progress } = computeMilestones(
+      meals,
+      null,
+      targets,
+      0,
+      false,
+      new Set()
+    );
+    expect(newMilestones).toBeDefined();
+    expect(progress).toBeDefined();
+    expect(progress.streak_3).toBeDefined();
+  });
 });

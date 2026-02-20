@@ -19,6 +19,8 @@ const PROVIDERS = [
   "cronometer",
   "myfitnesspal",
   "loseit",
+  "recipekeeper",
+  "nytcooking",
   "custom",
 ] as const;
 
@@ -115,6 +117,10 @@ function getConnectionInstructions(provider: string): string {
       return "In Paprika, export recipes or meal plans as HTML or text. Use our Import feature to upload them.";
     case "loseit":
       return "LoseIt allows CSV diary exports. Download from Account > Export Data, then import in Recomp.";
+    case "recipekeeper":
+      return "Recipe Keeper doesn't support webhooks. Use the Import tab: export recipes (or copy recipe text) from Recipe Keeper, then paste or upload in Recomp. Nova AI will parse ingredients and nutrition.";
+    case "nytcooking":
+      return "NYT Cooking doesn't support webhooks. Use the Import tab: copy a recipe from the NYT Cooking app or site, then paste into Recomp. Nova AI will parse it into a meal with macros.";
     default:
       return "Use the webhook URL and secret above to send meal data to Recomp. See our API documentation for the payload format.";
   }

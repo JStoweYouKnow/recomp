@@ -101,7 +101,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
       <header>
         <h2 className="section-title">Connect wearables</h2>
         <p className="section-subtitle mt-0.5">
-          Sync activity, sleep, and heart rate to your dashboard and Weekly AI Review.
+          Connect one or more devices to see steps, sleep, and heart rate on your dashboard and in your Weekly AI Review.
         </p>
       </header>
 

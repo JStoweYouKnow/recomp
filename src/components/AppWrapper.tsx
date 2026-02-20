@@ -1,10 +1,17 @@
 "use client";
 
+import { useEffect } from "react";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { OfflineBanner } from "./OfflineBanner";
 import { SkipLink } from "./SkipLink";
 
 export function AppWrapper({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <div className="flex min-h-dvh flex-col">

@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { dbGetProfile } from "@/lib/db";
 import { logInfo, logError } from "@/lib/logger";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const userId = await getUserId();
+    const userId = await getUserId(req.headers);
     if (!userId) {
       logInfo("Auth check: unauthenticated", { route: "auth/me" });
       return NextResponse.json({ authenticated: false, profile: null });

@@ -7,6 +7,7 @@ import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 import { TransformationPreview } from "./dashboard/TransformationPreview";
 import { ShoppingList } from "./dashboard/ShoppingList";
+import { EvidenceResultsCard } from "./dashboard/EvidenceResultsCard";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
 
 /* ── Exercise GIF cache (localStorage-backed) ── */
@@ -493,6 +494,11 @@ export function Dashboard({
         reviewLoading={reviewLoading}
         onGenerate={handleWeeklyReview}
       />
+      </div>
+
+      {/* ── Evidence & Results ── */}
+      <div className="animate-fade-in stagger-3">
+        <EvidenceResultsCard />
       </div>
 
       {/* ── Wearable data ── */}

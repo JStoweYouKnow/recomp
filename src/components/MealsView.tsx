@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { getMealEmbeddings, saveMealEmbeddings } from "@/lib/storage";
-import type { MealEntry, Macros } from "@/lib/types";
+import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile } from "@/lib/storage";
+import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { CalendarView } from "./CalendarView";
 
@@ -77,7 +77,8 @@ export function MealsView({
   const [nutritionSource, setNutritionSource] = useState<"usda" | "web" | "estimated" | null>(null);
   const [inspirationLoading, setInspirationLoading] = useState(false);
   const [inspirationImage, setInspirationImage] = useState<string | null>(null);
-  const [cookingTab, setCookingTab] = useState<"off" | "connect" | "import" | "history">("off");
+  const [cookingTab, setCookingTab] = useState<"off" | "connect" | "import" | "recipes" | "history">("off");
+  const [recipeLibrary, setRecipeLibrary] = useState<CookingAppRecipe[]>(() => getCookingAppRecipes());
   const [cookingProvider, setCookingProvider] = useState<string>("cronometer");
   const [cookingConnecting, setCookingConnecting] = useState(false);
   const [cookingConnections, setCookingConnections] = useState<{ provider: string; label: string; connectedAt: string; webhookSecret?: string }[]>(() => {
@@ -86,6 +87,8 @@ export function MealsView({
   });
   const [cookingImportLoading, setCookingImportLoading] = useState(false);
   const [cookingImportResult, setCookingImportResult] = useState<{ imported: number; meals: MealEntry[] } | null>(null);
+  const [webhookVerifyLoading, setWebhookVerifyLoading] = useState(false);
+  const [webhookVerifyResult, setWebhookVerifyResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
 
   const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
   const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
@@ -93,6 +96,8 @@ export function MealsView({
   const handleSuggest = async () => {
     setSuggestLoading(true);
     try {
+      const profile = getProfile();
+      const recipes = getCookingAppRecipes();
       const res = await fetch("/api/meals/suggest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,6 +105,15 @@ export function MealsView({
           mealType,
           remainingCalories: remainingCal || 500,
           remainingProtein: remainingPro || 30,
+          restrictions: profile?.dietaryRestrictions ?? [],
+          recipes: recipes.map((r) => ({
+            name: r.name,
+            description: r.description,
+            calories: r.calories,
+            protein: r.protein,
+            carbs: r.carbs,
+            fat: r.fat,
+          })),
         }),
       });
       const data = await res.json();
@@ -368,27 +382,32 @@ export function MealsView({
       </div>
 
       {!showAdd ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
+          <p className="text-xs text-[var(--muted)]">Log with one tap, or use voice or a photo for faster entry.</p>
+          <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowAdd(true)} className="btn-primary">+ Log a meal</button>
-          <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50">
+          <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50" title="Describe your meal by voice">
             {voiceLoading ? "Listening…" : "Voice log"}
           </button>
-          <label className="btn-secondary !text-xs cursor-pointer">
+          <label className="btn-secondary !text-xs cursor-pointer" title="Take a photo of your plate to estimate macros">
             <input type="file" accept="image/*" className="hidden" onChange={handlePhotoLog} disabled={photoLoading} />
             {photoLoading ? "Analyzing…" : "Snap plate"}
           </label>
-          <label className="btn-secondary !text-xs cursor-pointer">
+          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt to log items">
             <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
             {receiptLoading ? "Scanning…" : "Scan receipt"}
           </label>
+          </div>
         </div>
       ) : (
         <div className="card p-6 animate-slide-up">
-          <h3 className="section-title !text-base mb-4">Add meal</h3>
+          <h3 className="section-title !text-base mb-1">Add meal</h3>
+          <p className="text-sm text-[var(--muted)] mb-4">Enter a name, or use the buttons below to fill in quickly.</p>
           <button
             type="button"
             onClick={handleSuggest}
             disabled={suggestLoading}
+            title={getCookingAppRecipes().length > 0 ? "Suggestions prefer gourmet options from your recipe library within your calorie budget" : "Get meal ideas that fit your remaining calories"}
             className="mb-4 rounded-lg border border-[var(--accent)] px-4 py-2 text-sm text-[var(--accent)] bg-[var(--accent-10)] hover:bg-[var(--accent-20)] disabled:opacity-50"
           >
             {suggestLoading ? "Getting Nova suggestions…" : "✨ AI suggest meal"}
@@ -421,22 +440,28 @@ export function MealsView({
             </button>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <input
-              placeholder="Meal name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
-            />
-            <select
-              value={mealType}
-              onChange={(e) => setMealType(e.target.value as MealEntry["mealType"])}
-              className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
-            >
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Meal name</label>
+              <input
+                placeholder="e.g. Grilled chicken salad"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Meal type</label>
+              <select
+                value={mealType}
+                onChange={(e) => setMealType(e.target.value as MealEntry["mealType"])}
+                className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
+              >
               <option value="breakfast">Breakfast</option>
               <option value="lunch">Lunch</option>
               <option value="dinner">Dinner</option>
               <option value="snack">Snack</option>
-            </select>
+              </select>
+            </div>
             <input type="number" placeholder="Calories" value={cal} onChange={(e) => setCal(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
             <input type="number" placeholder="Protein (g)" value={pro} onChange={(e) => setPro(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
             <input type="number" placeholder="Carbs (g)" value={carb} onChange={(e) => setCarb(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
@@ -465,23 +490,26 @@ export function MealsView({
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold">Cooking App Sync</h3>
           <div className="flex gap-1">
-            {(["connect", "import", "history"] as const).map((t) => (
+            {(["connect", "import", "recipes", "history"] as const).map((t) => (
               <button
                 key={t}
-                onClick={() => setCookingTab(cookingTab === t ? "off" : t)}
+                onClick={() => {
+                  setCookingTab(cookingTab === t ? "off" : t);
+                  if (t === "recipes") setRecipeLibrary(getCookingAppRecipes());
+                }}
                 className={`rounded-md px-3 py-1 text-xs font-medium transition ${
                   cookingTab === t
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >
-                {t === "connect" ? "Connect" : t === "import" ? "Import" : "History"}
+                {t === "connect" ? "Connect" : t === "import" ? "Import" : t === "recipes" ? "Recipes" : "History"}
               </button>
             ))}
           </div>
         </div>
         <p className="text-xs text-[var(--muted)] mb-3">
-          Import meals from Cronometer, MyFitnessPal, Yummly, LoseIt, and more. Nutritional info and calorie counts sync automatically.
+          Apps that support webhooks (Whisk, Yummly, etc.) can push meals via Connect. Apps like Recipe Keeper and NYT Cooking don’t support webhooks — use the <strong>Import</strong> tab to paste or upload recipe text and we’ll parse it with AI.
         </p>
 
         {cookingTab === "connect" && (
@@ -492,8 +520,13 @@ export function MealsView({
                 onChange={(e) => setCookingProvider(e.target.value)}
                 className="input-base rounded-lg px-3 py-2 text-sm flex-1"
               >
-                {["cronometer", "myfitnesspal", "yummly", "whisk", "mealime", "paprika", "loseit", "custom"].map((p) => (
-                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                {[
+                  "cronometer", "myfitnesspal", "yummly", "whisk", "mealime", "paprika", "loseit",
+                  "recipekeeper", "nytcooking", "custom",
+                ].map((p) => (
+                  <option key={p} value={p}>
+                    {p === "recipekeeper" ? "Recipe Keeper" : p === "nytcooking" ? "NYT Cooking" : p.charAt(0).toUpperCase() + p.slice(1)}
+                  </option>
                 ))}
               </select>
               <button
@@ -552,6 +585,49 @@ export function MealsView({
                 ))}
               </div>
             )}
+
+            <div className="pt-3 mt-3 border-t border-[var(--border-soft)]">
+              <p className="text-xs font-medium text-[var(--muted)] mb-2">Verify webhook connection</p>
+              <p className="text-xs text-[var(--muted)] mb-2">
+                Sends a signed test request to the webhook. Confirms that COOKING_WEBHOOK_SECRET is set and the endpoint accepts it.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  setWebhookVerifyResult(null);
+                  setWebhookVerifyLoading(true);
+                  try {
+                    const res = await fetch("/api/cooking/webhook/test", { method: "POST" });
+                    const data = await res.json();
+                    setWebhookVerifyResult({
+                      success: data.success === true,
+                      message: data.message,
+                      error: data.error,
+                    });
+                  } catch {
+                    setWebhookVerifyResult({ success: false, error: "Request failed" });
+                  } finally {
+                    setWebhookVerifyLoading(false);
+                  }
+                }}
+                disabled={webhookVerifyLoading}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+              >
+                {webhookVerifyLoading ? "Testing…" : "Test connection"}
+              </button>
+              {webhookVerifyResult && (
+                <div
+                  className={`mt-2 rounded-lg px-3 py-2 text-sm ${webhookVerifyResult.success ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-[var(--accent-terracotta)]/10 text-[var(--accent-terracotta)]"}`}
+                  role="status"
+                >
+                  {webhookVerifyResult.success ? (
+                    webhookVerifyResult.message ?? "Connection verified."
+                  ) : (
+                    webhookVerifyResult.error ?? "Verification failed."
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -637,7 +713,7 @@ export function MealsView({
                     <span className="text-xs text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</span>
                   </div>
                 ))}
-                <div className="flex gap-2 mt-2">
+                <div className="flex flex-wrap gap-2 mt-2">
                   <button
                     onClick={() => {
                       cookingImportResult.meals.forEach((m) => onAddMeal(m));
@@ -648,6 +724,33 @@ export function MealsView({
                     Log all {cookingImportResult.imported} meal(s)
                   </button>
                   <button
+                    onClick={() => {
+                      const now = new Date().toISOString();
+                      const newRecipes: CookingAppRecipe[] = cookingImportResult.meals.map((m) => ({
+                        id: `recipe_${Date.now()}_${m.id}`,
+                        name: m.name,
+                        description: m.notes ?? undefined,
+                        calories: m.macros.calories,
+                        protein: m.macros.protein,
+                        carbs: m.macros.carbs,
+                        fat: m.macros.fat,
+                        source: "import",
+                        addedAt: now,
+                      }));
+                      const existing = getCookingAppRecipes();
+                      const combined = [...existing];
+                      for (const r of newRecipes) {
+                        if (!combined.some((e) => e.name === r.name && e.calories === r.calories)) combined.push(r);
+                      }
+                      saveCookingAppRecipes(combined);
+                      setRecipeLibrary(combined);
+                      setCookingImportResult(null);
+                    }}
+                    className="rounded-lg border border-[var(--accent)] px-4 py-2 text-sm text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                  >
+                    Add to recipe library
+                  </button>
+                  <button
                     onClick={() => setCookingImportResult(null)}
                     className="text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
                   >
@@ -655,6 +758,40 @@ export function MealsView({
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {cookingTab === "recipes" && (
+          <div className="space-y-3">
+            <p className="text-xs text-[var(--muted)]">
+              Recipes in your library are used when you tap &quot;AI suggest meal&quot; — Nova will prefer gourmet options from this list that fit your remaining calories.
+            </p>
+            {recipeLibrary.length === 0 ? (
+              <p className="text-sm text-[var(--muted)]">No recipes yet. Import meals above and click &quot;Add to recipe library&quot; to save them here.</p>
+            ) : (
+              <ul className="space-y-2 max-h-48 overflow-y-auto">
+                {recipeLibrary.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between rounded-lg bg-[var(--surface-elevated)] px-3 py-2 text-sm">
+                    <div>
+                      <span className="font-medium">{r.name}</span>
+                      <span className="ml-2 text-xs text-[var(--muted)]">{r.calories} cal · {r.protein}g P</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = recipeLibrary.filter((x) => x.id !== r.id);
+                        saveCookingAppRecipes(next);
+                        setRecipeLibrary(next);
+                      }}
+                      className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]"
+                      aria-label={`Remove ${r.name}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
         )}
@@ -716,11 +853,21 @@ export function MealsView({
       <div>
         <h3 className="section-title !text-base mb-3">{dateLabel}&apos;s meals</h3>
         {displayMeals.length === 0 ? (
-          <p className="text-sm text-[var(--muted)]">
-            {isViewingToday
-              ? "No meals logged yet. Use the buttons above to get started."
-              : "No meals logged for this date."}
-          </p>
+          <div className={`rounded-xl border border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)]/50 p-6 text-center ${isViewingToday ? "animate-fade-in" : ""}`}>
+            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-3" aria-hidden>
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v10.024c0 1.135.845 2.098 1.976 2.192.332.05.664.083 1.002.083.337 0 .67-.033 1.003-.083C10.303 20.944 11.645 21 13 21c1.355 0 2.697-.056 4.024-.166C18.155 20.49 19 19.527 19 18.392V10.608c0-1.135-.845-2.098-1.976-2.192A13.413 13.413 0 0013 8.25m0 0l.001-.001" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-[var(--foreground)]">
+              {isViewingToday ? "No meals logged yet" : "No meals for this date"}
+            </p>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {isViewingToday
+                ? "Use Voice log, Snap plate, or add manually above to get started."
+                : "Log meals on that day from the calendar or switch to today."}
+            </p>
+          </div>
         ) : (
           <ul className="space-y-2">
             {displayMeals.map((m) => (

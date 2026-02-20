@@ -184,6 +184,8 @@ export type CookingAppProvider =
   | "cronometer"
   | "myfitnesspal"
   | "loseit"
+  | "recipekeeper"
+  | "nytcooking"
   | "custom";
 
 export interface CookingAppConnection {
@@ -212,4 +214,17 @@ export interface CookingAppMealPayload {
   ingredients?: { name: string; amount?: string; calories?: number }[];
   recipeUrl?: string;
   notes?: string;
+}
+
+/** Saved recipe from a cooking app or import — used to improve meal suggestions (gourmet options within calorie budget) */
+export interface CookingAppRecipe {
+  id: string;
+  name: string;
+  description?: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source?: string; // e.g. "whisk", "import"
+  addedAt: string;
 }

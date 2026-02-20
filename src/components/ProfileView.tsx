@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { UserProfile, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
   { value: "bodyweight", label: "Bodyweight" },
@@ -28,9 +29,11 @@ const kgToLbs = (kg: number): number => kg * 2.2046226218;
 
 export function ProfileView({
   profile,
+  isDemoMode = false,
   onProfileUpdate,
 }: {
   profile: UserProfile;
+  isDemoMode?: boolean;
   onProfileUpdate: (p: UserProfile) => void;
 }) {
   const { ft, inch } = cmToFeetInches(profile.height);
@@ -53,6 +56,24 @@ export function ProfileView({
   );
   const [restrictions, setRestrictions] = useState(profile.dietaryRestrictions?.join(", ") ?? "");
   const [injuries, setInjuries] = useState(profile.injuriesOrLimitations?.join(", ") ?? "");
+  const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarCopied, setCalendarCopied] = useState(false);
+  const push = usePushNotifications(isDemoMode);
+
+  useEffect(() => {
+    if (isDemoMode || typeof window === "undefined") return;
+    setCalendarLoading(true);
+    fetch("/api/calendar/token", { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.token) {
+          setCalendarFeedUrl(`${window.location.origin}/api/calendar/feed?token=${encodeURIComponent(data.token)}`);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setCalendarLoading(false));
+  }, [isDemoMode]);
 
   const handleSave = () => {
     const lbs = parseFloat(weightLbs);
@@ -81,7 +102,8 @@ export function ProfileView({
 
   return (
     <div className="animate-fade-in">
-      <h2 className="section-title !text-xl mb-6">Profile</h2>
+      <h2 className="section-title !text-xl mb-1">Profile</h2>
+      <p className="section-subtitle mb-6">Update your details anytime. Changes apply to your plan and recommendations.</p>
       <div className="card p-6">
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-5" noValidate>
           <div>
@@ -205,6 +227,112 @@ export function ProfileView({
             Save changes
           </button>
         </form>
+      </div>
+
+      {/* Calendar sync — iCal / Google Calendar subscribe */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Calendar sync</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Subscribe to your Recomp workout plan so it appears in your calendar (Apple Calendar, Google Calendar, Outlook).
+        </p>
+        {isDemoMode ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Complete onboarding to sync your plan to your calendar.
+          </p>
+        ) : calendarLoading ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Loading your calendar link…</p>
+        ) : calendarFeedUrl ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                readOnly
+                value={calendarFeedUrl}
+                className="input-base flex-1 min-w-0 text-sm font-mono"
+                aria-label="Calendar feed URL"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(calendarFeedUrl);
+                  setCalendarCopied(true);
+                  setTimeout(() => setCalendarCopied(false), 2000);
+                }}
+                className="btn-secondary !py-2 whitespace-nowrap"
+              >
+                {calendarCopied ? "Copied" : "Copy link"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`https://www.google.com/calendar/render?cid=${encodeURIComponent(calendarFeedUrl)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-elevated)]/80 transition"
+              >
+                Add to Google Calendar
+              </a>
+              <a
+                href={calendarFeedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-3 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-elevated)]/80 transition"
+              >
+                Open iCal feed
+              </a>
+            </div>
+            <p className="text-xs text-[var(--muted)]">
+              Apple Calendar: File → New Calendar Subscription → paste the link above. Outlook: Add calendar → Subscribe from web → paste link.
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-[var(--muted-foreground)]">Could not load calendar link. Try again later.</p>
+        )}
+      </div>
+
+      {/* Push notifications */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Push notifications</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Get reminders and updates from Recomp (e.g. weekly review ready, tips) in your browser.
+        </p>
+        {isDemoMode ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Complete onboarding to enable notifications.
+          </p>
+        ) : !push.supported ? (
+          <p className="text-sm text-[var(--muted-foreground)]">
+            Your browser does not support push notifications.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {push.error && (
+              <p className="text-sm text-[var(--accent-terracotta)]" role="alert">{push.error}</p>
+            )}
+            {push.enabled ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-[var(--muted-foreground)]">Notifications are on.</span>
+                <button
+                  type="button"
+                  onClick={push.disable}
+                  disabled={push.loading}
+                  className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                >
+                  {push.loading ? "Turning off…" : "Turn off"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={push.enable}
+                disabled={push.loading || push.permission === "denied"}
+                className="btn-primary !py-2"
+              >
+                {push.loading ? "Enabling…" : push.permission === "denied" ? "Blocked — enable in browser" : "Enable notifications"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

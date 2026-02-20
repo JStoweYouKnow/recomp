@@ -5,6 +5,7 @@ import {
   StartAsyncInvokeCommand,
   GetAsyncInvokeCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 
 const NOVA_LITE_DEFAULT = "amazon.nova-2-lite-v1:0";
 /** Nova Lite model ID or inference profile ARN — respects BEDROCK_NOVA_LITE_MODEL_ID env */
@@ -14,12 +15,35 @@ export const NOVA_LITE_MODEL_ID =
   process.env.BEDROCK_NOVA_LITE_INFERENCE_PROFILE_ARN ??
   NOVA_LITE_DEFAULT;
 const NOVA_LITE = NOVA_LITE_MODEL_ID;
+/** Web Grounding requires US CRIS profile per AWS docs. Override with BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID if needed. */
+const NOVA_WEB_GROUNDING_MODEL =
+  process.env.BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID ?? "us.amazon.nova-2-lite-v1:0";
 const NOVA_CANVAS = process.env.BEDROCK_NOVA_CANVAS_MODEL_ID ?? "amazon.nova-canvas-v1:0";
 const NOVA_REEL = process.env.BEDROCK_NOVA_REEL_MODEL_ID ?? "amazon.nova-reel-v1:1";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
+/** Read timeout for web grounding (ms). Nova can take longer; default 2 min. */
+const WEB_GROUNDING_READ_TIMEOUT_MS = Number(
+  process.env.NOVA_WEB_GROUNDING_READ_TIMEOUT_MS ?? 120_000
+);
 
 function getClient() {
   return new BedrockRuntimeClient({ region: REGION });
+}
+
+/** Client with extended read timeout for web grounding (can take longer) */
+function getWebGroundingClient() {
+  try {
+    return new BedrockRuntimeClient({
+      region: REGION,
+      requestHandler: new NodeHttpHandler({
+        requestTimeout: WEB_GROUNDING_READ_TIMEOUT_MS,
+      }),
+    });
+  } catch {
+    // NodeHttpHandler may fail in edge/serverless bundles; fall back to default client
+    console.warn("NodeHttpHandler unavailable, using default Bedrock client for web grounding");
+    return new BedrockRuntimeClient({ region: REGION });
+  }
 }
 
 function withInferenceProfileHint(err: unknown): never {
@@ -99,15 +123,16 @@ export async function invokeNovaWithImage(
   }
 }
 
-/** Nova 2 Lite with web grounding (current guidelines) */
+/** Nova 2 Lite with web grounding (current guidelines).
+ *  Requires: (1) US CRIS profile (us.amazon.nova-2-lite-v1:0), (2) bedrock:InvokeTool on arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding */
 export async function invokeNovaWithWebGrounding(
   systemPrompt: string,
   userMessage: string,
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
-  const client = getClient();
+  const client = getWebGroundingClient();
   const input = {
-    modelId: NOVA_LITE,
+    modelId: NOVA_WEB_GROUNDING_MODEL,
     messages: [{ role: "user" as const, content: [{ text: userMessage }] }],
     system: [{ text: systemPrompt }],
     toolConfig: { tools: [{ systemTool: { name: "nova_grounding" } }] },
@@ -124,13 +149,36 @@ export async function invokeNovaWithWebGrounding(
     for (const block of content) {
       if ("text" in block) result += (block as { text: string }).text;
       if ("citationsContent" in block) {
-        const c = (block as { citationsContent?: { content?: { text?: string }[] } }).citationsContent;
-        c?.content?.forEach((x) => { if (x.text) result += x.text; });
+        const cc = block as { citationsContent?: { citations?: { location?: { web?: { url?: string } } }[] } };
+        const citations = cc.citationsContent?.citations ?? [];
+        for (const cit of citations) {
+          const url = cit.location?.web?.url;
+          if (url) result += ` [${url}]`;
+        }
       }
     }
     return result || "No response";
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // Log the actual error for debugging before re-throwing
+    console.error(`Web grounding failed (model=${NOVA_WEB_GROUNDING_MODEL}, region=${REGION}):`, message);
     withInferenceProfileHint(err);
+  }
+}
+
+/** Web grounding with automatic fallback to standard Nova inference */
+export async function invokeNovaWithWebGroundingOrFallback(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<{ text: string; source: "web-grounding" | "nova-lite" }> {
+  try {
+    const text = await invokeNovaWithWebGrounding(systemPrompt, userMessage, options);
+    return { text, source: "web-grounding" };
+  } catch (err) {
+    console.warn("Web grounding unavailable, falling back to Nova Lite:", err instanceof Error ? err.message : err);
+    const text = await invokeNova(systemPrompt, userMessage, options);
+    return { text, source: "nova-lite" };
   }
 }
 

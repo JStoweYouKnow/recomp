@@ -1,4 +1,4 @@
-import type { UserProfile, MealEntry, FitnessPlan, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry } from "./types";
+import type { UserProfile, MealEntry, FitnessPlan, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe } from "./types";
 
 const STORAGE_KEYS = {
   profile: "recomp_profile",
@@ -15,12 +15,22 @@ const STORAGE_KEYS = {
   workoutProgress: "recomp_workout_progress",
   cookingApps: "recomp_cooking_apps",
   activityLog: "recomp_activity_log",
+  shoppingList: "recomp_shopping_list",
+  cookingAppRecipes: "recomp_cooking_app_recipes",
 } as const;
+
+function safeParse<T>(data: string | null, fallback: T): T {
+  if (data == null || data === "") return fallback;
+  try {
+    return JSON.parse(data) as T;
+  } catch {
+    return fallback;
+  }
+}
 
 export function getProfile(): UserProfile | null {
   if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(STORAGE_KEYS.profile);
-  return data ? JSON.parse(data) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.profile), null);
 }
 
 export function saveProfile(profile: UserProfile): void {
@@ -30,8 +40,8 @@ export function saveProfile(profile: UserProfile): void {
 
 export function getMeals(): MealEntry[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.meals);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<MealEntry[]>(localStorage.getItem(STORAGE_KEYS.meals), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveMeals(meals: MealEntry[]): void {
@@ -41,8 +51,7 @@ export function saveMeals(meals: MealEntry[]): void {
 
 export function getPlan(): FitnessPlan | null {
   if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(STORAGE_KEYS.plan);
-  return data ? JSON.parse(data) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.plan), null);
 }
 
 export function savePlan(plan: FitnessPlan): void {
@@ -52,8 +61,8 @@ export function savePlan(plan: FitnessPlan): void {
 
 export function getMealEmbeddings(): { mealId: string; embedding: number[] }[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.mealEmbeddings);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<{ mealId: string; embedding: number[] }[]>(localStorage.getItem(STORAGE_KEYS.mealEmbeddings), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveMealEmbeddings(embeddings: { mealId: string; embedding: number[] }[]): void {
@@ -63,8 +72,8 @@ export function saveMealEmbeddings(embeddings: { mealId: string; embedding: numb
 
 export function getWearableConnections(): WearableConnection[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.wearableConnections);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<WearableConnection[]>(localStorage.getItem(STORAGE_KEYS.wearableConnections), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveWearableConnections(connections: WearableConnection[]): void {
@@ -74,8 +83,8 @@ export function saveWearableConnections(connections: WearableConnection[]): void
 
 export function getWearableData(): WearableDaySummary[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.wearableData);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<WearableDaySummary[]>(localStorage.getItem(STORAGE_KEYS.wearableData), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveWearableData(data: WearableDaySummary[]): void {
@@ -85,8 +94,8 @@ export function saveWearableData(data: WearableDaySummary[]): void {
 
 export function getMilestones(): Milestone[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.milestones);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<Milestone[]>(localStorage.getItem(STORAGE_KEYS.milestones), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveMilestones(milestones: Milestone[]): void {
@@ -97,7 +106,9 @@ export function saveMilestones(milestones: Milestone[]): void {
 export function getXP(): number {
   if (typeof window === "undefined") return 0;
   const data = localStorage.getItem(STORAGE_KEYS.xp);
-  return data ? parseInt(data, 10) : 0;
+  if (data == null || data === "") return 0;
+  const n = parseInt(data, 10);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
 export function saveXP(xp: number): void {
@@ -107,8 +118,8 @@ export function saveXP(xp: number): void {
 
 export function getRicoHistory(): RicoMessage[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.ricoHistory);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<RicoMessage[]>(localStorage.getItem(STORAGE_KEYS.ricoHistory), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveRicoHistory(messages: RicoMessage[]): void {
@@ -128,8 +139,7 @@ export function setHasAdjustedPlan(): void {
 
 export function getWeeklyReview(): WeeklyReview | null {
   if (typeof window === "undefined") return null;
-  const data = localStorage.getItem(STORAGE_KEYS.weeklyReview);
-  return data ? JSON.parse(data) : null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.weeklyReview), null);
 }
 
 export function saveWeeklyReview(review: WeeklyReview): void {
@@ -141,8 +151,8 @@ export type WorkoutProgressMap = Record<string, string>;
 
 export function getWorkoutProgress(): WorkoutProgressMap {
   if (typeof window === "undefined") return {};
-  const data = localStorage.getItem(STORAGE_KEYS.workoutProgress);
-  return data ? JSON.parse(data) : {};
+  const parsed = safeParse<WorkoutProgressMap>(localStorage.getItem(STORAGE_KEYS.workoutProgress), {});
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 }
 
 export function saveWorkoutProgress(progress: WorkoutProgressMap): void {
@@ -154,8 +164,8 @@ export function saveWorkoutProgress(progress: WorkoutProgressMap): void {
 
 export function getActivityLog(): ActivityLogEntry[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.activityLog);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<ActivityLogEntry[]>(localStorage.getItem(STORAGE_KEYS.activityLog), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveActivityLog(entries: ActivityLogEntry[]): void {
@@ -178,13 +188,39 @@ export function getDateActivityAdjustment(date: string): number {
 
 export function getCookingAppConnections(): CookingAppConnection[] {
   if (typeof window === "undefined") return [];
-  const data = localStorage.getItem(STORAGE_KEYS.cookingApps);
-  return data ? JSON.parse(data) : [];
+  const parsed = safeParse<CookingAppConnection[]>(localStorage.getItem(STORAGE_KEYS.cookingApps), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveCookingAppConnections(connections: CookingAppConnection[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.cookingApps, JSON.stringify(connections));
+}
+
+/* ── Cooking app recipe library (for gourmet meal suggestions) ───────────── */
+
+export function getCookingAppRecipes(): CookingAppRecipe[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<CookingAppRecipe[]>(localStorage.getItem(STORAGE_KEYS.cookingAppRecipes), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveCookingAppRecipes(recipes: CookingAppRecipe[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.cookingAppRecipes, JSON.stringify(recipes));
+}
+
+/* ── Shopping list (Nova Act grocery) ───────────────────── */
+
+export function getShoppingList(): string[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<string[]>(localStorage.getItem(STORAGE_KEYS.shoppingList), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveShoppingList(items: string[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.shoppingList, JSON.stringify(items));
 }
 
 /** Persist current localStorage state to DynamoDB (fire-and-forget) */

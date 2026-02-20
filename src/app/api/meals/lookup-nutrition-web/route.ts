@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { invokeNovaWithWebGrounding } from "@/lib/nova";
+import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
 import {
   fixedWindowRateLimit,
   getClientKey,
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+
+/** Allow up to 60s for web grounding (default Vercel timeout is too short) */
+export const maxDuration = 60;
 
 const SYSTEM_PROMPT = `You are a nutrition analyst. Search the web for accurate nutrition information for foods and meals.
 Return ONLY a valid JSON object with these keys: calories, protein, carbs, fat (all numbers).
@@ -57,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     const userMessage = `Search the web for the nutrition facts of this food or meal: "${mealName}". Return calories, protein (g), carbs (g), and fat (g) per typical serving as a JSON object only.`;
-    const raw = await invokeNovaWithWebGrounding(
+    const { text: raw, source } = await invokeNovaWithWebGroundingOrFallback(
       SYSTEM_PROMPT,
       userMessage,
       { temperature: 0.3, maxTokens: 512 }
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     const res = NextResponse.json({
       food: mealName,
-      source: "web",
+      source,
       nutrition: {
         calories: Math.round(nutrition.calories ?? 0),
         protein: Math.round(nutrition.protein ?? 0),

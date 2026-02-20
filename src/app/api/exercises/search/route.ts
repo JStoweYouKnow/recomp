@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
   const name = req.nextUrl.searchParams.get("name")?.trim();
   if (!name)
     return NextResponse.json({ error: "Missing ?name= parameter" }, { status: 400 });
+  if (name.length > 300)
+    return NextResponse.json({ error: "Name too long (max 300 characters)" }, { status: 400 });
 
   logInfo("exercise-search", { name });
 

@@ -28,6 +28,8 @@ const PROVIDERS = [
   "cronometer",
   "myfitnesspal",
   "loseit",
+  "recipekeeper",
+  "nytcooking",
   "custom",
 ] as const;
 

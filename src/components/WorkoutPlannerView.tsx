@@ -230,7 +230,7 @@ export function WorkoutPlannerView({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
-          <p className="section-subtitle">Tap a day to see the full breakdown. Tap again to collapse.</p>
+          <p className="section-subtitle">Tap a day to expand. Mark exercises done as you go; use Show demo for form cues.</p>
         </div>
         <div className="flex items-center gap-2">
           <button

@@ -13,9 +13,9 @@ export async function POST(req: NextRequest) {
     message: `Nova Act automates browser-based workflows. Recomp uses it for grocery shopping and nutrition lookup.`,
     capabilities: [
       {
-        name: "Grocery Automation",
+        name: "Shopping list → Amazon",
         endpoint: "/api/act/grocery",
-        description: "Automatically searches Amazon Fresh for ingredients from your meal plan",
+        description: "Full shopping list from your meal plan; send to Amazon Fresh, Whole Foods, or Amazon.com with optional add-to-cart",
       },
       {
         name: "Nutrition Lookup",

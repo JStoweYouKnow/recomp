@@ -71,4 +71,26 @@ describe("POST /api/auth/register", () => {
     expect(data.profileSaved).toBe(false);
     expect(res.headers.get("set-cookie")).toContain("recomp_uid=");
   });
+
+  it("returns 400 when name exceeds 80 characters", async () => {
+    const { POST } = await import("./route");
+    const req = new Request("http://localhost/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "a".repeat(81) }),
+    });
+    const res = await POST(req as unknown as import("next/server").NextRequest);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 500 when body is not valid JSON", async () => {
+    const { POST } = await import("./route");
+    const req = new Request("http://localhost/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "not json {",
+    });
+    const res = await POST(req as unknown as import("next/server").NextRequest);
+    expect(res.status).toBe(500);
+  });
 });

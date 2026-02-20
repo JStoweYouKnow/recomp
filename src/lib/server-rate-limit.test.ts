@@ -27,4 +27,25 @@ describe("server-rate-limit", () => {
     });
     expect(getRequestIp(req)).toBe("1.2.3.4");
   });
+
+  it("getRequestIp returns unknown when x-forwarded-for is only whitespace", () => {
+    const req = new Request("http://localhost", {
+      headers: { "x-forwarded-for": "   \t  " },
+    });
+    expect(getRequestIp(req)).toBe("unknown");
+  });
+
+  it("getClientKey uses unknown for null or empty ip", () => {
+    expect(getClientKey(null, "r")).toBe("r:unknown");
+    expect(getClientKey("", "r")).toBe("r:unknown");
+    expect(getClientKey("  ", "r")).toBe("r:unknown");
+  });
+
+  it("getRequestIp handles very long x-forwarded-for without throwing", () => {
+    const longList = Array.from({ length: 500 }, () => "1.2.3.4").join(", ");
+    const req = new Request("http://localhost", {
+      headers: { "x-forwarded-for": longList },
+    });
+    expect(getRequestIp(req)).toBe("1.2.3.4");
+  });
 });

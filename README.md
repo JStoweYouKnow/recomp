@@ -48,12 +48,12 @@ What makes Recomp novel — both technically and as a product:
 ### 2-minute golden path (judges)
 
 1. Open app and click **Try pre-seeded demo user (instant dashboard)** on landing.
-2. Confirm Dashboard widgets populate (Today at a Glance, calories/macros, weekly cards).
+2. Dashboard loads with Jordan's 7-day data. Click **Show metrics** in the "Evidence & Results" card.
 3. Open Meals and add one text meal.
-4. Return to Dashboard and click **Generate** in Weekly AI Review.
-5. Open Reco chat (🧩) and send one text prompt.
+4. Return to Dashboard and click **Generate** in Weekly AI Review (multi-agent demo).
+5. Open Reco (🧩) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
 
-If optional dependencies are unavailable, enable `JUDGE_MODE=true` and re-run the same path for deterministic fallback behavior.
+Full testing instructions: [SUBMISSION_CHECKLIST.md](./SUBMISSION_CHECKLIST.md). If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback.
 
 ### How to Evaluate (judges)
 
@@ -120,6 +120,10 @@ Create a `.env.local` file:
 AWS_REGION=us-east-1
 DYNAMODB_TABLE_NAME=RecompTable
 
+# Optional — Web grounding (research / nutrition lookup)
+BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID=us.amazon.nova-2-lite-v1:0
+# IAM: add bedrock:InvokeTool on arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding
+
 # Optional
 NOVA_REEL_S3_BUCKET=your-bucket-name
 FITBIT_CLIENT_ID=...
@@ -166,6 +170,17 @@ If `nova-act` is not installed, the Act endpoints return realistic demo data via
 | **Transformation preview** | Bedrock + Nova Canvas | Upload photo → generate "after" image |
 | **DynamoDB sync** | Optional | App works with localStorage only; table needed for cross-device sync |
 | **Judge reliability mode** | Yes | Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations and use `/api/judge/health` to verify status |
+| **Web grounding** | IAM + US CRIS profile | Requires `bedrock:InvokeTool` on `arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding`; uses `us.amazon.nova-2-lite-v1:0` by default. Falls back to Nova Lite if unavailable. |
+
+**Web grounding IAM:** Add this statement to your IAM policy (replace `526015377909` with your AWS account ID):
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["bedrock:InvokeTool"],
+  "Resource": ["arn:aws:bedrock:526015377909:system-tool/amazon.nova_grounding"]
+}
+```
 
 **Amazon login for add-to-cart:** To add grocery items to your Amazon cart, Nova Act needs a persisted browser profile with your login. One-time setup:
 

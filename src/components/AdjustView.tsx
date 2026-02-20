@@ -57,6 +57,7 @@ export function AdjustView({
       <div>
         <h2 className="section-title !text-xl">Adjust your plan</h2>
         <p className="section-subtitle">Analyze your progress and get dynamic adjustment suggestions.</p>
+        <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mt-0.5">Powered by Nova Lite</p>
       </div>
 
       <div className="card p-6">
@@ -68,13 +69,16 @@ export function AdjustView({
           rows={3}
           className="w-full input-base"
         />
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={handleGetLatestGuidance} disabled={researchLoading} className="btn-secondary !text-xs">
-            {researchLoading ? "Pulling guidance..." : "Use latest research context"}
-          </button>
-          {researchSummary && (
-            <p className="text-caption flex-1">Added: {researchSummary.slice(0, 90)}...</p>
-          )}
+        <div className="mt-3 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="button" onClick={handleGetLatestGuidance} disabled={researchLoading} className="btn-secondary !text-xs" title="Add current nutrition guidelines to your feedback">
+              {researchLoading ? "Pulling guidance..." : "Add latest guidelines to my feedback"}
+            </button>
+            {researchSummary && (
+              <p className="text-caption flex-1">Added: {researchSummary.slice(0, 90)}...</p>
+            )}
+          </div>
+          <p className="text-[10px] text-[var(--muted)]">Powered by Nova — web search when available</p>
         </div>
 
         <div className="mt-5">
