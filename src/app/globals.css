@@ -85,6 +85,7 @@
   --transition-fast: 120ms ease;
   --transition-base: 180ms ease;
   --transition-slow: 280ms ease;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 @theme inline {
@@ -152,7 +153,7 @@ html {
 }
 
 body {
-  background: var(--background);
+  background: linear-gradient(180deg, #faf8f5 0%, #f5f1ec 50%, #efebe5 100%);
   color: var(--foreground);
   font-family: var(--font-body);
   font-size: var(--font-size-body);
@@ -160,6 +161,15 @@ body {
   font-weight: var(--font-weight-normal);
   min-height: 100vh;
   letter-spacing: 0.01em;
+  position: relative;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.02'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Numbers in stats/tables align and don’t shift layout */
@@ -372,11 +382,13 @@ h6 {
 }
 
 .card {
-  background: var(--card-bg);
+  background: rgba(255, 255, 255, 0.9);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
   transition: box-shadow var(--transition-base), transform var(--transition-base), border-color var(--transition-base);
+  position: relative;
+  z-index: 1;
 }
 .card:hover {
   box-shadow: var(--shadow-medium);
@@ -482,6 +494,18 @@ h6 {
   background: var(--accent-10);
   font-weight: var(--font-weight-semibold);
   box-shadow: 0 0 0 1px rgba(107, 124, 60, 0.2);
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+.nav-item-active::after {
+  content: "";
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 20px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: var(--radius-full);
 }
 .nav-item-active:hover {
   background: var(--accent-20);
@@ -527,7 +551,7 @@ h6 {
   height: 100%;
   border-radius: var(--radius-full);
   background: var(--accent);
-  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.5s var(--ease-spring);
 }
 
 /* ── Divider ── */
@@ -536,6 +560,21 @@ h6 {
   background: var(--border-soft);
   border: none;
   margin: var(--space-6) 0;
+}
+.divider-accent {
+  height: 0;
+  border: none;
+  margin: var(--space-6) 0;
+  position: relative;
+}
+.divider-accent::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--accent) 0, var(--accent) 4px, transparent 4px, transparent 8px);
+  border-radius: 2px;
+  margin: 0 auto;
 }
 
 /* ── macOS-inspired modal styles ── */
@@ -626,3 +665,50 @@ h6 {
 }
 .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
 .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ── Page transitions ── */
+@keyframes slide-in-left {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-left {
+  animation: slide-in-left 0.22s ease-out forwards;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.22s ease-out forwards;
+}
+
+/* ── Card accent border ── */
+.card-accent-border {
+  border-left: 4px solid var(--accent);
+}
+
+/* ── Macro pill tints (data viz) ── */
+.macro-calories { --macro-color: var(--accent); }
+.macro-protein { --macro-color: var(--accent-sage); }
+.macro-carbs { --macro-color: var(--accent-warm); }
+.macro-fat { --macro-color: var(--accent-terracotta); }
+
+/* ── FAB breathing pulse ── */
+@keyframes fab-breathe {
+  0%, 100% { box-shadow: var(--shadow-strong); }
+  50% { box-shadow: var(--shadow-strong), 0 0 0 8px rgba(107, 124, 60, 0.08); }
+}
+.animate-fab-breathe {
+  animation: fab-breathe 2.5s ease-in-out infinite;
+}
+
+/* ── Shimmer loading ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--surface-elevated) 25%, var(--surface) 50%, var(--surface-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}

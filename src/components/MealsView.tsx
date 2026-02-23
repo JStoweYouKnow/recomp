@@ -853,20 +853,34 @@ export function MealsView({
       <div>
         <h3 className="section-title !text-base mb-3">{dateLabel}&apos;s meals</h3>
         {displayMeals.length === 0 ? (
-          <div className={`rounded-xl border border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)]/50 p-6 text-center ${isViewingToday ? "animate-fade-in" : ""}`}>
-            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-3" aria-hidden>
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <div className={`rounded-xl border border-dashed border-[var(--border-soft)] bg-[var(--surface-elevated)]/50 p-8 text-center ${isViewingToday ? "animate-fade-in" : ""}`}>
+            <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--accent)]/10 text-[var(--accent)] mb-4" aria-hidden>
+              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v10.024c0 1.135.845 2.098 1.976 2.192.332.05.664.083 1.002.083.337 0 .67-.033 1.003-.083C10.303 20.944 11.645 21 13 21c1.355 0 2.697-.056 4.024-.166C18.155 20.49 19 19.527 19 18.392V10.608c0-1.135-.845-2.098-1.976-2.192A13.413 13.413 0 0013 8.25m0 0l.001-.001" />
               </svg>
             </div>
-            <p className="text-sm font-medium text-[var(--foreground)]">
-              {isViewingToday ? "No meals logged yet" : "No meals for this date"}
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              {isViewingToday ? "Log your first meal" : "No meals for this date"}
             </p>
-            <p className="mt-1 text-sm text-[var(--muted)]">
+            <p className="mt-1.5 text-sm text-[var(--muted)]">
               {isViewingToday
-                ? "Use Voice log, Snap plate, or add manually above to get started."
-                : "Log meals on that day from the calendar or switch to today."}
+                ? "Try one of these quick options to get started."
+                : "Log meals on that day or switch to today."}
             </p>
+            {isViewingToday && (
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button onClick={() => setShowAdd(true)} className="btn-primary !text-xs">
+                  Add manually
+                </button>
+                <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs">
+                  {voiceLoading ? "Listening…" : "Voice log"}
+                </button>
+                <label className="btn-secondary !text-xs cursor-pointer">
+                  <input type="file" accept="image/*" capture="environment" onChange={handlePhotoLog} className="sr-only" />
+                  {photoLoading ? "Analyzing…" : "Snap plate"}
+                </label>
+              </div>
+            )}
           </div>
         ) : (
           <ul className="space-y-2">

@@ -220,11 +220,14 @@ export function LandingPage({
 
       <section className="px-5 pt-16 pb-12 sm:pt-20 sm:pb-16 text-center">
         <h1
-          className="brand-title text-balance text-[var(--foreground)] font-bold text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight leading-[1.05] max-w-4xl mx-auto animate-fade-in"
+          className="brand-title text-balance text-[var(--foreground)] font-bold text-4xl sm:text-5xl md:text-6xl lg:text-7xl tracking-tight leading-[1.05] max-w-4xl mx-auto animate-fade-in relative inline-block"
           style={{ animationDelay: "0ms" }}
         >
           Your AI-powered{" "}
-          <span className="text-[var(--accent)] block sm:inline sm:ml-2">body recomposition</span>
+          <span className="text-[var(--accent)] block sm:inline sm:ml-2 relative">
+            body recomposition
+            <span className="absolute -bottom-1 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80 animate-fade-in" style={{ animationDelay: "200ms" }} aria-hidden />
+          </span>
           {" "}companion
         </h1>
         <p
@@ -273,9 +276,10 @@ export function LandingPage({
             <button
               type="button"
               onClick={onUsePreseededDemo}
-              className="mt-3 text-xs font-medium text-[var(--accent)] hover:text-[var(--accent-hover)] underline underline-offset-4"
+              className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-4 py-2 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:border-[var(--accent)]/60 transition-colors"
             >
-              Try pre-seeded demo user (instant dashboard)
+              <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden />
+              Try pre-seeded demo <span className="text-[10px] font-normal opacity-80">— instant access</span>
             </button>
             <button
               type="button"

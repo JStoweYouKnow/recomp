@@ -231,12 +231,16 @@ export function RicoChat({
         aria-hidden
       />
       <div
-        className={`modal modal--sheet fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col transition-transform ${
+        className={`modal modal--sheet fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col rounded-tl-2xl transition-transform ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-2 pb-1 shrink-0">
+          <div className="h-1 w-12 rounded-full bg-[var(--border)]" aria-hidden />
+        </div>
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-4 py-3">
+        <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-4 py-3 -mt-1">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]/20 text-xl">
               🧩
@@ -277,14 +281,53 @@ export function RicoChat({
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
-            <p className="text-center text-sm text-[var(--muted)]">
-              Hi{userName ? ` ${userName}` : ""}! Ask me anything – motivation, macros, or a gentle nudge when you need it.
+            <div className="text-center space-y-4 animate-fade-in">
+              <div className="flex justify-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--accent)]/10 text-[var(--accent)]">
+                  <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" /></svg>
+                </div>
+              </div>
+              <p className="text-sm text-[var(--muted-foreground)]">
+                Hi{userName ? ` ${userName}` : ""}! Ask me anything – motivation, macros, or a gentle nudge.
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {["What should I eat post-workout?", "Tips for hitting my protein goal", "Motivate me to stay consistent"].map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={async () => {
+                      if (loading) return;
+                      addMessage({ role: "user", content: prompt, at: new Date().toISOString() });
+                      setLoading(true);
+                      try {
+                        const res = await fetch("/api/rico", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ message: prompt, context: { ...context, name: userName } }),
+                        });
+                        const data = await res.json();
+                        if (data.error) throw new Error(data.error);
+                        addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
+                      } catch (e) {
+                        console.error(e);
+                        addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again.", at: new Date().toISOString() });
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    disabled={loading}
+                    className="rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] hover:border-[var(--accent)]/40 hover:bg-[var(--accent)]/5 hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
               {audioSupported && (
-                <span className="block mt-2 text-xs">
-                  <strong>Voice demo:</strong> Switch to Voice above, then hold the mic button to speak. Nova Sonic streams your voice to Bedrock and plays the response aloud.
-                </span>
+                <p className="text-xs text-[var(--muted)]">
+                  <strong>Voice:</strong> Switch to Voice above, hold the mic to speak. Nova Sonic streams live.
+                </p>
               )}
-            </p>
+            </div>
           )}
           {messages.map((m, i) => {
             const isLastAssistant = i === messages.length - 1 && m.role === "assistant";
@@ -300,7 +343,7 @@ export function RicoChat({
                 className={`max-w-[85%] rounded-2xl px-4 py-2 ${
                   m.role === "user"
                     ? "bg-[var(--accent)]/15 text-[var(--foreground)]"
-                    : "bg-[var(--surface-elevated)] text-[var(--foreground)]"
+                    : "bg-[var(--surface-elevated)] text-[var(--foreground)] border-l-[3px] border-l-[var(--accent)]"
                 }`}
               >
                 <p className="text-sm whitespace-pre-wrap">
@@ -339,9 +382,9 @@ export function RicoChat({
                 onTouchStart={handleStartRecording}
                 onTouchEnd={handleStopRecording}
                 disabled={loading}
-                className={`flex h-16 w-16 items-center justify-center rounded-full transition-all ${
+                className={`flex h-16 w-16 min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-all ${
                   isRecording
-                    ? "bg-[var(--accent-terracotta)] scale-110 shadow-lg animate-pulse"
+                    ? "bg-[var(--accent-terracotta)] scale-110 shadow-lg animate-pulse ring-4 ring-[var(--accent-terracotta)]/30"
                     : "bg-[var(--accent)] hover:bg-[var(--accent-hover)] hover:scale-105"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                 aria-label={isRecording ? "Release to send" : "Hold to talk"}
@@ -366,7 +409,7 @@ export function RicoChat({
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask Reco..."
                 disabled={loading}
-                className="input-base flex-1 rounded-lg px-4 py-2 text-sm placeholder-[var(--muted)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 disabled:opacity-50"
+                className="input-base flex-1 rounded-lg px-4 py-2 text-sm placeholder-[var(--muted)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 focus:shadow-[0_0_0_3px_rgba(107,124,60,0.15)] disabled:opacity-50 transition-shadow"
               />
               <button
                 type="submit"

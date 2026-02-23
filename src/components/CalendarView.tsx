@@ -89,12 +89,12 @@ function DayCell({
       className={`
         relative flex flex-col items-center justify-center rounded-lg ${h} transition-all
         ${isSelected
-          ? "bg-[var(--accent)] text-white shadow-sm"
+          ? "bg-[var(--accent)] text-white shadow-sm ring-2 ring-[var(--accent)]/40 ring-offset-1 ring-offset-[var(--surface)]"
           : isToday
-            ? "bg-[var(--accent)]/10 text-[var(--accent)] font-semibold"
+            ? "bg-[var(--accent)]/10 text-[var(--accent)] font-semibold ring-1 ring-[var(--accent)]/30"
             : isMuted
-              ? "text-[var(--border)] hover:bg-[var(--surface-elevated)] hover:text-[var(--muted)]"
-              : "text-[var(--foreground)] hover:bg-[var(--surface-elevated)]"
+              ? "text-[var(--border)] hover:bg-[var(--surface-elevated)] hover:text-[var(--muted)] hover:ring-1 hover:ring-[var(--border)]"
+              : "text-[var(--foreground)] hover:bg-[var(--surface-elevated)] hover:ring-1 hover:ring-[var(--border-soft)]"
         }
       `}
       aria-label={`${iso}${isToday ? " (today)" : ""}`}

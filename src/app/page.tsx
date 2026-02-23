@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
 import { computeMilestones } from "@/lib/milestones";
@@ -21,6 +21,20 @@ export default function Home() {
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
   const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "wearables" | "milestones" | "profile">("onboard");
+  const prevViewRef = useRef<string>("dashboard");
+  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "wearables", "milestones", "profile"] as const;
+  const getSlideClass = (v: string) => {
+    const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
+    const prev = VIEW_ORDER.indexOf(prevViewRef.current as typeof VIEW_ORDER[number]);
+    if (curr < 0 || prev < 0) return "animate-fade-in";
+    if (curr > prev) return "animate-slide-in-left";
+    if (curr < prev) return "animate-slide-in-right";
+    return "animate-fade-in";
+  };
+  const navigateTo = (key: typeof view) => {
+    prevViewRef.current = view;
+    setView(key);
+  };
   const [loading, setLoading] = useState(false);
   const [planRegenerating, setPlanRegenerating] = useState(false);
   const [adjustFeedback, setAdjustFeedback] = useState("");
@@ -278,8 +292,10 @@ export default function Home() {
       {/* ── Sticky header ── */}
       <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm" role="banner">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
-          <button onClick={() => setView("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
-            <span className="text-lg" aria-hidden="true">🧩</span>
+          <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </span>
             <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
             <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
           </button>
@@ -297,7 +313,7 @@ export default function Home() {
             ] as const).map(([key, label, title]) => (
               <button
                 key={key}
-                onClick={() => setView(key)}
+                onClick={() => navigateTo(key)}
                 className={`nav-item ${view === key ? "nav-item-active" : ""}`}
                 aria-current={view === key ? "page" : undefined}
                 title={title}
@@ -322,8 +338,36 @@ export default function Home() {
         </div>
       )}
 
-      <main id="main-content" className="mx-auto max-w-5xl px-5 py-8" role="main">
+      {/* Bottom nav (mobile) */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm safe-area-pb"
+        aria-label="Mobile navigation"
+      >
+        <div className="flex items-center justify-around py-2">
+          {(["dashboard", "meals", "workouts", "adjust"] as const).map((key) => (
+            <button
+              key={key}
+              onClick={() => navigateTo(key)}
+              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-lg transition-colors ${
+                view === key ? "text-[var(--accent)]" : "text-[var(--muted)]"
+              }`}
+              aria-current={view === key ? "page" : undefined}
+            >
+              <span className="text-lg font-medium">
+                {key === "dashboard" && "📊"}
+                {key === "meals" && "🍽"}
+                {key === "workouts" && "💪"}
+                {key === "adjust" && "⚙"}
+              </span>
+              <span className="text-[10px] font-medium capitalize">{key}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main id="main-content" className="relative z-10 mx-auto max-w-5xl px-5 py-8 pb-24 md:pb-8" role="main">
         {view === "dashboard" && (
+          <div key="dashboard" className={getSlideClass("dashboard")}>
           <Dashboard
             profile={profile!}
             plan={plan}
@@ -344,8 +388,8 @@ export default function Home() {
             onRegeneratePlan={handleRegeneratePlan}
             planRegenerating={planRegenerating}
             planLoadingMessage={planLoadingMessage}
-            onNavigateToMeals={() => setView("meals")}
-            onNavigateToWorkouts={() => setView("workouts")}
+            onNavigateToMeals={() => navigateTo("meals")}
+            onNavigateToWorkouts={() => navigateTo("workouts")}
             onReset={() => {
               localStorage.clear();
               setProfile(null);
@@ -356,11 +400,13 @@ export default function Home() {
               setMilestoneProgress({});
               saveWearableData([]);
               saveWearableConnections([]);
-              setView("onboard");
+              navigateTo("onboard");
             }}
           />
+          </div>
         )}
         {view === "meals" && (
+          <div key="meals" className={getSlideClass("meals")}>
           <MealsView
             meals={meals}
             todaysMeals={todaysMeals}
@@ -377,8 +423,10 @@ export default function Home() {
               saveMeals(next);
             }}
           />
+          </div>
         )}
         {view === "workouts" && (
+          <div key="workouts" className={getSlideClass("workouts")}>
           <WorkoutPlannerView
             plan={plan}
             onUpdatePlan={(updated) => {
@@ -387,8 +435,10 @@ export default function Home() {
               syncToServer();
             }}
           />
+          </div>
         )}
         {view === "wearables" && (
+          <div key="wearables" className={getSlideClass("wearables")}>
           <WearablesView
             onDataFetched={(data) => {
               const existing = getWearableData();
@@ -401,15 +451,19 @@ export default function Home() {
               saveWearableData(merged);
             }}
           />
+          </div>
         )}
         {view === "milestones" && (
+          <div key="milestones" className={getSlideClass("milestones")}>
           <MilestonesView
             milestones={milestones}
             xp={xp}
             progress={milestoneProgress}
           />
+          </div>
         )}
         {view === "adjust" && (
+          <div key="adjust" className={getSlideClass("adjust")}>
           <AdjustView
             plan={plan}
             goal={profile?.goal ?? "maintain"}
@@ -432,8 +486,10 @@ export default function Home() {
               }
             }}
           />
+          </div>
         )}
         {view === "profile" && profile && (
+          <div key="profile" className={getSlideClass("profile")}>
           <ProfileView
             profile={profile}
             onProfileUpdate={(updated) => {
@@ -442,6 +498,7 @@ export default function Home() {
               syncToServer();
             }}
           />
+          </div>
         )}
       </main>
 
@@ -449,11 +506,11 @@ export default function Home() {
         <>
           <button
             onClick={() => setRicoOpen(true)}
-            className="fixed bottom-6 right-6 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+            className="fixed bottom-20 md:bottom-6 right-6 z-20 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] animate-fab-breathe"
             aria-label="Chat with Reco"
             title="Chat with Reco"
           >
-            🧩
+            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           </button>
           <RicoChat
             userName={profile.name}

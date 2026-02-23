@@ -27,9 +27,16 @@ export function WeeklyReviewCard({
         </button>
       </div>
       {reviewLoading && (
-        <div className="flex items-center gap-2 text-sm text-[var(--muted)]" role="status" aria-live="polite">
-          <div className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-          Agent running: analyzing meals, checking wearables, researching guidelines...
+        <div className="flex flex-col gap-3" role="status" aria-live="polite">
+          <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
+            <div className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
+            Agent running: analyzing meals, checking wearables, researching guidelines...
+          </div>
+          <div className="flex gap-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-8 flex-1 rounded-lg skeleton-shimmer" aria-hidden />
+            ))}
+          </div>
         </div>
       )}
       {weeklyReview && !reviewLoading && (

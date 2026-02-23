@@ -57,7 +57,7 @@ export function TodayAtAGlance({
   const todayActivities = activityLog.filter((e) => e.date === today);
 
   return (
-    <div className="card p-6">
+    <div className="card card-accent-border p-6">
       <h3 className="section-title !text-base mb-4">Today at a glance</h3>
       <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
         {/* Left: Budget + macros */}
@@ -72,21 +72,27 @@ export function TodayAtAGlance({
                 )}
               </span>
             </div>
-            <div className="progress-track !mt-0">
+            <div className={`progress-track !mt-0 ${pct(todaysTotals.calories, adjustedBudget) >= 90 && pct(todaysTotals.calories, adjustedBudget) <= 110 ? "ring-2 ring-[var(--accent)]/30 ring-offset-1 ring-offset-[var(--background)] rounded-full" : ""}`}>
               <div className="progress-fill" style={{ width: `${pct(todaysTotals.calories, adjustedBudget)}%` }} />
             </div>
             <p className="text-caption mt-1 tabular-nums">{Math.max(0, adjustedBudget - todaysTotals.calories)} cal remaining</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {(["calories", "protein", "carbs", "fat"] as const).map((key) => (
-              <div key={key} className="card-flat rounded-lg px-2.5 py-2">
+              <div key={key} className={`card-flat rounded-lg px-2.5 py-2 macro-${key} transition-all hover:-translate-y-0.5 hover:shadow-[0_1px_3px_rgba(61,55,48,0.06)]`}>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
                 <p className="text-sm font-bold tabular-nums leading-tight">
                   {key === "calories" ? todaysTotals.calories : `${todaysTotals[key]}g`}
                   <span className="stat-value-dim !text-[10px]"> / {key === "calories" ? targets.calories : `${targets[key]}g`}</span>
                 </p>
                 <div className="progress-track !mt-1 h-1">
-                  <div className="progress-fill" style={{ width: `${pct(todaysTotals[key], targets[key])}%` }} />
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${pct(todaysTotals[key], targets[key])}%`,
+                      background: key === "calories" ? "var(--accent)" : key === "protein" ? "var(--accent-sage)" : key === "carbs" ? "var(--accent-warm)" : "var(--accent-terracotta)",
+                    }}
+                  />
                 </div>
               </div>
             ))}
