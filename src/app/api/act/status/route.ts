@@ -5,8 +5,9 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  const url = process.env.ACT_SERVICE_URL?.replace(/\/$/, "");
-  const configured = !!url;
+  let base = process.env.ACT_SERVICE_URL?.trim().replace(/\/$/, "");
+  const configured = !!base;
+  if (configured && !/^https?:\/\//i.test(base)) base = `https://${base}`;
 
   if (!configured) {
     return NextResponse.json({
@@ -17,12 +18,12 @@ export async function GET() {
   }
 
   try {
-    const res = await fetch(`${url}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${base}/health`, { method: "GET", signal: AbortSignal.timeout(5000) });
     const ok = res.ok;
     const data = ok ? await res.json() : null;
     return NextResponse.json({
       actServiceConfigured: true,
-      actServiceUrl: url.replace(/\/health$/, ""),
+      actServiceUrl: base,
       reachable: ok,
       response: data,
       status: res.status,
@@ -30,7 +31,7 @@ export async function GET() {
   } catch (err) {
     return NextResponse.json({
       actServiceConfigured: true,
-      actServiceUrl: url,
+      actServiceUrl: base,
       reachable: false,
       error: err instanceof Error ? err.message : String(err),
     });

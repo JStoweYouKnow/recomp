@@ -7,8 +7,9 @@ export async function callActService<T>(
   body: unknown,
   options?: { timeoutMs?: number }
 ): Promise<T | null> {
-  const base = process.env.ACT_SERVICE_URL?.replace(/\/$/, "");
+  let base = process.env.ACT_SERVICE_URL?.trim().replace(/\/$/, "");
   if (!base) return null;
+  if (!/^https?:\/\//i.test(base)) base = `https://${base}`;
 
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
   const controller = new AbortController();
