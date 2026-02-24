@@ -13,7 +13,9 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-SCRIPT_DIR = Path(__file__).resolve().parent.parent / "scripts"
+# In Docker: app.py at /app/app.py, scripts at /app/scripts. Locally: act-service/app.py, scripts at recomp/scripts.
+_basedir = Path(__file__).resolve().parent
+SCRIPT_DIR = _basedir / "scripts" if (_basedir / "scripts").exists() else _basedir.parent / "scripts"
 NUTRITION_SCRIPT = SCRIPT_DIR / "nova_act_nutrition.py"
 GROCERY_SCRIPT = SCRIPT_DIR / "nova_act_grocery.py"
 
