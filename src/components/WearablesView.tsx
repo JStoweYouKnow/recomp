@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { WearableDaySummary } from "@/lib/types";
 
 function lbsToKg(lbs: number): number {
@@ -17,6 +17,8 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
   const [scaleWeight, setScaleWeight] = useState("");
   const [scaleBodyFat, setScaleBodyFat] = useState("");
   const [scaleDate, setScaleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setAppleSdkAvailable(isAppleHealthSdkAvailable());
@@ -80,6 +82,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
       }
     } else return;
     setLoading((l) => ({ ...l, import: true }));
+    setImportSuccess(null);
     try {
       const r = await fetch("/api/wearables/health/import", {
         method: "POST",
@@ -87,7 +90,19 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
         body: JSON.stringify(body),
       });
       const d = await r.json();
-      if (d.data) onDataFetched(d.data);
+      if (d.error) throw new Error(d.error);
+      if (d.data) {
+        onDataFetched(d.data);
+        const count = d.count ?? d.data?.length ?? 0;
+        setImportSuccess(`Imported ${count} day${count === 1 ? "" : "s"} successfully`);
+        setImportFile(null);
+        setImportJson("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        setTimeout(() => setImportSuccess(null), 4000);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Import failed");
     } finally {
       setLoading((l) => ({ ...l, import: false }));
     }
@@ -264,6 +279,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
             <p className="mb-3 text-sm text-[var(--muted)]">Upload .json (Apple Health / Health Connect) or .csv (Renpho: Device → History → Export data).</p>
             <div className="space-y-3">
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".json,.csv"
                 onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
@@ -277,6 +293,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
                 className="input-base w-full rounded-lg px-3 py-2 font-mono text-sm resize-y min-h-[80px]"
               />
               <button onClick={importHealth} disabled={loading.import} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">Import</button>
+              {importSuccess && <p className="text-sm font-medium text-[var(--accent)]">{importSuccess}</p>}
             </div>
           </div>
         </div>
