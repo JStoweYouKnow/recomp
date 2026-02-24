@@ -106,6 +106,7 @@ export function MealsView({
           remainingCalories: remainingCal || 500,
           remainingProtein: remainingPro || 30,
           restrictions: profile?.dietaryRestrictions ?? [],
+          goal: profile?.goal,
           recipes: recipes.map((r) => ({
             name: r.name,
             description: r.description,

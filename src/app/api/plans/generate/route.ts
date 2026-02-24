@@ -27,13 +27,66 @@ Guidelines:
 - Design exercises ONLY using the equipment listed; avoid exercises requiring equipment the user does not have
 - Account for dietary restrictions and injuries
 - Be encouraging and realistic
-- Format responses as valid JSON only, no markdown or extra text`;
+- Format responses as valid JSON only, no markdown or extra text
+
+Diet must be tailored to the user's goal:
+- lose_weight: High-volume, lower-calorie meals. Emphasize lean protein, fiber, vegetables. Avoid calorie-dense snacks. Specific foods: salads, grilled chicken, eggs, Greek yogurt, vegetables, berries, nuts in small portions.
+- maintain: Balanced, varied meals. Sustainable eating. Mix protein, carbs, and fat. Include favorite foods in moderation.
+- build_muscle: Higher protein (1.6–2.2g/kg), calorie surplus, carbs around training. Specific: oatmeal + eggs, chicken rice bowls, salmon/steak with potatoes, protein shakes, cottage cheese. Spread protein across 4–5 meals.
+- improve_endurance: Carbohydrate-focused for fuel. Oatmeal, pasta, rice, bananas, energy bars. Moderate protein; carbs before and after long sessions. Include electrolytes for long workouts.`;
 
 function parseJsonResponse(text: string): unknown {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("No JSON found in response");
   return JSON.parse(match[0]);
 }
+
+const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string; dinner: string; snack: string; tips: string[] }> = {
+  lose_weight: {
+    breakfast: "High-volume, protein-rich: eggs or Greek yogurt with veggies and berries to stay full on fewer calories",
+    lunch: "Large salad with grilled chicken or fish, light dressing; add quinoa or chickpeas for fiber and satiety",
+    dinner: "Lean protein (chicken breast, white fish) with steamed veggies and a small portion of whole grains",
+    snack: "Vegetable sticks and hummus, or a small handful of almonds with an apple",
+    tips: [
+      "Prioritize protein and fiber at each meal—they keep you full on fewer calories.",
+      "Use smaller plates; eat slowly. Drink water before meals.",
+      "Avoid liquid calories; swap sugary drinks for water, tea, or black coffee.",
+    ],
+  },
+  maintain: {
+    breakfast: "Balanced plate: oatmeal with nuts and fruit, or eggs with avocado toast—mix it up day to day",
+    lunch: "Varied lunches: grain bowl, wrap, or soup with a side of vegetables and protein",
+    dinner: "Balanced plate: protein, vegetables, and quality carbs (rice, potato, whole grains)",
+    snack: "Greek yogurt, fruit with nut butter, or a small portion of trail mix",
+    tips: [
+      "Keep variety in your meals to avoid boredom and stay consistent.",
+      "Listen to hunger cues; adjust portions based on activity level.",
+      "Hydrate consistently and aim for regular meal timing.",
+    ],
+  },
+  build_muscle: {
+    breakfast: "Oatmeal with eggs and banana, or protein pancakes—aim for 30–40g protein to kick off muscle synthesis",
+    lunch: "Chicken/beef rice bowl with vegetables; or a large sandwich with extra meat and a side of fruit",
+    dinner: "Generous protein (steak, salmon, or chicken thigh) with potatoes or rice and greens",
+    snack: "Protein shake, Greek yogurt with honey, or cottage cheese with fruit",
+    tips: [
+      "Spread protein evenly across 4–5 meals (aim for ~0.8g per lb bodyweight).",
+      "Eat a carb + protein meal within 1–2 hours after training.",
+      "Don't skip meals—consistency supports gains.",
+    ],
+  },
+  improve_endurance: {
+    breakfast: "Carb-focused: oatmeal or toast with peanut butter and banana; add eggs for protein",
+    lunch: "Pasta, rice, or wrap with lean protein and vegetables—carbs fuel your long sessions",
+    dinner: "Salmon or chicken with sweet potato and roasted vegetables for recovery",
+    snack: "Banana and nuts, energy bar, or a small smoothie",
+    tips: [
+      "Carbs are your main fuel; eat them before and after endurance sessions.",
+      "Aim for 3–5g carbs per kg bodyweight on heavy training days.",
+      "Include sodium and electrolytes if training in heat or for long durations.",
+    ],
+  },
+};
 
 function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
   const goalTargets: Record<UserProfile["goal"], Macros> = {
@@ -44,28 +97,29 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
   };
   const dailyTargets = goalTargets[profile.goal] ?? goalTargets.maintain;
   const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
+  const goalMeals = GOAL_MEALS[profile.goal] ?? GOAL_MEALS.maintain;
 
   const dietPlanDays = WEEK_DAYS.map((day) => ({
     day,
     meals: [
       {
         mealType: "Breakfast",
-        description: "Protein-rich breakfast with fruit and whole grains",
+        description: goalMeals.breakfast,
         macros: { calories: Math.round(dailyTargets.calories * 0.28), protein: Math.round(dailyTargets.protein * 0.28), carbs: Math.round(dailyTargets.carbs * 0.3), fat: Math.round(dailyTargets.fat * 0.3) },
       },
       {
         mealType: "Lunch",
-        description: "Lean protein bowl with complex carbs and vegetables",
+        description: goalMeals.lunch,
         macros: { calories: Math.round(dailyTargets.calories * 0.34), protein: Math.round(dailyTargets.protein * 0.34), carbs: Math.round(dailyTargets.carbs * 0.35), fat: Math.round(dailyTargets.fat * 0.33) },
       },
       {
         mealType: "Dinner",
-        description: "Balanced plate: protein, vegetables, and quality carbs",
+        description: goalMeals.dinner,
         macros: { calories: Math.round(dailyTargets.calories * 0.3), protein: Math.round(dailyTargets.protein * 0.3), carbs: Math.round(dailyTargets.carbs * 0.28), fat: Math.round(dailyTargets.fat * 0.3) },
       },
       {
         mealType: "Snack",
-        description: "High-protein snack (yogurt, nuts, or shake)",
+        description: goalMeals.snack,
         macros: { calories: Math.round(dailyTargets.calories * 0.08), protein: Math.round(dailyTargets.protein * 0.08), carbs: Math.round(dailyTargets.carbs * 0.07), fat: Math.round(dailyTargets.fat * 0.07) },
       },
     ],
@@ -99,11 +153,7 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
     dietPlan: {
       dailyTargets,
       weeklyPlan: dietPlanDays,
-      tips: [
-        "Prioritize protein at each meal to support your goal.",
-        "Adjust portion sizes based on hunger, recovery, and progress.",
-        "Hydrate consistently and aim for regular meal timing.",
-      ],
+      tips: goalMeals.tips,
     },
     workoutPlan: {
       weeklyPlan: workoutPlanDays,
@@ -208,16 +258,18 @@ Profile:
 - Dietary restrictions: ${profile.dietaryRestrictions.join(", ") || "None"}
 - Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}
 
+Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal (${profile.goal}). Name concrete foods and meal ideas—e.g. "Oatmeal with eggs and banana" not "Protein-rich breakfast". Vary meals across the week.
+
 Respond with this exact JSON structure:
 {
   "dailyTargets": {"calories": number, "protein": number, "carbs": number, "fat": number},
   "dietDays": [
-    {"day": "Monday", "meals": [{"mealType": "Breakfast", "description": "...", "calories": n, "protein": n, "carbs": n, "fat": n}]}
+    {"day": "Monday", "meals": [{"mealType": "Breakfast", "description": "Specific meal idea for their goal", "calories": n, "protein": n, "carbs": n, "fat": n}]}
   ],
   "workoutDays": [
     {"day": "Monday", "focus": "e.g. Upper Body", "exercises": [{"name": "...", "sets": "3", "reps": "8-12", "notes": "optional"}]}
   ],
-  "dietTips": ["tip1", "tip2"],
+  "dietTips": ["goal-specific nutrition tip 1", "goal-specific tip 2", "goal-specific tip 3"],
   "workoutTips": ["tip1", "tip2"]
 }`;
 

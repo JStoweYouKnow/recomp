@@ -3,8 +3,15 @@ import { invokeNova } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logInfo, logError } from "@/lib/logger";
 
-const SYSTEM_PROMPT = `You are a nutrition coach. Suggest 3-5 meal options for a given meal type and constraints.
-When the user provides a list of recipes from their cooking app, prefer suggesting those recipes or gourmet options inspired by them, as long as they fit within the remaining calorie and protein budget. If no recipes are provided, suggest varied, appealing options that fit the budget.
+const SYSTEM_PROMPT = `You are a nutrition coach. Suggest 3-5 meal options for a given meal type and constraints, TAILORED to the user's goal.
+
+Goals:
+- lose_weight: Prefer high-volume, filling, lower-calorie options (salads, grilled chicken, eggs, veggies, lean protein). Avoid calorie-dense foods.
+- maintain: Balanced, varied options the user can enjoy sustainably.
+- build_muscle: Protein-dense options (chicken, beef, eggs, Greek yogurt, protein shakes). Include carbs for recovery.
+- improve_endurance: Carb-focused options for fuel (oatmeal, rice, pasta, bananas, energy bars).
+
+When the user provides recipes from their cooking app, prefer those or similar options that fit the budget. If no recipes, suggest varied options that fit the budget AND suit their goal.
 Respond with valid JSON only.`;
 
 export async function POST(req: NextRequest) {
@@ -13,7 +20,9 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { mealType, remainingCalories, remainingProtein, restrictions, preferences, recipes } = body;
+    const { mealType, remainingCalories, remainingProtein, restrictions, preferences, recipes, goal } = body;
+
+    const goalBlock = goal ? `\nUser's fitness goal: ${goal}. Tailor suggestions to this goal (e.g. lose_weight = lighter/voluminous, build_muscle = protein-dense).\n` : "";
 
     const recipeBlock =
       recipes && Array.isArray(recipes) && recipes.length > 0
@@ -31,7 +40,7 @@ export async function POST(req: NextRequest) {
 - Remaining protein needed: ~${remainingProtein ?? "flexible"} g
 - Restrictions: ${restrictions?.join(", ") || "None"}
 - Preferences: ${preferences || "None"}
-${recipeBlock}
+${goalBlock}${recipeBlock}
 Respond with JSON only:
 {"suggestions": [{"name": "Meal name", "description": "Brief description", "calories": n, "protein": n, "carbs": n, "fat": n}, ...]}`;
 
