@@ -31,11 +31,18 @@ STORE_LABELS = {
 }
 
 
+def build_product_url(asin: str) -> str:
+    """Product page link—works without AssociateTag. User clicks Add to Cart on the page."""
+    return f"https://www.amazon.com/dp/{asin}"
+
+
 def build_add_to_cart_url(asin: str, qty: int = 1) -> str:
-    """Build Amazon add-to-cart URL. User clicks in their browser (logged in) to add to their cart."""
-    tag = os.environ.get("AMAZON_ASSOCIATE_TAG", "recomp-20").strip()
-    params = {"ASIN.1": asin, "Quantity.1": str(qty), "AssociateTag": tag or "recomp-20"}
-    return f"https://www.amazon.com/gp/aws/cart/add.html?{urllib.parse.urlencode(params)}"
+    """Build Amazon add-to-cart URL. Prefer product page (no AssociateTag needed)."""
+    tag = os.environ.get("AMAZON_ASSOCIATE_TAG", "").strip()
+    if tag:
+        params = {"ASIN.1": asin, "Quantity.1": str(qty), "AssociateTag": tag}
+        return f"https://www.amazon.com/gp/aws/cart/add.html?{urllib.parse.urlencode(params)}"
+    return build_product_url(asin)
 
 
 def run_with_nova_act(

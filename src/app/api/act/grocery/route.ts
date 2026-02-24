@@ -60,13 +60,33 @@ export async function POST(req: NextRequest) {
     }
 
     const timeoutMs = addToCart ? TIMEOUT_MS_ADD_TO_CART : TIMEOUT_MS_DEFAULT;
-    const serviceResult = await callActService<{ results?: unknown[]; error?: string }>(
+    const serviceResult = await callActService<{ results?: Array<{ searchTerm?: string; addToCartUrl?: string }>; error?: string }>(
       "/grocery",
       { items: limitedItems, store: validStore, addToCart: Boolean(addToCart) },
       { timeoutMs }
     );
-    if (serviceResult && (serviceResult.results || serviceResult.error)) {
+    if (serviceResult && Array.isArray(serviceResult.results) && serviceResult.results.length > 0) {
       const res = NextResponse.json(serviceResult);
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
+    // Act service failed (auth, timeout, etc.) — return search links so user can still add items
+    if (serviceResult?.error && process.env.ACT_SERVICE_URL) {
+      const searchResults = limitedItems.map((item) => ({
+        searchTerm: item,
+        found: true,
+        product: { name: item, price: "—", available: true },
+        addedToCart: false,
+        addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
+        source: "search-fallback",
+      }));
+      const res = NextResponse.json({
+        results: searchResults,
+        note: "Search Amazon for each item, then add to cart. Set NOVA_ACT_API_KEY on Railway for full automation.",
+      });
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
