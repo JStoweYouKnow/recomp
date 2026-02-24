@@ -9,6 +9,7 @@ interface GroceryResult {
   product?: { price?: string };
   addedToCart?: boolean;
   addToCartError?: string;
+  addToCartUrl?: string;
 }
 
 export function GrocerySearch({ plan }: { plan: FitnessPlan }) {
@@ -71,12 +72,17 @@ export function GrocerySearch({ plan }: { plan: FitnessPlan }) {
       {results && results.length > 0 && (
         <div className="space-y-1.5">
           {results.map((r, i) => (
-            <div key={i} className="flex items-center justify-between text-xs rounded-lg bg-[var(--surface-elevated)] px-3 py-2">
+            <div key={i} className="flex items-center justify-between gap-2 text-xs rounded-lg bg-[var(--surface-elevated)] px-3 py-2">
               <span>{r.searchTerm}</span>
-              <span className="text-[var(--muted)]">
+              <span className="flex items-center gap-1.5 text-[var(--muted)]">
                 {r.found ? (r.product?.price ?? "found") : "not found"}
-                {r.addedToCart && " · added"}
-                {r.addToCartError && ` · ${r.addToCartError}`}
+                {r.addedToCart && "· added"}
+                {r.addToCartUrl && (
+                  <a href={r.addToCartUrl} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline">
+                    Add to cart
+                  </a>
+                )}
+                {r.addToCartError && `· ${r.addToCartError}`}
               </span>
             </div>
           ))}

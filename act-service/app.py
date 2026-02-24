@@ -70,15 +70,20 @@ def grocery():
     items = data.get("items", [])
     store = data.get("store", "fresh")
     add_to_cart = data.get("addToCart", False)
+
     if not items or not isinstance(items, list):
         return jsonify({"error": "Items array required", "results": []}), 400
     if store not in ("fresh", "wholefoods", "amazon"):
         store = "fresh"
+
+    # When addToCart: script asks for ASIN, returns addToCartUrl per result.
+    # With session: script also clicks Add to Cart. Without: user clicks link in their browser → their cart.
     result = run_script(
         GROCERY_SCRIPT,
         {"items": items[: 2 if add_to_cart else 3], "store": store, "addToCart": add_to_cart},
         timeout=420 if add_to_cart else 360,
     )
+
     return jsonify(result)
 
 

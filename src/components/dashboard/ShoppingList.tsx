@@ -10,6 +10,7 @@ interface GroceryResult {
   product?: { name?: string; price?: string; available?: boolean };
   addedToCart?: boolean;
   addToCartError?: string;
+  addToCartUrl?: string;
   source?: string;
 }
 
@@ -121,7 +122,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
     <div className="card p-6">
       <h3 className="section-title !text-base mb-1">Shopping list</h3>
       <p className="section-subtitle mb-4">
-        Build a full list, choose your store, then send to Amazon. Optionally add items to your cart (requires Nova Act and a logged-in Amazon profile).
+        Build a full list, choose your store, then send to Amazon. With &quot;Add to cart&quot; checked, you can add items via one-click links (opens Amazon in your browser).
       </p>
 
       {/* Store & options */}
@@ -140,7 +141,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Requires Nova Act with a logged-in Amazon profile">
+        <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Add items via one-click links that open Amazon in your browser">
           <input
             type="checkbox"
             checked={addToCart}
@@ -152,7 +153,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
         </label>
       </div>
       {addToCart && (
-        <p className="text-xs text-[var(--muted)] mb-2">Uses your saved Amazon session (run setup_amazon_login.py once).</p>
+        <p className="text-xs text-[var(--muted)] mb-2">Click &quot;Add to cart&quot; links to add each item to your Amazon cart (must be logged in).</p>
       )}
 
       {/* Load from plan */}
@@ -236,13 +237,23 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
           {results.map((r, i) => (
             <div
               key={`${i}-${r.searchTerm}`}
-              className="flex items-center justify-between text-sm rounded-lg bg-[var(--surface-elevated)] px-3 py-2"
+              className="flex items-center justify-between gap-2 text-sm rounded-lg bg-[var(--surface-elevated)] px-3 py-2"
             >
               <span className="truncate">{r.searchTerm}</span>
-              <span className="shrink-0 text-[var(--muted)] text-xs ml-2">
+              <span className="shrink-0 flex items-center gap-2 text-[var(--muted)] text-xs">
                 {r.found ? (r.product?.price ?? "Found") : "Not found"}
-                {r.addedToCart && " · In cart"}
-                {r.addToCartError && ` · ${r.addToCartError}`}
+                {r.addedToCart && "· In cart"}
+                {r.addToCartUrl && (
+                  <a
+                    href={r.addToCartUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    Add to cart
+                  </a>
+                )}
+                {r.addToCartError && `· ${r.addToCartError}`}
               </span>
             </div>
           ))}

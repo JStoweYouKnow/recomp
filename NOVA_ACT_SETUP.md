@@ -135,3 +135,5 @@ Nova Act **does not run on Vercel** — serverless functions have no Python or b
 2. Or deploy `act-service/` as a Python app; ensure Chromium is available (see `act-service/Dockerfile`).
 3. Set `NOVA_ACT_API_KEY` in the service’s environment.
 4. Set `ACT_SERVICE_URL` in Vercel to your deployed service URL.
+
+**Add-to-cart in production:** The app returns "Add to cart" links when you check that option. Click the link in your browser (while logged into Amazon)—the item is added to *your* cart. No local setup needed. Optional: set `AMAZON_ASSOCIATE_TAG` (from Amazon Associates) for proper attribution. For automated click-to-add (local only), run `setup_amazon_login.py` and set `NOVA_ACT_USER_DATA_DIR`.
