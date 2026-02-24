@@ -5,9 +5,9 @@
 import { NextResponse } from "next/server";
 
 export async function GET() {
-  let base = process.env.ACT_SERVICE_URL?.trim().replace(/\/$/, "");
+  let base = (process.env.ACT_SERVICE_URL ?? "").trim().replace(/\/$/, "");
   const configured = !!base;
-  if (configured && !/^https?:\/\//i.test(base)) base = `https://${base}`;
+  if (base && !/^https?:\/\//i.test(base)) base = `https://${base}`;
 
   if (!configured) {
     return NextResponse.json({
