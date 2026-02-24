@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
+import { callActService } from "@/lib/act-service";
 import { runPython } from "@/lib/act-python";
 import {
   fixedWindowRateLimit,
@@ -49,6 +50,16 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
+    const serviceResult = await callActService<Record<string, unknown>>("/nutrition", { food }, { timeoutMs: TIMEOUT_MS });
+    if (serviceResult && (serviceResult.nutrition || serviceResult.error)) {
+      const res = NextResponse.json(serviceResult);
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
+
     const scriptPath = path.join(process.cwd(), "scripts", "nova_act_nutrition.py");
     const input = JSON.stringify({ food });
 
@@ -61,19 +72,19 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Reset", headers.reset);
       return res;
     } catch (actErr) {
-      const isPythonUnavailable =
-        actErr instanceof Error &&
-        (actErr.message.includes("Python not found") ||
-          actErr.message.includes("ENOENT") ||
-          actErr.message.includes("spawn"));
-      if (isPythonUnavailable) {
+      const msg = actErr instanceof Error ? actErr.message : String(actErr);
+      const isPythonUnavailable = msg.includes("Python not found") || msg.includes("ENOENT") || msg.includes("spawn");
+      const isNovaActMissing = msg.includes("nova-act") || msg.includes("nova_act") || msg.includes("ImportError");
+      if (isPythonUnavailable || isNovaActMissing) {
         const normalized = food.toLowerCase().trim();
         const res = NextResponse.json({
           food,
           nutrition: { calories: 120 + (normalized.length % 8) * 40, protein: 8 + (normalized.length % 4) * 5, carbs: 10 + (normalized.length % 6) * 4, fat: 4 + (normalized.length % 3) * 3 },
           demoMode: true,
           source: "estimated",
-          note: "Estimated values — install Python 3 and Nova Act for USDA lookup",
+          note: isNovaActMissing
+            ? "Estimated values — run: pip install nova-act"
+            : "Estimated values — install Python 3 and Nova Act for USDA lookup",
         });
         const headers = getRateLimitHeaderValues(rl);
         res.headers.set("X-RateLimit-Limit", headers.limit);

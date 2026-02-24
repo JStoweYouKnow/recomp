@@ -1,0 +1,12 @@
+# Railway config for act-service
+# Deploy from project root: railway up (or connect repo in Railway dashboard)
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "act-service/Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

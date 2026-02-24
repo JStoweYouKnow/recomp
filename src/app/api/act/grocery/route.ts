@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
+import { callActService } from "@/lib/act-service";
 import { runPython } from "@/lib/act-python";
 import {
   fixedWindowRateLimit,
@@ -58,6 +59,21 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
+    const timeoutMs = addToCart ? TIMEOUT_MS_ADD_TO_CART : TIMEOUT_MS_DEFAULT;
+    const serviceResult = await callActService<{ results?: unknown[]; error?: string }>(
+      "/grocery",
+      { items: limitedItems, store: validStore, addToCart: Boolean(addToCart) },
+      { timeoutMs }
+    );
+    if (serviceResult && (serviceResult.results || serviceResult.error)) {
+      const res = NextResponse.json(serviceResult);
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
+
     const scriptPath = path.join(process.cwd(), "scripts", "nova_act_grocery.py");
     const input = JSON.stringify({
       items: limitedItems,
@@ -65,7 +81,6 @@ export async function POST(req: NextRequest) {
       addToCart: Boolean(addToCart),
     });
 
-    const timeoutMs = addToCart ? TIMEOUT_MS_ADD_TO_CART : TIMEOUT_MS_DEFAULT;
     try {
       const result = await runPython(scriptPath, input, { timeoutMs });
       const res = NextResponse.json(result);
@@ -75,12 +90,10 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Reset", headers.reset);
       return res;
     } catch (actErr) {
-      const isPythonUnavailable =
-        actErr instanceof Error &&
-        (actErr.message.includes("Python not found") ||
-          actErr.message.includes("ENOENT") ||
-          actErr.message.includes("spawn"));
-      if (isPythonUnavailable) {
+      const msg = actErr instanceof Error ? actErr.message : String(actErr);
+      const isPythonUnavailable = msg.includes("Python not found") || msg.includes("ENOENT") || msg.includes("spawn");
+      const isNovaActMissing = msg.includes("nova-act") || msg.includes("nova_act");
+      if (isPythonUnavailable || isNovaActMissing) {
         const res = NextResponse.json({
           results: limitedItems.map((item) => ({
             searchTerm: item,
@@ -89,7 +102,9 @@ export async function POST(req: NextRequest) {
             addedToCart: false,
             source: "fallback",
           })),
-          note: "Python not found. Install Python 3 (e.g. brew install python3) or set ACT_PYTHON=/path/to/python",
+          note: isNovaActMissing
+            ? "Nova Act SDK not installed. Run: pip install nova-act"
+            : "Python not found. Install Python 3 (e.g. brew install python3) or set ACT_PYTHON=/path/to/python",
         });
         const headers = getRateLimitHeaderValues(rl);
         res.headers.set("X-RateLimit-Limit", headers.limit);

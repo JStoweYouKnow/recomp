@@ -1,0 +1,12 @@
+# Render blueprint for act-service
+# Deploy: connect repo at render.com → New → Blueprint → select this file
+
+services:
+  - type: web
+    name: recomp-act
+    dockerfilePath: ./act-service/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NOVA_ACT_API_KEY
+        sync: false  # Set manually in Render dashboard
+    healthCheckPath: /health

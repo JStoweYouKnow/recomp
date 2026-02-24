@@ -6,13 +6,15 @@ Nova Act uses a Chrome user data directory to persist cookies and login state.
 This script opens a browser, lets you log in to Amazon, then saves the session.
 
 Usage:
-  1. Set NOVA_ACT_USER_DATA_DIR to a path (e.g. ~/nova-act-amazon-profile)
-  2. Run: python3 scripts/setup_amazon_login.py
-  3. Log into Amazon (Fresh, Whole Foods, or main site) in the opened browser
-  4. Press Enter when done — the session will be saved
+  1. Get a Nova Act API key from https://nova.amazon.com/act?tab=dev_tools
+  2. Set NOVA_ACT_API_KEY (required for Nova Act to run):
+       export NOVA_ACT_API_KEY=your-key-here
+  3. Optionally set NOVA_ACT_USER_DATA_DIR (e.g. ~/nova-act-amazon-profile)
+  4. Run: python3 scripts/setup_amazon_login.py
+  5. Log into Amazon in the opened browser, then press Enter
 
-For grocery add-to-cart to work, set the same NOVA_ACT_USER_DATA_DIR when
-running the app (or in .env) so the grocery script reuses this profile.
+For grocery add-to-cart to work, set NOVA_ACT_USER_DATA_DIR in .env when
+running the app so the grocery script reuses this profile.
 """
 
 import os

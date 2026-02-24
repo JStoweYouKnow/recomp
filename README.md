@@ -151,11 +151,16 @@ npx tsx scripts/create-table.ts
 
 ### Nova Act (optional)
 
-```bash
-pip install nova-act
-```
+Nova Act powers nutrition lookup and grocery automation. To use it:
 
-If `nova-act` is not installed, the Act endpoints return realistic demo data via fuzzy food matching.
+1. **Get an API key** from [nova.amazon.com/act → Dev Tools](https://nova.amazon.com/act?tab=dev_tools). Add to `.env.local`:
+   ```
+   NOVA_ACT_API_KEY=your-key-here
+   ```
+2. **Install the package:** `pip install nova-act`
+3. For add-to-cart, run `scripts/setup_amazon_login.py` (see below).
+
+If `nova-act` is not installed or `NOVA_ACT_API_KEY` is missing, the Act endpoints return demo/estimated data.
 
 ### Known Limitations
 
@@ -185,6 +190,9 @@ If `nova-act` is not installed, the Act endpoints return realistic demo data via
 **Amazon login for add-to-cart:** To add grocery items to your Amazon cart, Nova Act needs a persisted browser profile with your login. One-time setup:
 
 ```bash
+# Nova Act API key required (get from nova.amazon.com/act → Dev Tools)
+export NOVA_ACT_API_KEY=your-key-here
+
 # Create profile dir and log in (browser will open)
 export NOVA_ACT_USER_DATA_DIR=~/nova-act-amazon-profile
 python3 scripts/setup_amazon_login.py
