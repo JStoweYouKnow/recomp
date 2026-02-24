@@ -78,24 +78,52 @@ export function TodayAtAGlance({
             <p className="text-caption mt-1 tabular-nums">{Math.max(0, adjustedBudget - todaysTotals.calories)} cal remaining</p>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(["calories", "protein", "carbs", "fat"] as const).map((key) => (
-              <div key={key} className={`card-flat rounded-lg px-2.5 py-2 macro-${key} transition-all hover:-translate-y-0.5 hover:shadow-[0_1px_3px_rgba(61,55,48,0.06)]`}>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
-                <p className="text-sm font-bold tabular-nums leading-tight">
-                  {key === "calories" ? todaysTotals.calories : `${todaysTotals[key]}g`}
-                  <span className="stat-value-dim !text-[10px]"> / {key === "calories" ? targets.calories : `${targets[key]}g`}</span>
-                </p>
-                <div className="progress-track !mt-1 h-1">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${pct(todaysTotals[key], targets[key])}%`,
-                      background: key === "calories" ? "var(--accent)" : key === "protein" ? "var(--accent-sage)" : key === "carbs" ? "var(--accent-warm)" : "var(--accent-terracotta)",
-                    }}
-                  />
+            {(["calories", "protein", "carbs", "fat"] as const).map((key) => {
+              const current = todaysTotals[key];
+              const target = targets[key];
+              const percent = pct(current, target);
+              const colorVar = key === "calories" ? "var(--accent)" : key === "protein" ? "var(--accent-sage)" : key === "carbs" ? "var(--accent-warm)" : "var(--accent-terracotta)";
+              const radius = 28;
+              const circumference = 2 * Math.PI * radius;
+              const dashOffset = circumference - (Math.min(percent, 100) / 100) * circumference;
+              // Contextual coloring
+              const adherenceColor = percent >= 90 && percent <= 110
+                ? "text-[var(--accent)]"
+                : percent > 110
+                  ? "text-[var(--accent-terracotta)]"
+                  : "text-[var(--foreground)]";
+
+              return (
+                <div key={key} className={`card-flat rounded-lg px-2.5 py-3 macro-${key} transition-all hover:-translate-y-0.5 hover:shadow-[0_1px_3px_rgba(61,55,48,0.06)] flex flex-col items-center`}>
+                  <div className="relative h-16 w-16 mb-1.5">
+                    <svg viewBox="0 0 64 64" className="h-full w-full -rotate-90">
+                      <circle cx="32" cy="32" r={radius} fill="none" stroke="var(--border-soft)" strokeWidth="4.5" />
+                      <circle
+                        cx="32" cy="32" r={radius}
+                        fill="none"
+                        stroke={colorVar}
+                        strokeWidth="4.5"
+                        strokeLinecap="round"
+                        strokeDasharray={circumference}
+                        strokeDashoffset={dashOffset}
+                        className="transition-all duration-700"
+                        style={{ transitionTimingFunction: "cubic-bezier(0.34, 1.56, 0.64, 1)" }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className={`text-xs font-bold tabular-nums leading-none ${adherenceColor}`}>
+                        {percent}%
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
+                  <p className={`text-sm font-bold tabular-nums leading-tight ${adherenceColor}`}>
+                    {key === "calories" ? current : `${current}g`}
+                    <span className="stat-value-dim !text-[10px]"> / {key === "calories" ? target : `${target}g`}</span>
+                  </p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="flex items-center justify-between pt-1">
             <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary text-xs min-h-[32px]">

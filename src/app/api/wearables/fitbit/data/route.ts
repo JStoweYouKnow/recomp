@@ -23,9 +23,10 @@ export async function GET(req: NextRequest) {
     weekAgo.setDate(weekAgo.getDate() - 7);
     const start = weekAgo.toISOString().slice(0, 10);
 
-    const [activities, sleep] = await Promise.all([
+    const [activities, sleep, bodyWeight] = await Promise.all([
       fetchFitbit(token, `activities/date/${today}.json`) as Promise<{ activities: unknown[]; summary: { steps?: number; caloriesOut?: number; activeMinutes?: number } }>,
       fetchFitbit(token, `sleep/date/${start}/${today}.json`) as Promise<{ sleep: { dateOfSleep: string; efficiency?: number; duration?: number }[] }>,
+      fetchFitbit(token, `body/log/weight/date/${start}/30d.json`) as Promise<{ weight: { date: string; weight?: number; fat?: number; time?: string }[] }>,
     ]).catch(async (e) => {
       if (e.message === "TOKEN_EXPIRED" && req.cookies.get("fitbit_refresh_token")?.value) {
         const refreshRes = await fetch("https://api.fitbit.com/oauth2/token", {
@@ -45,13 +46,14 @@ export async function GET(req: NextRequest) {
           return Promise.all([
             fetchFitbit(token!, `activities/date/${today}.json`),
             fetchFitbit(token!, `sleep/date/${start}/${today}.json`),
+            fetchFitbit(token!, `body/log/weight/date/${start}/30d.json`),
           ]);
         }
       }
       throw e;
     });
 
-    const summaries: Array<{ date: string; provider: string; steps?: number; caloriesBurned?: number; activeMinutes?: number; sleepScore?: number; sleepDuration?: number }> = [];
+    const summaries: Array<{ date: string; provider: string; steps?: number; caloriesBurned?: number; activeMinutes?: number; sleepScore?: number; sleepDuration?: number; weight?: number; bodyFatPercent?: number }> = [];
     const act = activities as { summary?: { steps?: number; caloriesOut?: number; activeMinutes?: number } };
     if (act?.summary) {
       summaries.push({
@@ -77,6 +79,25 @@ export async function GET(req: NextRequest) {
             provider: "fitbit",
             sleepScore: s.efficiency,
             sleepDuration: s.duration ? Math.round(s.duration / 60000) : undefined,
+          });
+        }
+      });
+    }
+
+    // Body weight from Fitbit Aria / compatible scales (syncs via Fitbit app)
+    const bw = bodyWeight as { weight?: { date: string; weight?: number; fat?: number }[] };
+    if (bw?.weight?.length) {
+      bw.weight.forEach((w) => {
+        const existing = summaries.find((x) => x.date === w.date);
+        if (existing) {
+          existing.weight = w.weight;
+          if (w.fat != null) existing.bodyFatPercent = w.fat;
+        } else {
+          summaries.push({
+            date: w.date,
+            provider: "fitbit",
+            weight: w.weight,
+            bodyFatPercent: w.fat,
           });
         }
       });

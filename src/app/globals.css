@@ -712,3 +712,70 @@ h6 {
   background-size: 200% 100%;
   animation: shimmer 1.5s ease-in-out infinite;
 }
+
+/* ── Organic blob backgrounds ── */
+.section-organic {
+  position: relative;
+  overflow: hidden;
+}
+.section-organic::before,
+.section-organic::after {
+  content: "";
+  position: absolute;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  filter: blur(60px);
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 0;
+  animation: blob-drift 18s ease-in-out infinite alternate;
+}
+.section-organic::before {
+  width: 260px;
+  height: 260px;
+  background: var(--accent);
+  top: -60px;
+  right: -40px;
+}
+.section-organic::after {
+  width: 200px;
+  height: 200px;
+  background: var(--accent-warm);
+  bottom: -40px;
+  left: -30px;
+  animation-delay: -8s;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+}
+@keyframes blob-drift {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(12px, -8px) scale(1.05); }
+  100% { transform: translate(-8px, 6px) scale(0.97); }
+}
+
+/* ── Glassmorphism hero card ── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow:
+    0 4px 24px rgba(61, 55, 48, 0.06),
+    0 1px 3px rgba(61, 55, 48, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* ── Animated morphing nav indicator ── */
+.nav-morphing {
+  position: relative;
+}
+.nav-morph-pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--accent-10);
+  border-radius: var(--radius-full);
+  box-shadow: 0 0 0 1px rgba(107, 124, 60, 0.2);
+  transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), width 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 0;
+  pointer-events: none;
+}

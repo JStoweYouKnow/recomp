@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from "react";
 import type { WearableDaySummary } from "@/lib/types";
+
+function lbsToKg(lbs: number): number {
+  return lbs / 2.2046226218;
+}
 import { isAppleHealthSdkAvailable, requestAppleHealthSdkSync } from "@/lib/apple-health-bridge";
 
 export function WearablesView({ onDataFetched }: { onDataFetched: (data: WearableDaySummary[]) => void }) {
@@ -10,6 +14,9 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
   const [importJson, setImportJson] = useState("");
   const [importFile, setImportFile] = useState<File | null>(null);
   const [appleSdkAvailable, setAppleSdkAvailable] = useState(false);
+  const [scaleWeight, setScaleWeight] = useState("");
+  const [scaleBodyFat, setScaleBodyFat] = useState("");
+  const [scaleDate, setScaleDate] = useState(() => new Date().toISOString().slice(0, 10));
 
   useEffect(() => {
     setAppleSdkAvailable(isAppleHealthSdkAvailable());
@@ -54,23 +61,65 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
   };
 
   const importHealth = async () => {
-    let json: unknown;
+    let body: Record<string, unknown> | unknown;
     if (importFile) {
-      json = JSON.parse(await importFile.text());
+      const text = await importFile.text();
+      const isCsv = importFile.name.toLowerCase().endsWith(".csv") || text.trim().includes(",") && /[\r\n]/.test(text);
+      if (isCsv) {
+        body = { csv: text };
+      } else {
+        body = JSON.parse(text);
+      }
     } else if (importJson.trim()) {
-      json = JSON.parse(importJson);
+      const s = importJson.trim();
+      try {
+        body = JSON.parse(s);
+      } catch {
+        // Likely Renpho CSV paste
+        body = { csv: s };
+      }
     } else return;
     setLoading((l) => ({ ...l, import: true }));
     try {
       const r = await fetch("/api/wearables/health/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(json),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       if (d.data) onDataFetched(d.data);
     } finally {
       setLoading((l) => ({ ...l, import: false }));
+    }
+  };
+
+  const addManualWeight = async () => {
+    const lbs = parseFloat(scaleWeight);
+    if (!Number.isFinite(lbs) || lbs < 44 || lbs > 1100) {
+      alert("Enter weight in lbs (44–1100)");
+      return;
+    }
+    setLoading((l) => ({ ...l, scale: true }));
+    try {
+      const r = await fetch("/api/wearables/scale/entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: scaleDate,
+          weightKg: lbsToKg(lbs),
+          bodyFatPercent: scaleBodyFat ? parseFloat(scaleBodyFat) : undefined,
+        }),
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      if (d.data) onDataFetched(d.data);
+      setScaleWeight("");
+      setScaleBodyFat("");
+    } catch (err) {
+      console.error(err);
+      alert(err instanceof Error ? err.message : "Failed to add weight");
+    } finally {
+      setLoading((l) => ({ ...l, scale: false }));
     }
   };
 
@@ -104,6 +153,57 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
           Connect one or more devices to see steps, sleep, and heart rate on your dashboard and in your Weekly AI Review.
         </p>
       </header>
+
+      {/* Smart scales */}
+      <section>
+        <h3 className="section-title !text-base mb-1">Smart &amp; Bluetooth scales</h3>
+        <p className="section-subtitle mb-4">
+          Log weight from any scale. <strong>Renpho</strong> — export CSV in app (Device → History → Export data), then import below. Fitbit Aria syncs via Fitbit. Withings, Eufy sync to Apple Health — import JSON.
+        </p>
+        <div className="card rounded-xl p-6 space-y-4">
+          <h4 className="font-medium text-[var(--foreground)]">Manual entry</h4>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <label className="label text-xs">Date</label>
+              <input
+                type="date"
+                value={scaleDate}
+                onChange={(e) => setScaleDate(e.target.value.slice(0, 10))}
+                className="input-base w-full"
+              />
+            </div>
+            <div>
+              <label className="label text-xs">Weight (lbs)</label>
+              <input
+                type="number"
+                step="0.1"
+                min={44}
+                max={1100}
+                value={scaleWeight}
+                onChange={(e) => setScaleWeight(e.target.value)}
+                placeholder="e.g. 165"
+                className="input-base w-full"
+              />
+            </div>
+            <div>
+              <label className="label text-xs">Body fat % (optional)</label>
+              <input
+                type="number"
+                step="0.1"
+                min={0}
+                max={100}
+                value={scaleBodyFat}
+                onChange={(e) => setScaleBodyFat(e.target.value)}
+                placeholder="e.g. 18"
+                className="input-base w-full"
+              />
+            </div>
+          </div>
+          <button onClick={addManualWeight} disabled={loading.scale || !scaleWeight.trim()} className="btn-primary text-sm disabled:opacity-50">
+            {loading.scale ? "Adding…" : "Add weight"}
+          </button>
+        </div>
+      </section>
 
       {/* Smart rings & trackers */}
       <section>
@@ -161,18 +261,18 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
           <hr className="border-[var(--border-soft)]" />
           <div>
             <h4 className="mb-2 font-medium text-[var(--foreground)]">Import from export</h4>
-            <p className="mb-3 text-sm text-[var(--muted)]">Upload a .json file or paste exported Apple Health / Health Connect data.</p>
+            <p className="mb-3 text-sm text-[var(--muted)]">Upload .json (Apple Health / Health Connect) or .csv (Renpho: Device → History → Export data).</p>
             <div className="space-y-3">
               <input
                 type="file"
-                accept=".json"
+                accept=".json,.csv"
                 onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
                 className="block w-full max-w-xs text-sm text-[var(--muted)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--surface-elevated)] file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-[var(--foreground)]"
               />
               <textarea
                 value={importJson}
                 onChange={(e) => setImportJson(e.target.value)}
-                placeholder='Or paste JSON: {"data": [{"date": "2025-02-10", "steps": 5000, ...}]}'
+                placeholder='Or paste JSON or Renpho CSV (Device → History → Export data)'
                 rows={3}
                 className="input-base w-full rounded-lg px-3 py-2 font-mono text-sm resize-y min-h-[80px]"
               />

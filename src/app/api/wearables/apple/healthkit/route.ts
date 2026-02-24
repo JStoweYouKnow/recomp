@@ -10,6 +10,8 @@ type WearableSummary = {
   sleepDuration?: number;
   heartRateAvg?: number;
   workouts?: { name: string; duration: number; calories?: number }[];
+  weight?: number;
+  bodyFatPercent?: number;
 };
 
 function toNumber(value: unknown): number | undefined {
@@ -90,6 +92,14 @@ function normalizeAppleSamples(payload: unknown): WearableSummary[] {
     if (type.includes("heart")) {
       const hr = value ?? toNumber(sample.heartRate ?? sample.heartRateAvg);
       if (hr != null) existing.heartRateAvg = hr;
+    }
+    if (type.includes("weight") || type.includes("bodymass") || type === "kg") {
+      const w = value ?? toNumber(sample.weight);
+      if (w != null) existing.weight = w; // Apple Health uses kg for HKQuantityTypeIdentifierBodyMass
+    }
+    if (type.includes("fat") || type.includes("bodyfat")) {
+      const bf = value ?? toNumber(sample.bodyFatPercent ?? sample.bodyFat);
+      if (bf != null) existing.bodyFatPercent = bf;
     }
 
     if (Array.isArray(sample.workouts)) {

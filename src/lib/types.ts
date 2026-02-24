@@ -87,7 +87,7 @@ export interface FitnessPlan {
   reasoning?: string;
 }
 
-export type WearableProvider = "oura" | "fitbit" | "apple" | "garmin" | "android";
+export type WearableProvider = "oura" | "fitbit" | "apple" | "garmin" | "android" | "scale";
 
 export interface WearableConnection {
   provider: WearableProvider;
@@ -107,6 +107,12 @@ export interface WearableDaySummary {
   heartRateAvg?: number;
   heartRateResting?: number;
   workouts?: { name: string; duration: number; calories?: number }[];
+  /** Weight in kg (from scale, Fitbit Aria, Apple Health, etc.) */
+  weight?: number;
+  /** Body fat % (0–100) when available from smart scale */
+  bodyFatPercent?: number;
+  /** Muscle mass in kg when available */
+  muscleMass?: number;
 }
 
 export type MilestoneType =

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
 import { computeMilestones } from "@/lib/milestones";
@@ -22,6 +22,27 @@ export default function Home() {
   const [meals, setMeals] = useState<MealEntry[]>([]);
   const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "wearables" | "milestones" | "profile">("onboard");
   const prevViewRef = useRef<string>("dashboard");
+  const navContainerRef = useRef<HTMLElement>(null);
+  const navBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [pillStyle, setPillStyle] = useState<{ transform: string; width: string } | null>(null);
+
+  const updatePill = useCallback(() => {
+    const container = navContainerRef.current;
+    const btn = navBtnRefs.current[view];
+    if (!container || !btn) return;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
+    setPillStyle({
+      transform: `translateX(${bRect.left - cRect.left}px)`,
+      width: `${bRect.width}px`,
+    });
+  }, [view]);
+
+  useEffect(() => {
+    updatePill();
+    window.addEventListener("resize", updatePill);
+    return () => window.removeEventListener("resize", updatePill);
+  }, [updatePill]);
   const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "wearables", "milestones", "profile"] as const;
   const getSlideClass = (v: string) => {
     const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
@@ -301,7 +322,14 @@ export default function Home() {
           </button>
           <span className="hidden md:inline-flex items-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">Amazon Nova AI</span>
 
-          <nav className="flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
+          <nav ref={navContainerRef} className="nav-morphing flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
+            {pillStyle && (
+              <span
+                className="nav-morph-pill"
+                style={pillStyle}
+                aria-hidden="true"
+              />
+            )}
             {([
               ["dashboard", "Dashboard", "Go to dashboard"],
               ["meals", "Meals", "Log meals and track macros"],
@@ -313,8 +341,9 @@ export default function Home() {
             ] as const).map(([key, label, title]) => (
               <button
                 key={key}
+                ref={(el) => { navBtnRefs.current[key] = el; }}
                 onClick={() => navigateTo(key)}
-                className={`nav-item ${view === key ? "nav-item-active" : ""}`}
+                className={`nav-item relative z-[1] ${view === key ? "nav-item-active !bg-transparent !shadow-none" : ""}`}
                 aria-current={view === key ? "page" : undefined}
                 title={title}
               >
@@ -353,11 +382,39 @@ export default function Home() {
               }`}
               aria-current={view === key ? "page" : undefined}
             >
-              <span className="text-lg font-medium">
-                {key === "dashboard" && "📊"}
-                {key === "meals" && "🍽"}
-                {key === "workouts" && "💪"}
-                {key === "adjust" && "⚙"}
+              <span className="flex items-center justify-center h-5 w-5">
+                {key === "dashboard" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="4" rx="1.5" />
+                    <rect x="14" y="11" width="7" height="10" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                )}
+                {key === "meals" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M18 8h1a4 4 0 010 8h-1" />
+                    <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+                    <line x1="6" y1="1" x2="6" y2="4" />
+                    <line x1="10" y1="1" x2="10" y2="4" />
+                    <line x1="14" y1="1" x2="14" y2="4" />
+                  </svg>
+                )}
+                {key === "workouts" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M6.5 6.5a2.5 2.5 0 015 0v11a2.5 2.5 0 01-5 0v-11z" />
+                    <path d="M17.5 6.5a2.5 2.5 0 00-5 0v11a2.5 2.5 0 005 0v-11z" />
+                    <path d="M4 12h16" />
+                    <path d="M2 12h2" />
+                    <path d="M20 12h2" />
+                  </svg>
+                )}
+                {key === "adjust" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
+                  </svg>
+                )}
               </span>
               <span className="text-[10px] font-medium capitalize">{key}</span>
             </button>

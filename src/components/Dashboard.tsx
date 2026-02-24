@@ -243,12 +243,12 @@ export function Dashboard({
 
   return (
     <div className="space-y-8">
-      {/* ── Page header ── */}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="flex items-center gap-4">
+      {/* ── Page header (glassmorphism hero) ── */}
+      <div className="section-organic glass-card rounded-2xl p-6 flex flex-wrap items-end justify-between gap-4">
+        <div className="flex items-center gap-4 relative z-[1]">
           <label className="relative flex h-14 w-14 sm:h-16 sm:w-16 cursor-pointer group shrink-0 rounded-full" aria-label="Upload profile picture">
             <input type="file" accept="image/*" onChange={handleAvatarUpload} className="sr-only" />
-            <div className="absolute inset-0 rounded-full overflow-hidden border-2 border-[var(--border-soft)] bg-[var(--surface-elevated)] ring-2 ring-transparent group-hover:ring-[var(--accent)]/30 transition-all">
+            <div className="absolute inset-0 rounded-full overflow-hidden border-2 border-white/60 bg-[var(--surface-elevated)] ring-2 ring-transparent group-hover:ring-[var(--accent)]/30 transition-all shadow-md">
               {profile.avatarDataUrl ? (
                 <img src={profile.avatarDataUrl} alt="Profile avatar" className="w-full h-full object-cover" />
               ) : (
@@ -268,13 +268,13 @@ export function Dashboard({
             <p className="section-subtitle mt-0.5">Here&apos;s your progress today</p>
           </div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 relative z-[1]">
           {[
             [`${profile.age}`, "age"],
             [`${displayWeightLbs} lbs`, "weight"],
             [`${displayHeight.ft}′${displayHeight.inch}″`, "height"],
           ].map(([val, lbl]) => (
-            <span key={lbl} className="badge badge-muted">
+            <span key={lbl} className="badge badge-muted backdrop-blur-sm bg-white/60">
               <span className="text-[var(--foreground)] font-medium">{val}</span>
               <span>{lbl}</span>
             </span>
@@ -513,9 +513,12 @@ export function Dashboard({
               <div key={`${d.date}-${d.provider}`} className="card-flat rounded-xl px-4 py-3">
                 <p className="text-caption mb-1">{d.date} · {d.provider}</p>
                 <p className="text-sm font-medium">
-                  {d.steps != null && `${d.steps.toLocaleString()} steps`}
+                  {d.weight != null && `${Math.round(kgToLbs(d.weight))} lbs`}
+                  {d.bodyFatPercent != null && ` · ${d.bodyFatPercent}% fat`}
+                  {d.steps != null && ` · ${d.steps.toLocaleString()} steps`}
                   {d.sleepScore != null && ` · Sleep ${d.sleepScore}`}
                   {d.readinessScore != null && ` · Ready ${d.readinessScore}`}
+                  {!d.weight && !d.bodyFatPercent && !d.steps && !d.sleepScore && !d.readinessScore && "—"}
                 </p>
               </div>
             ))}

@@ -280,6 +280,28 @@ function executeWearableAnalysis(
     };
   }
 
+  if (metric === "weight" || metric === "all") {
+    const weights = recent
+      .filter((d) => d.weight != null)
+      .map((d) => ({ date: d.date, weight: d.weight!, bodyFat: d.bodyFatPercent }));
+    if (weights.length > 0) {
+      const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
+      result.weight = {
+        dataPoints: weights.length,
+        latestKg: Math.round(sorted[sorted.length - 1].weight * 10) / 10,
+        oldestKg: Math.round(sorted[0].weight * 10) / 10,
+        avgBodyFat: weights.some((w) => w.bodyFat != null)
+          ? Math.round(
+              weights
+                .filter((w) => w.bodyFat != null)
+                .reduce((s, w) => s + (w.bodyFat ?? 0), 0) /
+                weights.filter((w) => w.bodyFat != null).length
+            )
+          : null,
+      };
+    }
+  }
+
   const readiness = recent
     .filter((d) => d.readinessScore != null)
     .map((d) => d.readinessScore!);
