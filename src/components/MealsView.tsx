@@ -275,6 +275,10 @@ export function MealsView({
           setNutritionSource("web");
         }
       }
+      if (!data?.nutrition && actRes.ok && actData?.nutrition) {
+        data = actData;
+        setNutritionSource("estimated");
+      }
       if (data?.nutrition) {
         setCal(String(data.nutrition.calories ?? ""));
         setPro(String(data.nutrition.protein ?? ""));
