@@ -66,13 +66,39 @@ export async function POST(req: NextRequest) {
     });
 
     const timeoutMs = addToCart ? TIMEOUT_MS_ADD_TO_CART : TIMEOUT_MS_DEFAULT;
-    const result = await runPython(scriptPath, input, { timeoutMs });
-    const res = NextResponse.json(result);
-    const headers = getRateLimitHeaderValues(rl);
-    res.headers.set("X-RateLimit-Limit", headers.limit);
-    res.headers.set("X-RateLimit-Remaining", headers.remaining);
-    res.headers.set("X-RateLimit-Reset", headers.reset);
-    return res;
+    try {
+      const result = await runPython(scriptPath, input, { timeoutMs });
+      const res = NextResponse.json(result);
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    } catch (actErr) {
+      const isPythonUnavailable =
+        actErr instanceof Error &&
+        (actErr.message.includes("Python not found") ||
+          actErr.message.includes("ENOENT") ||
+          actErr.message.includes("spawn"));
+      if (isPythonUnavailable) {
+        const res = NextResponse.json({
+          results: limitedItems.map((item) => ({
+            searchTerm: item,
+            found: false,
+            product: null,
+            addedToCart: false,
+            source: "fallback",
+          })),
+          note: "Python not found. Install Python 3 (e.g. brew install python3) or set ACT_PYTHON=/path/to/python",
+        });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+      throw actErr;
+    }
   } catch (err) {
     console.error("Act grocery error:", err);
     return NextResponse.json(

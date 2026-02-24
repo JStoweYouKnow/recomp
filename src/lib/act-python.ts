@@ -1,5 +1,13 @@
 import { spawn } from "child_process";
 
+const COMMON_PYTHON_PATHS = [
+  "/opt/homebrew/bin/python3",      // macOS Homebrew (Apple Silicon)
+  "/usr/local/bin/python3",         // macOS Homebrew (Intel)
+  "/usr/bin/python3",               // Linux / macOS system
+  "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
+  "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3",
+];
+
 /** Resolve Python executable: ACT_PYTHON or PYTHON env, else python3, with python as fallback on ENOENT. */
 export function getPythonCommand(): string {
   return process.env.ACT_PYTHON || process.env.PYTHON || "python3";
@@ -12,17 +20,28 @@ export function runPython(
 ): Promise<unknown> {
   const timeoutMs = options?.timeoutMs ?? 60_000;
   const cmd = getPythonCommand();
-  return runPythonWithCommand(cmd, scriptPath, stdinData, timeoutMs).catch((err) => {
+  return runPythonWithCommand(cmd, scriptPath, stdinData, timeoutMs).catch(async (err) => {
     const code = (err as NodeJS.ErrnoException).code;
-    if (code === "ENOENT" && cmd === "python3" && !process.env.ACT_PYTHON && !process.env.PYTHON) {
-      return runPythonWithCommand("python", scriptPath, stdinData, timeoutMs).catch((retryErr) => {
-        if ((retryErr as NodeJS.ErrnoException).code === "ENOENT") {
-          throw new Error("Python not found. Install Python 3 (e.g. brew install python3) or set ACT_PYTHON=/path/to/python");
-        }
-        throw retryErr;
-      });
+    if (code !== "ENOENT") throw err;
+
+    // User set ACT_PYTHON/PYTHON but it failed — don't override
+    if (process.env.ACT_PYTHON || process.env.PYTHON) {
+      throw new Error(`Python not found at ${cmd}. Fix ACT_PYTHON or PYTHON (e.g. ACT_PYTHON=/opt/homebrew/bin/python3)`);
     }
-    throw err;
+
+    // Try "python" then common absolute paths
+    const toTry = ["python", ...COMMON_PYTHON_PATHS];
+    let lastErr = err;
+    for (const candidate of toTry) {
+      if (candidate === cmd) continue;
+      try {
+        return await runPythonWithCommand(candidate, scriptPath, stdinData, timeoutMs);
+      } catch (e) {
+        lastErr = e;
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      }
+    }
+    throw new Error("Python not found. Install Python 3 (brew install python3) or set ACT_PYTHON=/opt/homebrew/bin/python3");
   });
 }
 

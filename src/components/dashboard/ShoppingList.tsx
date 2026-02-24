@@ -47,6 +47,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [results, setResults] = useState<GroceryResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     setItems(getShoppingList());
@@ -87,6 +88,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
     }
     setSending(true);
     setError(null);
+    setNote(null);
     setResults([]);
     const allResults: GroceryResult[] = [];
     try {
@@ -102,6 +104,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
           setError(data.error ?? "Request failed");
           break;
         }
+        if (data.note) setNote(data.note);
         const batchResults = Array.isArray(data.results) ? data.results : [];
         allResults.push(...batchResults);
         setResults([...allResults]);
@@ -224,6 +227,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
       </div>
 
       {error && <p className="text-sm text-[var(--accent-terracotta)] mb-2" role="alert">{error}</p>}
+      {note && !error && <p className="text-sm text-[var(--muted)] mb-2">{note}</p>}
 
       {/* Results */}
       {results.length > 0 && (
