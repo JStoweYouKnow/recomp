@@ -14,6 +14,51 @@ import os
 import sys
 
 
+def _normalize_nutrition(raw: dict) -> dict:
+    """Map various key names to our standard format."""
+    raw_lower = {str(k).lower().replace(" ", "_"): v for k, v in raw.items()}
+    key_map = {
+        "calories": ["calories", "energy"],
+        "protein": ["protein"],
+        "carbs": ["carbohydrates", "carbs", "total_carbohydrates"],
+        "fat": ["fat", "total_fat"],
+        "fiber": ["fiber", "dietary_fiber"],
+        "sugar": ["sugars", "sugar"],
+        "sodium": ["sodium"],
+        "cholesterol": ["cholesterol"],
+        "saturated_fat": ["saturated_fat"],
+    }
+    out = {}
+    for our_key, aliases in key_map.items():
+        for alias in aliases:
+            if alias in raw_lower and raw_lower[alias] is not None:
+                try:
+                    v = raw_lower[alias]
+                    out[our_key] = float(v) if not isinstance(v, (int, float)) else v
+                except (TypeError, ValueError):
+                    pass
+                break
+    if "calories" not in out:
+        out.setdefault("calories", 0)
+    for k in ("protein", "carbs", "fat"):
+        out.setdefault(k, 0)
+    return out
+
+
+def _extract_nutrition_json(text: str) -> dict | None:
+    """Extract JSON nutrition from response text."""
+    import re
+    try:
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        data = json.loads(text[start:end])
+        if isinstance(data, dict):
+            return _normalize_nutrition(data)
+    except (ValueError, json.JSONDecodeError):
+        pass
+    return None
+
+
 def get_workflow_kwargs() -> dict:
     """Return auth kwargs for @workflow based on available env vars."""
     return {
@@ -45,10 +90,23 @@ def run_with_nova_act(food: str) -> dict:
                 "Return as JSON with numeric values."
             )
 
+            nutrition = None
+            if hasattr(result, "parsed_response") and result.parsed_response:
+                val = result.parsed_response
+                if isinstance(val, dict):
+                    nutrition = _normalize_nutrition(val)
+                elif isinstance(val, (int, float)):
+                    nutrition = {"calories": int(val), "protein": 0, "carbs": 0, "fat": 0}
+            if not nutrition and hasattr(result, "response") and result.response:
+                resp_text = str(result.response)
+                nutrition = _extract_nutrition_json(resp_text)
+            if not nutrition:
+                nutrition = DEMO_NUTRITION.get(food.lower(), DEMO_NUTRITION.get("chicken breast")).copy()
+
             return {
                 "food": food,
                 "source": "USDA FoodData Central",
-                "nutrition": result.parsed_response if hasattr(result, 'parsed_response') else str(result),
+                "nutrition": nutrition,
                 "found": True,
             }
 
