@@ -252,17 +252,23 @@ export function MealsView({
     setNutritionLookupLoading(true);
     setNutritionSource(null);
     try {
-      let data: { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string } | null = null;
-      const actRes = await fetch("/api/act/nutrition", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ food }),
-      });
-      const actData = await actRes.json();
-      if (actRes.ok && actData?.nutrition && !actData.note?.includes("Estimated values")) {
-        data = actData;
-        setNutritionSource(actData.demoMode ? "estimated" : "usda");
-      }
+      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string };
+      let data: NutritionData | null = null;
+      let actFallback: NutritionData | null = null;
+      try {
+        const actRes = await fetch("/api/act/nutrition", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ food }),
+        });
+        const actData: NutritionData | null = actRes.ok ? await actRes.json() : null;
+        if (actData?.nutrition && !actData.note?.includes("Estimated values")) {
+          data = actData;
+          setNutritionSource(actData.demoMode ? "estimated" : "usda");
+        } else if (actData?.nutrition) {
+          actFallback = actData;
+        }
+      } catch { /* fall through to web lookup */ }
       if (!data?.nutrition) {
         const webRes = await fetch("/api/meals/lookup-nutrition-web", {
           method: "POST",
@@ -275,8 +281,8 @@ export function MealsView({
           setNutritionSource("web");
         }
       }
-      if (!data?.nutrition && actRes.ok && actData?.nutrition) {
-        data = actData;
+      if (!data?.nutrition && actFallback?.nutrition) {
+        data = actFallback;
         setNutritionSource("estimated");
       }
       if (data?.nutrition) {

@@ -104,7 +104,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
         try {
           data = await res.json();
         } catch {
-          setNote(res.status === 504 ? "Request timed out. Showing search links below." : "Could not parse response.");
+          setNote("Request timed out. Showing search links below.");
           const fallback = batches[i].map((item) => ({
             searchTerm: item,
             found: true,
