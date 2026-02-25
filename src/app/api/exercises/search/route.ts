@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logInfo, logError } from "@/lib/logger";
 
-const EXERCISEDB_BASE = "https://exercisedb-api.vercel.app/api/v1/exercises";
+const EXERCISEDB_BASE = "https://www.exercisedb.dev/api/v1/exercises";
 
 interface ExerciseResult {
   exerciseId: string;
@@ -65,10 +65,10 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Fallback: try first word only (e.g. "Barbell bench press" → "bench press")
+    // Fallback: try last two words (e.g. "Barbell bench press" → "bench press")
     const words = name.toLowerCase().split(/\s+/);
     if (words.length > 1) {
-      const fallbackTerm = words.slice(-2).join(" "); // last two words
+      const fallbackTerm = words.slice(-2).join(" ");
       const res2 = await fetch(
         `${EXERCISEDB_BASE}?search=${encodeURIComponent(fallbackTerm)}&limit=3`,
         { next: { revalidate: 86400 } }
