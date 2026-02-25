@@ -6,7 +6,7 @@ import type { FitnessPlan } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
-const EX_CACHE_KEY = "recomp_exercise_gifs";
+const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
 interface ExerciseGif {
   gifUrl: string;
   name: string;

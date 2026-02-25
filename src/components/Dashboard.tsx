@@ -17,7 +17,7 @@ interface ExerciseGif {
   targetMuscles?: string[];
   instructions?: string[];
 }
-const EX_CACHE_KEY = "recomp_exercise_gifs";
+const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
 function getGifCache(): Record<string, ExerciseGif> {
   if (typeof window === "undefined") return {};
   try { return JSON.parse(localStorage.getItem(EX_CACHE_KEY) ?? "{}"); } catch { return {}; }

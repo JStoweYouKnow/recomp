@@ -4,6 +4,17 @@ import { logInfo, logError } from "@/lib/logger";
 
 const EXERCISEDB_BASE = "https://www.exercisedb.dev/api/v1/exercises";
 
+/** Return gif via our proxy to avoid SSL errors from exercisedb CDN. */
+function jsonResult(best: ExerciseResult) {
+  return NextResponse.json({
+    exerciseId: best.exerciseId,
+    name: best.name,
+    gifUrl: `/api/exercises/gif?id=${encodeURIComponent(best.exerciseId)}`,
+    targetMuscles: best.targetMuscles,
+    instructions: best.instructions?.slice(0, 3) ?? [],
+  });
+}
+
 interface ExerciseResult {
   exerciseId: string;
   name: string;
@@ -51,40 +62,39 @@ export async function GET(req: NextRequest) {
     const exercises: ExerciseResult[] = json.data ?? [];
 
     if (exercises.length > 0) {
-      // Find best match: prefer exact name match, then closest
       const nameLower = name.toLowerCase();
       const exact = exercises.find((e) => e.name.toLowerCase() === nameLower);
       const best = exact ?? exercises[0];
-
-      return NextResponse.json({
-        exerciseId: best.exerciseId,
-        name: best.name,
-        gifUrl: best.gifUrl,
-        targetMuscles: best.targetMuscles,
-        instructions: best.instructions?.slice(0, 3) ?? [],
-      });
+      return jsonResult(best);
     }
 
-    // Fallback: try last two words (e.g. "Barbell bench press" → "bench press")
-    const words = name.toLowerCase().split(/\s+/);
-    if (words.length > 1) {
-      const fallbackTerm = words.slice(-2).join(" ");
+    // Fallback: try various sub-phrases (last 2 words, each word)
+    const words = name.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+    const seen = new Set<string>();
+    const fallbacks: string[] = [];
+    for (const t of [
+      words.slice(-2).join(" "),
+      words.slice(-1)[0],
+      words[0],
+      ...words.slice(1, -1),
+    ]) {
+      if (t && t.length >= 2 && t !== name.toLowerCase() && !seen.has(t)) {
+        seen.add(t);
+        fallbacks.push(t);
+      }
+    }
+
+    for (const term of fallbacks) {
+      if (!term || term.length < 2) continue;
       const res2 = await fetch(
-        `${EXERCISEDB_BASE}?search=${encodeURIComponent(fallbackTerm)}&limit=3`,
+        `${EXERCISEDB_BASE}?search=${encodeURIComponent(term)}&limit=3`,
         { next: { revalidate: 86400 } }
       );
       if (res2.ok) {
         const json2 = await res2.json();
         const exercises2: ExerciseResult[] = json2.data ?? [];
         if (exercises2.length > 0) {
-          const best = exercises2[0];
-          return NextResponse.json({
-            exerciseId: best.exerciseId,
-            name: best.name,
-            gifUrl: best.gifUrl,
-            targetMuscles: best.targetMuscles,
-            instructions: best.instructions?.slice(0, 3) ?? [],
-          });
+          return jsonResult(exercises2[0]);
         }
       }
     }
