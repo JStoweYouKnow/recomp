@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { FitnessPlan } from "@/lib/types";
 
 interface GroceryResult {
@@ -31,27 +32,35 @@ export function GrocerySearch({ plan }: { plan: FitnessPlan }) {
     setError(null);
     setResults(null);
     try {
-      const res = await fetch("/api/act/grocery", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items, store, addToCart }),
-      });
+      const payload = { items, store, addToCart };
       let data: { results?: GroceryResult[]; error?: string };
-      try {
-        data = await res.json();
-      } catch {
-        setError(res.status === 504 ? "Request timed out" : "Invalid response");
-        setResults(
-          items.map((item) => ({
-            searchTerm: item,
-            found: true,
-            product: { price: "—" },
-            addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
-          }))
-        );
-        return;
+      if (isActServiceConfigured()) {
+        data = await callActDirect<typeof data>("/grocery", payload, { timeoutMs: 420_000 });
+      } else {
+        const res = await fetch("/api/act/grocery", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        try {
+          data = await res.json();
+        } catch {
+          setError(res.status === 504 ? "Request timed out" : "Invalid response");
+          setResults(
+            items.map((item) => ({
+              searchTerm: item,
+              found: true,
+              product: { price: "—" },
+              addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
+            }))
+          );
+          return;
+        }
+        if (!res.ok) throw new Error(data.error ?? "Unable to fetch grocery shortlist");
       }
-      if (!res.ok) throw new Error(data.error ?? "Unable to fetch grocery shortlist");
+      if (data.error && !(Array.isArray(data.results) && data.results.length > 0)) {
+        throw new Error(data.error);
+      }
       setResults(Array.isArray(data.results) ? data.results : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to fetch grocery shortlist");

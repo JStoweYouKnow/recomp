@@ -74,7 +74,7 @@ def run_with_nova_act(food: str) -> dict:
 
     @workflow(**get_workflow_kwargs())
     def _lookup():
-        with NovaAct(starting_page="https://fdc.nal.usda.gov/food-search") as agent:
+        with NovaAct(starting_page="https://fdc.nal.usda.gov/food-search", tty=False) as agent:
             agent.act(
                 f"Type '{food}' into the search box and click the search button"
             )

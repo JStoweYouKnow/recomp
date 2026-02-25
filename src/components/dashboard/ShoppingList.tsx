@@ -2,16 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { buildShoppingListFromPlan } from "@/lib/shopping-list";
+import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { FitnessPlan } from "@/lib/types";
 
 interface GroceryResult {
   searchTerm: string;
   found?: boolean;
   product?: { name?: string; price?: string; available?: boolean };
-  addedToCart?: boolean;
-  addToCartError?: string;
+  asin?: string;
   addToCartUrl?: string;
+  productUrl?: string;
   source?: string;
+  error?: string;
+}
+
+interface GroceryResponse {
+  results?: GroceryResult[];
+  batchCartUrl?: string;
+  note?: string;
+  error?: string;
 }
 
 const STORE_OPTIONS: { value: "fresh" | "wholefoods" | "amazon"; label: string }[] = [
@@ -20,8 +29,7 @@ const STORE_OPTIONS: { value: "fresh" | "wholefoods" | "amazon"; label: string }
   { value: "amazon", label: "Amazon.com" },
 ];
 
-const BATCH_SIZE_SEARCH = 3;
-const BATCH_SIZE_ADD_TO_CART = 2;
+const BATCH_SIZE = 5;
 
 function getShoppingList(): string[] {
   if (typeof window === "undefined") return [];
@@ -39,16 +47,25 @@ function saveShoppingList(items: string[]): void {
   localStorage.setItem("recomp_shopping_list", JSON.stringify(items));
 }
 
+/** Build a batch Amazon cart URL from multiple ASINs. */
+function buildBatchCartUrl(asins: string[]): string {
+  const params = new URLSearchParams();
+  asins.forEach((asin, i) => {
+    params.set(`ASIN.${i + 1}`, asin);
+    params.set(`Quantity.${i + 1}`, "1");
+  });
+  return `https://www.amazon.com/gp/aws/cart/add.html?${params.toString()}`;
+}
+
 export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
   const [items, setItems] = useState<string[]>([]);
   const [newItem, setNewItem] = useState("");
   const [store, setStore] = useState<"fresh" | "wholefoods" | "amazon">("fresh");
-  const [addToCart, setAddToCart] = useState(false);
   const [sending, setSending] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [results, setResults] = useState<GroceryResult[]>([]);
+  const [batchCartUrl, setBatchCartUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
     setItems(getShoppingList());
@@ -82,33 +99,43 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
       setError("Add items or load from your plan first.");
       return;
     }
-    const batchSize = addToCart ? BATCH_SIZE_ADD_TO_CART : BATCH_SIZE_SEARCH;
+
     const batches: string[][] = [];
-    for (let i = 0; i < items.length; i += batchSize) {
-      batches.push(items.slice(i, i + batchSize));
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      batches.push(items.slice(i, i + BATCH_SIZE));
     }
+
     setSending(true);
     setError(null);
-    setNote(null);
     setResults([]);
+    setBatchCartUrl(null);
+
     const allResults: GroceryResult[] = [];
+    const allAsins: string[] = [];
+
     try {
       for (let i = 0; i < batches.length; i++) {
         setBatchProgress({ current: i + 1, total: batches.length });
-        const res = await fetch("/api/act/grocery", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: batches[i], store, addToCart }),
-        });
-        let data: { results?: GroceryResult[]; note?: string; error?: string };
+        const payload = { items: batches[i], store };
+
+        let data: GroceryResponse;
         try {
-          data = await res.json();
+          if (isActServiceConfigured()) {
+            data = await callActDirect<GroceryResponse>("/grocery", payload, { timeoutMs: 480_000 });
+          } else {
+            const res = await fetch("/api/act/grocery", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            data = await res.json();
+            if (!res.ok && data.error) { setError(data.error); break; }
+          }
         } catch {
-          setNote("Request timed out. Showing search links below.");
+          // Timeout or network error — show search fallback links for this batch
           const fallback = batches[i].map((item) => ({
             searchTerm: item,
-            found: true,
-            product: { name: item, price: "—", available: true },
+            found: false,
             addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
             source: "fallback",
           }));
@@ -116,31 +143,44 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
           setResults([...allResults]);
           continue;
         }
-        if (!res.ok) {
-          setError(data.error ?? "Request failed");
+
+        if (data.error && !data.results?.length) {
+          setError(data.error);
           break;
         }
-        if (data.note) setNote(data.note);
+
         const batchResults = Array.isArray(data.results) ? data.results : [];
         allResults.push(...batchResults);
         setResults([...allResults]);
+
+        // Collect ASINs for the batch cart URL
+        for (const r of batchResults) {
+          if (r.asin) allAsins.push(r.asin);
+        }
+      }
+
+      // Build a single URL that adds ALL found items to Amazon cart at once
+      if (allAsins.length > 0) {
+        setBatchCartUrl(buildBatchCartUrl(allAsins));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send to Amazon");
+      setError(err instanceof Error ? err.message : "Failed to search Amazon");
     } finally {
       setSending(false);
       setBatchProgress(null);
     }
   };
 
+  const foundCount = results.filter((r) => r.asin).length;
+
   return (
     <div className="card p-6">
       <h3 className="section-title !text-base mb-1">Shopping list</h3>
       <p className="section-subtitle mb-4">
-        Build a full list, choose your store, then send to Amazon. With &quot;Add to cart&quot; checked, you can add items via one-click links (opens Amazon in your browser).
+        Build a list from your diet plan, pick a store, then add everything to your Amazon cart in one click.
       </p>
 
-      {/* Store & options */}
+      {/* Store picker */}
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="label text-xs" htmlFor="shopping-store">Store</label>
@@ -156,20 +196,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
             ))}
           </select>
         </div>
-        <label className="flex items-center gap-1.5 text-sm cursor-pointer" title="Add items via one-click links that open Amazon in your browser">
-          <input
-            type="checkbox"
-            checked={addToCart}
-            onChange={(e) => setAddToCart(e.target.checked)}
-            className="rounded border-[var(--border)]"
-            disabled={sending}
-          />
-          Add to cart
-        </label>
       </div>
-      {addToCart && (
-        <p className="text-xs text-[var(--muted)] mb-2">Click &quot;Add to cart&quot; links to add each item to your Amazon cart (must be logged in).</p>
-      )}
 
       {/* Load from plan */}
       {plan && (
@@ -185,7 +212,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
         </div>
       )}
 
-      {/* List */}
+      {/* Item list */}
       <div className="space-y-2 mb-4">
         {items.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">No items yet. Add below or load from your meal plan.</p>
@@ -201,7 +228,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
                   className="shrink-0 text-[var(--muted)] hover:text-[var(--accent-terracotta)] disabled:opacity-50"
                   aria-label={`Remove ${item}`}
                 >
-                  ×
+                  &times;
                 </button>
               </li>
             ))}
@@ -228,7 +255,7 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
         </div>
       </div>
 
-      {/* Send to Amazon */}
+      {/* Search Amazon */}
       <div className="mb-4">
         <button
           type="button"
@@ -237,18 +264,36 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
           className="btn-primary text-sm"
         >
           {sending && batchProgress
-            ? `Sending to ${STORE_OPTIONS.find((o) => o.value === store)?.label ?? store}… (batch ${batchProgress.current}/${batchProgress.total})`
-            : `Send to ${STORE_OPTIONS.find((o) => o.value === store)?.label ?? store}`}
+            ? `Searching ${STORE_OPTIONS.find((o) => o.value === store)?.label ?? store}… (batch ${batchProgress.current}/${batchProgress.total})`
+            : `Search ${STORE_OPTIONS.find((o) => o.value === store)?.label ?? store}`}
         </button>
       </div>
 
       {error && <p className="text-sm text-[var(--accent-terracotta)] mb-2" role="alert">{error}</p>}
-      {note && !error && <p className="text-sm text-[var(--muted)] mb-2">{note}</p>}
 
-      {/* Results */}
+      {/* Batch Add to Cart — the main CTA after search completes */}
+      {batchCartUrl && (
+        <div className="mb-4 p-4 rounded-lg bg-[var(--surface-elevated)] border border-[var(--accent)]/30">
+          <a
+            href={batchCartUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn-primary text-sm inline-block text-center w-full"
+          >
+            Add all {foundCount} items to Amazon cart
+          </a>
+          <p className="text-xs text-[var(--muted)] mt-2 text-center">
+            Opens Amazon in a new tab — items are added to your cart automatically (you must be logged in).
+          </p>
+        </div>
+      )}
+
+      {/* Individual results */}
       {results.length > 0 && (
         <div className="space-y-1.5 pt-2 border-t border-[var(--border-soft)]">
-          <p className="text-xs font-medium text-[var(--muted)]">Results</p>
+          <p className="text-xs font-medium text-[var(--muted)]">
+            Found {foundCount} of {results.length} items
+          </p>
           {results.map((r, i) => (
             <div
               key={`${i}-${r.searchTerm}`}
@@ -256,19 +301,33 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
             >
               <span className="truncate">{r.searchTerm}</span>
               <span className="shrink-0 flex items-center gap-2 text-[var(--muted)] text-xs">
-                {r.found ? (r.product?.price ?? "Found") : "Not found"}
-                {r.addedToCart && "· In cart"}
-                {r.addToCartUrl && (
+                {r.asin ? (
+                  <>
+                    {r.product?.price ?? "Found"}
+                    {r.addToCartUrl && (
+                      <a
+                        href={r.addToCartUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--accent)] hover:underline"
+                        title="Add this item to your Amazon cart"
+                      >
+                        Add to cart
+                      </a>
+                    )}
+                  </>
+                ) : r.addToCartUrl ? (
                   <a
                     href={r.addToCartUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-[var(--accent)] hover:underline"
                   >
-                    Add to cart
+                    Search on Amazon
                   </a>
+                ) : (
+                  "Not found"
                 )}
-                {r.addToCartError && `· ${r.addToCartError}`}
               </span>
             </div>
           ))}

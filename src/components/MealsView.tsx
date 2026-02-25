@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile } from "@/lib/storage";
+import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { CalendarView } from "./CalendarView";
@@ -256,12 +257,17 @@ export function MealsView({
       let data: NutritionData | null = null;
       let actFallback: NutritionData | null = null;
       try {
-        const actRes = await fetch("/api/act/nutrition", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ food }),
-        });
-        const actData: NutritionData | null = actRes.ok ? await actRes.json() : null;
+        let actData: NutritionData | null = null;
+        if (isActServiceConfigured()) {
+          actData = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+        } else {
+          const actRes = await fetch("/api/act/nutrition", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ food }),
+          });
+          if (actRes.ok) actData = await actRes.json();
+        }
         if (actData?.nutrition && !actData.note?.includes("Estimated values")) {
           data = actData;
           setNutritionSource(actData.demoMode ? "estimated" : "usda");

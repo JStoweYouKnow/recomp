@@ -5,13 +5,51 @@ in your Next.js app to use this instead of local Python spawn.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 
 app = Flask(__name__)
+
+def _allowed_origins():
+    extra = os.environ.get("CORS_ORIGINS", "")
+    base = {
+        "https://recomp-one.vercel.app",
+        "https://recomp-james-stowes-projects.vercel.app",
+        "https://recomp-git-main-james-stowes-projects.vercel.app",
+        "http://localhost:3000",
+    }
+    for o in extra.split(","):
+        o = o.strip()
+        if o:
+            base.add(o)
+    return base
+
+
+ALLOWED_ORIGINS = _allowed_origins()
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin", "")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    return response
+
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        resp = make_response()
+        origin = request.headers.get("Origin", "")
+        if origin in ALLOWED_ORIGINS:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        return resp
 
 # In Docker: app.py at /app/app.py, scripts at /app/scripts. Locally: act-service/app.py, scripts at recomp/scripts.
 _basedir = Path(__file__).resolve().parent
@@ -35,11 +73,31 @@ def run_script(script_path: Path, input_json: dict, timeout: int = 120) -> dict:
             cwd=str(SCRIPT_DIR.parent),
             env=env,
         )
-        out = proc.stdout.decode().strip() or "{}"
-        # Extract last JSON object (script may log to stdout)
+        stderr_text = proc.stderr.decode()[:500]
+        if stderr_text:
+            print(f"[run_script] stderr: {stderr_text}", file=sys.stderr, flush=True)
+        if proc.returncode != 0:
+            print(f"[run_script] exit code: {proc.returncode}", file=sys.stderr, flush=True)
+        raw = proc.stdout.decode()
+        # Strip ANSI escape codes, carriage returns, and Nova Act spinner output
+        raw = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", raw)
+        raw = re.sub(r"\r[^\n]*", "", raw)
+        raw = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", raw)
+        out = raw.strip() or "{}"
+        # Extract the last complete JSON object from output
         last_brace = out.rfind("}")
         if last_brace >= 0:
-            start = out.rfind("{", 0, last_brace + 1)
+            # Find matching opening brace by scanning backwards
+            depth = 0
+            start = -1
+            for idx in range(last_brace, -1, -1):
+                if out[idx] == "}":
+                    depth += 1
+                elif out[idx] == "{":
+                    depth -= 1
+                    if depth == 0:
+                        start = idx
+                        break
             if start >= 0:
                 out = out[start : last_brace + 1]
         return json.loads(out)
@@ -60,7 +118,7 @@ def nutrition():
     food = data.get("food", "").strip()
     if not food:
         return jsonify({"error": "Food name required"}), 400
-    result = run_script(NUTRITION_SCRIPT, {"food": food}, timeout=90)
+    result = run_script(NUTRITION_SCRIPT, {"food": food}, timeout=240)
     if "error" in result and result.get("error") and "nutrition" not in result:
         return jsonify(result), 500
     return jsonify(result)
@@ -71,19 +129,18 @@ def grocery():
     data = request.get_json() or {}
     items = data.get("items", [])
     store = data.get("store", "fresh")
-    add_to_cart = data.get("addToCart", False)
 
     if not items or not isinstance(items, list):
         return jsonify({"error": "Items array required", "results": []}), 400
     if store not in ("fresh", "wholefoods", "amazon"):
         store = "fresh"
 
-    # When addToCart: script asks for ASIN, returns addToCartUrl per result.
-    # With session: script also clicks Add to Cart. Without: user clicks link in their browser → their cart.
+    # Nova Act searches for each item, extracts ASINs, and returns cart URLs.
+    # The frontend opens the batchCartUrl in the user's browser to add all items at once.
     result = run_script(
         GROCERY_SCRIPT,
-        {"items": items[: 2 if add_to_cart else 3], "store": store, "addToCart": add_to_cart},
-        timeout=420 if add_to_cart else 360,
+        {"items": items[:5], "store": store},
+        timeout=480,
     )
 
     return jsonify(result)

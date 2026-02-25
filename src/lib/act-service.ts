@@ -13,7 +13,7 @@ export async function callActService<T>(
 
   const url = `${base}${path.startsWith("/") ? path : `/${path}`}`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 90_000);
+  const timeout = setTimeout(() => controller.abort(), options?.timeoutMs ?? 280_000);
 
   try {
     const res = await fetch(url, {

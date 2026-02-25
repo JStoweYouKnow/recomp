@@ -1,5 +1,17 @@
 # Deploy Act Service (Railway)
 
+## Bypass Vercel timeout (optional)
+
+To avoid Vercel’s 60s/300s serverless limit, the browser can call the Act service on Railway directly. Railway has no practical request timeout.
+
+1. Set **NEXT_PUBLIC_ACT_SERVICE_URL** in Vercel to your Railway URL (e.g. `https://recomp-production.up.railway.app`).
+2. Ensure your Vercel domain is in the Act service CORS list (defaults include recomp-one.vercel.app). For custom domains, add `CORS_ORIGINS=https://your-domain.com` to Railway.
+3. Redeploy. Grocery and nutrition will call Railway directly from the browser.
+
+---
+
+# Deploy Act Service (Railway)
+
 ## Quick deploy with Railway CLI
 
 1. **Install Railway CLI** (if needed):
