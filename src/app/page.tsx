@@ -14,9 +14,11 @@ import { AdjustView } from "@/components/AdjustView";
 import { Dashboard } from "@/components/Dashboard";
 import { MealsView } from "@/components/MealsView";
 import { WorkoutPlannerView } from "@/components/WorkoutPlannerView";
+import { useToast } from "@/components/Toast";
 import { v4 as uuidv4 } from "uuid";
 
 export default function Home() {
+  const { showToast } = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -188,7 +190,7 @@ export default function Home() {
       syncToServer(); // persist to DynamoDB
     } catch (e) {
       console.error(e);
-      alert("Plan generation took longer than expected. You can continue in the dashboard and regenerate when ready.");
+      showToast("Plan generation took longer than expected. You can continue in the dashboard and regenerate when ready.", "info");
     } finally {
       clearInterval(progressTimer);
       setLoading(false);
@@ -213,7 +215,7 @@ export default function Home() {
       syncToServer();
     } catch (e) {
       console.error(e);
-      alert("Plan generation failed. Try again.");
+      showToast("Plan generation failed. Try again.", "error");
     } finally {
       setPlanRegenerating(false);
     }
@@ -250,7 +252,7 @@ export default function Home() {
       setAdjustResult(r);
     } catch (e) {
       console.error(e);
-      alert("Adjustment failed.");
+      showToast("Adjustment failed.", "error");
     } finally {
       setLoading(false);
     }

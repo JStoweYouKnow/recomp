@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useToast } from "@/components/Toast";
 import type { WearableDaySummary } from "@/lib/types";
 
 function lbsToKg(lbs: number): number {
@@ -9,6 +10,7 @@ function lbsToKg(lbs: number): number {
 import { isAppleHealthSdkAvailable, requestAppleHealthSdkSync } from "@/lib/apple-health-bridge";
 
 export function WearablesView({ onDataFetched }: { onDataFetched: (data: WearableDaySummary[]) => void }) {
+  const { showToast } = useToast();
   const [ouraToken, setOuraToken] = useState("");
   const [loading, setLoading] = useState<Record<string, boolean>>({});
   const [importJson, setImportJson] = useState("");
@@ -102,7 +104,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
       }
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Import failed");
+      showToast(err instanceof Error ? err.message : "Import failed", "error");
     } finally {
       setLoading((l) => ({ ...l, import: false }));
     }
@@ -111,7 +113,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
   const addManualWeight = async () => {
     const lbs = parseFloat(scaleWeight);
     if (!Number.isFinite(lbs) || lbs < 44 || lbs > 1100) {
-      alert("Enter weight in lbs (44–1100)");
+      showToast("Enter weight in lbs (44–1100)", "info");
       return;
     }
     setLoading((l) => ({ ...l, scale: true }));
@@ -132,7 +134,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
       setScaleBodyFat("");
     } catch (err) {
       console.error(err);
-      alert(err instanceof Error ? err.message : "Failed to add weight");
+      showToast(err instanceof Error ? err.message : "Failed to add weight", "error");
     } finally {
       setLoading((l) => ({ ...l, scale: false }));
     }
@@ -153,7 +155,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "Apple Health sync failed";
-      alert(msg);
+      showToast(msg, "error");
     } finally {
       setLoading((l) => ({ ...l, appleSdk: false }));
       setAppleSdkAvailable(isAppleHealthSdkAvailable());

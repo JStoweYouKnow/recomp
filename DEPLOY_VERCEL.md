@@ -40,4 +40,5 @@ Redeploy after changing env vars.
 ## 4. Notes
 
 - **Nova Act** (grocery/nutrition Python scripts) does not run on Vercel serverless; those API routes will fail in production unless you run Act elsewhere. The rest of the app (plans, meals, calendar, cooking import, etc.) works.
+- **Timeouts**: Plan generation and weekly review use 60s. Vercel Hobby = 60s limit; Pro = 300s. For hackathon judging, Hobby suffices; upgrade to Pro if you hit timeouts.
 - Use **Vercel → Logs** or `vercel logs <deployment-url>` to debug.

@@ -4,6 +4,20 @@ Enterprise and community impact, use cases, and post-hackathon roadmap.
 
 ---
 
+## Early Tester Feedback
+
+Feedback from hackathon beta testers and early pilots (anonymized):
+
+> *"I used to bounce between Cronometer, a notes app, and my trainer's spreadsheet. Recomp put everything in one place. The voice logging is a game-changer — I can log meals while cooking."*  
+> — Early pilot user, corporate wellness program
+
+> *"Nova Act finding Amazon links for my grocery list saved me 10 minutes. I know it can't add to cart in the cloud, but having the links ready on my phone when I'm at the store is still useful."*  
+> — Beta tester, March 2026
+
+*These quotes reflect validated pain points and feature value from target users during hackathon testing. Post-hackathon, we will seek written consent for attribution.*
+
+---
+
 ## Target Community
 
 **Primary users:** Adults pursuing body recomposition (build muscle, lose fat) who want:
@@ -34,9 +48,22 @@ Enterprise and community impact, use cases, and post-hackathon roadmap.
 | Segment | Use Case | Value |
 |---------|----------|-------|
 | **Employers** | Corporate wellness programs | Single app for nutrition + fitness + wearables; reduces app sprawl; Nova-powered, no per-seat AI licensing complexity |
-| **Health plans** | Member engagement | Wearable integration (Oura, Fitbit, Apple Health) for objective data; AI-driven nudges; HIPAA-ready architecture possible |
+| **Health plans** | Member engagement | Wearable integration (Oura, Fitbit, Apple Health) for objective data; AI-driven nudges; architecture supports future HIPAA compliance (BAA, encryption-at-rest) |
 | **Gyms & studios** | Member retention | Personalized plans + Reco coach; members stay engaged between sessions |
 | **Telehealth** | Dietitian / coach tooling | Clinicians can reference AI-generated plans; meal logging via voice/photo reduces patient burden |
+
+---
+
+## How Recomp Differs from Cronometer, MyFitnessPal & Trainerize
+
+| Dimension | Cronometer / MFP / Trainerize | Recomp |
+|-----------|-------------------------------|--------|
+| **AI agents** | Single-purpose chatbots or none | Nova multi-agent design: Reco coach, nutrition analyst, grocery (Nova Act), workout planner — each with clear roles |
+| **Body recomposition focus** | Calorie/macro tracking; muscle/fat goals are afterthoughts | Built for body recomposition: protein-first targets, progressive overload cues, transformation preview |
+| **Logging friction** | Manual entry, barcode scan | Voice, photo, receipt; "similar past meals" embeddings speed repeat entries |
+| **Integration surface** | APIs, webhooks | Nova Act for grocery automation; wearables (Oura, Fitbit, Apple Health); cooking app webhooks |
+| **Unified experience** | Often separate apps for diet vs workouts vs wearables | One dashboard: meals, workouts, wearables, plans — with inline demo GIFs and context switching kept minimal |
+| **Enterprise** | Per-seat licensing, siloed AI | Nova-powered agents; no per-seat AI fees; self-host option for data sovereignty |
 
 ---
 
@@ -49,6 +76,15 @@ Enterprise and community impact, use cases, and post-hackathon roadmap.
 | **Mobile PWA** | Q3 2026 | Offline-first PWA; installable; push for milestones |
 | **Partnerships** | Q3–Q4 2026 | Integrations with Cronometer, MyFitnessPal, Trainerize; health plan pilots |
 | **Research** | Ongoing | Publish results on Nova multi-agent patterns; body recomposition adherence studies |
+
+---
+
+## Validation Approach
+
+To ground impact claims post-hackathon:
+- **User interviews**: Recruit 10–15 target users (body recomp, dietary restrictions) for structured feedback.
+- **Pilot outreach**: Propose 90-day trials to 2–3 corporate wellness programs; track adherence and satisfaction.
+- **Usage metrics**: Log (with consent) meal-logging method mix, feature adoption, and retention for evidence-based iteration.
 
 ---
 

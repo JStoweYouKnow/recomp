@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress } from "@/lib/storage";
 import type { FitnessPlan } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
+import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
 const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
@@ -527,8 +528,7 @@ export function WorkoutPlannerView({
                                       </button>
                                       {showGif && gif && typeof gif === "object" && gif.gifUrl && (
                                         <div className="mt-1.5 space-y-1">
-                                          <img src={gif.gifUrl} alt={exercise.name} className="rounded-lg max-h-28 object-contain bg-[var(--surface-elevated)]" />
-                                          {gif.targetMuscles?.length ? <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p> : null}
+                                          <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} />
                                         </div>
                                       )}
                                     </div>
@@ -593,10 +593,7 @@ export function WorkoutPlannerView({
                                     if (!showGif) return null;
                                     return (
                                       <div className="mt-2 space-y-1">
-                                        <img src={gif.gifUrl} alt={exercise.name} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
-                                        {gif.targetMuscles?.length ? (
-                                          <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p>
-                                        ) : null}
+                                        <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
                                       </div>
                                     );
                                   })()}

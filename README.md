@@ -12,7 +12,7 @@ Most Nova integrations use one or two models for text generation. Recomp demonst
 
 - **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
 - **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
-- **Browser automation** via Nova Act — end-to-end grocery search and add-to-cart on Amazon Fresh
+- **Browser automation** via Nova Act — grocery search with one-tap Amazon links; true add-to-cart requires a local session (see [NOVA_ACT_SETUP.md](./NOVA_ACT_SETUP.md))
 - **Multimodal understanding** — plate photos, receipt scans, body segmentation, and text all processed by Nova Lite
 - **Extended thinking** for complex reasoning during plan generation
 
@@ -32,7 +32,7 @@ What makes Recomp novel — both technically and as a product:
 - **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
 - **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
 - **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal. Body segmentation ensures clean compositing.
-- **End-to-end automation** — Nova Act searches Amazon Fresh/Whole Foods for diet-plan ingredients and can add to cart; USDA nutrition lookup with web-grounding fallback.
+- **Nova Act grocery & nutrition** — Searches Amazon for diet-plan ingredients and returns one-tap product/search links (cloud); with a local logged-in session, can add to cart directly. USDA nutrition lookup with web-grounding fallback.
 - **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
 - **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
 
@@ -81,7 +81,7 @@ Suggested flow to assess all Nova features (~5–10 min):
 - **Dynamic plan adjustments** — AI-powered suggestions based on progress, feedback, and wearable data
 - **Receipt scanning** — Photograph a grocery receipt, Nova extracts food items with estimated macros
 - **Wearable connectivity** — Oura Ring, Fitbit, Apple Watch (HealthKit bridge), Health Connect (import)
-- **Nova Act automation** — Browser automation for grocery search and USDA nutrition lookup (with demo-mode fallback)
+- **Nova Act automation** — Grocery search → Amazon product links; USDA nutrition lookup. Add-to-cart in cloud = links; true automation requires local session.
 - **Nova Labs** — Explore Canvas image generation, Reel video generation, multimodal embeddings, and web grounding
 - **DynamoDB persistence** — Server-side storage with cookie-based auth; falls back to localStorage when offline
 - **Demo mode indicator** — When using the app without auth (localStorage only), a banner shows "Demo mode — Data stored locally"
@@ -131,6 +131,10 @@ FITBIT_CLIENT_SECRET=...
 APPLE_HEALTH_INGEST_KEY=...
 NOVA_ACT_API_KEY=...
 JUDGE_MODE=false
+
+# Optional — require auth for AI routes (rico, weekly review, meals/suggest, research, images, video, embeddings)
+# Set to true in production to prevent anonymous abuse of Bedrock. Default false for hackathon demo compatibility.
+REQUIRE_AUTH_FOR_AI=false
 ```
 
 Configure AWS credentials (e.g. `~/.aws/credentials` or environment variables).
@@ -171,7 +175,7 @@ If `nova-act` is not installed or `NOVA_ACT_API_KEY` is missing, the Act endpoin
 | **Meal logging** | Yes | Text always works; voice/photo need Bedrock |
 | **Nutrition lookup** | Yes | Act → USDA when `nova-act` installed; otherwise web grounding or estimated fallback |
 | **Grocery Act** | `nova-act` + profile | Without: returns demo results; add-to-cart needs Amazon login setup |
-| **Nova Reel (video)** | S3 bucket | Set `NOVA_REEL_S3_BUCKET`; otherwise returns 503 with message |
+| **Nova Reel (video)** | S3 bucket | Set `NOVA_REEL_S3_BUCKET` for live generation; without it, returns demo video fallback |
 | **Transformation preview** | Bedrock + Nova Canvas | Upload photo → generate "after" image |
 | **DynamoDB sync** | Optional | App works with localStorage only; table needed for cross-device sync |
 | **Judge reliability mode** | Yes | Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations and use `/api/judge/health` to verify status |
@@ -336,7 +340,7 @@ Cooking app data is parsed by Nova AI to extract meal names, macro breakdowns (c
 |-------|--------|-------------|
 | `/api/images/generate` | POST | Nova Canvas image generation |
 | `/api/images/after` | POST | AI "after" image from full-body photo + goal (transformation preview) |
-| `/api/video/generate` | POST | Nova Reel video generation (requires S3) |
+| `/api/video/generate` | POST | Nova Reel video generation (S3 for live; demo fallback when unconfigured) |
 | `/api/embeddings` | POST | Nova Multimodal Embeddings |
 | `/api/research` | POST | Web grounding for nutrition/fitness info |
 
@@ -395,7 +399,7 @@ src/
 
 ### Security
 
-- **Rate limiting** on all API routes (fixed-window, in-memory)
+- **Rate limiting** on all API routes (fixed-window, in-memory). *Note:* On serverless (Vercel), limits are per-instance; for production consider Redis/Upstash for shared limits.
 - **Zod schema validation** on registration and voice input
 - **Cookie-based auth** (httpOnly `recomp_uid` cookie)
 - **Input sanitization** on AI context payloads

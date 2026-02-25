@@ -3,7 +3,9 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
+import { requireAuthForAI } from "@/lib/judgeMode";
 
 const EMBEDDINGS_MODEL = "amazon.nova-2-multimodal-embeddings-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
@@ -11,6 +13,10 @@ const REGION = process.env.AWS_REGION ?? "us-east-1";
 export async function POST(req: NextRequest) {
   const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "embeddings"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
   try {
     const body = await req.json();

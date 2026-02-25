@@ -8,7 +8,8 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
-import { isJudgeMode } from "@/lib/judgeMode";
+import { getUserId } from "@/lib/auth";
+import { isJudgeMode, requireAuthForAI } from "@/lib/judgeMode";
 
 /** Strip s3:// prefix and trailing slashes if the user accidentally included them */
 function normalizeBucket(raw: string | undefined): string | undefined {
@@ -38,6 +39,11 @@ async function getPresignedVideoUrl(s3FolderUri: string, expiresIn = 3600): Prom
 }
 
 export async function POST(req: NextRequest) {
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
   const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "video-generate"), 10, 60_000);
   if (!rl.ok) {
     const headers = getRateLimitHeaderValues(rl);
@@ -49,26 +55,22 @@ export async function POST(req: NextRequest) {
     return res;
   }
 
-  if (!S3_BUCKET && !isJudgeMode()) {
-    return NextResponse.json(
-      { error: "NOVA_REEL_S3_BUCKET not configured. Set env var for video generation." },
-      { status: 503 }
-    );
-  }
+  /** When S3 is not configured, use demo fallback (same as JUDGE_MODE) so judges/demos see working behavior */
+  const useReelFallback = !S3_BUCKET || isJudgeMode();
 
   try {
     const body = await req.json();
     const { prompt, action, invocationArn } = body;
     const arn = invocationArn ?? (action === "poll" ? prompt : undefined);
 
-    if (isJudgeMode()) {
+    if (useReelFallback) {
       if (action === "poll") {
         const res = NextResponse.json({
           status: "Completed",
           outputLocation: "s3://judge-mode/reel/demo-output/",
           videoUrl: "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
           failureMessage: null,
-          source: "judge-fallback",
+          source: isJudgeMode() ? "judge-fallback" : "s3-unconfigured-fallback",
         });
         const headers = getRateLimitHeaderValues(rl);
         res.headers.set("X-RateLimit-Limit", headers.limit);
@@ -80,9 +82,11 @@ export async function POST(req: NextRequest) {
       const fakeArn = `arn:aws:bedrock:judge-mode:reel:${Date.now()}`;
       const res = NextResponse.json({
         invocationArn: fakeArn,
-        s3Uri: "s3://judge-mode/reel/demo-output/",
-        message: "JUDGE_MODE deterministic fallback: video generation simulated.",
-        source: "judge-fallback",
+        s3Uri: "s3://demo/reel/output/",
+        message: useReelFallback
+          ? (isJudgeMode() ? "JUDGE_MODE: video simulated." : "S3 not configured: demo video returned. Set NOVA_REEL_S3_BUCKET for live generation.")
+          : "Video generation started.",
+        source: isJudgeMode() ? "judge-fallback" : "s3-unconfigured-fallback",
       });
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);

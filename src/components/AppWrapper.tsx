@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { OfflineBanner } from "./OfflineBanner";
 import { SkipLink } from "./SkipLink";
+import { ToastProvider } from "./Toast";
 
 export function AppWrapper({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -14,6 +15,7 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
 
   return (
     <ErrorBoundary>
+      <ToastProvider>
       <div className="flex min-h-dvh flex-col">
         <SkipLink />
         <OfflineBanner />
@@ -24,6 +26,7 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
           </p>
         </footer>
       </div>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

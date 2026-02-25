@@ -4,12 +4,13 @@ import { logInfo, logError } from "@/lib/logger";
 
 const EXERCISEDB_BASE = "https://www.exercisedb.dev/api/v1/exercises";
 
-/** Return gif via our proxy to avoid SSL errors from exercisedb CDN. */
-function jsonResult(best: ExerciseResult) {
+/** Return gif via our proxy; pass name for fallback lookup when CDN fails. */
+function jsonResult(best: ExerciseResult, searchName: string) {
+  const nameParam = searchName ? `&name=${encodeURIComponent(searchName)}` : "";
   return NextResponse.json({
     exerciseId: best.exerciseId,
     name: best.name,
-    gifUrl: `/api/exercises/gif?id=${encodeURIComponent(best.exerciseId)}`,
+    gifUrl: `/api/exercises/gif?id=${encodeURIComponent(best.exerciseId)}${nameParam}`,
     targetMuscles: best.targetMuscles,
     instructions: best.instructions?.slice(0, 3) ?? [],
   });
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
       const nameLower = name.toLowerCase();
       const exact = exercises.find((e) => e.name.toLowerCase() === nameLower);
       const best = exact ?? exercises[0];
-      return jsonResult(best);
+      return jsonResult(best, name);
     }
 
     // Fallback: try various sub-phrases (last 2 words, each word)
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest) {
         const json2 = await res2.json();
         const exercises2: ExerciseResult[] = json2.data ?? [];
         if (exercises2.length > 0) {
-          return jsonResult(exercises2[0]);
+          return jsonResult(exercises2[0], name);
         }
       }
     }

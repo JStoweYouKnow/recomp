@@ -3,6 +3,8 @@ import {
   BedrockRuntimeClient,
   ConverseCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { getUserId } from "@/lib/auth";
+import { requireAuthForAI } from "@/lib/judgeMode";
 
 /** Multi-agent review with web grounding needs extended timeout */
 export const maxDuration = 60;
@@ -408,6 +410,11 @@ export async function POST(req: NextRequest) {
   );
   if (!rl.ok)
     return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
   try {
     const { meals, targets, wearableData, goal, userName } = await req.json();

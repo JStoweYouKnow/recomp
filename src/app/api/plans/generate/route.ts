@@ -12,6 +12,8 @@ import {
 } from "@/lib/server-rate-limit";
 import { z } from "zod";
 
+/** Allow plan generation (extended thinking) to complete within Vercel Hobby 60s limit */
+export const maxDuration = 60;
 const PLAN_TIMEOUT_MS = 35_000;
 const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 

@@ -199,6 +199,7 @@ export interface CookingAppConnection {
   label?: string;
   connectedAt: string;
   webhookSecret?: string; // HMAC secret for verifying inbound webhooks
+  webhookUrl?: string; // URL to send webhooks to (set when connecting)
 }
 
 export interface CookingAppMealPayload {

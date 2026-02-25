@@ -10,8 +10,8 @@ self.addEventListener("push", (event) => {
   }
   const options = {
     body: payload.body || "You have an update from Recomp.",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/icon.svg",
+    badge: "/icon.svg",
     tag: payload.tag || "recomp-default",
     data: payload.data || { url: "/" },
     renotify: true,

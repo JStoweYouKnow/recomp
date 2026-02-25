@@ -9,6 +9,11 @@ export function isJudgeMode(): boolean {
   return truthy(process.env.JUDGE_MODE);
 }
 
+/** When true, AI routes require authentication. Set in production to prevent abuse. Default false for demo compatibility. */
+export function requireAuthForAI(): boolean {
+  return truthy(process.env.REQUIRE_AUTH_FOR_AI);
+}
+
 function hasAwsCredentials(): boolean {
   return Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
 }
@@ -47,7 +52,7 @@ export function buildJudgeHealthPayload(): JudgeHealthPayload {
       voice: bedrockReady ? "live" : "disabled",
       actGrocery: judgeMode ? "fallback" : actConfigured ? "live" : "fallback",
       actNutrition: judgeMode ? "fallback" : actConfigured ? "live" : "fallback",
-      reelVideo: judgeMode ? "fallback" : reelConfigured && bedrockReady ? "live" : "disabled",
+      reelVideo: judgeMode ? "fallback" : reelConfigured && bedrockReady ? "live" : "fallback",
       dynamodbSync: judgeMode ? "fallback" : dynamoConfigured && bedrockReady ? "live" : "fallback",
       wearables: judgeMode ? "fallback" : "live",
     },

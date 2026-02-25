@@ -11,6 +11,7 @@ import {
   dbSaveWearableData,
   dbSaveWearableConnection,
 } from "@/lib/db";
+import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, RicoMessage } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -26,20 +27,35 @@ export async function POST(req: NextRequest) {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
-    const body = await req.json();
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData } = body;
+    const contentType = req.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      return NextResponse.json({ error: "Content-Type must be application/json" }, { status: 400 });
+    }
+
+    const raw = await req.text();
+    if (raw.length > SYNC_MAX_BODY_SIZE) {
+      return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+    }
+
+    const body = JSON.parse(raw);
+    const parsed = syncBodySchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
+    }
+
+    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
     if (plan) promises.push(dbSavePlan(userId, plan as FitnessPlan));
 
-    if (meals && Array.isArray(meals)) {
-      for (const meal of meals as MealEntry[]) {
-        promises.push(dbSaveMeal(userId, meal));
+    if (meals && meals.length > 0) {
+      for (const meal of meals) {
+        promises.push(dbSaveMeal(userId, meal as MealEntry));
       }
     }
 
-    if (milestones && Array.isArray(milestones)) {
+    if (milestones && milestones.length > 0) {
       promises.push(dbSaveMilestones(userId, milestones as Milestone[]));
     }
 
@@ -51,19 +67,19 @@ export async function POST(req: NextRequest) {
             ...existing,
             xp: xp ?? existing.xp,
             hasAdjusted: hasAdjusted ?? existing.hasAdjusted,
-            ricoHistory: (ricoHistory as RicoMessage[])?.slice(-50) ?? existing.ricoHistory ?? [],
+            ricoHistory: ricoHistory?.slice(-50) ?? existing.ricoHistory ?? [],
           });
         })()
       );
     }
 
-    if (wearableConnections && Array.isArray(wearableConnections)) {
-      for (const conn of wearableConnections as WearableConnection[]) {
-        promises.push(dbSaveWearableConnection(userId, conn));
+    if (wearableConnections && wearableConnections.length > 0) {
+      for (const conn of wearableConnections) {
+        promises.push(dbSaveWearableConnection(userId, conn as WearableConnection));
       }
     }
 
-    if (wearableData && Array.isArray(wearableData)) {
+    if (wearableData && wearableData.length > 0) {
       promises.push(dbSaveWearableData(userId, wearableData as WearableDaySummary[]));
     }
 

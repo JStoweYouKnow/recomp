@@ -65,9 +65,16 @@ Include this in your Devpost **Testing instructions** field:
 - **Shopping list**: Dashboard → load from plan → send to Amazon (Nova Act; demo fallback if Act unavailable).
 - **Nova Labs**: Meals → Snap plate (Nova Lite vision) or Receipt scan; Adjust → "Add latest guidelines" (Nova research).
 
+### For judges: what to expect (cloud deployment)
+
+- **Nova Act (grocery)**: Returns Amazon product/search links. One-tap links open in the user's browser (logged into Amazon). Add-to-cart in the cloud = links only; true automation requires a local session.
+- **Nova Reel (video)**: S3 for live generation. Without S3, returns demo video fallback (no 503). Judge health shows status.
+- **Plan generation / Weekly review**: May take 30–60s. Vercel Pro (300s timeout) recommended for demos; Hobby (60s) usually suffices.
+
 ### Verify health
 
 - `GET /api/judge/health` — confirms plan, voice, Reel, Act, etc. status.
+- Run `npm run test:production` (or `./scripts/production-smoke-test.sh [BASE_URL]`) to smoke-test production before submission.
 
 ---
 

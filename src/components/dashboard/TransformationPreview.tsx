@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useToast } from "@/components/Toast";
 import { segmentPersonFromPhoto } from "@/lib/body-segmentation";
 import type { UserProfile } from "@/lib/types";
 
@@ -11,6 +12,7 @@ export function TransformationPreview({
   profile: UserProfile;
   onProfileUpdate: (p: UserProfile) => void;
 }) {
+  const { showToast } = useToast();
   const [fullBodyPhotoLoading, setFullBodyPhotoLoading] = useState(false);
   const [goalPhotoLoading, setGoalPhotoLoading] = useState(false);
 
@@ -29,7 +31,7 @@ export function TransformationPreview({
       onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: segmented, goalPhotoDataUrl: undefined });
     } catch (err) {
       console.error("Full body photo error:", err);
-      alert(err instanceof Error ? err.message : "Photo processing failed. Try a different image (JPEG or PNG).");
+      showToast(err instanceof Error ? err.message : "Photo processing failed. Try a different image (JPEG or PNG).", "error");
     } finally {
       setFullBodyPhotoLoading(false);
       e.target.value = "";
@@ -70,7 +72,7 @@ export function TransformationPreview({
       }
     } catch (err) {
       console.error("After image error:", err);
-      alert(err instanceof Error ? err.message : "Failed to generate after image. Try again.");
+      showToast(err instanceof Error ? err.message : "Failed to generate after image. Try again.", "error");
     } finally {
       setGoalPhotoLoading(false);
     }

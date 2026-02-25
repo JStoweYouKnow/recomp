@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserId } from "@/lib/auth";
 import { invokeNovaCanvas } from "@/lib/nova";
 import {
   fixedWindowRateLimit,
@@ -6,8 +7,13 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+import { requireAuthForAI } from "@/lib/judgeMode";
 
 export async function POST(req: NextRequest) {
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
   try {
     const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "images-generate"), 20, 60_000);
     if (!rl.ok) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserId } from "@/lib/auth";
 import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
+import { requireAuthForAI } from "@/lib/judgeMode";
 
 /** Allow up to 60s for web grounding */
 export const maxDuration = 60;
@@ -13,6 +15,10 @@ const SYSTEM_PROMPT =
 export async function POST(req: NextRequest) {
   const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "research"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
   try {
     const { query } = await req.json();

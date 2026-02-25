@@ -1,6 +1,15 @@
 # Nova Act Setup & Troubleshooting
 
-Nova Act powers **Auto-fill nutrition** (USDA lookup) and **Send to Whole Foods/Fresh** (grocery search). This guide covers setup and common issues.
+Nova Act powers **Auto-fill nutrition** (USDA lookup) and **Search Amazon** (grocery). This guide covers setup and common issues.
+
+## Deployment modes
+
+| Mode | Grocery behavior | Add-to-cart |
+|------|------------------|-------------|
+| **Cloud (Vercel + Railway)** | Nova Act searches Amazon, returns product/search links | One-tap links only — user clicks in their browser to add |
+| **Local (with Amazon login)** | Same search + can click Add to Cart in Nova's browser | Items added directly to your cart |
+
+In production, the Act service has no Amazon user session, so it cannot add items to a user's cart. Users get search and product page links to tap — these open in the Amazon app or browser where they are logged in.
 
 ## Quick checklist
 

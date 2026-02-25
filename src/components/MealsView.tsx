@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile } from "@/lib/storage";
+import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
@@ -90,9 +91,56 @@ export function MealsView({
   const [cookingImportResult, setCookingImportResult] = useState<{ imported: number; meals: MealEntry[] } | null>(null);
   const [webhookVerifyLoading, setWebhookVerifyLoading] = useState(false);
   const [webhookVerifyResult, setWebhookVerifyResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
+  const [similarMeals, setSimilarMeals] = useState<{ name: string; mealId: string }[]>([]);
+  const [similarLoading, setSimilarLoading] = useState(false);
+  const { showToast } = useToast();
 
   const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
   const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
+
+  /** Nova Embeddings: find past meals similar to current input (cosine similarity). */
+  useEffect(() => {
+    const q = name.trim();
+    if (q.length < 2) {
+      setSimilarMeals([]);
+      return;
+    }
+    const stored = getMealEmbeddings();
+    if (stored.length === 0) return;
+    const timer = setTimeout(async () => {
+      setSimilarLoading(true);
+      try {
+        const res = await fetch("/api/embeddings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: q }),
+        });
+        const data = await res.json();
+        const emb = data.embedding;
+        if (!Array.isArray(emb) || emb.length === 0) return;
+        const norm = (a: number[]) => Math.sqrt(a.reduce((s, x) => s + x * x, 0));
+        const dot = (a: number[], b: number[]) => a.reduce((s, x, i) => s + x * (b[i] ?? 0), 0);
+        const sims = stored
+          .map((e) => ({
+            mealId: e.mealId,
+            sim: norm(e.embedding) > 0 ? dot(emb, e.embedding) / (norm(emb) * norm(e.embedding)) : 0,
+          }))
+          .filter((x) => x.sim > 0.5)
+          .sort((a, b) => b.sim - a.sim)
+          .slice(0, 4);
+        const mealMap = new Map(meals.map((m) => [m.id, m.name]));
+        const out = sims
+          .map((s) => ({ name: mealMap.get(s.mealId) ?? "Meal", mealId: s.mealId }))
+          .filter((x) => x.name !== "Meal" || x.mealId);
+        setSimilarMeals(out);
+      } catch {
+        setSimilarMeals([]);
+      } finally {
+        setSimilarLoading(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [name, meals]);
 
   const handleSuggest = async () => {
     setSuggestLoading(true);
@@ -136,7 +184,7 @@ export function MealsView({
 
   const handleVoiceLog = () => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
-      alert("Voice not supported in this browser. Try Chrome.");
+      showToast("Voice not supported in this browser. Try Chrome.", "info");
       return;
     }
     setVoiceLoading(true);
@@ -465,6 +513,28 @@ export function MealsView({
                 onChange={(e) => setName(e.target.value)}
                 className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
               />
+              {(similarMeals.length > 0 || (name.trim().length >= 2 && getMealEmbeddings().length === 0 && !similarLoading)) && (
+                <p className="text-[10px] text-[var(--muted)] mt-1">
+                  {similarMeals.length > 0 ? (
+                    <>
+                      Similar to past meals:{" "}
+                      {similarMeals.map((s) => (
+                        <button
+                          key={s.mealId}
+                          type="button"
+                          onClick={() => setName(s.name)}
+                          className="text-[var(--accent)] hover:underline mr-1"
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                      {similarLoading && "…"}
+                    </>
+                  ) : (
+                    <span>Log meals to get smart suggestions based on your history.</span>
+                  )}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1">
               <label className="label !mb-0">Meal type</label>
@@ -557,11 +627,11 @@ export function MealsView({
                     });
                     const data = await res.json();
                     if (res.ok) {
-                      const conn = { provider: data.provider, label: data.label, connectedAt: data.connectedAt, webhookSecret: data.webhookSecret };
+                      const conn = { provider: data.provider, label: data.label, connectedAt: data.connectedAt, webhookSecret: data.webhookSecret, webhookUrl: data.webhookUrl };
                       const next = [...cookingConnections.filter((c) => c.provider !== conn.provider), conn];
                       setCookingConnections(next);
                       localStorage.setItem("recomp_cooking_apps", JSON.stringify(next));
-                      alert(`Connected! Webhook URL:\n${data.webhookUrl}\n\nSecret: ${data.webhookSecret}\n\n${data.instructions}`);
+                      showToast("Cooking app connected! Webhook URL and secret saved.", "success");
                     }
                   } catch (e) { console.error(e); }
                   setCookingConnecting(false);
@@ -673,9 +743,9 @@ export function MealsView({
                       if (res.ok && data.meals) {
                         setCookingImportResult(data);
                       } else {
-                        alert(data.error || "Import failed");
+                        showToast(data.error || "Import failed", "error");
                       }
-                    } catch (err) { console.error(err); alert("Import failed"); }
+                    } catch (err) { console.error(err); showToast("Import failed", "error"); }
                     setCookingImportLoading(false);
                     e.target.value = "";
                   }}
@@ -710,9 +780,9 @@ export function MealsView({
                     setCookingImportResult(data);
                     el.value = "";
                   } else {
-                    alert(data.error || "Import failed");
+                    showToast(data.error || "Import failed", "error");
                   }
-                } catch (err) { console.error(err); alert("Import failed"); }
+                } catch (err) { console.error(err); showToast("Import failed", "error"); }
                 setCookingImportLoading(false);
               }}
               disabled={cookingImportLoading}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ExerciseDemoGif } from "../ExerciseDemoGif";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, ActivityLogEntry, WorkoutEquipment } from "@/lib/types";
 
 interface ExerciseGif {
@@ -337,8 +338,7 @@ function TodayWorkoutCard({
                 </div>
                 {showGif && gif && typeof gif === "object" && gif.gifUrl && (
                   <div className="pl-5 space-y-1">
-                    <img src={gif.gifUrl} alt={ex.name} className="rounded-lg max-h-24 object-contain bg-[var(--surface-elevated)]" />
-                    {gif.targetMuscles?.length ? <p className="text-[10px] text-[var(--muted)]">Target: {gif.targetMuscles.join(", ")}</p> : null}
+                    <ExerciseDemoGif src={gif.gifUrl} alt={ex.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-24 object-contain bg-[var(--surface-elevated)]" />
                   </div>
                 )}
               </div>

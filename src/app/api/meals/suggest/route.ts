@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserId } from "@/lib/auth";
 import { invokeNova } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
+import { requireAuthForAI } from "@/lib/judgeMode";
 import { logInfo, logError } from "@/lib/logger";
 
 const SYSTEM_PROMPT = `You are a nutrition coach. Suggest 3-5 meal options for a given meal type and constraints, TAILORED to the user's goal.
@@ -17,6 +19,10 @@ Respond with valid JSON only.`;
 export async function POST(req: NextRequest) {
   const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-suggest"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
   try {
     const body = await req.json();

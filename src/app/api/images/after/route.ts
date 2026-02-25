@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserId } from "@/lib/auth";
 import { invokeNovaCanvasImageVariation } from "@/lib/nova";
 import type { Goal } from "@/lib/types";
+import { requireAuthForAI } from "@/lib/judgeMode";
 import {
   fixedWindowRateLimit,
   getClientKey,
@@ -35,6 +37,10 @@ function getGoalPrompt(goal: Goal): { text: string; negativeText?: string } {
 }
 
 export async function POST(req: NextRequest) {
+  if (requireAuthForAI()) {
+    const userId = await getUserId(req.headers);
+    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
   try {
     const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "images-after"), 5, 60_000);
     if (!rl.ok) {
