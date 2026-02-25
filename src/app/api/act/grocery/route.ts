@@ -10,8 +10,8 @@ import {
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 
-const TIMEOUT_MS_DEFAULT = 360_000;   // 6 min — search only (~2 acts/item, Nova Act can be slow)
-const TIMEOUT_MS_ADD_TO_CART = 480_000; // 8 min — add to cart (~4–5 acts/item)
+// Vercel serverless max ~60s (Pro) — cap so we return fallback before 504
+const TIMEOUT_MS_ACT_SERVICE = 50_000; // 50s; if no response, return search links fallback
 
 export async function POST(req: NextRequest) {
   try {
@@ -59,11 +59,10 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
-    const timeoutMs = addToCart ? TIMEOUT_MS_ADD_TO_CART : TIMEOUT_MS_DEFAULT;
     const serviceResult = await callActService<{ results?: Array<{ searchTerm?: string; addToCartUrl?: string }>; error?: string }>(
       "/grocery",
       { items: limitedItems, store: validStore, addToCart: Boolean(addToCart) },
-      { timeoutMs }
+      { timeoutMs: TIMEOUT_MS_ACT_SERVICE }
     );
     if (serviceResult && Array.isArray(serviceResult.results) && serviceResult.results.length > 0) {
       const res = NextResponse.json(serviceResult);
@@ -73,8 +72,8 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Reset", headers.reset);
       return res;
     }
-    // Act service failed (auth, timeout, etc.) — return search links so user can still add items
-    if (serviceResult?.error && process.env.ACT_SERVICE_URL) {
+    // Act service failed, timed out, or no results — return search links so user can still add items
+    if (process.env.ACT_SERVICE_URL && (!serviceResult || serviceResult?.error || !(serviceResult?.results?.length))) {
       const searchResults = limitedItems.map((item) => ({
         searchTerm: item,
         found: true,
@@ -102,7 +101,7 @@ export async function POST(req: NextRequest) {
     });
 
     try {
-      const result = await runPython(scriptPath, input, { timeoutMs });
+      const result = await runPython(scriptPath, input, { timeoutMs: 360_000 });
       const res = NextResponse.json(result);
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);

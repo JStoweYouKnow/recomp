@@ -100,7 +100,22 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ items: batches[i], store, addToCart }),
         });
-        const data = await res.json();
+        let data: { results?: GroceryResult[]; note?: string; error?: string };
+        try {
+          data = await res.json();
+        } catch {
+          setNote(res.status === 504 ? "Request timed out. Showing search links below." : "Could not parse response.");
+          const fallback = batches[i].map((item) => ({
+            searchTerm: item,
+            found: true,
+            product: { name: item, price: "—", available: true },
+            addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
+            source: "fallback",
+          }));
+          allResults.push(...fallback);
+          setResults([...allResults]);
+          continue;
+        }
         if (!res.ok) {
           setError(data.error ?? "Request failed");
           break;
