@@ -36,7 +36,21 @@ export function GrocerySearch({ plan }: { plan: FitnessPlan }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ items, store, addToCart }),
       });
-      const data = await res.json();
+      let data: { results?: GroceryResult[]; error?: string };
+      try {
+        data = await res.json();
+      } catch {
+        setError(res.status === 504 ? "Request timed out" : "Invalid response");
+        setResults(
+          items.map((item) => ({
+            searchTerm: item,
+            found: true,
+            product: { price: "—" },
+            addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
+          }))
+        );
+        return;
+      }
       if (!res.ok) throw new Error(data.error ?? "Unable to fetch grocery shortlist");
       setResults(Array.isArray(data.results) ? data.results : []);
     } catch (err) {
