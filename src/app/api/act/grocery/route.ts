@@ -27,14 +27,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { items, store, addToCart } = body;
+    const { items, store } = body;
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Items array required" }, { status: 400 });
     }
 
     const validStore = ["fresh", "wholefoods", "amazon"].includes(store) ? store : "fresh";
-    const maxItems = addToCart ? 2 : 3;
-    const limitedItems = items.slice(0, maxItems) as string[];
+    const limitedItems = items.slice(0, 5) as string[];
 
     if (isJudgeMode()) {
       const demoResults = limitedItems.map((item, index) => ({
@@ -45,7 +44,7 @@ export async function POST(req: NextRequest) {
           price: `$${(3.49 + index * 1.25).toFixed(2)}`,
           available: true,
         },
-        addedToCart: Boolean(addToCart),
+        addedToCart: true,
         source: "judge-fallback",
       }));
       const res = NextResponse.json({
@@ -59,9 +58,9 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
-    const serviceResult = await callActService<{ results?: Array<{ searchTerm?: string; addToCartUrl?: string }>; error?: string }>(
+    const serviceResult = await callActService<{ results?: Array<{ searchTerm?: string; addedToCart?: boolean; productUrl?: string; addToCartUrl?: string }>; error?: string }>(
       "/grocery",
-      { items: limitedItems, store: validStore, addToCart: Boolean(addToCart) },
+      { items: limitedItems, store: validStore },
       { timeoutMs: TIMEOUT_MS_ACT_SERVICE }
     );
     if (serviceResult && Array.isArray(serviceResult.results) && serviceResult.results.length > 0) {
@@ -77,8 +76,8 @@ export async function POST(req: NextRequest) {
       const searchResults = limitedItems.map((item) => ({
         searchTerm: item,
         found: true,
-        product: { name: item, price: "—", available: true },
         addedToCart: false,
+        product: { name: item, price: "—", available: true },
         addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
         source: "search-fallback",
       }));
@@ -94,11 +93,7 @@ export async function POST(req: NextRequest) {
     }
 
     const scriptPath = path.join(process.cwd(), "scripts", "nova_act_grocery.py");
-    const input = JSON.stringify({
-      items: limitedItems,
-      store: validStore,
-      addToCart: Boolean(addToCart),
-    });
+    const input = JSON.stringify({ items: limitedItems, store: validStore });
 
     try {
       const result = await runPython(scriptPath, input, { timeoutMs: 360_000 });

@@ -135,8 +135,8 @@ def grocery():
     if store not in ("fresh", "wholefoods", "amazon"):
         store = "fresh"
 
-    # Nova Act searches for each item, extracts ASINs, and returns cart URLs.
-    # The frontend opens the batchCartUrl in the user's browser to add all items at once.
+    # Nova Act searches for each item and clicks Add to Cart on each product page.
+    # Returns results with addedToCart and productUrl per item.
     result = run_script(
         GROCERY_SCRIPT,
         {"items": items[:5], "store": store},

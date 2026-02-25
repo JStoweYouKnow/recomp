@@ -1,13 +1,10 @@
 """
 Nova Act Grocery Automation Script
 Uses Amazon Nova Act to search for grocery items on Amazon Fresh, Whole Foods,
-or main Amazon. Returns product info with ASINs so the frontend can build
-direct add-to-cart URLs that work in the user's browser.
-
-Amazon's cart URL format (no auth/API key needed):
-  https://www.amazon.com/gp/aws/cart/add.html?ASIN.1=B08XXX&Quantity.1=1&ASIN.2=B07YYY&Quantity.2=1
-When the user opens this in their browser (where they're logged into Amazon),
-items are added to their cart automatically.
+or main Amazon. For each item, Nova Act:
+  1. Opens the search results page directly
+  2. Clicks the first matching product
+  3. Clicks "Add to Cart" on the product page
 
 Reads JSON from stdin:
   {"items": ["chicken breast", "greek yogurt"], "store": "fresh|wholefoods|amazon"}
@@ -32,32 +29,11 @@ def get_workflow_kwargs() -> dict:
     }
 
 
-STORE_URLS = {
-    "fresh": "https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo",
-    "wholefoods": "https://wholefoods.amazon.com",
-    "amazon": "https://www.amazon.com",
-}
-
 STORE_LABELS = {
     "fresh": "Amazon Fresh",
     "wholefoods": "Whole Foods",
     "amazon": "Amazon.com",
 }
-
-
-def build_single_cart_url(asin: str, qty: int = 1) -> str:
-    """Build Amazon add-to-cart URL for a single ASIN. Works without authentication."""
-    params = {"ASIN.1": asin, "Quantity.1": str(qty)}
-    return f"https://www.amazon.com/gp/aws/cart/add.html?{urllib.parse.urlencode(params)}"
-
-
-def build_batch_cart_url(asins: list[str]) -> str:
-    """Build a single Amazon URL that adds multiple items to cart at once."""
-    params = {}
-    for i, asin in enumerate(asins, 1):
-        params[f"ASIN.{i}"] = asin
-        params[f"Quantity.{i}"] = "1"
-    return f"https://www.amazon.com/gp/aws/cart/add.html?{urllib.parse.urlencode(params)}"
 
 
 def build_search_url(query: str, store: str) -> str:
@@ -71,18 +47,16 @@ def build_search_url(query: str, store: str) -> str:
 
 
 def run_with_nova_act(items: list[str], store: str = "fresh") -> list[dict]:
-    """Use Nova Act to search for items and extract ASINs for cart URLs.
+    """Use Nova Act to search for items and add them to the Amazon cart.
 
-    Opens Amazon search results directly (1 URL per item) to avoid
-    navigating the storefront which hits Nova Act's max-steps limit.
+    For each item, opens search results directly, clicks the first product,
+    then clicks Add to Cart on the product page.
     """
     from nova_act import NovaAct, workflow
 
     results = []
     search_items = items[:5]
     source_label = STORE_LABELS.get(store, "Amazon Fresh")
-
-    json_schema = '{"name": "product name", "price": "$X.XX", "asin": "B08N5WRWNW"}'
 
     @workflow(**get_workflow_kwargs())
     def _search():
@@ -91,79 +65,75 @@ def run_with_nova_act(items: list[str], store: str = "fresh") -> list[dict]:
                 search_term = simplify_ingredient(item)
                 search_url = build_search_url(search_term, store)
 
-                # Open search results page directly, click first result, read ASIN from URL
                 with NovaAct(starting_page=search_url, tty=False) as agent:
-                    # Step 1: click the first relevant product link
+                    # Step 1: click the first relevant product
                     agent.act(
-                        f"Click on the title/name link of the first product in the search results that matches '{search_term}'. "
+                        f"Click on the title/name link of the first product in the "
+                        f"search results that matches '{search_term}'. "
                         f"This should navigate to the product detail page."
                     )
 
-                    # Try to get the current URL to extract ASIN directly
-                    page_url = ""
-                    if hasattr(agent, "page") and agent.page:
-                        page_url = agent.page.url or ""
-                    elif hasattr(agent, "get_url"):
-                        page_url = agent.get_url() or ""
-                    # Step 2: on the product page, read name + price
-                    result = agent.act(
-                        f"You are on an Amazon product page. "
-                        f"Read the product name and price. "
-                        f"Also look at the current page URL — it should contain /dp/ followed by a 10-character code (the ASIN). "
-                        f"Return ONLY valid JSON: {json_schema}"
+                    # Step 2: read product info
+                    info_result = agent.act(
+                        "Read the product name and price from this Amazon product page. "
+                        "Return ONLY valid JSON: {\"name\": \"product name\", \"price\": \"$X.XX\"}"
                     )
 
-                parsed = None
-                if hasattr(result, "parsed_response") and result.parsed_response:
-                    parsed = result.parsed_response
-                elif hasattr(result, "response") and result.response:
-                    resp_text = str(result.response)
-                    try:
-                        start = resp_text.index("{")
-                        end = resp_text.rindex("}") + 1
-                        parsed = json.loads(resp_text[start:end])
-                    except (ValueError, json.JSONDecodeError):
-                        parsed = None
+                    # Step 3: click Add to Cart
+                    cart_result = agent.act(
+                        "Click the 'Add to Cart' button on this page. "
+                        "If there are multiple 'Add to Cart' buttons, click the main/primary one. "
+                        "If you see 'Add to Fresh Cart' or 'Add to Whole Foods Cart', click that instead."
+                    )
 
-                if not isinstance(parsed, dict):
-                    parsed = {"name": search_term, "price": "N/A"}
+                    added = False
+                    if hasattr(cart_result, "parsed_response"):
+                        added = True
+                    elif hasattr(cart_result, "response"):
+                        resp = str(cart_result.response).lower()
+                        added = "added" in resp or "cart" in resp or not ("error" in resp or "fail" in resp)
+                    else:
+                        added = True  # assume success if no error
 
-                # Extract and validate ASIN
-                asin = None
-                raw_asin = str(parsed.pop("asin", "")).strip()
-                if re.match(r"^[A-Z0-9]{10}$", raw_asin, re.I):
-                    asin = raw_asin.upper()
-                if not asin and parsed.get("url"):
-                    url = str(parsed.pop("url", ""))
-                    m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url, re.I)
-                    if m:
-                        asin = m.group(1).upper()
-                # Fallback: extract ASIN from the browser's current page URL
-                if not asin and page_url:
-                    m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", page_url, re.I)
-                    if m:
-                        asin = m.group(1).upper()
+                    # Parse product info
+                    parsed = None
+                    if hasattr(info_result, "parsed_response") and info_result.parsed_response:
+                        parsed = info_result.parsed_response
+                    elif hasattr(info_result, "response") and info_result.response:
+                        resp_text = str(info_result.response)
+                        try:
+                            start = resp_text.index("{")
+                            end = resp_text.rindex("}") + 1
+                            parsed = json.loads(resp_text[start:end])
+                        except (ValueError, json.JSONDecodeError):
+                            parsed = None
 
-                out = {
-                    "searchTerm": item,
-                    "found": bool(asin),
-                    "product": {
-                        "name": parsed.get("name", search_term),
-                        "price": parsed.get("price", "N/A"),
-                        "available": True,
-                    },
-                    "source": source_label,
-                }
-                if asin:
-                    out["asin"] = asin
-                    out["addToCartUrl"] = build_single_cart_url(asin)
-                    out["productUrl"] = f"https://www.amazon.com/dp/{asin}"
-                results.append(out)
+                    if not isinstance(parsed, dict):
+                        parsed = {}
+
+                    # Get product URL for reference
+                    product_url = ""
+                    if hasattr(agent, "page") and agent.page:
+                        product_url = agent.page.url or ""
+
+                    results.append({
+                        "searchTerm": item,
+                        "found": True,
+                        "addedToCart": added,
+                        "product": {
+                            "name": parsed.get("name", search_term),
+                            "price": parsed.get("price", "N/A"),
+                            "available": True,
+                        },
+                        "productUrl": product_url,
+                        "source": source_label,
+                    })
 
             except Exception as e:
                 results.append({
                     "searchTerm": item,
                     "found": False,
+                    "addedToCart": False,
                     "error": str(e)[:200],
                 })
 
@@ -194,7 +164,7 @@ def main():
         items = input_data.get("items", [])
         store = input_data.get("store", "fresh")
 
-        if store not in STORE_URLS:
+        if store not in STORE_LABELS:
             store = "fresh"
 
         if not items:
@@ -203,15 +173,13 @@ def main():
 
         results = run_with_nova_act(items, store=store)
 
-        # Build a batch cart URL for all found ASINs
-        found_asins = [r["asin"] for r in results if r.get("asin")]
-        batch_url = build_batch_cart_url(found_asins) if found_asins else None
+        added_count = sum(1 for r in results if r.get("addedToCart"))
 
         json.dump({
             "results": results,
             "itemCount": len(results),
+            "addedCount": added_count,
             "store": store,
-            "batchCartUrl": batch_url,
         }, sys.stdout)
 
     except ImportError:
