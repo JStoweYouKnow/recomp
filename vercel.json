@@ -1,0 +1,6 @@
+{
+  "functions": {
+    "src/app/api/act/grocery/route.ts": { "maxDuration": 300 },
+    "src/app/api/act/nutrition/route.ts": { "maxDuration": 300 }
+  }
+}

@@ -10,8 +10,8 @@ import {
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 
-// Vercel serverless max ~60s (Pro) — cap so we return fallback before 504
-const TIMEOUT_MS_ACT_SERVICE = 50_000; // 50s; if no response, return search links fallback
+export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
+const TIMEOUT_MS_ACT_SERVICE = 280_000; // 280s — leave headroom before Vercel kills the function
 
 export async function POST(req: NextRequest) {
   try {

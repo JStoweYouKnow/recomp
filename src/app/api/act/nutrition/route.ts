@@ -10,7 +10,8 @@ import {
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 
-const TIMEOUT_MS = 60_000; // 60 seconds
+export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
+const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the function
 
 export async function POST(req: NextRequest) {
   try {
