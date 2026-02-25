@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
       }));
       const res = NextResponse.json({
         results: searchResults,
-        note: "Search Amazon for each item, then add to cart. Set NOVA_ACT_API_KEY on Railway for full automation.",
+        note: "Click each link to search Amazon and add to cart.",
       });
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);
