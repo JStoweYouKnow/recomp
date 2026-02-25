@@ -18,6 +18,15 @@ import re
 import sys
 import urllib.parse
 
+
+def get_workflow_kwargs() -> dict:
+    """Return auth kwargs for @workflow based on available env vars."""
+    return {
+        "model_id": "nova-act-latest",
+        "nova_act_api_key": os.getenv("NOVA_ACT_API_KEY", None),
+        "workflow_definition_name": os.getenv("NOVA_ACT_WORKFLOW_DEFINITION_NAME", None),
+    }
+
 STORE_URLS = {
     "fresh": "https://www.amazon.com/alm/storefront?almBrandId=QW1hem9uIEZyZXNo",
     "wholefoods": "https://wholefoods.amazon.com",
@@ -52,7 +61,7 @@ def run_with_nova_act(
     include_add_to_cart_urls: bool = False,
 ) -> list[dict]:
     """Use Nova Act to search (and optionally add to cart) on the chosen store."""
-    from nova_act import NovaAct
+    from nova_act import NovaAct, workflow
 
     results = []
     max_items = 2 if add_to_cart else 3
@@ -76,86 +85,88 @@ def run_with_nova_act(
     if want_urls:
         json_fields = '{"name": "product name", "price": "$X.XX", "available": true, "asin": "B08N5WRWNW"}'
 
-    with NovaAct(**nova_kwargs) as agent:
-        for item in search_items:
-            try:
-                search_term = simplify_ingredient(item)
+    @workflow(**get_workflow_kwargs())
+    def _search():
+        with NovaAct(**nova_kwargs) as agent:
+            for item in search_items:
+                try:
+                    search_term = simplify_ingredient(item)
 
-                agent.act(f"Search for '{search_term}' in the search bar and press enter")
+                    agent.act(f"Search for '{search_term}' in the search bar and press enter")
 
-                result = agent.act(
-                    f"Look at the search results for '{search_term}'. "
-                    f"Find the first relevant product. "
-                    + (f"ASIN is the 10-character ID in the product link (e.g. /dp/B08N5WRWNW). " if want_urls else "")
-                    + f"Return ONLY valid JSON with no other text: {json_fields}"
-                )
+                    result = agent.act(
+                        f"Look at the search results for '{search_term}'. "
+                        f"Find the first relevant product. "
+                        + (f"ASIN is the 10-character ID in the product link (e.g. /dp/B08N5WRWNW). " if want_urls else "")
+                        + f"Return ONLY valid JSON with no other text: {json_fields}"
+                    )
 
-                parsed = None
-                if hasattr(result, "parsed_response") and result.parsed_response:
-                    parsed = result.parsed_response
-                elif hasattr(result, "response") and result.response:
-                    resp_text = str(result.response)
-                    try:
-                        start = resp_text.index("{")
-                        end = resp_text.rindex("}") + 1
-                        parsed = json.loads(resp_text[start:end])
-                    except (ValueError, json.JSONDecodeError):
+                    parsed = None
+                    if hasattr(result, "parsed_response") and result.parsed_response:
+                        parsed = result.parsed_response
+                    elif hasattr(result, "response") and result.response:
+                        resp_text = str(result.response)
+                        try:
+                            start = resp_text.index("{")
+                            end = resp_text.rindex("}") + 1
+                            parsed = json.loads(resp_text[start:end])
+                        except (ValueError, json.JSONDecodeError):
+                            parsed = {"name": search_term, "price": "N/A", "available": True}
+
+                    if parsed is None:
                         parsed = {"name": search_term, "price": "N/A", "available": True}
 
-                if parsed is None:
-                    parsed = {"name": search_term, "price": "N/A", "available": True}
+                    asin = None
+                    if isinstance(parsed, dict):
+                        raw = str(parsed.pop("asin", "")).strip()
+                        if re.match(r"^[A-Z0-9]{10}$", raw, re.I):
+                            asin = raw.upper()
+                        elif not asin and parsed.get("url"):
+                            url = str(parsed.get("url", ""))
+                            m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url, re.I)
+                            if m:
+                                asin = m.group(1).upper()
+                                parsed.pop("url", None)
 
-                asin = None
-                if isinstance(parsed, dict):
-                    raw = str(parsed.pop("asin", "")).strip()
-                    if re.match(r"^[A-Z0-9]{10}$", raw, re.I):
-                        asin = raw.upper()
-                    elif not asin and parsed.get("url"):
-                        # Extract ASIN from product URL (e.g. /dp/B08N5WRWNW or /gp/product/B08N5WRWNW)
-                        url = str(parsed.get("url", ""))
-                        m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url, re.I)
-                        if m:
-                            asin = m.group(1).upper()
-                            parsed.pop("url", None)
+                    add_to_cart_url = build_add_to_cart_url(asin) if asin else None
 
-                add_to_cart_url = build_add_to_cart_url(asin) if asin else None
+                    added_to_cart = False
+                    if add_to_cart and has_amazon_session:
+                        try:
+                            agent.act(f"Click on the first search result for '{search_term}' to open the product page")
+                            agent.act(
+                                "Scroll down or up until you see 'Add to Cart' or 'Add to Basket'. "
+                                "Click the Add to Cart / Add to Basket button."
+                            )
+                            added_to_cart = True
+                            agent.act("Go back to the previous page or search results")
+                        except Exception as cart_err:
+                            results.append({
+                                "searchTerm": item,
+                                "found": True,
+                                "product": parsed,
+                                "source": source_label,
+                                "addedToCart": False,
+                                "addToCartError": str(cart_err)[:150],
+                                "addToCartUrl": add_to_cart_url,
+                            })
+                            continue
 
-                added_to_cart = False
-                if add_to_cart and has_amazon_session:
-                    try:
-                        agent.act(f"Click on the first search result for '{search_term}' to open the product page")
-                        agent.act(
-                            "Scroll down or up until you see 'Add to Cart' or 'Add to Basket'. "
-                            "Click the Add to Cart / Add to Basket button."
-                        )
-                        added_to_cart = True
-                        agent.act("Go back to the previous page or search results")
-                    except Exception as cart_err:
-                        results.append({
-                            "searchTerm": item,
-                            "found": True,
-                            "product": parsed,
-                            "source": source_label,
-                            "addedToCart": False,
-                            "addToCartError": str(cart_err)[:150],
-                            "addToCartUrl": add_to_cart_url,
-                        })
-                        continue
+                    out = {
+                        "searchTerm": item,
+                        "found": True,
+                        "product": parsed,
+                        "source": source_label,
+                        "addedToCart": added_to_cart,
+                    }
+                    if add_to_cart_url:
+                        out["addToCartUrl"] = add_to_cart_url
+                    results.append(out)
 
-                out = {
-                    "searchTerm": item,
-                    "found": True,
-                    "product": parsed,
-                    "source": source_label,
-                    "addedToCart": added_to_cart,
-                }
-                if add_to_cart_url:
-                    out["addToCartUrl"] = add_to_cart_url
-                results.append(out)
+                except Exception as e:
+                    results.append({"searchTerm": item, "found": False, "error": str(e)[:200]})
 
-            except Exception as e:
-                results.append({"searchTerm": item, "found": False, "error": str(e)[:200]})
-
+    _search()
     return results
 
 

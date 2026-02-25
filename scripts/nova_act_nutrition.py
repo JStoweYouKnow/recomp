@@ -10,35 +10,49 @@ Usage:
 """
 
 import json
+import os
 import sys
+
+
+def get_workflow_kwargs() -> dict:
+    """Return auth kwargs for @workflow based on available env vars."""
+    return {
+        "model_id": "nova-act-latest",
+        "nova_act_api_key": os.getenv("NOVA_ACT_API_KEY", None),
+        "workflow_definition_name": os.getenv("NOVA_ACT_WORKFLOW_DEFINITION_NAME", None),
+    }
 
 
 def run_with_nova_act(food: str) -> dict:
     """Use Nova Act to look up nutrition info on USDA FoodData Central."""
-    from nova_act import NovaAct
+    from nova_act import NovaAct, workflow
 
-    with NovaAct(starting_page="https://fdc.nal.usda.gov/food-search") as agent:
-        agent.act(
-            f"Type '{food}' into the search box and click the search button"
-        )
+    @workflow(**get_workflow_kwargs())
+    def _lookup():
+        with NovaAct(starting_page="https://fdc.nal.usda.gov/food-search") as agent:
+            agent.act(
+                f"Type '{food}' into the search box and click the search button"
+            )
 
-        agent.act(
-            f"Click on the first search result that best matches '{food}'"
-        )
+            agent.act(
+                f"Click on the first search result that best matches '{food}'"
+            )
 
-        result = agent.act(
-            "Read the nutrition facts on this page. Extract: calories, total fat, "
-            "saturated fat, cholesterol, sodium, total carbohydrates, dietary fiber, "
-            "sugars, protein, vitamin D, calcium, iron, and potassium per 100g serving. "
-            "Return as JSON with numeric values."
-        )
+            result = agent.act(
+                "Read the nutrition facts on this page. Extract: calories, total fat, "
+                "saturated fat, cholesterol, sodium, total carbohydrates, dietary fiber, "
+                "sugars, protein, vitamin D, calcium, iron, and potassium per 100g serving. "
+                "Return as JSON with numeric values."
+            )
 
-        return {
-            "food": food,
-            "source": "USDA FoodData Central",
-            "nutrition": result.parsed_response if hasattr(result, 'parsed_response') else str(result),
-            "found": True,
-        }
+            return {
+                "food": food,
+                "source": "USDA FoodData Central",
+                "nutrition": result.parsed_response if hasattr(result, 'parsed_response') else str(result),
+                "found": True,
+            }
+
+    return _lookup()
 
 
 # Per 100g values based on USDA FoodData Central
