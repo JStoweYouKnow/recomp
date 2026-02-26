@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { getTodayLocal, toLocalDateString } from "@/lib/date-utils";
 
 type ViewMode = "month" | "week" | "day";
 
@@ -10,7 +11,7 @@ const DAY_NAMES_FULL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 /* ── Helpers ── */
 
 function toIso(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return toLocalDateString(d);
 }
 
 function noon(iso: string): Date {
@@ -406,7 +407,7 @@ export function CalendarView({
   defaultView?: ViewMode;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>(defaultView);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
 
   const viewOptions: { id: ViewMode; label: string }[] = [
     { id: "month", label: "Month" },

@@ -1,4 +1,5 @@
 import type { UserProfile, MealEntry, FitnessPlan, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe } from "./types";
+import { getTodayLocal } from "./date-utils";
 
 const STORAGE_KEYS = {
   profile: "recomp_profile",
@@ -174,7 +175,7 @@ export function saveActivityLog(entries: ActivityLogEntry[]): void {
 }
 
 export function getTodayActivityAdjustment(): number {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   const entries = getActivityLog().filter((e) => e.date === today);
   return entries.reduce((sum, e) => sum + e.calorieAdjustment, 0);
 }

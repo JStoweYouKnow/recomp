@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+import { getTodayLocal } from "@/lib/date-utils";
 import { computeMilestones } from "@/lib/milestones";
 import { buildDemoSeed } from "@/lib/demoSeed";
 import { MilestonesView } from "@/components/MilestonesView";
@@ -119,7 +120,7 @@ export default function Home() {
       .catch(() => setIsDemoMode(false));
   }, [profile]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   const todaysMeals = meals.filter((m) => m.date === today);
   const todaysTotals = todaysMeals.reduce(
     (acc, m) => ({
@@ -599,7 +600,7 @@ export default function Home() {
 
 function getCurrentStreakFromMeals(meals: MealEntry[]): number {
   const dates = new Set(meals.map((m) => m.date));
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   if (!dates.has(today)) return 0;
   const sorted = Array.from(dates).sort().reverse();
   let streak = 0;

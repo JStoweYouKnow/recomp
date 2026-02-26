@@ -1,4 +1,5 @@
 import type { MealEntry, FitnessPlan, Macros, Milestone } from "./types";
+import { getTodayLocal } from "./date-utils";
 
 const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   first_meal: { name: "First Bite", desc: "Logged your first meal", xp: 25 },
@@ -42,7 +43,7 @@ function getLongestStreak(dates: Set<string>): number {
 }
 
 function getCurrentStreak(dates: Set<string>): number {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   if (!dates.has(today)) return 0;
   const sorted = Array.from(dates).sort().reverse();
   let streak = 0;
@@ -102,7 +103,7 @@ export function computeMilestones(
   });
   const macroStreak = Array.from(daysWithMacros).sort().reverse();
   let macroRun = 0;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   for (const d of macroStreak) {
     if (d <= today) macroRun++;
     else break;

@@ -7,6 +7,7 @@ import type { WearableDaySummary } from "@/lib/types";
 function lbsToKg(lbs: number): number {
   return lbs / 2.2046226218;
 }
+import { getTodayLocal } from "@/lib/date-utils";
 import { isAppleHealthSdkAvailable, requestAppleHealthSdkSync } from "@/lib/apple-health-bridge";
 
 export function WearablesView({ onDataFetched }: { onDataFetched: (data: WearableDaySummary[]) => void }) {
@@ -18,7 +19,7 @@ export function WearablesView({ onDataFetched }: { onDataFetched: (data: Wearabl
   const [appleSdkAvailable, setAppleSdkAvailable] = useState(false);
   const [scaleWeight, setScaleWeight] = useState("");
   const [scaleBodyFat, setScaleBodyFat] = useState("");
-  const [scaleDate, setScaleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 

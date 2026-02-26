@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
+import { getTodayLocal } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 import { TransformationPreview } from "./dashboard/TransformationPreview";
@@ -119,7 +120,7 @@ export function Dashboard({
 
   // Activity / caloric budget state
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>(() => getActivityLog());
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
 
   const todayActivities = activityLog.filter((e) => e.date === today);
   const todayAdjustment = todayActivities.reduce((sum, e) => sum + e.calorieAdjustment, 0);

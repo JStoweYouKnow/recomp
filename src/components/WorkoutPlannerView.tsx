@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress } from "@/lib/storage";
 import type { FitnessPlan } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
+import { getTodayLocal } from "@/lib/date-utils";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
@@ -36,7 +37,7 @@ export function WorkoutPlannerView({
   const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [editingDay, setEditingDay] = useState<number | null>(null);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
 

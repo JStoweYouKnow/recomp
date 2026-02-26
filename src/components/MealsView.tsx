@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile } from "@/lib/storage";
+import { getTodayLocal } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
@@ -25,7 +26,7 @@ export function MealsView({
   onEditMeal: (m: MealEntry) => void;
   onDeleteMeal: (id: string) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayLocal();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
 
