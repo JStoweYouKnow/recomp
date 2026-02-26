@@ -195,6 +195,11 @@ def main():
             result = run_with_nova_act(food)
         except ImportError:
             result = run_demo_mode(food)
+        except Exception as e:
+            # Nova Act / Chromium / API failed — fall back to demo so we return 200 not 500
+            result = run_demo_mode(food)
+            result["note"] = f"USDA lookup unavailable ({type(e).__name__}). Using estimated values."
+            result["demoMode"] = True
 
         print(json.dumps(result))
 
