@@ -311,7 +311,17 @@ export function MealsView({
       try {
         let actData: NutritionData | null = null;
         if (isActServiceConfigured()) {
-          actData = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+          try {
+            actData = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+          } catch {
+            /* Act service (Railway) failed — try API route which has fallbacks */
+            const actRes = await fetch("/api/act/nutrition", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ food }),
+            });
+            if (actRes.ok) actData = await actRes.json();
+          }
         } else {
           const actRes = await fetch("/api/act/nutrition", {
             method: "POST",
