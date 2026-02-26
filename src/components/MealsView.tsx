@@ -14,6 +14,7 @@ export function MealsView({
   todaysTotals,
   targets,
   onAddMeal,
+  onEditMeal,
   onDeleteMeal,
 }: {
   meals: MealEntry[];
@@ -21,6 +22,7 @@ export function MealsView({
   todaysTotals: Macros;
   targets: Macros;
   onAddMeal: (m: MealEntry) => void;
+  onEditMeal: (m: MealEntry) => void;
   onDeleteMeal: (id: string) => void;
 }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -64,6 +66,7 @@ export function MealsView({
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   }, [isViewingToday, selectedDate]);
   const [showAdd, setShowAdd] = useState(false);
+  const [editDraft, setEditDraft] = useState<MealEntry | null>(null);
   const [name, setName] = useState("");
   const [mealType, setMealType] = useState<MealEntry["mealType"]>("lunch");
   const [cal, setCal] = useState("");
@@ -391,6 +394,27 @@ export function MealsView({
     setFat("");
     setInspirationImage(null);
     setShowAdd(false);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editDraft) return;
+    const updated: MealEntry = {
+      ...editDraft,
+      name: editDraft.name.trim() || editDraft.mealType,
+      macros: {
+        calories: editDraft.macros.calories ?? 0,
+        protein: editDraft.macros.protein ?? 0,
+        carbs: editDraft.macros.carbs ?? 0,
+        fat: editDraft.macros.fat ?? 0,
+      },
+    };
+    onEditMeal(updated);
+    setEditDraft(null);
+    if (updated.date !== selectedDate) {
+      setSelectedDate(updated.date);
+      setCalendarOpen(true);
+    }
+    showToast?.("Meal updated");
   };
 
   return (
@@ -972,12 +996,110 @@ export function MealsView({
         ) : (
           <ul className="space-y-2">
             {displayMeals.map((m) => (
-              <li key={m.id} className="flex items-center justify-between card px-4 py-3">
-                <div>
-                  <p className="text-sm font-semibold">{m.name}</p>
-                  <p className="text-caption">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
-                </div>
-                <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Delete</button>
+              <li key={m.id}>
+                {editDraft?.id === m.id ? (
+                  <div className="card p-4 space-y-4 animate-slide-up">
+                    <h4 className="text-sm font-semibold">Edit meal</h4>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="label !mb-1">Name</label>
+                        <input
+                          value={editDraft.name}
+                          onChange={(e) => setEditDraft((d) => d ? { ...d, name: e.target.value } : null)}
+                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="label !mb-1">Date</label>
+                        <input
+                          type="date"
+                          value={editDraft.date}
+                          onChange={(e) => setEditDraft((d) => d ? { ...d, date: e.target.value } : null)}
+                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="label !mb-1">Meal type</label>
+                        <select
+                          value={editDraft.mealType}
+                          onChange={(e) => setEditDraft((d) => d ? { ...d, mealType: e.target.value as MealEntry["mealType"] } : null)}
+                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                        >
+                          <option value="breakfast">Breakfast</option>
+                          <option value="lunch">Lunch</option>
+                          <option value="dinner">Dinner</option>
+                          <option value="snack">Snack</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label !mb-1">Notes (optional)</label>
+                        <input
+                          value={editDraft.notes ?? ""}
+                          onChange={(e) => setEditDraft((d) => d ? { ...d, notes: e.target.value || undefined } : null)}
+                          placeholder="e.g. Restaurant, portion size"
+                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                        />
+                      </div>
+                      <div className="sm:col-span-2 grid grid-cols-4 gap-2">
+                        <div>
+                          <label className="label !mb-1">Cal</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.macros.calories || ""}
+                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, calories: parseInt(e.target.value) || 0 } } : null)}
+                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="label !mb-1">P (g)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.macros.protein || ""}
+                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, protein: parseInt(e.target.value) || 0 } } : null)}
+                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="label !mb-1">C (g)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.macros.carbs || ""}
+                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, carbs: parseInt(e.target.value) || 0 } } : null)}
+                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label className="label !mb-1">F (g)</label>
+                          <input
+                            type="number"
+                            min={0}
+                            value={editDraft.macros.fat || ""}
+                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, fat: parseInt(e.target.value) || 0 } } : null)}
+                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveEdit} className="btn-primary !text-sm">Save</button>
+                      <button onClick={() => setEditDraft(null)} className="btn-secondary !text-sm">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between card px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold">{m.name}</p>
+                      <p className="text-caption">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent)]">Edit</button>
+                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Delete</button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

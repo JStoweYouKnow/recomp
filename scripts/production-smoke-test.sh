@@ -23,6 +23,12 @@ else
   echo "   ✗ voice: $(echo "$HEALTH" | jq -r '.features.voice // "missing"')"
   exit 1
 fi
+if echo "$HEALTH" | jq -e '.features.dynamodbSync == "live"' >/dev/null 2>&1; then
+  echo "   ✓ dynamodbSync: live"
+else
+  echo "   ✗ dynamodbSync: $(echo "$HEALTH" | jq -r '.features.dynamodbSync // "missing"')"
+  exit 1
+fi
 echo "   ✓ All features: $(echo "$HEALTH" | jq -c '.features')"
 echo ""
 

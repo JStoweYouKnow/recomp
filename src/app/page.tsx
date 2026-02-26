@@ -475,11 +475,19 @@ export default function Home() {
               const next = [...meals, m];
               setMeals(next);
               saveMeals(next);
+              syncToServer();
+            }}
+            onEditMeal={(m) => {
+              const next = meals.map((x) => (x.id === m.id ? m : x));
+              setMeals(next);
+              saveMeals(next);
+              syncToServer();
             }}
             onDeleteMeal={(id) => {
               const next = meals.filter((x) => x.id !== id);
               setMeals(next);
               saveMeals(next);
+              syncToServer();
             }}
           />
           </div>
