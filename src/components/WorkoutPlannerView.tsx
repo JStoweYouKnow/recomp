@@ -40,6 +40,8 @@ export function WorkoutPlannerView({
   const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [editingDay, setEditingDay] = useState<number | null>(null);
+  /** Local draft while editing — avoids parent updates on every keystroke for responsive typing */
+  const [editingWeekCopy, setEditingWeekCopy] = useState<FitnessPlan["workoutPlan"]["weeklyPlan"] | null>(null);
   const today = getTodayLocal();
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
@@ -143,7 +145,7 @@ export function WorkoutPlannerView({
   useEffect(() => {
     if (!plan) return;
     const validKeys = new Set(
-      plan.workoutPlan.weeklyPlan.flatMap((day) => {
+      (editingWeekCopy ?? plan.workoutPlan.weeklyPlan).flatMap((day) => {
         const warmups = (day.warmups ?? []).map((ex) => exerciseKey(day, ex, "warmup"));
         const main = day.exercises.map((ex) => exerciseKey(day, ex, "main"));
         const finishers = (day.finishers ?? []).map((ex) => exerciseKey(day, ex, "finisher"));
@@ -167,7 +169,9 @@ export function WorkoutPlannerView({
     );
   }
 
-  const totalExercises = plan.workoutPlan.weeklyPlan.reduce(
+  const weeklyPlan = editingWeekCopy ?? plan.workoutPlan.weeklyPlan;
+
+  const totalExercises = weeklyPlan.reduce(
     (sum, day) =>
       sum +
       (day.warmups?.length ?? 0) +
@@ -175,7 +179,7 @@ export function WorkoutPlannerView({
       (day.finishers?.length ?? 0),
     0
   );
-  const completedExercises = plan.workoutPlan.weeklyPlan.reduce((sum, day) => {
+  const completedExercises = weeklyPlan.reduce((sum, day) => {
     const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "warmup")])).length;
     const mainDone = day.exercises.filter((ex) => Boolean(progress[exerciseKey(day, ex, "main")])).length;
     const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "finisher")])).length;
@@ -183,29 +187,47 @@ export function WorkoutPlannerView({
   }, 0);
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
+  const commitEdit = useCallback(() => {
+    if (editingWeekCopy) {
+      onUpdatePlan({
+        ...plan,
+        workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
+      });
+      onPlanSaved?.();
+      setEditingWeekCopy(null);
+    }
+  }, [editingWeekCopy, plan, onUpdatePlan, onPlanSaved]);
+
   const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
-    onUpdatePlan({
-      ...plan,
-      workoutPlan: {
-        ...plan.workoutPlan,
-        weeklyPlan: nextWeeklyPlan,
-      },
-    });
-    if (triggerSync) onPlanSaved?.();
+    if (editingWeekCopy !== null) {
+      setEditingWeekCopy(nextWeeklyPlan);
+      if (triggerSync) {
+        onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+        onPlanSaved?.();
+      }
+    } else {
+      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+      if (triggerSync) onPlanSaved?.();
+    }
   };
 
   const updateDay = (
     dayIndex: number,
     updater: (day: FitnessPlan["workoutPlan"]["weeklyPlan"][number]) => FitnessPlan["workoutPlan"]["weeklyPlan"][number]
   ) => {
-    const next = plan.workoutPlan.weeklyPlan.map((day, idx) => (idx === dayIndex ? updater(day) : day));
-    updateWeeklyPlan(next, false); // no sync on keystroke; sync when Done editing
+    const source = weeklyPlan;
+    const next = source.map((day, idx) => (idx === dayIndex ? updater(day) : day));
+    if (editingWeekCopy !== null) {
+      setEditingWeekCopy(next);
+    } else {
+      updateWeeklyPlan(next, false);
+    }
   };
 
   const moveDay = (dayIndex: number, direction: -1 | 1) => {
     const target = dayIndex + direction;
-    if (target < 0 || target >= plan.workoutPlan.weeklyPlan.length) return;
-    const next = [...plan.workoutPlan.weeklyPlan];
+    if (target < 0 || target >= weeklyPlan.length) return;
+    const next = [...weeklyPlan];
     const [moved] = next.splice(dayIndex, 1);
     next.splice(target, 0, moved);
     updateWeeklyPlan(next, true);
@@ -278,15 +300,15 @@ export function WorkoutPlannerView({
           </button>
           <button
             onClick={() => {
-              updateWeeklyPlan(
-                [
-                  ...plan.workoutPlan.weeklyPlan,
-                  { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", warmups: [], exercises: [], finishers: [] },
-                ],
-                true
-              );
-              setExpandedDay(plan.workoutPlan.weeklyPlan.length);
-              setEditingDay(plan.workoutPlan.weeklyPlan.length);
+              const next = [
+                ...weeklyPlan,
+                { day: `Day ${weeklyPlan.length + 1}`, focus: "General fitness", warmups: [], exercises: [], finishers: [] },
+              ];
+              setEditingWeekCopy(next);
+              onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+              onPlanSaved?.();
+              setExpandedDay(next.length - 1);
+              setEditingDay(next.length - 1);
             }}
             className="btn-primary px-4 py-2 text-sm"
           >
@@ -306,11 +328,11 @@ export function WorkoutPlannerView({
               matchDayToDate(selectedDate) !== null ? (
                 <div className="text-xs text-[var(--muted)] space-y-0.5">
                   <p className="font-medium text-[var(--foreground)]">
-                    {plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.day}
+                    {weeklyPlan[matchDayToDate(selectedDate)!]?.day}
                   </p>
-                  <p>{plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.focus}</p>
+                  <p>{weeklyPlan[matchDayToDate(selectedDate)!]?.focus}</p>
                   <p>
-                    {plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length} exercise{plan.workoutPlan.weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length !== 1 ? "s" : ""}
+                    {weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length} exercise{weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length !== 1 ? "s" : ""}
                   </p>
                 </div>
               ) : (
@@ -332,7 +354,7 @@ export function WorkoutPlannerView({
       </div>
 
       <div className="space-y-3">
-        {plan.workoutPlan.weeklyPlan.map((day, dayIndex) => {
+        {weeklyPlan.map((day, dayIndex) => {
           // When calendar is open, only show the matched day
           const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
           if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
@@ -355,7 +377,7 @@ export function WorkoutPlannerView({
                 type="button"
                 onClick={() => {
                   if (isExpanded) {
-                    if (editingDay === dayIndex) onPlanSaved?.();
+                    if (editingDay === dayIndex) commitEdit();
                     setEditingDay(null);
                   }
                   setExpandedDay(isExpanded ? null : dayIndex);
@@ -426,9 +448,10 @@ export function WorkoutPlannerView({
                       onClick={(e) => {
                         e.stopPropagation();
                         if (isEditing) {
+                          commitEdit();
                           setEditingDay(null);
-                          onPlanSaved?.();
                         } else {
+                          setEditingWeekCopy(JSON.parse(JSON.stringify(plan.workoutPlan.weeklyPlan)));
                           setEditingDay(dayIndex);
                         }
                       }}
@@ -437,12 +460,12 @@ export function WorkoutPlannerView({
                       {isEditing ? "Done editing" : "Edit"}
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, -1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === 0}>Move up</button>
-                    <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, 1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === plan.workoutPlan.weeklyPlan.length - 1}>Move down</button>
+                    <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, 1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === weeklyPlan.length - 1}>Move down</button>
                     {isEditing && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          updateWeeklyPlan(plan.workoutPlan.weeklyPlan.filter((_, idx) => idx !== dayIndex), true);
+                          updateWeeklyPlan(weeklyPlan.filter((_, idx) => idx !== dayIndex), true);
                           setExpandedDay(null);
                           setEditingDay(null);
                         }}

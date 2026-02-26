@@ -212,9 +212,9 @@ export function LandingPage({
             <span className="brand-title !text-lg text-[var(--accent)] leading-none">Recomp</span>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)]/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
-            Amazon Nova AI Hackathon
-          </span>
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
+              Amazon Nova AI Hackathon
+            </span>
         </div>
       </header>
 
