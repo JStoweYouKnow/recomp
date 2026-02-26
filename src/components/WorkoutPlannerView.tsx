@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getWorkoutProgress, saveWorkoutProgress } from "@/lib/storage";
+import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames } from "@/lib/storage";
 import type { FitnessPlan, WorkoutExercise } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal } from "@/lib/date-utils";
@@ -26,6 +26,16 @@ function setGifCache(cache: Record<string, ExerciseGif>) {
 /** Map a calendar day-of-week (0=Sun..6=Sat) to common day name prefixes */
 const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function extractExerciseNames(weeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"]): string[] {
+  const names: string[] = [];
+  for (const day of weeklyPlan) {
+    for (const ex of day.warmups ?? []) if (ex.name?.trim()) names.push(ex.name.trim());
+    for (const ex of day.exercises) if (ex.name?.trim()) names.push(ex.name.trim());
+    for (const ex of day.finishers ?? []) if (ex.name?.trim()) names.push(ex.name.trim());
+  }
+  return names;
+}
 
 export function WorkoutPlannerView({
   plan,
@@ -189,6 +199,8 @@ export function WorkoutPlannerView({
 
   const commitEdit = useCallback(() => {
     if (editingWeekCopy) {
+      const names = extractExerciseNames(editingWeekCopy);
+      if (names.length > 0) saveRecentExerciseNames(names);
       onUpdatePlan({
         ...plan,
         workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
@@ -199,6 +211,10 @@ export function WorkoutPlannerView({
   }, [editingWeekCopy, plan, onUpdatePlan, onPlanSaved]);
 
   const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
+    if (triggerSync) {
+      const names = extractExerciseNames(nextWeeklyPlan);
+      if (names.length > 0) saveRecentExerciseNames(names);
+    }
     if (editingWeekCopy !== null) {
       setEditingWeekCopy(nextWeeklyPlan);
       if (triggerSync) {
@@ -276,8 +292,26 @@ export function WorkoutPlannerView({
     return m ? m[1].trim() : null;
   };
 
+  const suggestedExerciseNames = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const n of [...getRecentExerciseNames(), ...extractExerciseNames(weeklyPlan)]) {
+      const key = n.toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out.push(n.trim());
+      }
+    }
+    return out;
+  }, [weeklyPlan]);
+
   return (
     <div className="space-y-6 animate-fade-in">
+      <datalist id="workout-exercise-names">
+        {suggestedExerciseNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
@@ -304,6 +338,8 @@ export function WorkoutPlannerView({
                 ...weeklyPlan,
                 { day: `Day ${weeklyPlan.length + 1}`, focus: "General fitness", warmups: [], exercises: [], finishers: [] },
               ];
+              const names = extractExerciseNames(next);
+              if (names.length > 0) saveRecentExerciseNames(names);
               setEditingWeekCopy(next);
               onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
               onPlanSaved?.();
@@ -519,7 +555,7 @@ export function WorkoutPlannerView({
                                     <>
                                       <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
                                         <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
-                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
                                         <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
                                         <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
                                         <div className="flex gap-2 justify-end">
@@ -597,6 +633,7 @@ export function WorkoutPlannerView({
                                     }
                                     placeholder="Exercise"
                                     className="input-base rounded px-2 py-1 text-sm"
+                                    list="workout-exercise-names"
                                   />
                                   <input
                                     value={exercise.sets}
@@ -765,7 +802,7 @@ export function WorkoutPlannerView({
                                     <>
                                       <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
                                         <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
-                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
                                         <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
                                         <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
                                         <div className="flex gap-2 justify-end">

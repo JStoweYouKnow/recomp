@@ -1,4 +1,4 @@
-import type { UserProfile, MealEntry, FitnessPlan, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe } from "./types";
+import type { UserProfile, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe } from "./types";
 import { getTodayLocal } from "./date-utils";
 
 const STORAGE_KEYS = {
@@ -18,6 +18,8 @@ const STORAGE_KEYS = {
   activityLog: "recomp_activity_log",
   shoppingList: "recomp_shopping_list",
   cookingAppRecipes: "recomp_cooking_app_recipes",
+  recentMealTemplates: "recomp_recent_meal_templates",
+  recentExerciseNames: "recomp_recent_exercise_names",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -209,6 +211,58 @@ export function getCookingAppRecipes(): CookingAppRecipe[] {
 export function saveCookingAppRecipes(recipes: CookingAppRecipe[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.cookingAppRecipes, JSON.stringify(recipes));
+}
+
+/* ── Recent meal templates (quick-fill when logging) ───────── */
+
+export interface RecentMealTemplate {
+  name: string;
+  macros: Macros;
+  lastUsed: string;
+}
+
+const MAX_RECENT_MEALS = 30;
+
+export function getRecentMealTemplates(): RecentMealTemplate[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<RecentMealTemplate[]>(localStorage.getItem(STORAGE_KEYS.recentMealTemplates), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveRecentMealTemplate(meal: { name: string; macros: Macros }): void {
+  if (typeof window === "undefined") return;
+  const now = new Date().toISOString();
+  const key = meal.name.toLowerCase().trim();
+  const existing = getRecentMealTemplates();
+  const filtered = existing.filter((t) => t.name.toLowerCase().trim() !== key);
+  const updated = [...filtered, { ...meal, lastUsed: now }]
+    .sort((a, b) => b.lastUsed.localeCompare(a.lastUsed))
+    .slice(0, MAX_RECENT_MEALS);
+  localStorage.setItem(STORAGE_KEYS.recentMealTemplates, JSON.stringify(updated));
+}
+
+/* ── Recent exercise names (autocomplete in workout editor) ── */
+
+const MAX_RECENT_EXERCISES = 50;
+
+export function getRecentExerciseNames(): string[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<string[]>(localStorage.getItem(STORAGE_KEYS.recentExerciseNames), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveRecentExerciseNames(names: string[]): void {
+  if (typeof window === "undefined") return;
+  const seen = new Set<string>();
+  const deduped = names
+    .map((n) => n.trim())
+    .filter((n) => {
+      if (!n || seen.has(n.toLowerCase())) return false;
+      seen.add(n.toLowerCase());
+      return true;
+    })
+    .slice(0, MAX_RECENT_EXERCISES);
+  localStorage.setItem(STORAGE_KEYS.recentExerciseNames, JSON.stringify(deduped));
 }
 
 /* ── Shopping list (Nova Act grocery) ───────────────────── */

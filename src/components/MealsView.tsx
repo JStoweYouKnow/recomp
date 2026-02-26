@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile } from "@/lib/storage";
+import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate } from "@/lib/storage";
 import { getTodayLocal } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
@@ -433,6 +433,7 @@ export function MealsView({
     };
     onAddMeal(meal);
     embedMealBackground(meal);
+    saveRecentMealTemplate({ name: meal.name, macros: meal.macros });
     setName("");
     setCal("");
     setPro("");
@@ -457,6 +458,7 @@ export function MealsView({
       },
     };
     onEditMeal(updated);
+    saveRecentMealTemplate({ name: updated.name, macros: updated.macros });
     setEditDraft(null);
     if (updated.date !== selectedDate) {
       setSelectedDate(updated.date);
@@ -540,6 +542,29 @@ export function MealsView({
         <div className="card p-6 animate-slide-up">
           <h3 className="section-title !text-base mb-1">Add meal</h3>
           <p className="text-sm text-[var(--muted)] mb-4">Enter a name, or use the buttons below to fill in quickly.</p>
+          {getRecentMealTemplates().length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-[var(--muted)] mb-2">Recent meals &amp; recipes</p>
+              <div className="flex flex-wrap gap-2">
+                {getRecentMealTemplates().slice(0, 12).map((t) => (
+                  <button
+                    key={`${t.name}-${t.lastUsed}`}
+                    type="button"
+                    onClick={() => {
+                      setName(t.name);
+                      setCal(String(t.macros.calories ?? ""));
+                      setPro(String(t.macros.protein ?? ""));
+                      setCarb(String(t.macros.carbs ?? ""));
+                      setFat(String(t.macros.fat ?? ""));
+                    }}
+                    className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface)] hover:border-[var(--accent)]/40 transition-colors"
+                  >
+                    {t.name} <span className="text-[var(--muted)]">· {t.macros.calories ?? 0} cal</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={handleSuggest}
@@ -613,16 +638,27 @@ export function MealsView({
                   {similarMeals.length > 0 ? (
                     <>
                       Similar to past meals:{" "}
-                      {similarMeals.map((s) => (
-                        <button
-                          key={s.mealId}
-                          type="button"
-                          onClick={() => setName(s.name)}
-                          className="text-[var(--accent)] hover:underline mr-1"
-                        >
-                          {s.name}
-                        </button>
-                      ))}
+                      {similarMeals.map((s) => {
+                        const m = meals.find((x) => x.id === s.mealId);
+                        return (
+                          <button
+                            key={s.mealId}
+                            type="button"
+                            onClick={() => {
+                              setName(s.name);
+                              if (m?.macros) {
+                                setCal(String(m.macros.calories ?? ""));
+                                setPro(String(m.macros.protein ?? ""));
+                                setCarb(String(m.macros.carbs ?? ""));
+                                setFat(String(m.macros.fat ?? ""));
+                              }
+                            }}
+                            className="text-[var(--accent)] hover:underline mr-1"
+                          >
+                            {s.name}
+                          </button>
+                        );
+                      })}
                       {similarLoading && "…"}
                     </>
                   ) : (
