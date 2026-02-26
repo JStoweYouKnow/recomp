@@ -27,6 +27,7 @@ Guidelines:
 - Workout frequency: respect workoutDaysPerWeek (2–7); create exactly that many workout days
 - Preferred time (morning/afternoon/evening/flexible): optional scheduling hints in workoutTips
 - Design exercises ONLY using the equipment listed; avoid exercises requiring equipment the user does not have
+- For exercises, use ONLY specific, real exercise names (e.g. "Barbell Bench Press", "Romanian Deadlift", "Goblet Squat", "Pull-Up"). Never use vague placeholders like "Compound lift variation", "Accessory movement", "Mobility flow", or "Conditioning finisher"
 - Account for dietary restrictions and injuries
 - Be encouraging and realistic
 - Format responses as valid JSON only, no markdown or extra text
@@ -132,20 +133,36 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
       return {
         day,
         focus: "Recovery / Mobility",
-        exercises: [{ name: "Mobility flow", sets: "1", reps: "15-20 min", notes: "Light stretching and walking" }],
+        exercises: [
+          { name: "Incline Walk", sets: "1", reps: "20-30 min", notes: "Light pace on treadmill or outdoors" },
+          { name: "Hip Flexor Stretch", sets: "2", reps: "30s per side", notes: "Hold each side" },
+        ],
       };
     }
     const focus =
       idx % 3 === 0 ? "Upper Body Strength" : idx % 3 === 1 ? "Lower Body Strength" : "Conditioning + Core";
-    return {
-      day,
-      focus,
-      exercises: [
-        { name: "Compound lift variation", sets: "3", reps: "6-10" },
-        { name: "Accessory movement", sets: "3", reps: "10-15" },
-        { name: "Conditioning finisher", sets: "1", reps: "10-15 min", notes: "Moderate pace" },
-      ],
-    };
+    const upperExercises = [
+      { name: "Bench Press", sets: "4", reps: "6-8" },
+      { name: "Overhead Press", sets: "3", reps: "8-10" },
+      { name: "Bent Over Row", sets: "3", reps: "8-10" },
+    ];
+    const lowerExercises = [
+      { name: "Back Squat", sets: "4", reps: "5-6" },
+      { name: "Romanian Deadlift", sets: "3", reps: "8-10" },
+      { name: "Walking Lunge", sets: "3", reps: "10 per leg" },
+    ];
+    const conditioningExercises = [
+      { name: "Mountain Climber", sets: "3", reps: "30s", notes: "Moderate pace" },
+      { name: "Plank", sets: "3", reps: "45s", notes: "Hold" },
+      { name: "Burpee", sets: "2", reps: "10", notes: "Controlled pace" },
+    ];
+    const exercises =
+      focus === "Upper Body Strength"
+        ? upperExercises
+        : focus === "Lower Body Strength"
+          ? lowerExercises
+          : conditioningExercises;
+    return { day, focus, exercises };
   });
 
   return {
@@ -262,6 +279,8 @@ Profile:
 
 Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal (${profile.goal}). Name concrete foods and meal ideas—e.g. "Oatmeal with eggs and banana" not "Protein-rich breakfast". Vary meals across the week.
 
+CRITICAL - Exercises: Every exercise "name" MUST be a specific, real exercise (e.g. "Bench Press", "Romanian Deadlift", "Goblet Squat", "Pull-Up", "Lateral Raise"). Never output generic placeholders like "Compound lift variation", "Accessory movement", "Mobility flow", or "Conditioning finisher". Use names that match common fitness databases (ExerciseDB).
+
 Respond with this exact JSON structure:
 {
   "dailyTargets": {"calories": number, "protein": number, "carbs": number, "fat": number},
@@ -269,7 +288,7 @@ Respond with this exact JSON structure:
     {"day": "Monday", "meals": [{"mealType": "Breakfast", "description": "Specific meal idea for their goal", "calories": n, "protein": n, "carbs": n, "fat": n}]}
   ],
   "workoutDays": [
-    {"day": "Monday", "focus": "e.g. Upper Body", "exercises": [{"name": "...", "sets": "3", "reps": "8-12", "notes": "optional"}]}
+    {"day": "Monday", "focus": "e.g. Upper Body", "exercises": [{"name": "Specific exercise e.g. Bench Press or Romanian Deadlift", "sets": "3", "reps": "8-12", "notes": "optional"}]}
   ],
   "dietTips": ["goal-specific nutrition tip 1", "goal-specific tip 2", "goal-specific tip 3"],
   "workoutTips": ["tip1", "tip2"]

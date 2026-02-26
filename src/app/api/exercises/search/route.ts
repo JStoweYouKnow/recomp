@@ -100,7 +100,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ error: "No exercise found", name }, { status: 404 });
+    return NextResponse.json({
+      error: "No exercise found",
+      name,
+      gifUrl: null,
+      targetMuscles: [],
+      instructions: [],
+    }, { status: 200 });
   } catch (err) {
     logError("exercise-search", err);
     return NextResponse.json({ error: "Search failed" }, { status: 500 });
