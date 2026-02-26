@@ -81,6 +81,9 @@ export function MealsView({
   const [receiptItems, setReceiptItems] = useState<{ name: string; quantity?: string; calories: number; protein: number; carbs: number; fat: number; selected?: boolean }[]>([]);
   const [nutritionLookupLoading, setNutritionLookupLoading] = useState(false);
   const [nutritionSource, setNutritionSource] = useState<"usda" | "web" | "estimated" | null>(null);
+  const [recipeUrl, setRecipeUrl] = useState("");
+  const [recipeUrlLoading, setRecipeUrlLoading] = useState(false);
+  const [recipeImageUrl, setRecipeImageUrl] = useState<string | null>(null);
   const [inspirationLoading, setInspirationLoading] = useState(false);
   const [inspirationImage, setInspirationImage] = useState<string | null>(null);
   const [cookingTab, setCookingTab] = useState<"off" | "connect" | "import" | "recipes" | "history">("off");
@@ -385,6 +388,34 @@ export function MealsView({
     }
   };
 
+  const handleRecipeUrlImport = async () => {
+    const url = recipeUrl.trim();
+    if (!url) return;
+    setRecipeUrlLoading(true);
+    setRecipeImageUrl(null);
+    try {
+      const res = await fetch("/api/meals/parse-recipe-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.name) setName(data.name);
+      if (data.nutrition) {
+        setCal(String(data.nutrition.calories ?? ""));
+        setPro(String(data.nutrition.protein ?? ""));
+        setCarb(String(data.nutrition.carbs ?? ""));
+        setFat(String(data.nutrition.fat ?? ""));
+      }
+      if (data.imageUrl) setRecipeImageUrl(data.imageUrl);
+    } catch (err) {
+      showToast?.(err instanceof Error ? err.message : "Could not parse recipe URL");
+    } finally {
+      setRecipeUrlLoading(false);
+    }
+  };
+
   const handleAdd = () => {
     setNutritionSource(null);
     const c = parseInt(cal) || 0, p = parseInt(pro) || 0, cb = parseInt(carb) || 0, f = parseInt(fat) || 0;
@@ -394,6 +425,7 @@ export function MealsView({
       mealType,
       name: name || mealType,
       macros: { calories: c, protein: p, carbs: cb, fat: f },
+      imageUrl: recipeImageUrl || undefined,
       loggedAt: new Date().toISOString(),
     };
     onAddMeal(meal);
@@ -404,6 +436,7 @@ export function MealsView({
     setCarb("");
     setFat("");
     setInspirationImage(null);
+    setRecipeImageUrl(null);
     setShowAdd(false);
   };
 
@@ -539,6 +572,26 @@ export function MealsView({
               {inspirationLoading ? "Generating visual..." : "Generate meal visual"}
             </button>
           </div>
+          <div className="flex flex-col gap-2">
+            <label className="label !mb-0">Import from recipe URL</label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                placeholder="https://example.com/recipe/chicken-stir-fry"
+                value={recipeUrl}
+                onChange={(e) => setRecipeUrl(e.target.value)}
+                className="input-base rounded-lg px-4 py-2 text-sm flex-1"
+              />
+              <button
+                type="button"
+                onClick={handleRecipeUrlImport}
+                disabled={recipeUrlLoading || !recipeUrl.trim()}
+                className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50"
+              >
+                {recipeUrlLoading ? "Fetching…" : "Import"}
+              </button>
+            </div>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <label className="label !mb-0">Meal name</label>
@@ -589,10 +642,10 @@ export function MealsView({
             <input type="number" placeholder="Carbs (g)" value={carb} onChange={(e) => setCarb(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
             <input type="number" placeholder="Fat (g)" value={fat} onChange={(e) => setFat(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
           </div>
-          {inspirationImage && (
+          {(inspirationImage || recipeImageUrl) && (
             <img
-              src={`data:image/png;base64,${inspirationImage}`}
-              alt="Meal inspiration"
+              src={recipeImageUrl ?? `data:image/png;base64,${inspirationImage}`}
+              alt="Meal"
               className="mt-4 max-h-52 rounded-lg object-cover"
             />
           )}
@@ -600,7 +653,7 @@ export function MealsView({
             <button onClick={handleAdd} className="btn-primary rounded-lg px-4 py-2">
               Save
             </button>
-            <button onClick={() => setShowAdd(false)} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
+            <button onClick={() => { setShowAdd(false); setRecipeUrl(""); setRecipeImageUrl(null); }} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
               Cancel
             </button>
           </div>
@@ -1100,8 +1153,11 @@ export function MealsView({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between card px-4 py-3">
-                    <div>
+                  <div className="flex items-center justify-between card px-4 py-3 gap-3">
+                    {m.imageUrl && (
+                      <img src={m.imageUrl} alt="" className="h-14 w-14 rounded-lg object-cover flex-shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold">{m.name}</p>
                       <p className="text-caption">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
                     </div>

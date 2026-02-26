@@ -48,6 +48,8 @@ export interface MealEntry {
   name: string;
   macros: Macros;
   notes?: string;
+  /** Recipe or meal image URL (e.g. from recipe site) */
+  imageUrl?: string;
   loggedAt: string;
 }
 

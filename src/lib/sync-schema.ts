@@ -17,6 +17,7 @@ const mealEntrySchema = z.object({
   name: z.string().max(500),
   macros: macrosSchema,
   notes: z.string().max(1000).optional(),
+  imageUrl: z.string().url().max(2000).optional(),
   loggedAt: z.string().max(50).optional(),
 });
 
