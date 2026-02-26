@@ -84,6 +84,7 @@ export function MealsView({
   const [recipeUrl, setRecipeUrl] = useState("");
   const [recipeUrlLoading, setRecipeUrlLoading] = useState(false);
   const [recipeImageUrl, setRecipeImageUrl] = useState<string | null>(null);
+  const [recipeServings, setRecipeServings] = useState<number | null>(null);
   const [inspirationLoading, setInspirationLoading] = useState(false);
   const [inspirationImage, setInspirationImage] = useState<string | null>(null);
   const [cookingTab, setCookingTab] = useState<"off" | "connect" | "import" | "recipes" | "history">("off");
@@ -393,6 +394,7 @@ export function MealsView({
     if (!url) return;
     setRecipeUrlLoading(true);
     setRecipeImageUrl(null);
+    setRecipeServings(null);
     try {
       const res = await fetch("/api/meals/parse-recipe-url", {
         method: "POST",
@@ -409,6 +411,7 @@ export function MealsView({
         setFat(String(data.nutrition.fat ?? ""));
       }
       if (data.imageUrl) setRecipeImageUrl(data.imageUrl);
+      setRecipeServings(data.servings > 1 ? data.servings : null);
     } catch (err) {
       showToast?.(err instanceof Error ? err.message : "Could not parse recipe URL");
     } finally {
@@ -437,6 +440,7 @@ export function MealsView({
     setFat("");
     setInspirationImage(null);
     setRecipeImageUrl(null);
+    setRecipeServings(null);
     setShowAdd(false);
   };
 
@@ -591,6 +595,9 @@ export function MealsView({
                 {recipeUrlLoading ? "Fetching…" : "Import"}
               </button>
             </div>
+            {recipeServings && recipeServings > 1 && (
+              <p className="text-xs text-[var(--muted)]">Serves {recipeServings} — nutrition is per serving</p>
+            )}
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
@@ -653,7 +660,7 @@ export function MealsView({
             <button onClick={handleAdd} className="btn-primary rounded-lg px-4 py-2">
               Save
             </button>
-            <button onClick={() => { setShowAdd(false); setRecipeUrl(""); setRecipeImageUrl(null); }} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
+            <button onClick={() => { setShowAdd(false); setRecipeUrl(""); setRecipeImageUrl(null); setRecipeServings(null); }} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
               Cancel
             </button>
           </div>

@@ -77,6 +77,15 @@ export async function POST(req: NextRequest) {
     let name: string | null = null;
     let imageUrl: string | null = null;
     let nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number } | null = null;
+    let servings = 1;
+
+    function parseServings(val: unknown): number {
+      if (val == null) return 1;
+      if (typeof val === "number") return val > 0 ? Math.round(val) : 1;
+      const s = String(val).replace(/\D/g, "");
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    }
 
     if (schemaMatch) {
       for (const tag of schemaMatch) {
@@ -95,6 +104,7 @@ export async function POST(req: NextRequest) {
               (Array.isArray(type) && type.includes("Recipe"))
             ) {
               name = item.name ?? item.headline ?? null;
+              servings = parseServings(item.recipeYield ?? item.yield ?? item.servings ?? 1);
               const img = item.image;
               if (img) {
                 const first = Array.isArray(img) ? img[0] : img;
@@ -109,12 +119,19 @@ export async function POST(req: NextRequest) {
                   typeof val === "number" ? val : typeof val === "string" ? parseFloat(val.replace(/[^\d.]/g, "")) || 0 : 0;
                 const cals = nut.calories ?? nut.energyContent;
                 const calNum = typeof cals === "number" ? cals : typeof cals === "string" ? parseInt(cals.replace(/\D/g, ""), 10) : NaN;
-                nutrition = {
-                  calories: Number.isFinite(calNum) ? calNum : toNum(cals),
-                  protein: toNum(nut.proteinContent ?? nut.protein),
-                  carbs: toNum(nut.carbohydrateContent ?? nut.carbohydrates ?? nut.carbs),
-                  fat: toNum(nut.fatContent ?? nut.fat),
-                };
+                let calories = Number.isFinite(calNum) ? calNum : toNum(cals);
+                let protein = toNum(nut.proteinContent ?? nut.protein);
+                let carbs = toNum(nut.carbohydrateContent ?? nut.carbohydrates ?? nut.carbs);
+                let fat = toNum(nut.fatContent ?? nut.fat);
+                const servingSize = String(nut.servingSize ?? "").toLowerCase();
+                const isTotal = servingSize.includes("recipe") || servingSize.includes("whole") || servingSize.includes("entire") || servingSize.includes("total");
+                if (isTotal && servings > 1) {
+                  calories = Math.round(calories / servings);
+                  protein = Math.round(protein / servings);
+                  carbs = Math.round(carbs / servings);
+                  fat = Math.round(fat / servings);
+                }
+                nutrition = { calories, protein, carbs, fat };
               }
               if (name) break;
             }
@@ -152,7 +169,7 @@ export async function POST(req: NextRequest) {
         .replace(/\s+/g, " ")
         .trim()
         .slice(0, 8000);
-      const prompt = `Extract nutrition from this recipe page excerpt. Return ONLY a JSON object with: calories (number), protein (grams), carbs (grams), fat (grams). Use 0 for missing values. If no nutrition info found, return {"calories":0,"protein":0,"carbs":0,"fat":0}.
+      const prompt = `Extract nutrition and serving count from this recipe page. Return ONLY a JSON object with: servings (number, how many servings the recipe makes; default 1), calories (number, per serving), protein (grams, per serving), carbs (grams, per serving), fat (grams, per serving). If nutrition is for the whole recipe, divide by servings. Use 0 for missing values. If no nutrition found, return {"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0}.
 
 PAGE EXCERPT:
 ${truncated}`;
@@ -164,6 +181,7 @@ ${truncated}`;
         const match = raw.match(/\{[\s\S]*\}/);
         if (match) {
           const parsed = JSON.parse(match[0]);
+          servings = Math.max(1, Math.round(Number(parsed.servings) || 1));
           nutrition = {
             calories: Math.round(Number(parsed.calories) || 0),
             protein: Math.round(Number(parsed.protein) || 0),
@@ -179,6 +197,7 @@ ${truncated}`;
     const result = {
       name: name || "Recipe",
       imageUrl: imageUrl || undefined,
+      servings,
       nutrition: nutrition ?? {
         calories: 0,
         protein: 0,
