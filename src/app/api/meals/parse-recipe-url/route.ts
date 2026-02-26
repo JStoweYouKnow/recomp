@@ -87,6 +87,30 @@ export async function POST(req: NextRequest) {
       return Number.isFinite(n) && n > 0 ? n : 1;
     }
 
+    /** Extract calorie value without pulling in digits from servings (e.g. "515 calories (6 servings)" -> 515). */
+    function extractCalories(val: unknown): number {
+      if (val == null) return 0;
+      if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val <= 5000 ? val : 0;
+      if (typeof val === "object" && val !== null && "value" in (val as object)) {
+        const v = (val as { value?: unknown }).value;
+        return extractCalories(v);
+      }
+      const s = String(val);
+      // Prefer number immediately before "calorie"/"kcal" to avoid concatenating with "6 servings"
+      const beforeUnit = s.match(/(\d{2,5})\s*(?:calories?|kcal|cal)\b/i);
+      if (beforeUnit) {
+        const n = parseInt(beforeUnit[1], 10);
+        if (n >= 1 && n <= 5000) return n;
+      }
+      // Fallback: first 2–5 digit number in reasonable range
+      const firstNum = s.match(/(\d{2,5})/);
+      if (firstNum) {
+        const n = parseInt(firstNum[1], 10);
+        if (n >= 1 && n <= 5000) return n;
+      }
+      return 0;
+    }
+
     if (schemaMatch) {
       for (const tag of schemaMatch) {
         const content = tag.replace(
@@ -117,9 +141,7 @@ export async function POST(req: NextRequest) {
               if (nut && typeof nut === "object") {
                 const toNum = (val: unknown): number =>
                   typeof val === "number" ? val : typeof val === "string" ? parseFloat(val.replace(/[^\d.]/g, "")) || 0 : 0;
-                const cals = nut.calories ?? nut.energyContent;
-                const calNum = typeof cals === "number" ? cals : typeof cals === "string" ? parseInt(cals.replace(/\D/g, ""), 10) : NaN;
-                let calories = Number.isFinite(calNum) ? calNum : toNum(cals);
+                let calories = extractCalories(nut.calories ?? nut.energyContent);
                 let protein = toNum(nut.proteinContent ?? nut.protein);
                 let carbs = toNum(nut.carbohydrateContent ?? nut.carbohydrates ?? nut.carbs);
                 let fat = toNum(nut.fatContent ?? nut.fat);
