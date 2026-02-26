@@ -128,15 +128,28 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
     ],
   }));
 
-  const workoutPlanDays = WEEK_DAYS.map((day, idx) => {
+    const defaultWarmups = [
+      { name: "Arm Circles", sets: "1", reps: "10 each direction", notes: "Loosen shoulders" },
+      { name: "Band Pull-Aparts", sets: "1", reps: "15", notes: "Activate rear delts" },
+      { name: "Bodyweight Squat", sets: "1", reps: "10", notes: "Hip mobility" },
+    ];
+    const defaultFinishers = [
+      { name: "Plank", sets: "2", reps: "45s", notes: "Core finisher" },
+    ];
+    const workoutPlanDays = WEEK_DAYS.map((day, idx) => {
     if (idx >= workoutDays) {
       return {
         day,
         focus: "Recovery / Mobility",
+        warmups: [
+          { name: "Hip Circles", sets: "1", reps: "5 each side", notes: "Hip mobility" },
+          { name: "Cat-Cow Stretch", sets: "1", reps: "8 reps", notes: "Spine mobility" },
+        ],
         exercises: [
           { name: "Incline Walk", sets: "1", reps: "20-30 min", notes: "Light pace on treadmill or outdoors" },
           { name: "Hip Flexor Stretch", sets: "2", reps: "30s per side", notes: "Hold each side" },
         ],
+        finishers: [],
       };
     }
     const focus =
@@ -162,7 +175,7 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
         : focus === "Lower Body Strength"
           ? lowerExercises
           : conditioningExercises;
-    return { day, focus, exercises };
+    return { day, focus, warmups: defaultWarmups, exercises, finishers: defaultFinishers };
   });
 
   return {
@@ -281,6 +294,11 @@ Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal
 
 CRITICAL - Exercises: Every exercise "name" MUST be a specific, real exercise (e.g. "Bench Press", "Romanian Deadlift", "Goblet Squat", "Pull-Up", "Lateral Raise"). Never output generic placeholders like "Compound lift variation", "Accessory movement", "Mobility flow", or "Conditioning finisher". Use names that match common fitness databases (ExerciseDB).
 
+CRITICAL - Every workout day MUST include:
+- "warmups": array of 2-4 warm-up exercises (e.g. "Arm Circles", "Band Pull-Aparts", "Bodyweight Squat", "Hip Circles"). Use specific, real exercise names.
+- "exercises": main workout exercises.
+- "finishers": optional array of 1-3 finisher exercises (e.g. "Plank", "Farmer's Carry", "Jump Rope"). Can be empty [] if none. Use specific, real exercise names.
+
 Respond with this exact JSON structure:
 {
   "dailyTargets": {"calories": number, "protein": number, "carbs": number, "fat": number},
@@ -288,7 +306,7 @@ Respond with this exact JSON structure:
     {"day": "Monday", "meals": [{"mealType": "Breakfast", "description": "Specific meal idea for their goal", "calories": n, "protein": n, "carbs": n, "fat": n}]}
   ],
   "workoutDays": [
-    {"day": "Monday", "focus": "e.g. Upper Body", "exercises": [{"name": "Specific exercise e.g. Bench Press or Romanian Deadlift", "sets": "3", "reps": "8-12", "notes": "optional"}]}
+    {"day": "Monday", "focus": "e.g. Upper Body", "warmups": [{"name": "Arm Circles", "sets": "1", "reps": "10 each direction", "notes": "optional"}], "exercises": [{"name": "Bench Press", "sets": "3", "reps": "8-12", "notes": "optional"}], "finishers": [{"name": "Plank", "sets": "2", "reps": "45s", "notes": "optional"}]}
   ],
   "dietTips": ["goal-specific nutrition tip 1", "goal-specific tip 2", "goal-specific tip 3"],
   "workoutTips": ["tip1", "tip2"]
@@ -321,7 +339,13 @@ Respond with this exact JSON structure:
     const parsed = parseJsonResponse(raw) as {
       dailyTargets: Macros;
       dietDays: { day: string; meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[] }[];
-      workoutDays: { day: string; focus: string; exercises: { name: string; sets: string; reps: string; notes?: string }[] }[];
+      workoutDays: {
+        day: string;
+        focus: string;
+        warmups?: { name: string; sets: string; reps: string; notes?: string }[];
+        exercises: { name: string; sets: string; reps: string; notes?: string }[];
+        finishers?: { name: string; sets: string; reps: string; notes?: string }[];
+      }[];
       dietTips: string[];
       workoutTips: string[];
     };
@@ -346,7 +370,9 @@ Respond with this exact JSON structure:
         weeklyPlan: parsed.workoutDays.map((d) => ({
           day: d.day,
           focus: d.focus,
+          warmups: d.warmups ?? [],
           exercises: d.exercises,
+          finishers: d.finishers ?? [],
         })),
         tips: parsed.workoutTips,
       },

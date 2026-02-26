@@ -430,11 +430,18 @@ export function Dashboard({
                 if (idx === null) return <p className="text-xs text-[var(--muted)]">No workout scheduled for this day. Rest day!</p>;
                 const workoutDay = plan.workoutPlan.weeklyPlan[idx];
                 if (!workoutDay) return null;
-                const completed = workoutDay.exercises.filter((ex) => {
-                  const key = `${plan.id}:${workoutDay.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
-                  return Boolean(workoutProgress[key]);
-                }).length;
-                const total = workoutDay.exercises.length;
+                const keyFor = (ex: { name: string; sets: string; reps: string; notes?: string }, section: "warmup" | "main" | "finisher") => {
+                  const base = `${plan.id}:${workoutDay.day}:`;
+                  if (section === "main") return `${base}${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                  return `${base}${section}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                };
+                const warmups = workoutDay.warmups ?? [];
+                const finishers = workoutDay.finishers ?? [];
+                const completed =
+                  warmups.filter((ex) => Boolean(workoutProgress[keyFor(ex, "warmup")])).length +
+                  workoutDay.exercises.filter((ex) => Boolean(workoutProgress[keyFor(ex, "main")])).length +
+                  finishers.filter((ex) => Boolean(workoutProgress[keyFor(ex, "finisher")])).length;
+                const total = warmups.length + workoutDay.exercises.length + finishers.length;
                 const allDone = total > 0 && completed === total;
                 return (
                   <div>
@@ -451,15 +458,19 @@ export function Dashboard({
                       </div>
                     )}
                     <div className="space-y-1">
-                      {workoutDay.exercises.map((ex, i) => {
-                        const key = `${plan.id}:${workoutDay.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+                      {[
+                        ...warmups.map((ex) => ({ ex, section: "warmup" as const })),
+                        ...workoutDay.exercises.map((ex) => ({ ex, section: "main" as const })),
+                        ...finishers.map((ex) => ({ ex, section: "finisher" as const })),
+                      ].map(({ ex, section }, i) => {
+                        const key = keyFor(ex, section);
                         const isDone = Boolean(workoutProgress[key]);
                         const gifKey = ex.name.toLowerCase().trim();
                         const gif = exerciseGifs[gifKey];
                         const isExpanded = expandedExerciseDemos.has(gifKey);
                         const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
                         return (
-                          <div key={i} className={`rounded-md px-2 py-1 space-y-1 ${isDone ? "bg-[var(--accent)]/5" : ""}`}>
+                          <div key={`${section}-${i}`} className={`rounded-md px-2 py-1 space-y-1 ${isDone ? "bg-[var(--accent)]/5" : ""}`}>
                             <div className="flex items-center gap-2 text-xs">
                               <span className={`flex-shrink-0 h-3.5 w-3.5 rounded-full border-2 ${isDone ? "border-[var(--accent)] bg-[var(--accent)]" : "border-[var(--border)]"}`}>
                                 {isDone && <svg className="h-full w-full text-white" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth={2}><path d="M2.5 6l2.5 2.5 4.5-4.5" /></svg>}

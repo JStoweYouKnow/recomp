@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress } from "@/lib/storage";
-import type { FitnessPlan } from "@/lib/types";
+import type { FitnessPlan, WorkoutExercise } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal } from "@/lib/date-utils";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
@@ -132,20 +132,23 @@ export function WorkoutPlannerView({
     }
   }, [calendarOpen, selectedDate, matchDayToDate]);
 
-  const exerciseKey = (
-    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
-    exercise: FitnessPlan["workoutPlan"]["weeklyPlan"][number]["exercises"][number]
-  ) => {
+  type ExSection = "warmup" | "main" | "finisher";
+  const exerciseKey = (day: FitnessPlan["workoutPlan"]["weeklyPlan"][number], exercise: WorkoutExercise, section: ExSection = "main") => {
     if (!plan) return "";
-    return `${plan.id}:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
+    // Main uses legacy key (no section) for Dashboard compatibility
+    if (section === "main") return `${plan.id}:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
+    return `${plan.id}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
   };
 
   useEffect(() => {
     if (!plan) return;
     const validKeys = new Set(
-      plan.workoutPlan.weeklyPlan.flatMap((day) =>
-        day.exercises.map((exercise) => exerciseKey(day, exercise))
-      )
+      plan.workoutPlan.weeklyPlan.flatMap((day) => {
+        const warmups = (day.warmups ?? []).map((ex) => exerciseKey(day, ex, "warmup"));
+        const main = day.exercises.map((ex) => exerciseKey(day, ex, "main"));
+        const finishers = (day.finishers ?? []).map((ex) => exerciseKey(day, ex, "finisher"));
+        return [...warmups, ...main, ...finishers];
+      })
     );
     const cleaned = Object.fromEntries(Object.entries(progress).filter(([k]) => validKeys.has(k)));
     if (Object.keys(cleaned).length !== Object.keys(progress).length) {
@@ -164,11 +167,20 @@ export function WorkoutPlannerView({
     );
   }
 
-  const totalExercises = plan.workoutPlan.weeklyPlan.reduce((sum, day) => sum + day.exercises.length, 0);
-  const completedExercises = plan.workoutPlan.weeklyPlan.reduce(
-    (sum, day) => sum + day.exercises.filter((exercise) => Boolean(progress[exerciseKey(day, exercise)])).length,
+  const totalExercises = plan.workoutPlan.weeklyPlan.reduce(
+    (sum, day) =>
+      sum +
+      (day.warmups?.length ?? 0) +
+      day.exercises.length +
+      (day.finishers?.length ?? 0),
     0
   );
+  const completedExercises = plan.workoutPlan.weeklyPlan.reduce((sum, day) => {
+    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "warmup")])).length;
+    const mainDone = day.exercises.filter((ex) => Boolean(progress[exerciseKey(day, ex, "main")])).length;
+    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "finisher")])).length;
+    return sum + warmupDone + mainDone + finisherDone;
+  }, 0);
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
   const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
@@ -201,9 +213,10 @@ export function WorkoutPlannerView({
 
   const toggleComplete = (
     day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
-    exercise: FitnessPlan["workoutPlan"]["weeklyPlan"][number]["exercises"][number]
+    exercise: WorkoutExercise,
+    section: ExSection = "main"
   ) => {
-    const key = exerciseKey(day, exercise);
+    const key = exerciseKey(day, exercise, section);
     const next = { ...progress };
     if (next[key]) delete next[key];
     else next[key] = new Date().toISOString();
@@ -216,8 +229,18 @@ export function WorkoutPlannerView({
     complete: boolean
   ) => {
     const next = { ...progress };
+    for (const ex of day.warmups ?? []) {
+      const key = exerciseKey(day, ex, "warmup");
+      if (complete) next[key] = new Date().toISOString();
+      else delete next[key];
+    }
     for (const exercise of day.exercises) {
-      const key = exerciseKey(day, exercise);
+      const key = exerciseKey(day, exercise, "main");
+      if (complete) next[key] = new Date().toISOString();
+      else delete next[key];
+    }
+    for (const ex of day.finishers ?? []) {
+      const key = exerciseKey(day, ex, "finisher");
       if (complete) next[key] = new Date().toISOString();
       else delete next[key];
     }
@@ -256,7 +279,10 @@ export function WorkoutPlannerView({
           <button
             onClick={() => {
               updateWeeklyPlan(
-                [...plan.workoutPlan.weeklyPlan, { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", exercises: [] }],
+                [
+                  ...plan.workoutPlan.weeklyPlan,
+                  { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", warmups: [], exercises: [], finishers: [] },
+                ],
                 true
               );
               setExpandedDay(plan.workoutPlan.weeklyPlan.length);
@@ -312,8 +338,12 @@ export function WorkoutPlannerView({
           if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
           if (calendarOpen && matchedIdx === null) return null;
 
-          const total = day.exercises.length;
-          const completed = day.exercises.filter((exercise) => Boolean(progress[exerciseKey(day, exercise)])).length;
+          const total =
+            (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);
+          const completed =
+            (day.warmups ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "warmup")])).length +
+            day.exercises.filter((ex) => Boolean(progress[exerciseKey(day, ex, "main")])).length +
+            (day.finishers ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "finisher")])).length;
           const allDone = total > 0 && completed === total;
           const isExpanded = calendarOpen ? true : expandedDay === dayIndex;
           const isEditing = editingDay === dayIndex;
@@ -441,23 +471,77 @@ export function WorkoutPlannerView({
                     </div>
                   )}
 
-                  {/* ── Exercise list ── */}
-                  {total === 0 ? (
+                  {/* ── Warm-ups, Main exercises, Finishers ── */}
+                  {total === 0 && !isEditing ? (
                     <p className="py-4 text-center text-sm text-[var(--muted)]">No exercises yet. Tap &quot;Edit&quot; to add some.</p>
                   ) : (
-                    <div className="space-y-2">
-                      {/* Table header */}
-                      <div className="hidden sm:grid sm:grid-cols-[auto_2fr_1fr_1fr_1fr] gap-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                        <span />
-                        <span>Exercise</span>
-                        <span>Sets</span>
-                        <span>Reps</span>
-                        <span>Rest</span>
-                      </div>
+                    <div className="space-y-6">
+                      {/* ── Warm-ups ── */}
+                      {((day.warmups?.length ?? 0) > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Warm-ups</p>
+                          <div className="space-y-2">
+                            {(day.warmups ?? []).map((exercise, exIndex) => {
+                              const isDone = Boolean(progress[exerciseKey(day, exercise, "warmup")]);
+                              const completedAt = progress[exerciseKey(day, exercise, "warmup")];
+                              const restTime = parseRest(exercise.notes);
+                              return (
+                                <div
+                                  key={`warmup-${exIndex}`}
+                                  className={`rounded-lg border p-3 transition-colors ${
+                                    isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
+                                  }`}
+                                >
+                                  {isEditing ? (
+                                    <>
+                                      <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
+                                        <div className="flex gap-2 justify-end">
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const w = d.warmups ?? []; if (exIndex === 0) return d; const next = [...w]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex - 1, 0, moved); return { ...d, warmups: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const w = d.warmups ?? []; if (exIndex >= w.length - 1) return d; const next = [...w]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex + 1, 0, moved); return { ...d, warmups: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === (day.warmups?.length ?? 0) - 1}>↓</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                        </div>
+                                      </div>
+                                      <input value={exercise.notes ?? ""} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)) }))} placeholder="Notes" className="mt-2 input-base rounded px-2 py-1 text-xs w-full" />
+                                    </>
+                                  ) : (
+                                    <div className="flex items-start gap-3">
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
+                                        <div className="mt-1.5 flex flex-wrap gap-2">
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.sets}</span> <span className="text-[var(--muted)]">sets</span></span>
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.reps}</span> <span className="text-[var(--muted)]">reps</span></span>
+                                          {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
+                                        </div>
+                                        {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-[10px] text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, warmups: [...(d.warmups ?? []), { name: "New warm-up", sets: "1", reps: "30s", notes: "" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add warm-up</button>
+                          )}
+                        </div>
+                      )}
 
-                      {day.exercises.map((exercise, exIndex) => {
-                        const isDone = Boolean(progress[exerciseKey(day, exercise)]);
-                        const completedAt = progress[exerciseKey(day, exercise)];
+                      {/* ── Main exercises ── */}
+                      {(day.exercises.length > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Main workout</p>
+                          <div className="hidden sm:grid sm:grid-cols-[auto_2fr_1fr_1fr_1fr] gap-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                            <span /><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest</span>
+                          </div>
+                          {day.exercises.map((exercise, exIndex) => {
+                        const isDone = Boolean(progress[exerciseKey(day, exercise, "main")]);
+                        const completedAt = progress[exerciseKey(day, exercise, "main")];
                         const restTime = parseRest(exercise.notes);
 
                         return (
@@ -476,7 +560,7 @@ export function WorkoutPlannerView({
                                   <input
                                     type="checkbox"
                                     checked={isDone}
-                                    onChange={() => toggleComplete(day, exercise)}
+                                    onChange={() => toggleComplete(day, exercise, "main")}
                                     aria-label={`Mark ${exercise.name || "exercise"} complete`}
                                     className="h-4 w-4 accent-[var(--accent)]"
                                   />
@@ -558,11 +642,11 @@ export function WorkoutPlannerView({
                               </>
                             ) : (
                               /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
-                              <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-3">
                                 <input
                                   type="checkbox"
                                   checked={isDone}
-                                  onChange={() => toggleComplete(day, exercise)}
+                                  onChange={() => toggleComplete(day, exercise, "main")}
                                   aria-label={`Mark ${exercise.name || "exercise"} complete`}
                                   className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
                                 />
@@ -637,21 +721,63 @@ export function WorkoutPlannerView({
                           </div>
                         );
                       })}
-                    </div>
-                  )}
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: [...d.exercises, { name: "New exercise", sets: "3", reps: "10-12", notes: "rest: 60s" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add exercise</button>
+                          )}
+                        </div>
+                      )}
 
-                  {isEditing && (
-                    <button
-                      onClick={() =>
-                        updateDay(dayIndex, (d) => ({
-                          ...d,
-                          exercises: [...d.exercises, { name: "New exercise", sets: "3", reps: "10-12", notes: "rest: 60s" }],
-                        }))
-                      }
-                      className="btn-secondary px-3 py-1 text-sm"
-                    >
-                      + Add exercise
-                    </button>
+                      {/* ── Finishers (optional) ── */}
+                      {((day.finishers?.length ?? 0) > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Finishers (optional)</p>
+                          <div className="space-y-2">
+                            {(day.finishers ?? []).map((exercise, exIndex) => {
+                              const isDone = Boolean(progress[exerciseKey(day, exercise, "finisher")]);
+                              const completedAt = progress[exerciseKey(day, exercise, "finisher")];
+                              const restTime = parseRest(exercise.notes);
+                              return (
+                                <div key={`finisher-${exIndex}`} className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"}`}>
+                                  {isEditing ? (
+                                    <>
+                                      <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
+                                        <div className="flex gap-2 justify-end">
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const f = d.finishers ?? []; if (exIndex === 0) return d; const next = [...f]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex - 1, 0, moved); return { ...d, finishers: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const f = d.finishers ?? []; if (exIndex >= f.length - 1) return d; const next = [...f]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex + 1, 0, moved); return { ...d, finishers: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === (day.finishers?.length ?? 0) - 1}>↓</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                        </div>
+                                      </div>
+                                      <input value={exercise.notes ?? ""} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)) }))} placeholder="Notes" className="mt-2 input-base rounded px-2 py-1 text-xs w-full" />
+                                    </>
+                                  ) : (
+                                    <div className="flex items-start gap-3">
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
+                                        <div className="mt-1.5 flex flex-wrap gap-2">
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.sets}</span> <span className="text-[var(--muted)]">sets</span></span>
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.reps}</span> <span className="text-[var(--muted)]">reps</span></span>
+                                          {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
+                                        </div>
+                                        {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-[10px] text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, finishers: [...(d.finishers ?? []), { name: "New finisher", sets: "2", reps: "45s", notes: "" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add finisher</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

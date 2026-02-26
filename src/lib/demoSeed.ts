@@ -89,13 +89,13 @@ export function buildDemoSeed(): DemoSeedData {
     },
     workoutPlan: {
       weeklyPlan: [
-        { day: "Monday", focus: "Upper Body Push", exercises: [{ name: "Bench Press", sets: "4", reps: "6-8" }, { name: "Incline Dumbbell Press", sets: "3", reps: "8-10" }, { name: "Cable Lateral Raise", sets: "3", reps: "12-15" }] },
-        { day: "Tuesday", focus: "Lower Body Strength", exercises: [{ name: "Back Squat", sets: "4", reps: "5-6" }, { name: "Romanian Deadlift", sets: "3", reps: "8-10" }, { name: "Walking Lunge", sets: "3", reps: "10/leg" }] },
-        { day: "Wednesday", focus: "Active Recovery", exercises: [{ name: "Incline Walk", sets: "1", reps: "30 min" }, { name: "Mobility Flow", sets: "1", reps: "15 min" }] },
-        { day: "Thursday", focus: "Upper Body Pull", exercises: [{ name: "Pull-Up", sets: "4", reps: "6-8" }, { name: "Seated Cable Row", sets: "3", reps: "8-10" }, { name: "Face Pull", sets: "3", reps: "12-15" }] },
-        { day: "Friday", focus: "Lower + Conditioning", exercises: [{ name: "Front Squat", sets: "3", reps: "6-8" }, { name: "Leg Press", sets: "3", reps: "10-12" }, { name: "Bike Intervals", sets: "8", reps: "30s on / 60s off" }] },
-        { day: "Saturday", focus: "Optional Full Body", exercises: [{ name: "Dumbbell Romanian Deadlift", sets: "3", reps: "8-10" }, { name: "Push-Up", sets: "3", reps: "AMRAP" }] },
-        { day: "Sunday", focus: "Rest", exercises: [] },
+        { day: "Monday", focus: "Upper Body Push", warmups: [{ name: "Arm Circles", sets: "1", reps: "10 each" }, { name: "Band Pull-Aparts", sets: "1", reps: "15" }], exercises: [{ name: "Bench Press", sets: "4", reps: "6-8" }, { name: "Incline Dumbbell Press", sets: "3", reps: "8-10" }, { name: "Cable Lateral Raise", sets: "3", reps: "12-15" }], finishers: [{ name: "Plank", sets: "2", reps: "45s" }] },
+        { day: "Tuesday", focus: "Lower Body Strength", warmups: [{ name: "Hip Circles", sets: "1", reps: "8 each" }, { name: "Bodyweight Squat", sets: "1", reps: "10" }], exercises: [{ name: "Back Squat", sets: "4", reps: "5-6" }, { name: "Romanian Deadlift", sets: "3", reps: "8-10" }, { name: "Walking Lunge", sets: "3", reps: "10/leg" }], finishers: [{ name: "Farmer's Carry", sets: "2", reps: "40m" }] },
+        { day: "Wednesday", focus: "Active Recovery", warmups: [{ name: "Cat-Cow Stretch", sets: "1", reps: "8" }], exercises: [{ name: "Incline Walk", sets: "1", reps: "30 min" }, { name: "Hip Flexor Stretch", sets: "2", reps: "30s per side" }], finishers: [] },
+        { day: "Thursday", focus: "Upper Body Pull", warmups: [{ name: "Arm Circles", sets: "1", reps: "10 each" }, { name: "Band Pull-Aparts", sets: "1", reps: "15" }], exercises: [{ name: "Pull-Up", sets: "4", reps: "6-8" }, { name: "Seated Cable Row", sets: "3", reps: "8-10" }, { name: "Face Pull", sets: "3", reps: "12-15" }], finishers: [{ name: "Plank", sets: "2", reps: "45s" }] },
+        { day: "Friday", focus: "Lower + Conditioning", warmups: [{ name: "Hip Circles", sets: "1", reps: "8 each" }, { name: "Bodyweight Squat", sets: "1", reps: "10" }], exercises: [{ name: "Front Squat", sets: "3", reps: "6-8" }, { name: "Leg Press", sets: "3", reps: "10-12" }, { name: "Bike Intervals", sets: "8", reps: "30s on / 60s off" }], finishers: [{ name: "Jump Rope", sets: "1", reps: "2 min" }] },
+        { day: "Saturday", focus: "Optional Full Body", warmups: [{ name: "Dynamic Stretch", sets: "1", reps: "5 min" }], exercises: [{ name: "Dumbbell Romanian Deadlift", sets: "3", reps: "8-10" }, { name: "Push-Up", sets: "3", reps: "AMRAP" }], finishers: [] },
+        { day: "Sunday", focus: "Rest", warmups: [], exercises: [], finishers: [] },
       ],
       tips: [
         "Keep 1-2 reps in reserve on compound lifts.",

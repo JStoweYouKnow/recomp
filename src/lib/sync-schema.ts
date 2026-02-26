@@ -63,15 +63,18 @@ const dietDaySchema = z.object({
   })).max(10),
 }).passthrough();
 
+const workoutExerciseSchema = z.object({
+  name: z.string().max(200),
+  sets: z.string().max(20),
+  reps: z.string().max(20),
+  notes: z.string().max(500).optional(),
+});
 const workoutDaySchema = z.object({
   day: z.string().max(50),
   focus: z.string().max(200),
-  exercises: z.array(z.object({
-    name: z.string().max(200),
-    sets: z.string().max(20),
-    reps: z.string().max(20),
-    notes: z.string().max(500).optional(),
-  })).max(50),
+  warmups: z.array(workoutExerciseSchema).max(20).optional(),
+  exercises: z.array(workoutExerciseSchema).max(50),
+  finishers: z.array(workoutExerciseSchema).max(20).optional(),
 }).passthrough();
 
 const fitnessPlanSchema = z.object({

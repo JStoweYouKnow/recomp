@@ -51,15 +51,21 @@ export interface MealEntry {
   loggedAt: string;
 }
 
+export interface WorkoutExercise {
+  name: string;
+  sets: string;
+  reps: string;
+  notes?: string;
+}
+
 export interface WorkoutDay {
   day: string;
   focus: string;
-  exercises: {
-    name: string;
-    sets: string;
-    reps: string;
-    notes?: string;
-  }[];
+  /** Warm-up exercises before the main workout. Always include for every workout. */
+  warmups?: WorkoutExercise[];
+  exercises: WorkoutExercise[];
+  /** Optional finisher exercises at the end. */
+  finishers?: WorkoutExercise[];
 }
 
 export interface DietDay {
