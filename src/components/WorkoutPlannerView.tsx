@@ -30,9 +30,12 @@ const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export function WorkoutPlannerView({
   plan,
   onUpdatePlan,
+  onPlanSaved,
 }: {
   plan: FitnessPlan | null;
   onUpdatePlan: (plan: FitnessPlan) => void;
+  /** Called when edits are committed (Done editing, Move, Delete, Add day). Use for sync. */
+  onPlanSaved?: () => void;
 }) {
   const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
@@ -168,7 +171,7 @@ export function WorkoutPlannerView({
   );
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
-  const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"]) => {
+  const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
     onUpdatePlan({
       ...plan,
       workoutPlan: {
@@ -176,6 +179,7 @@ export function WorkoutPlannerView({
         weeklyPlan: nextWeeklyPlan,
       },
     });
+    if (triggerSync) onPlanSaved?.();
   };
 
   const updateDay = (
@@ -183,7 +187,7 @@ export function WorkoutPlannerView({
     updater: (day: FitnessPlan["workoutPlan"]["weeklyPlan"][number]) => FitnessPlan["workoutPlan"]["weeklyPlan"][number]
   ) => {
     const next = plan.workoutPlan.weeklyPlan.map((day, idx) => (idx === dayIndex ? updater(day) : day));
-    updateWeeklyPlan(next);
+    updateWeeklyPlan(next, false); // no sync on keystroke; sync when Done editing
   };
 
   const moveDay = (dayIndex: number, direction: -1 | 1) => {
@@ -192,7 +196,7 @@ export function WorkoutPlannerView({
     const next = [...plan.workoutPlan.weeklyPlan];
     const [moved] = next.splice(dayIndex, 1);
     next.splice(target, 0, moved);
-    updateWeeklyPlan(next);
+    updateWeeklyPlan(next, true);
   };
 
   const toggleComplete = (
@@ -251,10 +255,10 @@ export function WorkoutPlannerView({
           </button>
           <button
             onClick={() => {
-              updateWeeklyPlan([
-                ...plan.workoutPlan.weeklyPlan,
-                { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", exercises: [] },
-              ]);
+              updateWeeklyPlan(
+                [...plan.workoutPlan.weeklyPlan, { day: `Day ${plan.workoutPlan.weeklyPlan.length + 1}`, focus: "General fitness", exercises: [] }],
+                true
+              );
               setExpandedDay(plan.workoutPlan.weeklyPlan.length);
               setEditingDay(plan.workoutPlan.weeklyPlan.length);
             }}
@@ -320,8 +324,11 @@ export function WorkoutPlannerView({
               <button
                 type="button"
                 onClick={() => {
+                  if (isExpanded) {
+                    if (editingDay === dayIndex) onPlanSaved?.();
+                    setEditingDay(null);
+                  }
                   setExpandedDay(isExpanded ? null : dayIndex);
-                  if (isExpanded) setEditingDay(null);
                 }}
                 className="w-full px-5 py-4 text-left flex items-center gap-4 hover:bg-[var(--surface-elevated)] transition-colors"
                 aria-expanded={isExpanded}
@@ -386,7 +393,15 @@ export function WorkoutPlannerView({
                       {allDone ? "Clear completion" : "Mark all complete"}
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); setEditingDay(isEditing ? null : dayIndex); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isEditing) {
+                          setEditingDay(null);
+                          onPlanSaved?.();
+                        } else {
+                          setEditingDay(dayIndex);
+                        }
+                      }}
                       className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${isEditing ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"}`}
                     >
                       {isEditing ? "Done editing" : "Edit"}
@@ -395,7 +410,12 @@ export function WorkoutPlannerView({
                     <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, 1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === plan.workoutPlan.weeklyPlan.length - 1}>Move down</button>
                     {isEditing && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); updateWeeklyPlan(plan.workoutPlan.weeklyPlan.filter((_, idx) => idx !== dayIndex)); setExpandedDay(null); setEditingDay(null); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateWeeklyPlan(plan.workoutPlan.weeklyPlan.filter((_, idx) => idx !== dayIndex), true);
+                          setExpandedDay(null);
+                          setEditingDay(null);
+                        }}
                         className="px-2 py-1 text-xs text-[var(--accent-terracotta)] hover:underline"
                       >
                         Delete day

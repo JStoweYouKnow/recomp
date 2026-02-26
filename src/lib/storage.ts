@@ -224,9 +224,10 @@ export function saveShoppingList(items: string[]): void {
   localStorage.setItem(STORAGE_KEYS.shoppingList, JSON.stringify(items));
 }
 
-/** Persist current localStorage state to DynamoDB (fire-and-forget) */
-export function syncToServer(): void {
-  if (typeof window === "undefined") return;
+let _syncTimeout: ReturnType<typeof setTimeout> | null = null;
+const SYNC_DEBOUNCE_MS = 800;
+
+function doSync(): void {
   const plan = getPlan();
   const meals = getMeals();
   const milestones = getMilestones();
@@ -241,4 +242,24 @@ export function syncToServer(): void {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData }),
   }).catch(() => {});
+}
+
+/** Persist current localStorage state to DynamoDB (fire-and-forget). Debounced so rapid changes result in a single sync. */
+export function syncToServer(): void {
+  if (typeof window === "undefined") return;
+  if (_syncTimeout) clearTimeout(_syncTimeout);
+  _syncTimeout = setTimeout(() => {
+    _syncTimeout = null;
+    doSync();
+  }, SYNC_DEBOUNCE_MS);
+}
+
+/** Flush any pending sync immediately (e.g. before page unload). Call from beforeunload/visibilitychange. */
+export function flushSync(): void {
+  if (typeof window === "undefined") return;
+  if (_syncTimeout) {
+    clearTimeout(_syncTimeout);
+    _syncTimeout = null;
+  }
+  doSync();
 }

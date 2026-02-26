@@ -500,8 +500,8 @@ export default function Home() {
             onUpdatePlan={(updated) => {
               savePlan(updated);
               setPlan(updated);
-              syncToServer();
             }}
+            onPlanSaved={syncToServer}
           />
           </div>
         )}
@@ -551,6 +551,7 @@ export default function Home() {
                 setPlan(updated);
                 setAdjustResult(null);
                 setAdjustFeedback("");
+                syncToServer();
               }
             }}
           />
