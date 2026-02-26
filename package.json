@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:production": "./scripts/production-smoke-test.sh",
     "exercise:fallback-map": "node scripts/generate-exercise-fallback-map.mjs",
-    "exercise:troubleshoot": "node scripts/troubleshoot-exercises.mjs"
+    "exercise:troubleshoot": "node scripts/troubleshoot-exercises.mjs",
+    "dynamo:create-table": "npx tsx scripts/create-table.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.987.0",

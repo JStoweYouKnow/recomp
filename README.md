@@ -149,8 +149,11 @@ You can also use a full inference profile ARN.
 
 ### DynamoDB Table (optional)
 
+See **[docs/DYNAMODB_SETUP.md](docs/DYNAMODB_SETUP.md)** for full setup. Quick start:
+
 ```bash
-npx tsx scripts/create-table.ts
+export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1
+npm run dynamo:create-table
 ```
 
 ### Nova Act (optional)

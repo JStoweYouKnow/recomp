@@ -24,6 +24,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, mode: "judge-fallback", persisted: false });
     }
 
+    if (!process.env.DYNAMODB_TABLE_NAME) {
+      await req.json().catch(() => ({}));
+      return NextResponse.json({ ok: true, mode: "dynamo-unconfigured", persisted: false });
+    }
+
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
@@ -87,6 +92,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("Sync error:", err);
-    return NextResponse.json({ error: "Sync failed" }, { status: 500 });
+    return NextResponse.json({ ok: true, mode: "dynamo-unavailable", persisted: false });
   }
 }
