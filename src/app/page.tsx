@@ -325,7 +325,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       {/* ── Sticky header ── */}
-      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm" role="banner">
+      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md" role="banner">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
           <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
             <span className="flex items-center gap-1" aria-hidden="true">
@@ -373,7 +373,7 @@ export default function Home() {
           role="status"
           aria-live="polite"
         >
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-elevated)] border border-[var(--border-soft)] px-3 py-1.5 text-sm text-[var(--muted-foreground)]">
+          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-elevated)]/95 border border-[var(--border-soft)] px-3.5 py-2 text-sm text-[var(--muted-foreground)] shadow-[var(--shadow-soft)]">
             <span className="h-2 w-2 rounded-full bg-[var(--accent-warm)] animate-pulse" aria-hidden />
             <span><strong className="text-[var(--foreground)] font-medium">Demo mode</strong> — Data stored locally. Complete onboarding to sync.</span>
           </span>
@@ -382,7 +382,7 @@ export default function Home() {
 
       {/* Bottom nav (mobile) */}
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--border-soft)] bg-[var(--background)]/95 backdrop-blur-sm safe-area-pb"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md safe-area-pb"
         aria-label="Mobile navigation"
       >
         <div className="flex items-center justify-around py-2">
@@ -390,7 +390,7 @@ export default function Home() {
             <button
               key={key}
               onClick={() => navigateTo(key)}
-              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-lg transition-colors ${
+              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-2xl transition-all duration-150 ${
                 view === key ? "text-[var(--accent)]" : "text-[var(--muted)]"
               }`}
               aria-current={view === key ? "page" : undefined}
@@ -594,7 +594,7 @@ export default function Home() {
         <>
           <button
             onClick={() => setRicoOpen(true)}
-            className="fixed bottom-20 md:bottom-6 right-6 z-20 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all hover:bg-[var(--accent-hover)] hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] animate-fab-breathe"
+            className="fixed bottom-20 md:bottom-6 right-6 z-20 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all duration-200 hover:bg-[var(--accent-hover)] hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-3 focus-visible:ring-offset-[var(--background)] animate-fab-breathe"
             aria-label="Chat with Reco"
             title="Chat with Reco"
           >
