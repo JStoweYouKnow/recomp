@@ -20,6 +20,7 @@ const STORAGE_KEYS = {
   cookingAppRecipes: "recomp_cooking_app_recipes",
   recentMealTemplates: "recomp_recent_meal_templates",
   recentExerciseNames: "recomp_recent_exercise_names",
+  nutritionCache: "recomp_nutrition_cache",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -316,4 +317,50 @@ export function flushSync(): void {
     _syncTimeout = null;
   }
   doSync();
+}
+
+// ── Client-side nutrition cache ─────────────────────────────────────────
+interface NutritionCacheItem {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source: string;
+  cachedAt: number; // epoch ms
+}
+
+type NutritionCacheMap = Record<string, NutritionCacheItem>;
+
+const NUTRITION_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function normalizeFood(food: string): string {
+  return food.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+export function getNutritionCache(food: string): NutritionCacheItem | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(STORAGE_KEYS.nutritionCache);
+  const map: NutritionCacheMap = raw ? safeParse(raw, {}) : {};
+  const key = normalizeFood(food);
+  const entry = map[key];
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > NUTRITION_CACHE_TTL_MS) return null;
+  return entry;
+}
+
+export function saveNutritionCache(food: string, item: Omit<NutritionCacheItem, "cachedAt">): void {
+  if (typeof window === "undefined") return;
+  const raw = localStorage.getItem(STORAGE_KEYS.nutritionCache);
+  const map: NutritionCacheMap = raw ? safeParse(raw, {}) : {};
+  const key = normalizeFood(food);
+  map[key] = { ...item, cachedAt: Date.now() };
+  // Evict expired entries if map grows beyond 500
+  const keys = Object.keys(map);
+  if (keys.length > 500) {
+    const now = Date.now();
+    for (const k of keys) {
+      if (now - map[k].cachedAt > NUTRITION_CACHE_TTL_MS) delete map[k];
+    }
+  }
+  localStorage.setItem(STORAGE_KEYS.nutritionCache, JSON.stringify(map));
 }
