@@ -6,6 +6,21 @@ Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
 **Repository:** [github.com/JStoweYouKnow/recomp](https://github.com/JStoweYouKnow/recomp)
 
+## Quick Start for Judges
+
+> **Live demo:** [https://recomp-one.vercel.app](https://recomp-one.vercel.app)
+>
+> 1. Click **"Try pre-seeded demo user"** — no setup needed
+> 2. Dashboard loads instantly with 7 days of sample data
+> 3. Try: **Log a meal** (text/voice/photo) → **Reco AI coach** (tap the Reco button) → **Weekly review** (Dashboard → Generate)
+> 4. All 8 Nova features work out of the box in demo mode
+>
+> **Health check:** `GET /api/judge/health` — returns status of all integrations (Bedrock, DynamoDB, Act service, wearables)
+>
+> **Act service status:** `GET /api/act/status` — confirms whether Nova Act grocery/nutrition automation is live or falling back to demo mode
+
+---
+
 ## Why This Architecture Matters
 
 Most Nova integrations use one or two models for text generation. Recomp demonstrates how the **entire Nova portfolio** can be composed into a single cohesive experience:
@@ -255,6 +270,26 @@ Add the deployment URL to your Devpost submission and to the Judge Access sectio
 - **Bedrock costs**: Nova Lite, Sonic, Canvas, Reel billed per token/image/video. Typical: ~$0.01–0.05 per plan, ~$0.001 per meal suggestion.
 - **DynamoDB**: On-demand capacity; set billing alarms.
 - **Troubleshooting**: AI 401 → unset `REQUIRE_AUTH_FOR_AI` or use "Try pre-seeded demo". Plan/voice disabled → configure AWS credentials. Without credentials → `JUDGE_MODE=true` for fallbacks.
+
+### Performance Benchmarks
+
+Measured on Vercel Pro (us-east-1), Nova 2 Lite, typical payloads:
+
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| **Plan generation** (extended thinking) | 15–45s | Depends on profile complexity; extended thinking adds ~10s |
+| **Meal suggestion** | 2–4s | Single Nova Lite call |
+| **Photo analysis** (plate → macros) | 3–6s | Image upload + Nova Lite vision |
+| **Receipt scanning** | 4–8s | Multi-item extraction |
+| **Voice parse** (transcript → macros) | 1–3s | Text-only Nova Lite call |
+| **Reco AI coach** (text) | 2–5s | Context-aware single turn |
+| **Reco voice** (Nova Sonic streaming) | <1s first token | Bidirectional streaming; latency = time-to-first-audio |
+| **Weekly review** (multi-agent) | 20–60s | 3–4 agent rounds with tool calls; wearable + web research adds time |
+| **Nova Canvas** (image generation) | 8–15s | Single image |
+| **Nova Act** (grocery search) | 30–90s | Browser automation; Railway cold start adds ~15s |
+| **Dashboard load** (hydrated) | <200ms | localStorage primary; server sync in background |
+
+**Vercel Hobby vs Pro:** Plan generation and weekly review may timeout on Hobby tier (60s limit). Pro tier (300s limit) recommended for demos. `maxDuration = 60` configured on long-running routes.
 
 ## Amazon Nova Integration — All 8 Features
 
