@@ -35,10 +35,20 @@ export function MilestonesView({
   onDataFetched?: (data: WearableDaySummary[]) => void;
 }) {
   const { showToast } = useToast();
+  const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
   const [scaleWeight, setScaleWeight] = useState("");
   const [scaleBodyFat, setScaleBodyFat] = useState("");
   const [scaleMuscle, setScaleMuscle] = useState("");
-  const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
+  const [scaleBmi, setScaleBmi] = useState("");
+  const [scaleSkeletalMuscle, setScaleSkeletalMuscle] = useState("");
+  const [scaleFatFreeMass, setScaleFatFreeMass] = useState("");
+  const [scaleSubcutaneousFat, setScaleSubcutaneousFat] = useState("");
+  const [scaleVisceralFat, setScaleVisceralFat] = useState("");
+  const [scaleBodyWater, setScaleBodyWater] = useState("");
+  const [scaleBoneMass, setScaleBoneMass] = useState("");
+  const [scaleProtein, setScaleProtein] = useState("");
+  const [scaleBmr, setScaleBmr] = useState("");
+  const [scaleMetabolicAge, setScaleMetabolicAge] = useState("");
   const [loading, setLoading] = useState(false);
 
   const hasExtras = useMemo(() => {
@@ -86,6 +96,16 @@ export function MilestonesView({
           weightLbs: lbs,
           bodyFatPercent: scaleBodyFat ? parseFloat(scaleBodyFat) : undefined,
           muscleMass: scaleMuscle ? parseFloat(scaleMuscle) : undefined,
+          bmi: scaleBmi ? parseFloat(scaleBmi) : undefined,
+          skeletalMusclePercent: scaleSkeletalMuscle ? parseFloat(scaleSkeletalMuscle) : undefined,
+          fatFreeMass: scaleFatFreeMass ? parseFloat(scaleFatFreeMass) : undefined,
+          subcutaneousFatPercent: scaleSubcutaneousFat ? parseFloat(scaleSubcutaneousFat) : undefined,
+          visceralFat: scaleVisceralFat ? parseFloat(scaleVisceralFat) : undefined,
+          bodyWaterPercent: scaleBodyWater ? parseFloat(scaleBodyWater) : undefined,
+          boneMass: scaleBoneMass ? parseFloat(scaleBoneMass) : undefined,
+          proteinPercent: scaleProtein ? parseFloat(scaleProtein) : undefined,
+          bmr: scaleBmr ? parseFloat(scaleBmr) : undefined,
+          metabolicAge: scaleMetabolicAge ? parseFloat(scaleMetabolicAge) : undefined,
         }),
       });
       const d = await r.json();
@@ -94,6 +114,16 @@ export function MilestonesView({
       setScaleWeight("");
       setScaleBodyFat("");
       setScaleMuscle("");
+      setScaleBmi("");
+      setScaleSkeletalMuscle("");
+      setScaleFatFreeMass("");
+      setScaleSubcutaneousFat("");
+      setScaleVisceralFat("");
+      setScaleBodyWater("");
+      setScaleBoneMass("");
+      setScaleProtein("");
+      setScaleBmr("");
+      setScaleMetabolicAge("");
     } catch (err) {
       console.error(err);
       showToast(err instanceof Error ? err.message : "Failed to add weight", "error");
@@ -117,7 +147,7 @@ export function MilestonesView({
       {/* Body measurements */}
       <div className="card rounded-xl p-4 space-y-3">
         <h3 className="font-semibold text-[var(--foreground)] text-sm">Body measurements</h3>
-        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6">
           <div>
             <label className="label text-[10px]">Date</label>
             <input
@@ -163,6 +193,136 @@ export function MilestonesView({
               value={scaleMuscle}
               onChange={(e) => setScaleMuscle(e.target.value)}
               placeholder="e.g. 85"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">BMI</label>
+            <input
+              type="number"
+              step="0.1"
+              min={10}
+              max={60}
+              value={scaleBmi}
+              onChange={(e) => setScaleBmi(e.target.value)}
+              placeholder="e.g. 23.5"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Sk. muscle %</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={100}
+              value={scaleSkeletalMuscle}
+              onChange={(e) => setScaleSkeletalMuscle(e.target.value)}
+              placeholder="e.g. 56"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Fat-free (lbs)</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={500}
+              value={scaleFatFreeMass}
+              onChange={(e) => setScaleFatFreeMass(e.target.value)}
+              placeholder="e.g. 161"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Subq. fat %</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={100}
+              value={scaleSubcutaneousFat}
+              onChange={(e) => setScaleSubcutaneousFat(e.target.value)}
+              placeholder="e.g. 11"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Visceral fat</label>
+            <input
+              type="number"
+              step="1"
+              min={0}
+              max={30}
+              value={scaleVisceralFat}
+              onChange={(e) => setScaleVisceralFat(e.target.value)}
+              placeholder="e.g. 6"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Body water %</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={100}
+              value={scaleBodyWater}
+              onChange={(e) => setScaleBodyWater(e.target.value)}
+              placeholder="e.g. 63"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Bone (lbs)</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={110}
+              value={scaleBoneMass}
+              onChange={(e) => setScaleBoneMass(e.target.value)}
+              placeholder="e.g. 8"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Protein %</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={100}
+              value={scaleProtein}
+              onChange={(e) => setScaleProtein(e.target.value)}
+              placeholder="e.g. 20"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">BMR (kcal)</label>
+            <input
+              type="number"
+              step="1"
+              min={500}
+              max={5000}
+              value={scaleBmr}
+              onChange={(e) => setScaleBmr(e.target.value)}
+              placeholder="e.g. 1951"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Metabolic age</label>
+            <input
+              type="number"
+              step="1"
+              min={10}
+              max={100}
+              value={scaleMetabolicAge}
+              onChange={(e) => setScaleMetabolicAge(e.target.value)}
+              placeholder="e.g. 36"
               className="input-base w-full text-sm py-1.5"
             />
           </div>
