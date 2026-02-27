@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate } from "@/lib/storage";
+import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache } from "@/lib/storage";
 import { getTodayLocal } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
@@ -309,59 +309,93 @@ export function MealsView({
     setNutritionLookupLoading(true);
     setNutritionSource(null);
     try {
-      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string };
-      let data: NutritionData | null = null;
-      let actFallback: NutritionData | null = null;
-      try {
-        let actData: NutritionData | null = null;
+      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string; cached?: boolean };
+
+      // ── 1. Check client-side cache (instant) ──
+      const localCached = getNutritionCache(food);
+      if (localCached) {
+        setCal(String(localCached.calories));
+        setPro(String(localCached.protein));
+        setCarb(String(localCached.carbs));
+        setFat(String(localCached.fat));
+        setNutritionSource(localCached.source.startsWith("cache") ? "usda" : localCached.source as "usda" | "web" | "estimated");
+        setNutritionLookupLoading(false);
+        return;
+      }
+
+      // ── 2. Race web grounding vs Act in parallel ──
+      const webPromise = fetch("/api/meals/lookup-nutrition-web", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ food }),
+      }).then(async (res) => {
+        if (!res.ok) throw new Error("web failed");
+        const d = await res.json() as NutritionData;
+        if (!d.nutrition) throw new Error("no nutrition");
+        return { ...d, _src: "web" as const };
+      });
+
+      const actPromise = (async () => {
         if (isActServiceConfigured()) {
           try {
-            actData = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+            const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+            if (d?.nutrition && !d.note?.includes("Estimated values")) return { ...d, _src: "usda" as const };
+            throw new Error("act estimated");
           } catch {
-            /* Act service (Railway) failed — try API route which has fallbacks */
-            const actRes = await fetch("/api/act/nutrition", {
+            const res = await fetch("/api/act/nutrition", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ food }),
             });
-            if (actRes.ok) actData = await actRes.json();
+            if (!res.ok) throw new Error("act api failed");
+            const d = await res.json() as NutritionData;
+            if (d?.nutrition && !d.note?.includes("Estimated values")) return { ...d, _src: "usda" as const };
+            throw new Error("act estimated");
           }
         } else {
-          const actRes = await fetch("/api/act/nutrition", {
+          const res = await fetch("/api/act/nutrition", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ food }),
           });
-          if (actRes.ok) actData = await actRes.json();
+          if (!res.ok) throw new Error("act api failed");
+          const d = await res.json() as NutritionData;
+          if (d?.nutrition && !d.note?.includes("Estimated values")) return { ...d, _src: "usda" as const };
+          throw new Error("act estimated");
         }
-        if (actData?.nutrition && !actData.note?.includes("Estimated values")) {
-          data = actData;
-          setNutritionSource(actData.demoMode ? "estimated" : "usda");
-        } else if (actData?.nutrition) {
-          actFallback = actData;
-        }
-      } catch { /* fall through to web lookup */ }
-      if (!data?.nutrition) {
-        const webRes = await fetch("/api/meals/lookup-nutrition-web", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ food }),
-        });
-        const webData = await webRes.json();
-        if (webRes.ok && webData?.nutrition) {
-          data = webData;
-          setNutritionSource("web");
-        }
+      })();
+
+      let data: (NutritionData & { _src: "web" | "usda" }) | null = null;
+      try {
+        // Use the first source that returns a real (non-estimated) result
+        data = await Promise.any([webPromise, actPromise]);
+      } catch {
+        // Both failed with real data — try getting any Act result (even estimated)
+        try {
+          const res = await fetch("/api/act/nutrition", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ food }),
+          });
+          if (res.ok) {
+            const d = await res.json() as NutritionData;
+            if (d?.nutrition) data = { ...d, _src: "usda" };
+          }
+        } catch { /* give up */ }
       }
-      if (!data?.nutrition && actFallback?.nutrition) {
-        data = actFallback;
-        setNutritionSource("estimated");
-      }
+
       if (data?.nutrition) {
-        setCal(String(data.nutrition.calories ?? ""));
-        setPro(String(data.nutrition.protein ?? ""));
-        setCarb(String(data.nutrition.carbs ?? ""));
-        setFat(String(data.nutrition.fat ?? ""));
+        const n = data.nutrition;
+        setCal(String(n.calories ?? ""));
+        setPro(String(n.protein ?? ""));
+        setCarb(String(n.carbs ?? ""));
+        setFat(String(n.fat ?? ""));
+        const source = data.cached ? "usda" : data._src === "usda" ? (data.demoMode ? "estimated" : "usda") : "web";
+        setNutritionSource(source);
+        // Save to client-side cache for next time
+        if (!data.demoMode && n.calories != null) {
+          saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source });
+        }
       }
     } catch {
       // best effort helper
@@ -440,6 +474,7 @@ export function MealsView({
     setCarb("");
     setFat("");
     setInspirationImage(null);
+    setRecipeUrl("");
     setRecipeImageUrl(null);
     setRecipeServings(null);
     setShowAdd(false);
@@ -539,11 +574,11 @@ export function MealsView({
           </div>
         </div>
       ) : (
-        <div className="card p-6 animate-slide-up">
+        <div className="card p-4 sm:p-5 animate-slide-up max-w-2xl">
           <h3 className="section-title !text-base mb-1">Add meal</h3>
-          <p className="text-sm text-[var(--muted)] mb-4">Enter a name, or use the buttons below to fill in quickly.</p>
+          <p className="text-sm text-[var(--muted)] mb-3">Enter a name, or use the buttons below to fill in quickly.</p>
           {getRecentMealTemplates().length > 0 && (
-            <div className="mb-4">
+            <div className="mb-3">
               <p className="text-xs font-medium text-[var(--muted)] mb-2">Recent meals &amp; recipes</p>
               <div className="flex flex-wrap gap-2">
                 {getRecentMealTemplates().slice(0, 12).map((t) => (
@@ -570,11 +605,11 @@ export function MealsView({
             onClick={handleSuggest}
             disabled={suggestLoading}
             title={getCookingAppRecipes().length > 0 ? "Suggestions prefer gourmet options from your recipe library within your calorie budget" : "Get meal ideas that fit your remaining calories"}
-            className="mb-4 rounded-lg border border-[var(--accent)] px-4 py-2 text-sm text-[var(--accent)] bg-[var(--accent-10)] hover:bg-[var(--accent-20)] disabled:opacity-50"
+            className="mb-3 rounded-lg border border-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent)] bg-[var(--accent-10)] hover:bg-[var(--accent-20)] disabled:opacity-50"
           >
             {suggestLoading ? "Getting Nova suggestions…" : "✨ AI suggest meal"}
           </button>
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-3 flex flex-wrap gap-2">
             <div className="flex flex-col gap-1">
               <button
                 type="button"
@@ -624,7 +659,7 @@ export function MealsView({
               <p className="text-xs text-[var(--muted)]">Serves {recipeServings} — nutrition is per serving</p>
             )}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
               <label className="label !mb-0">Meal name</label>
               <input
@@ -689,10 +724,10 @@ export function MealsView({
             <img
               src={recipeImageUrl ?? `data:image/png;base64,${inspirationImage}`}
               alt="Meal"
-              className="mt-4 max-h-52 rounded-lg object-cover"
+              className="mt-3 max-h-36 rounded-lg object-cover"
             />
           )}
-          <div className="mt-4 flex gap-2">
+          <div className="mt-3 flex gap-2">
             <button onClick={handleAdd} className="btn-primary rounded-lg px-4 py-2">
               Save
             </button>
@@ -1101,13 +1136,13 @@ export function MealsView({
             )}
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-1.5 max-w-2xl">
             {displayMeals.map((m) => (
               <li key={m.id}>
                 {editDraft?.id === m.id ? (
-                  <div className="card p-4 space-y-4 animate-slide-up">
+                  <div className="card p-3 space-y-3 animate-slide-up max-w-2xl">
                     <h4 className="text-sm font-semibold">Edit meal</h4>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-3 sm:grid-cols-2">
                       <div>
                         <label className="label !mb-1">Name</label>
                         <input
@@ -1196,17 +1231,17 @@ export function MealsView({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between card px-4 py-3 gap-3">
+                  <div className="flex items-center gap-2.5 card px-3 py-2 sm:py-2.5 rounded-lg">
                     {m.imageUrl && (
-                      <img src={m.imageUrl} alt="" className="h-14 w-14 rounded-lg object-cover flex-shrink-0" />
+                      <img src={m.imageUrl} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover flex-shrink-0" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">{m.name}</p>
-                      <p className="text-caption">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
+                      <p className="text-sm font-medium truncate">{m.name}</p>
+                      <p className="text-[11px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent)]">Edit</button>
-                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Delete</button>
+                    <div className="flex gap-1 flex-shrink-0">
+                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent)] !px-2 !py-1">Edit</button>
+                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-2 !py-1">Delete</button>
                     </div>
                   </div>
                 )}
