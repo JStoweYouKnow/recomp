@@ -526,7 +526,7 @@ export default function Home() {
             onDataFetched={(data) => {
               const existing = getWearableData();
               const merged = [...existing];
-              data.forEach((d: WearableDaySummary) => {
+              (data as WearableDaySummary[]).forEach((d) => {
                 const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
                 if (i >= 0) merged[i] = { ...merged[i], ...d };
                 else merged.push(d);
@@ -577,7 +577,7 @@ export default function Home() {
             onWearableDataFetched={(data) => {
               const existing = getWearableData();
               const merged = [...existing];
-              data.forEach((d: WearableDaySummary) => {
+              (data as WearableDaySummary[]).forEach((d) => {
                 const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
                 if (i >= 0) merged[i] = { ...merged[i], ...d };
                 else merged.push(d);
