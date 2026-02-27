@@ -115,12 +115,23 @@ export interface WearableDaySummary {
   heartRateAvg?: number;
   heartRateResting?: number;
   workouts?: { name: string; duration: number; calories?: number }[];
-  /** Weight in kg (from scale, Fitbit Aria, Apple Health, etc.) */
+  /** Weight in lbs (from scale, Fitbit Aria, Apple Health, etc.) */
   weight?: number;
   /** Body fat % (0–100) when available from smart scale */
   bodyFatPercent?: number;
-  /** Muscle mass in kg when available */
+  /** Muscle mass in lbs when available */
   muscleMass?: number;
+  /** RENPHO / smart scale extras (all weight-related in lbs) */
+  bmi?: number;
+  skeletalMusclePercent?: number;
+  fatFreeMass?: number; // lbs
+  subcutaneousFatPercent?: number;
+  visceralFat?: number;
+  bodyWaterPercent?: number;
+  boneMass?: number; // lbs
+  proteinPercent?: number;
+  bmr?: number; // kcal
+  metabolicAge?: number;
 }
 
 export type MilestoneType =

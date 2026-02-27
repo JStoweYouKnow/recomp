@@ -95,7 +95,7 @@ function normalizeAppleSamples(payload: unknown): WearableSummary[] {
     }
     if (type.includes("weight") || type.includes("bodymass") || type === "kg") {
       const w = value ?? toNumber(sample.weight);
-      if (w != null) existing.weight = w; // Apple Health uses kg for HKQuantityTypeIdentifierBodyMass
+      if (w != null) existing.weight = w * 2.2046226218; // Apple Health uses kg; normalize to lbs
     }
     if (type.includes("fat") || type.includes("bodyfat")) {
       const bf = value ?? toNumber(sample.bodyFatPercent ?? sample.bodyFat);

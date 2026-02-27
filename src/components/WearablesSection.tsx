@@ -132,7 +132,7 @@ export function WearablesSection({
     <div className="card p-6 mt-6">
       <h3 className="font-semibold text-[var(--foreground)] mb-1">Connect wearables</h3>
       <p className="text-sm text-[var(--muted)] mb-4">
-        Connect Oura, Fitbit, or import from Apple Health / Renpho / Health Connect. Data appears on your dashboard and in Measurements.
+        Connect Oura, Fitbit, or import from Apple Health / Renpho / Health Connect. Data appears on your dashboard and in My Progress.
       </p>
 
       <div className="grid gap-6 sm:grid-cols-2 mb-6">

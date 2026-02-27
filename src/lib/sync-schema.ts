@@ -50,9 +50,9 @@ const wearableDaySummarySchema = z.object({
   readinessScore: z.number().min(0).max(100).optional(),
   heartRateAvg: z.number().min(20).max(300).optional(),
   heartRateResting: z.number().min(20).max(200).optional(),
-  weight: z.number().min(0).max(500).optional(),
+  weight: z.number().min(0).max(1100).optional(), // lbs
   bodyFatPercent: z.number().min(0).max(100).optional(),
-  muscleMass: z.number().min(0).max(500).optional(),
+  muscleMass: z.number().min(0).max(500).optional(), // lbs
 }).passthrough();
 
 const dietDaySchema = z.object({

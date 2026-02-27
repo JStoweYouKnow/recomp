@@ -126,13 +126,13 @@ export function buildDemoSeed(): DemoSeedData {
   ];
 
   const wearableData: WearableDaySummary[] = [
-    { date: d4, provider: "fitbit", steps: 8420, caloriesBurned: 2380, activeMinutes: 51, sleepScore: 80, sleepDuration: 425, heartRateResting: 61, weight: 78.2, bodyFatPercent: 16.5, muscleMass: 62.1 },
+    { date: d4, provider: "fitbit", steps: 8420, caloriesBurned: 2380, activeMinutes: 51, sleepScore: 80, sleepDuration: 425, heartRateResting: 61, weight: 172, bodyFatPercent: 16.5, muscleMass: 137 },
     { date: d3, provider: "fitbit", steps: 10210, caloriesBurned: 2520, activeMinutes: 62, sleepScore: 84, sleepDuration: 438, heartRateResting: 60 },
-    { date: d2, provider: "fitbit", steps: 9170, caloriesBurned: 2440, activeMinutes: 57, sleepScore: 82, sleepDuration: 430, heartRateResting: 60, weight: 78.5, bodyFatPercent: 16.8 },
+    { date: d2, provider: "fitbit", steps: 9170, caloriesBurned: 2440, activeMinutes: 57, sleepScore: 82, sleepDuration: 430, heartRateResting: 60, weight: 173, bodyFatPercent: 16.8 },
     { date: d1, provider: "fitbit", steps: 11140, caloriesBurned: 2610, activeMinutes: 68, sleepScore: 86, sleepDuration: 446, heartRateResting: 59 },
-    { date: today, provider: "fitbit", steps: 6240, caloriesBurned: 2140, activeMinutes: 38, sleepScore: 79, sleepDuration: 410, heartRateResting: 62, weight: 77.9, bodyFatPercent: 16.2, muscleMass: 62.4 },
-    { date: d5, provider: "scale", weight: 78.0, bodyFatPercent: 16.4, muscleMass: 62.2 },
-    { date: d6, provider: "scale", weight: 78.4, bodyFatPercent: 16.6 },
+    { date: today, provider: "fitbit", steps: 6240, caloriesBurned: 2140, activeMinutes: 38, sleepScore: 79, sleepDuration: 410, heartRateResting: 62, weight: 172, bodyFatPercent: 16.2, muscleMass: 138 },
+    { date: d5, provider: "scale", weight: 172, bodyFatPercent: 16.4, muscleMass: 137 },
+    { date: d6, provider: "scale", weight: 173, bodyFatPercent: 16.6 },
   ];
 
   const milestones: Milestone[] = [

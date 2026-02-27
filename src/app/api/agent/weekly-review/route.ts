@@ -290,8 +290,8 @@ function executeWearableAnalysis(
       const sorted = [...weights].sort((a, b) => a.date.localeCompare(b.date));
       result.weight = {
         dataPoints: weights.length,
-        latestKg: Math.round(sorted[sorted.length - 1].weight * 10) / 10,
-        oldestKg: Math.round(sorted[0].weight * 10) / 10,
+        latestLbs: Math.round(sorted[sorted.length - 1].weight * 10) / 10,
+        oldestLbs: Math.round(sorted[0].weight * 10) / 10,
         avgBodyFat: weights.some((w) => w.bodyFat != null)
           ? Math.round(
               weights

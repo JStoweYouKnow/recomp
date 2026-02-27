@@ -525,7 +525,7 @@ export function Dashboard({
               <div key={`${d.date}-${d.provider}`} className="card-flat rounded-xl px-4 py-3">
                 <p className="text-caption mb-1">{d.date} · {d.provider}</p>
                 <p className="text-sm font-medium">
-                  {d.weight != null && `${Math.round(kgToLbs(d.weight))} lbs`}
+                  {d.weight != null && `${Math.round(d.weight)} lbs`}
                   {d.bodyFatPercent != null && ` · ${d.bodyFatPercent}% fat`}
                   {d.steps != null && ` · ${d.steps.toLocaleString()} steps`}
                   {d.sleepScore != null && ` · Sleep ${d.sleepScore}`}

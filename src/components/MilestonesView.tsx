@@ -6,12 +6,6 @@ import { getBadgeInfo } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
 import type { Milestone, WearableDaySummary } from "@/lib/types";
 
-function lbsToKg(lbs: number): number {
-  return lbs / 2.2046226218;
-}
-function kgToLbs(kg: number): number {
-  return kg * 2.2046226218;
-}
 
 const BADGE_ICONS: Record<string, string> = {
   first_meal: "🍽️",
@@ -47,9 +41,31 @@ export function MilestonesView({
   const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
   const [loading, setLoading] = useState(false);
 
+  const hasExtras = useMemo(() => {
+    return wearableData.some(
+      (d) =>
+        d.bmi != null ||
+        d.skeletalMusclePercent != null ||
+        d.visceralFat != null ||
+        d.bodyWaterPercent != null ||
+        d.boneMass != null ||
+        d.proteinPercent != null ||
+        d.bmr != null ||
+        d.metabolicAge != null
+    );
+  }, [wearableData]);
+
   const measurementHistory = useMemo(() => {
     return wearableData
-      .filter((d) => d.weight != null || d.bodyFatPercent != null || d.muscleMass != null)
+      .filter(
+        (d) =>
+          d.weight != null ||
+          d.bodyFatPercent != null ||
+          d.muscleMass != null ||
+          d.bmi != null ||
+          d.bmr != null ||
+          d.metabolicAge != null
+      )
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 50);
   }, [wearableData]);
@@ -67,9 +83,9 @@ export function MilestonesView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: scaleDate,
-          weightKg: lbsToKg(lbs),
+          weightLbs: lbs,
           bodyFatPercent: scaleBodyFat ? parseFloat(scaleBodyFat) : undefined,
-          muscleMass: scaleMuscle ? lbsToKg(parseFloat(scaleMuscle)) : undefined,
+          muscleMass: scaleMuscle ? parseFloat(scaleMuscle) : undefined,
         }),
       });
       const d = await r.json();
@@ -167,6 +183,9 @@ export function MilestonesView({
                   <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">Weight</th>
                   <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">Body fat</th>
                   <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">Muscle</th>
+                  {hasExtras && <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">BMI</th>}
+                  {hasExtras && <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">BMR</th>}
+                  {hasExtras && <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">Met. age</th>}
                   <th className="text-left py-1.5 px-1.5 font-medium text-[var(--muted)]">Source</th>
                 </tr>
               </thead>
@@ -174,9 +193,12 @@ export function MilestonesView({
                 {measurementHistory.slice(0, 10).map((d) => (
                   <tr key={`${d.date}-${d.provider}`} className="border-b border-[var(--border-soft)]/50">
                     <td className="py-1.5 px-1.5">{d.date}</td>
-                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.weight != null ? `${Math.round(kgToLbs(d.weight))} lbs` : "—"}</td>
+                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.weight != null ? `${Math.round(d.weight)} lbs` : "—"}</td>
                     <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bodyFatPercent != null ? `${d.bodyFatPercent}%` : "—"}</td>
-                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.muscleMass != null ? `${Math.round(kgToLbs(d.muscleMass))} lbs` : "—"}</td>
+                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.muscleMass != null ? `${Math.round(d.muscleMass)} lbs` : "—"}</td>
+                    {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bmi != null ? d.bmi.toFixed(1) : "—"}</td>}
+                    {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bmr != null ? Math.round(d.bmr) : "—"}</td>}
+                    {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.metabolicAge != null ? d.metabolicAge : "—"}</td>}
                     <td className="py-1.5 px-1.5 text-[var(--muted)] capitalize">{d.provider}</td>
                   </tr>
                 ))}
