@@ -394,6 +394,13 @@ h6 {
   box-shadow: var(--shadow-medium);
   transform: translateY(-2px);
 }
+.card-compact {
+  padding: 0.375rem 0.75rem;
+}
+.card-compact:hover {
+  transform: none;
+  box-shadow: var(--shadow-soft);
+}
 
 .card-flat {
   background: var(--surface);

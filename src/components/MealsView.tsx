@@ -61,6 +61,17 @@ export function MealsView({
 
   const isViewingToday = !calendarOpen || selectedDate === today;
 
+  const MEAL_CATEGORY_ORDER: MealEntry["mealType"][] = ["breakfast", "lunch", "dinner", "snack"];
+  const mealsByCategory = useMemo(() => {
+    const groups = new Map<MealEntry["mealType"], MealEntry[]>();
+    for (const mt of MEAL_CATEGORY_ORDER) groups.set(mt, []);
+    for (const m of displayMeals) {
+      const mt = MEAL_CATEGORY_ORDER.includes(m.mealType) ? m.mealType : "snack";
+      (groups.get(mt) ?? []).push(m);
+    }
+    return MEAL_CATEGORY_ORDER.map((mt) => ({ category: mt, meals: groups.get(mt) ?? [] })).filter((g) => g.meals.length > 0);
+  }, [displayMeals]);
+
   const dateLabel = useMemo(() => {
     if (isViewingToday) return "Today";
     const d = new Date(selectedDate + "T12:00:00");
@@ -1136,10 +1147,16 @@ export function MealsView({
             )}
           </div>
         ) : (
-          <ul className="space-y-1.5 max-w-2xl">
-            {displayMeals.map((m) => (
-              <li key={m.id}>
-                {editDraft?.id === m.id ? (
+          <div className="space-y-4 max-w-2xl">
+            {mealsByCategory.map(({ category, meals }) => (
+              <div key={category}>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-1.5">
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </h4>
+                <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {meals.map((m) => (
+                    <li key={m.id}>
+                      {editDraft?.id === m.id ? (
                   <div className="card p-3 space-y-3 animate-slide-up max-w-2xl">
                     <h4 className="text-sm font-semibold">Edit meal</h4>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -1231,23 +1248,26 @@ export function MealsView({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2.5 card px-3 py-2 sm:py-2.5 rounded-lg">
+                  <div className="flex items-center gap-2 card card-compact rounded-lg">
                     {m.imageUrl && (
-                      <img src={m.imageUrl} alt="" className="h-10 w-10 sm:h-12 sm:w-12 rounded-md object-cover flex-shrink-0" />
+                      <img src={m.imageUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{m.name}</p>
-                      <p className="text-[11px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P · {m.macros.carbs}g C · {m.macros.fat}g F</p>
+                      <p className="text-xs font-medium truncate">{m.name}</p>
+                      <p className="text-[10px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P</p>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent)] !px-2 !py-1">Edit</button>
-                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-2 !py-1">Delete</button>
+                    <div className="flex gap-0.5 flex-shrink-0">
+                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent)] !px-1.5 !py-0.5 !min-h-0">Edit</button>
+                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-1.5 !py-0.5 !min-h-0">Del</button>
                     </div>
                   </div>
                 )}
-              </li>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </div>
