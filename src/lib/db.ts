@@ -316,6 +316,46 @@ export async function dbDeletePushSubscription(userId: string, endpoint: string)
   );
 }
 
+// ── Nutrition Cache ─────────────────────────────────────────────────────────
+export interface NutritionCacheEntry {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source: string;
+  cachedAt: string;
+}
+
+function normalizeFood(food: string): string {
+  return food.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+const NUTRITION_CACHE_TTL_DAYS = 30;
+
+export async function dbGetNutritionCache(food: string): Promise<NutritionCacheEntry | null> {
+  const doc = getDocClient();
+  const key = normalizeFood(food);
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `NUTRITION#${key}`, SK: "CACHE" } })
+  );
+  if (!Item) return null;
+  const entry = Item.data as NutritionCacheEntry;
+  const age = Date.now() - new Date(entry.cachedAt).getTime();
+  if (age > NUTRITION_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000) return null;
+  return entry;
+}
+
+export async function dbSaveNutritionCache(food: string, entry: NutritionCacheEntry): Promise<void> {
+  const doc = getDocClient();
+  const key = normalizeFood(food);
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `NUTRITION#${key}`, SK: "CACHE", data: entry, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
 // ── Expo Push Tokens (mobile app) ─────────────────────────────────────────
 export interface ExpoPushTokenRecord {
   token: string;

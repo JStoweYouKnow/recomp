@@ -294,7 +294,7 @@ export function Dashboard({
             </svg>
           </div>
           <h3 className="section-title !text-base mb-1">Creating your plan</h3>
-          <p className="text-sm text-[var(--muted)]">{planLoadingMessage || "Amazon Nova is generating your personalized diet and workout plan…"}</p>
+          <p className="text-sm text-[var(--muted)]">{planLoadingMessage || "Generating your plan… (may take up to 60s)"}</p>
           <div className="mt-4 h-1.5 w-32 mx-auto rounded-full bg-[var(--border-soft)] overflow-hidden">
             <div className="h-full w-1/3 rounded-full bg-[var(--accent)] animate-pulse" style={{ width: "33%" }} />
           </div>

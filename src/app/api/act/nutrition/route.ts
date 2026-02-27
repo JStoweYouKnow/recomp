@@ -9,6 +9,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
+import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
 
 export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
 const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the function
@@ -51,8 +52,34 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
+    // ── DynamoDB nutrition cache ──
+    try {
+      const cached = await dbGetNutritionCache(food);
+      if (cached) {
+        const res = NextResponse.json({
+          food,
+          nutrition: { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat },
+          source: `cache(${cached.source})`,
+          cached: true,
+        });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+    } catch { /* cache miss — continue to live lookup */ }
+
     const serviceResult = await callActService<Record<string, unknown>>("/nutrition", { food }, { timeoutMs: TIMEOUT_MS });
     if (serviceResult && (serviceResult.nutrition || serviceResult.error)) {
+      // Cache successful USDA results
+      const n = serviceResult.nutrition as { calories?: number; protein?: number; carbs?: number; fat?: number } | undefined;
+      if (n && typeof n.calories === "number") {
+        dbSaveNutritionCache(food, {
+          calories: n.calories, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0,
+          source: "usda", cachedAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
       const res = NextResponse.json(serviceResult);
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);
@@ -66,6 +93,14 @@ export async function POST(req: NextRequest) {
 
     try {
       const result = await runPython(scriptPath, input, { timeoutMs: TIMEOUT_MS });
+      // Cache successful Python/USDA results
+      const pn = (result as { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number } }).nutrition;
+      if (pn && typeof pn.calories === "number") {
+        dbSaveNutritionCache(food, {
+          calories: pn.calories, protein: pn.protein ?? 0, carbs: pn.carbs ?? 0, fat: pn.fat ?? 0,
+          source: "usda", cachedAt: new Date().toISOString(),
+        }).catch(() => {});
+      }
       const res = NextResponse.json(result);
       const headers = getRateLimitHeaderValues(rl);
       res.headers.set("X-RateLimit-Limit", headers.limit);

@@ -12,7 +12,7 @@ Most Nova integrations use one or two models for text generation. Recomp demonst
 
 - **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
 - **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
-- **Browser automation** via Nova Act — grocery search with one-tap Amazon links; true add-to-cart requires a local session (see [NOVA_ACT_SETUP.md](./NOVA_ACT_SETUP.md))
+- **Browser automation** via Nova Act — grocery search with one-tap Amazon links; add-to-cart requires local session (see [Nova Act](#nova-act-optional))
 - **Multimodal understanding** — plate photos, receipt scans, body segmentation, and text all processed by Nova Lite
 - **Extended thinking** for complex reasoning during plan generation
 
@@ -22,7 +22,7 @@ The result: a production-grade app that treats Nova not as a text generator, but
 
 Recomp makes body recomposition accessible to anyone with a browser. **Community impact**: Fitness guidance is often siloed, expensive, or generic. Recomp uses Nova for personalized plans and real-time meal logging (voice, photo, receipt scan, text) at no per-use cost beyond AWS. **Enterprise potential**: Wearable integration (Oura, Fitbit, Apple Health) enables employer wellness without app sprawl.
 
-**Impact & roadmap:** See [IMPACT.md](./IMPACT.md) for use cases, adoption strategy, and post-hackathon plans.
+**Impact & roadmap:** Community impact (accessibility, cost, personalization). Enterprise use cases: corporate wellness, health plans, gyms. Post-hackathon: open source, self-host, mobile PWA, freemium tier, enterprise licensing.
 
 ## Innovation Highlights
 
@@ -32,18 +32,18 @@ What makes Recomp novel — both technically and as a product:
 - **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
 - **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
 - **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal. Body segmentation ensures clean compositing.
-- **Nova Act grocery & nutrition** — Searches Amazon for diet-plan ingredients and returns one-tap product/search links (cloud); with a local logged-in session, can add to cart directly. USDA nutrition lookup with web-grounding fallback.
+- **Nova Act grocery & nutrition** — Searches Amazon for diet-plan ingredients; returns one-tap links in cloud; add-to-cart requires local session. USDA nutrition via Act service (Railway) or web grounding.
 - **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
 - **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
 
 ## Judge Access
 
-- **Live demo**: [Deploy to Vercel](#deployment-vercel) — `vercel --prod` (requires `vercel login`). Add the deployment URL to your Devpost submission. Configure `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` in Vercel dashboard.
+- **Live demo**: [https://recomp-one.vercel.app/](https://recomp-one.vercel.app/). To deploy your own: [Deploy to Vercel](#deployment-vercel) — `vercel --prod` (requires `vercel login`). Add the deployment URL to your Devpost submission. Configure `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` in Vercel dashboard. **For judge demos:** "Try pre-seeded demo" sets an auth cookie via `/api/auth/demo`, so AI routes work even if `REQUIRE_AUTH_FOR_AI=true`; leave it unset/false for best experience.
 - **Repo access (if private)**: Add `testing@devpost.com` and `Amazon-Nova-hackathon@amazon.com` as collaborators (GitHub → Settings → Collaborators), or make the repo public.
 - **AWS**: For a hosted demo, configure Bedrock credentials in the deployment environment. For local evaluation, judges can run `npm run dev` with their own AWS credentials (see Setup).
 - **Demo mode**: When running without auth (e.g., first-time visit or cleared cookies), the app stores data in localStorage and shows a "Demo mode" banner. Complete onboarding to register and sync to the server.
 - **Judge reliability mode**: Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations (Nova Act, Nova Reel, DynamoDB sync, wearables). Check readiness at `/api/judge/health`.
-- **Submission checklist**: [SUBMISSION_CHECKLIST.md](./SUBMISSION_CHECKLIST.md) — demo video, live URL, repo access, Devpost, screenshots.
+- **Submission**: Demo video (~3 min, #AmazonNova), live URL, repo access, Devpost form.
 
 ### 2-minute golden path (judges)
 
@@ -53,7 +53,7 @@ What makes Recomp novel — both technically and as a product:
 4. Return to Dashboard and click **Generate** in Weekly AI Review (multi-agent demo).
 5. Open Reco (🧩) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
 
-Full testing instructions: [SUBMISSION_CHECKLIST.md](./SUBMISSION_CHECKLIST.md). If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback.
+If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback. Verify with `GET /api/judge/health`.
 
 ### How to Evaluate (judges)
 
@@ -149,25 +149,30 @@ You can also use a full inference profile ARN.
 
 ### DynamoDB Table (optional)
 
-See **[docs/DYNAMODB_SETUP.md](docs/DYNAMODB_SETUP.md)** for full setup. Quick start:
+1. Create IAM user with DynamoDB permissions (`dynamodb:*` on `RecompTable`).
+2. Run: `export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 && npm run dynamo:create-table`
+3. Add `DYNAMODB_TABLE_NAME=RecompTable` to Vercel env.
 
-```bash
-export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1
-npm run dynamo:create-table
-```
+**Schema:** Single-table design. PK/SK patterns: `USER#{userId}#PROFILE`, `USER#{userId}#MEAL#{date}#{id}`, `USER#{userId}#PLAN`, etc. See [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ### Nova Act (optional)
 
-Nova Act powers nutrition lookup and grocery automation. To use it:
+Nova Act powers nutrition lookup and grocery automation.
 
-1. **Get an API key** from [nova.amazon.com/act → Dev Tools](https://nova.amazon.com/act?tab=dev_tools). Add to `.env.local`:
-   ```
-   NOVA_ACT_API_KEY=your-key-here
-   ```
-2. **Install the package:** `pip install nova-act`
-3. For add-to-cart, run `scripts/setup_amazon_login.py` (see below).
+**API key (required):** Get from [nova.amazon.com/act → Dev Tools](https://nova.amazon.com/act?tab=dev_tools). Add `NOVA_ACT_API_KEY` to `.env.local`.
 
-If `nova-act` is not installed or `NOVA_ACT_API_KEY` is missing, the Act endpoints return demo/estimated data.
+**Local:** `pip install nova-act`. Nutrition/grocery work via Python subprocess. Add-to-cart needs one-time `scripts/setup_amazon_login.py`; set `NOVA_ACT_USER_DATA_DIR`.
+
+**Production:** Act does not run on Vercel (no Python). Deploy `act-service/` to Railway/Render:
+
+```bash
+cd recomp && railway login && railway up
+railway variable set NOVA_ACT_API_KEY=your-key
+```
+
+Generate domain in Railway → Settings → Networking. Add `ACT_SERVICE_URL=https://your-act.up.railway.app` to Vercel.
+
+**Troubleshooting:** "Authentication Failed" → set `NOVA_ACT_API_KEY`. "Python not found" → set `ACT_PYTHON` to full path. Nutrition returns estimated → install `nova-act`, restart.
 
 ### Known Limitations
 
@@ -246,10 +251,10 @@ Add the deployment URL to your Devpost submission and to the Judge Access sectio
 
 ### Scalability & Cost
 
-- **Serverless**: Next.js API routes run on Vercel serverless functions (60s timeout on Hobby, 300s on Pro). Long-running flows (Nova Act grocery, plan generation) may hit timeouts on Hobby — use Pro or consider background jobs for heavy workloads.
-- **Bedrock costs**: Nova Lite, Sonic, Canvas, and Reel are billed per token/image/video. Typical usage: ~$0.01–0.05 per plan generation, ~$0.001 per meal suggestion. Monitor usage in the Bedrock console.
-- **DynamoDB**: Single-table design with on-demand capacity. Set up billing alarms for production.
-- **Structured logging**: API routes use `@/lib/logger` (`logInfo`, `logError`) for consistent output. Wire to CloudWatch, Datadog, or similar for production observability.
+- **Serverless**: Next.js API routes run on Vercel (60s Hobby, 300s Pro). Plan generation and weekly review may take 30–60s; Pro recommended for demos.
+- **Bedrock costs**: Nova Lite, Sonic, Canvas, Reel billed per token/image/video. Typical: ~$0.01–0.05 per plan, ~$0.001 per meal suggestion.
+- **DynamoDB**: On-demand capacity; set billing alarms.
+- **Troubleshooting**: AI 401 → unset `REQUIRE_AUTH_FOR_AI` or use "Try pre-seeded demo". Plan/voice disabled → configure AWS credentials. Without credentials → `JUDGE_MODE=true` for fallbacks.
 
 ## Amazon Nova Integration — All 8 Features
 

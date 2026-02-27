@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { UserProfile, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary } from "@/lib/types";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { WearablesSection } from "./WearablesSection";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
   { value: "bodyweight", label: "Bodyweight" },
@@ -31,10 +32,12 @@ export function ProfileView({
   profile,
   isDemoMode = false,
   onProfileUpdate,
+  onWearableDataFetched,
 }: {
   profile: UserProfile;
   isDemoMode?: boolean;
   onProfileUpdate: (p: UserProfile) => void;
+  onWearableDataFetched?: (data: { date: string; provider: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }[]) => void;
 }) {
   const { ft, inch } = cmToFeetInches(profile.height);
   const [name, setName] = useState(profile.name);
@@ -289,6 +292,11 @@ export function ProfileView({
           <p className="text-sm text-[var(--muted-foreground)]">Could not load calendar link. Try again later.</p>
         )}
       </div>
+
+      {/* Wearables */}
+      {onWearableDataFetched && (
+        <WearablesSection onDataFetched={onWearableDataFetched} />
+      )}
 
       {/* Push notifications */}
       <div className="card p-6 mt-6">

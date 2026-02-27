@@ -128,6 +128,41 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 
 ---
 
+## DynamoDB Schema (single-table)
+
+| PK | SK | Data |
+|----|-----|------|
+| `USER#{userId}` | `PROFILE` | User profile |
+| `USER#{userId}` | `PLAN` | Fitness plan |
+| `USER#{userId}` | `META` | xp, ricoHistory, etc. |
+| `USER#{userId}` | `MEAL#{date}#{id}` | Meal entry |
+| `USER#{userId}` | `MILESTONE#{id}` | Milestone |
+| `USER#{userId}` | `WCONN#{provider}` | Wearable connection |
+| `USER#{userId}` | `WDATA#{date}#{provider}` | Wearable data |
+
+Billing: Pay per request.
+
+---
+
+## Act Service (production)
+
+Nova Act (nutrition, grocery) requires Python + Chromium. Vercel serverless cannot run it.
+
+**Deployment:** `act-service/` deploys to Railway/Render. Dockerfile uses Playwright image. Set `NOVA_ACT_API_KEY` and `ACT_SERVICE_URL` in Vercel.
+
+**Flow:** Next.js routes call `ACT_SERVICE_URL` when set; fall back to local Python or estimated values.
+
+---
+
+## ExerciseDB (GIF demos)
+
+- **Search:** `exercisedb.dev/api/v1/exercises?search=...`
+- **GIF CDN:** `static.exercisedb.dev/media/{id}.gif` (can have SSL/404 issues)
+- **Proxy:** `/api/exercises/gif?id=...` fetches server-side to avoid browser TLS issues
+- **Fallback:** exercises-gifs on GitHub when CDN fails; "Demo unavailable" SVG if both fail
+
+---
+
 ## Security & Resilience
 
 - **Rate limiting**: Fixed-window per route (e.g., 20 req/min for plans/generate)
@@ -135,7 +170,3 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 - **Validation**: Zod schemas on registration, plan generation, voice input
 - **Error boundaries**: React error boundaries; graceful fallbacks for Nova/Act failures
 - **Demo mode**: Act and auth fallbacks so app remains usable without full config
-
----
-
-*This document supports hackathon judging criteria: Technical Implementation.*

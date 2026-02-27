@@ -30,7 +30,7 @@ export function WeeklyReviewCard({
         <div className="flex flex-col gap-3" role="status" aria-live="polite">
           <div className="flex items-center gap-2 text-sm text-[var(--muted)]">
             <div className="h-1.5 w-1.5 rounded-full bg-[var(--accent)] animate-pulse" />
-            Agent running: analyzing meals, checking wearables, researching guidelines...
+            Agent running: analyzing meals, wearables & research… (may take up to 60s)
           </div>
           <div className="flex gap-2">
             {[1, 2, 3].map((i) => (

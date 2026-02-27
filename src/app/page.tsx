@@ -10,7 +10,6 @@ import { MilestonesView } from "@/components/MilestonesView";
 import { RicoChat } from "@/components/RicoChat";
 import { LandingPage } from "@/components/LandingPage";
 import { ProfileView } from "@/components/ProfileView";
-import { WearablesView } from "@/components/WearablesView";
 import { AdjustView } from "@/components/AdjustView";
 import { Dashboard } from "@/components/Dashboard";
 import { MealsView } from "@/components/MealsView";
@@ -23,7 +22,7 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
-  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "wearables" | "milestones" | "profile">("onboard");
+  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "milestones" | "profile">("onboard");
   const prevViewRef = useRef<string>("dashboard");
   const navContainerRef = useRef<HTMLElement>(null);
   const navBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -46,7 +45,7 @@ export default function Home() {
     window.addEventListener("resize", updatePill);
     return () => window.removeEventListener("resize", updatePill);
   }, [updatePill]);
-  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "wearables", "milestones", "profile"] as const;
+  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "milestones", "profile"] as const;
   const getSlideClass = (v: string) => {
     const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
     const prev = VIEW_ORDER.indexOf(prevViewRef.current as typeof VIEW_ORDER[number]);
@@ -68,7 +67,9 @@ export default function Home() {
   const [xp, setXp] = useState(getXP());
   const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [planLoadingMessage, setPlanLoadingMessage] = useState("Amazon Nova is generating your personalized diet and workout plan…");
+  const [planLoadingMessage, setPlanLoadingMessage] = useState("Generating your plan… (may take up to 60s)");
+
+  const [wearableData, setWearableData] = useState<WearableDaySummary[]>(() => getWearableData());
 
   useEffect(() => {
     const p = getProfile();
@@ -76,6 +77,7 @@ export default function Home() {
     if (p) {
       setPlan(getPlan());
       setMeals(getMeals());
+      setWearableData(getWearableData());
       setMilestonesState(getMilestones());
       setXp(getXP());
       setView(p ? "dashboard" : "onboard");
@@ -196,7 +198,7 @@ export default function Home() {
       clearInterval(progressTimer);
       setLoading(false);
       setPlanRegenerating(false);
-      setPlanLoadingMessage("Amazon Nova is generating your personalized diet and workout plan…");
+      setPlanLoadingMessage("Generating your plan… (may take up to 60s)");
     }
   };
 
@@ -259,8 +261,15 @@ export default function Home() {
     }
   };
 
-  const handleUsePreseededDemo = () => {
+  const handleUsePreseededDemo = async () => {
     const seed = buildDemoSeed();
+
+    // Set auth cookie so AI routes (Weekly Review, Reco, etc.) work when REQUIRE_AUTH_FOR_AI=true
+    try {
+      await fetch("/api/auth/demo", { method: "POST", credentials: "include" });
+    } catch {
+      // Proceed anyway — localStorage seed works; AI may fail if REQUIRE_AUTH_FOR_AI
+    }
 
     saveProfile(seed.profile);
     savePlan(seed.plan);
@@ -276,6 +285,7 @@ export default function Home() {
     setProfile(seed.profile);
     setPlan(seed.plan);
     setMeals(seed.meals);
+    setWearableData(seed.wearableData);
     setMilestonesState(seed.milestones);
     setXp(seed.xp);
     setMilestoneProgress({});
@@ -290,6 +300,7 @@ export default function Home() {
     setProfile(null);
     setPlan(null);
     setMeals([]);
+    setWearableData([]);
     setMilestonesState([]);
     setXp(0);
     setMilestoneProgress({});
@@ -338,8 +349,7 @@ export default function Home() {
               ["meals", "Meals", "Log meals and track macros"],
               ["workouts", "Workouts", "View and edit workout plan"],
               ["adjust", "Adjust", "Get AI plan adjustments"],
-              ["wearables", "Wearables", "Connect devices"],
-              ["milestones", "Progress", "View progress and milestones"],
+              ["milestones", "My Progress", "Track measurements and view progress"],
               ["profile", "Profile", "Edit your profile"],
             ] as const).map(([key, label, title]) => (
               <button
@@ -434,7 +444,7 @@ export default function Home() {
             meals={meals}
             todaysTotals={todaysTotals}
             targets={targets}
-            wearableData={getWearableData()}
+            wearableData={wearableData}
             onProfileUpdate={(updated) => {
               saveProfile(updated);
               setProfile(updated);
@@ -455,6 +465,7 @@ export default function Home() {
               setProfile(null);
               setPlan(null);
               setMeals([]);
+              setWearableData([]);
               setMilestonesState([]);
               setXp(0);
               setMilestoneProgress({});
@@ -505,9 +516,13 @@ export default function Home() {
           />
           </div>
         )}
-        {view === "wearables" && (
-          <div key="wearables" className={getSlideClass("wearables")}>
-          <WearablesView
+        {view === "milestones" && (
+          <div key="milestones" className={getSlideClass("milestones")}>
+          <MilestonesView
+            milestones={milestones}
+            xp={xp}
+            progress={milestoneProgress}
+            wearableData={wearableData}
             onDataFetched={(data) => {
               const existing = getWearableData();
               const merged = [...existing];
@@ -517,16 +532,8 @@ export default function Home() {
                 else merged.push(d);
               });
               saveWearableData(merged);
+              setWearableData(merged);
             }}
-          />
-          </div>
-        )}
-        {view === "milestones" && (
-          <div key="milestones" className={getSlideClass("milestones")}>
-          <MilestonesView
-            milestones={milestones}
-            xp={xp}
-            progress={milestoneProgress}
           />
           </div>
         )}
@@ -561,10 +568,22 @@ export default function Home() {
           <div key="profile" className={getSlideClass("profile")}>
           <ProfileView
             profile={profile}
+            isDemoMode={isDemoMode}
             onProfileUpdate={(updated) => {
               saveProfile(updated);
               setProfile(updated);
               syncToServer();
+            }}
+            onWearableDataFetched={(data) => {
+              const existing = getWearableData();
+              const merged = [...existing];
+              data.forEach((d: WearableDaySummary) => {
+                const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                if (i >= 0) merged[i] = { ...merged[i], ...d };
+                else merged.push(d);
+              });
+              saveWearableData(merged);
+              setWearableData(merged);
             }}
           />
           </div>

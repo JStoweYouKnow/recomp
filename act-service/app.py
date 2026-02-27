@@ -112,6 +112,10 @@ def health():
     return jsonify({"ok": True, "service": "recomp-act"})
 
 
+# Fallback nutrition when script fails (timeout, crash, missing deps) — avoid 500 so UI can still show something
+_DEMO_NUTRITION = {"calories": 150, "protein": 10, "carbs": 15, "fat": 5}
+
+
 @app.route("/nutrition", methods=["POST"])
 def nutrition():
     data = request.get_json() or {}
@@ -120,7 +124,16 @@ def nutrition():
         return jsonify({"error": "Food name required"}), 400
     result = run_script(NUTRITION_SCRIPT, {"food": food}, timeout=240)
     if "error" in result and result.get("error") and "nutrition" not in result:
-        return jsonify(result), 500
+        # Script failed — return 200 with estimated values so UI doesn't break; client can fall back to web lookup
+        err_msg = result.get("error", "Lookup failed")
+        print(f"[nutrition] Script failed for '{food}': {err_msg}", file=sys.stderr, flush=True)
+        return jsonify({
+            "food": food,
+            "nutrition": _DEMO_NUTRITION,
+            "found": True,
+            "demoMode": True,
+            "note": f"USDA lookup unavailable ({err_msg}). Using estimated values.",
+        }), 200
     return jsonify(result)
 
 

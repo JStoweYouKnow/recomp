@@ -61,6 +61,9 @@ export function buildJudgeHealthPayload(): JudgeHealthPayload {
         ? "JUDGE_MODE is enabled: optional integrations return deterministic fallback data."
         : "JUDGE_MODE is disabled: optional integrations run normally and may depend on external setup.",
       "Use this endpoint during judging to verify expected behavior before running the live demo flow.",
+      ...(!bedrockReady
+        ? ["planGeneration and voice are disabled: AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) not configured in deployment."]
+        : []),
     ],
   };
 }

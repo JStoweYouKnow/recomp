@@ -12,18 +12,22 @@ export async function POST(req: NextRequest) {
     const date = (body.date as string)?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
     const weightKg = typeof body.weightKg === "number" ? body.weightKg : parseFloat(body.weightKg);
     const bodyFatPercent = body.bodyFatPercent != null ? Number(body.bodyFatPercent) : undefined;
+    const muscleMass = body.muscleMass != null ? Number(body.muscleMass) : undefined;
 
     if (!Number.isFinite(weightKg) || weightKg < 20 || weightKg > 500) {
       return NextResponse.json({ error: "Invalid weight (use kg, 20–500)" }, { status: 400 });
     }
 
-    const summary: { date: string; provider: "scale"; weight: number; bodyFatPercent?: number } = {
+    const summary: { date: string; provider: "scale"; weight: number; bodyFatPercent?: number; muscleMass?: number } = {
       date,
       provider: "scale",
       weight: weightKg,
     };
     if (typeof bodyFatPercent === "number" && bodyFatPercent >= 0 && bodyFatPercent <= 100) {
       summary.bodyFatPercent = bodyFatPercent;
+    }
+    if (typeof muscleMass === "number" && muscleMass >= 0 && muscleMass <= 500) {
+      summary.muscleMass = muscleMass;
     }
 
     return NextResponse.json({ data: [summary], count: 1 });

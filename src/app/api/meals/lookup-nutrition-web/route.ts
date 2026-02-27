@@ -6,6 +6,7 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
 
 /** Allow up to 60s for web grounding (default Vercel timeout is too short) */
 export const maxDuration = 60;
@@ -59,6 +60,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Food name required" }, { status: 400 });
     }
 
+    // ── DynamoDB nutrition cache ──
+    try {
+      const cached = await dbGetNutritionCache(mealName);
+      if (cached) {
+        const res = NextResponse.json({
+          food: mealName,
+          source: `cache(${cached.source})`,
+          nutrition: { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat },
+          found: true,
+          cached: true,
+        });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+    } catch { /* cache miss — continue to live lookup */ }
+
     const userMessage = `Search the web for the nutrition facts of this food or meal: "${mealName}". Return calories, protein (g), carbs (g), and fat (g) per typical serving as a JSON object only.`;
     const { text: raw, source } = await invokeNovaWithWebGroundingOrFallback(
       SYSTEM_PROMPT,
@@ -77,15 +97,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const finalNutrition = {
+      calories: Math.round(nutrition.calories ?? 0),
+      protein: Math.round(nutrition.protein ?? 0),
+      carbs: Math.round(nutrition.carbs ?? 0),
+      fat: Math.round(nutrition.fat ?? 0),
+    };
+
+    // Cache the result in DynamoDB (fire-and-forget)
+    dbSaveNutritionCache(mealName, {
+      ...finalNutrition, source: source ?? "web-grounding", cachedAt: new Date().toISOString(),
+    }).catch(() => {});
+
     const res = NextResponse.json({
       food: mealName,
       source,
-      nutrition: {
-        calories: Math.round(nutrition.calories ?? 0),
-        protein: Math.round(nutrition.protein ?? 0),
-        carbs: Math.round(nutrition.carbs ?? 0),
-        fat: Math.round(nutrition.fat ?? 0),
-      },
+      nutrition: finalNutrition,
       found: true,
     });
     const headers = getRateLimitHeaderValues(rl);

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 /** Parse Renpho (and similar) scale CSV export.
  * Renpho: Device > History > Export data. Handles common column names. */
-function parseScaleCsv(csvText: string): Array<{ date: string; weight?: number; bodyFatPercent?: number }> {
+function parseScaleCsv(csvText: string): Array<{ date: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }> {
   const lines = csvText.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const header = lines[0].toLowerCase();
@@ -16,10 +16,12 @@ function parseScaleCsv(csvText: string): Array<{ date: string; weight?: number; 
   const dateIdx = idx("date") >= 0 ? idx("date") : idx(/time|record/);
   const weightIdx = idx("weight") >= 0 ? idx("weight") : idx(/mass|lb|kg/);
   const fatIdx = idx("body fat") >= 0 ? idx("body fat") : idx(/fat%|fat %|bodyfat/);
+  const muscleIdx = idx("muscle") >= 0 ? idx("muscle") : idx(/skeletal muscle|muscle mass/);
   const weightIsLbs = weightIdx >= 0 && (headers[weightIdx]?.includes("lb") || headers[weightIdx]?.includes("pound"));
+  const muscleIsLbs = muscleIdx >= 0 && (headers[muscleIdx]?.includes("lb") || headers[muscleIdx]?.includes("pound"));
   if (dateIdx < 0 && weightIdx < 0) return [];
 
-  const result: Array<{ date: string; weight?: number; bodyFatPercent?: number }> = [];
+  const result: Array<{ date: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }> = [];
   for (const line of rows) {
     const cells = line.split(/[,\t]/).map((c) => c.trim());
     const dateVal = dateIdx >= 0 ? cells[dateIdx] : "";
@@ -27,10 +29,13 @@ function parseScaleCsv(csvText: string): Array<{ date: string; weight?: number; 
     if (!dateStr) continue;
     const weightVal = weightIdx >= 0 ? parseFloat(cells[weightIdx]) : NaN;
     const fatVal = fatIdx >= 0 ? parseFloat(cells[fatIdx]) : NaN;
+    const muscleVal = muscleIdx >= 0 ? parseFloat(cells[muscleIdx]) : NaN;
     const rawWeight = Number.isFinite(weightVal) ? weightVal : undefined;
     const weight = rawWeight != null ? (weightIsLbs ? rawWeight * 0.453592 : rawWeight) : undefined;
     const bodyFatPercent = Number.isFinite(fatVal) && fatVal >= 0 && fatVal <= 100 ? fatVal : undefined;
-    result.push({ date: dateStr, ...(weight != null && { weight }), ...(bodyFatPercent != null && { bodyFatPercent }) });
+    const rawMuscle = Number.isFinite(muscleVal) ? muscleVal : undefined;
+    const muscleMass = rawMuscle != null ? (muscleIsLbs ? rawMuscle * 0.453592 : rawMuscle) : undefined;
+    result.push({ date: dateStr, ...(weight != null && { weight }), ...(bodyFatPercent != null && { bodyFatPercent }), ...(muscleMass != null && muscleMass >= 0 && { muscleMass }) });
   }
   return result;
 }
@@ -49,6 +54,7 @@ export async function POST(req: NextRequest) {
         const existing = byDate.get(row.date) ?? { date: row.date, provider: "scale" as const };
         if (row.weight != null) (existing as Record<string, unknown>).weight = row.weight;
         if (row.bodyFatPercent != null) (existing as Record<string, unknown>).bodyFatPercent = row.bodyFatPercent;
+        if (row.muscleMass != null) (existing as Record<string, unknown>).muscleMass = row.muscleMass;
         byDate.set(row.date, existing);
       });
     } else if (Array.isArray(body)) {
@@ -94,6 +100,7 @@ export async function POST(req: NextRequest) {
       heartRateAvg?: number;
       weight?: number;
       bodyFatPercent?: number;
+      muscleMass?: number;
       workouts?: { name: string; duration: number; calories?: number }[];
     }> = [];
     byDate.forEach((v) => {
@@ -107,6 +114,7 @@ export async function POST(req: NextRequest) {
         heartRateAvg: v.heartRateAvg as number | undefined,
         weight: v.weight as number | undefined,
         bodyFatPercent: v.bodyFatPercent as number | undefined,
+        muscleMass: v.muscleMass as number | undefined,
         workouts: v.workouts as { name: string; duration: number; calories?: number }[] | undefined,
       });
     });
