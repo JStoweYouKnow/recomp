@@ -16,3 +16,15 @@ export function toLocalDateString(d: Date): string {
 export function getTodayLocal(): string {
   return toLocalDateString(new Date());
 }
+
+/** Upcoming dates starting from tomorrow, count days. Returns YYYY-MM-DD strings. */
+export function getUpcomingDates(count: number, fromDate?: string): string[] {
+  const base = fromDate ? new Date(fromDate + "T12:00:00") : new Date();
+  const out: string[] = [];
+  for (let i = 1; i <= count; i++) {
+    const d = new Date(base);
+    d.setDate(base.getDate() + i);
+    out.push(toLocalDateString(d));
+  }
+  return out;
+}

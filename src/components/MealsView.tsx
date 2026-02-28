@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache } from "@/lib/storage";
-import { getTodayLocal } from "@/lib/date-utils";
+import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
@@ -14,6 +14,7 @@ export function MealsView({
   todaysMeals,
   todaysTotals,
   targets,
+  goal = "maintain",
   onAddMeal,
   onEditMeal,
   onDeleteMeal,
@@ -22,6 +23,7 @@ export function MealsView({
   todaysMeals: MealEntry[];
   todaysTotals: Macros;
   targets: Macros;
+  goal?: string;
   onAddMeal: (m: MealEntry) => void;
   onEditMeal: (m: MealEntry) => void;
   onDeleteMeal: (id: string) => void;
@@ -113,7 +115,15 @@ export function MealsView({
   const [webhookVerifyResult, setWebhookVerifyResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
   const [similarMeals, setSimilarMeals] = useState<{ name: string; mealId: string }[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
+  const [generatePlanLoading, setGeneratePlanLoading] = useState(false);
   const { showToast } = useToast();
+
+  // Upcoming days (next 7) with no logged meals
+  const emptyUpcomingDates = useMemo(() => {
+    const upcoming = getUpcomingDates(7, today);
+    const mealsByDate = new Set(meals.map((m) => m.date));
+    return upcoming.filter((d) => !mealsByDate.has(d));
+  }, [meals, today]);
 
   const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
   const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
@@ -541,6 +551,65 @@ export function MealsView({
           Calendar
         </button>
       </div>
+
+      {/* Generate meal plan for empty upcoming days */}
+      {emptyUpcomingDates.length > 0 && (
+        <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-[var(--muted)]">
+            {emptyUpcomingDates.length} upcoming day{emptyUpcomingDates.length !== 1 ? "s" : ""} with no meals logged
+          </p>
+          <button
+            onClick={async () => {
+              setGeneratePlanLoading(true);
+              try {
+                const res = await fetch("/api/meals/generate-plan", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    dates: emptyUpcomingDates,
+                    targets,
+                    goal,
+                  }),
+                });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                const plan = data.plan as Record<string, { mealType: string; name: string; calories: number; protein: number; carbs: number; fat: number; url?: string }[]>;
+                let added = 0;
+                for (const date of Object.keys(plan)) {
+                  for (const m of plan[date] ?? []) {
+                    const meal: MealEntry = {
+                      id: uuidv4(),
+                      date,
+                      mealType: m.mealType as MealEntry["mealType"],
+                      name: m.name,
+                      macros: { calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat },
+                      loggedAt: new Date().toISOString(),
+                    };
+                    onAddMeal(meal);
+                    added++;
+                  }
+                }
+                showToast?.(`Added ${added} meals across ${Object.keys(plan).length} days`);
+              } catch (err) {
+                showToast?.(err instanceof Error ? err.message : "Could not generate meal plan");
+              } finally {
+                setGeneratePlanLoading(false);
+              }
+            }}
+            disabled={generatePlanLoading}
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            {generatePlanLoading ? (
+              <span className="animate-spin">⟳</span>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            )}
+            Generate meal plan
+          </button>
+        </div>
+      )}
 
       {/* Calendar */}
       {calendarOpen && (

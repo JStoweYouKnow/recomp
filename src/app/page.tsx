@@ -483,6 +483,7 @@ export default function Home() {
             todaysMeals={todaysMeals}
             todaysTotals={todaysTotals}
             targets={targets}
+            goal={profile?.goal ?? "maintain"}
             onAddMeal={(m) => {
               const next = [...meals, m];
               setMeals(next);

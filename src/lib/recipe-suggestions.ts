@@ -51,6 +51,49 @@ export const CURATED_RECIPES: CuratedRecipe[] = [
   { name: "Vegetable Fried Rice", url: "https://www.budgetbytes.com/vegetable-fried-rice/", calories: 385, protein: 12, carbs: 52, fat: 15, goals: ["maintain", "improve_endurance"], mealTypes: ["lunch", "dinner"] },
 ];
 
+export interface GeneratedMeal {
+  mealType: "breakfast" | "lunch" | "dinner" | "snack";
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  url?: string;
+}
+
+/** Generate a full day of meals from curated recipes to hit daily targets. */
+export function generateDayPlan(targets: { calories: number; protein: number; carbs: number; fat: number }, goal: string): GeneratedMeal[] {
+  const slots: { mealType: CuratedRecipe["mealTypes"][number]; pctCal: number; pctPro: number }[] = [
+    { mealType: "breakfast", pctCal: 0.28, pctPro: 0.25 },
+    { mealType: "lunch", pctCal: 0.35, pctPro: 0.35 },
+    { mealType: "dinner", pctCal: 0.30, pctPro: 0.35 },
+    { mealType: "snack", pctCal: 0.07, pctPro: 0.05 },
+  ];
+  const meals: GeneratedMeal[] = [];
+  const used = new Set<string>();
+
+  for (const { mealType, pctCal, pctPro } of slots) {
+    const calBudget = Math.round(targets.calories * pctCal);
+    const proBudget = Math.round(targets.protein * pctPro);
+    const options = getRecipesForBudget(calBudget, goal, mealType, 8);
+    const pick = options.find((r) => !used.has(r.name)) ?? options[0];
+    if (pick) {
+      used.add(pick.name);
+      meals.push({
+        mealType,
+        name: pick.name,
+        calories: pick.calories,
+        protein: pick.protein,
+        carbs: pick.carbs,
+        fat: pick.fat,
+        url: pick.url,
+      });
+    }
+  }
+
+  return meals;
+}
+
 /** Filter recipes by remaining calories (±25% flexibility), goal, and optional meal type */
 export function getRecipesForBudget(
   remainingCalories: number,
