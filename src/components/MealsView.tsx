@@ -86,6 +86,7 @@ export function MealsView({
   const [carb, setCarb] = useState("");
   const [fat, setFat] = useState("");
   const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ name: string; description?: string; calories?: number; protein?: number; carbs?: number; fat?: number; url?: string }[]>([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
   const [photoLoading, setPhotoLoading] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -163,6 +164,7 @@ export function MealsView({
 
   const handleSuggest = async () => {
     setSuggestLoading(true);
+    setSuggestions([]);
     try {
       const profile = getProfile();
       const recipes = getCookingAppRecipes();
@@ -182,23 +184,27 @@ export function MealsView({
             protein: r.protein,
             carbs: r.carbs,
             fat: r.fat,
+            url: (r as { recipeUrl?: string }).recipeUrl,
           })),
         }),
       });
       const data = await res.json();
-      if (data.suggestions?.[0]) {
-        const s = data.suggestions[0];
-        setName(s.name ?? "");
-        setCal(String(s.calories ?? ""));
-        setPro(String(s.protein ?? ""));
-        setCarb(String(s.carbs ?? ""));
-        setFat(String(s.fat ?? ""));
+      if (data.suggestions?.length) {
+        setSuggestions(data.suggestions);
       }
     } catch (e) {
       console.error(e);
     } finally {
       setSuggestLoading(false);
     }
+  };
+
+  const applySuggestion = (s: { name: string; calories?: number; protein?: number; carbs?: number; fat?: number; url?: string }) => {
+    setName(s.name ?? "");
+    setCal(String(s.calories ?? ""));
+    setPro(String(s.protein ?? ""));
+    setCarb(String(s.carbs ?? ""));
+    setFat(String(s.fat ?? ""));
   };
 
   const handleVoiceLog = () => {
@@ -615,11 +621,46 @@ export function MealsView({
             type="button"
             onClick={handleSuggest}
             disabled={suggestLoading}
-            title={getCookingAppRecipes().length > 0 ? "Suggestions prefer gourmet options from your recipe library within your calorie budget" : "Get meal ideas that fit your remaining calories"}
+            title="Get atypical recipe ideas with real links that fit your remaining calories"
             className="mb-3 rounded-lg border border-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent)] bg-[var(--accent-10)] hover:bg-[var(--accent-20)] disabled:opacity-50"
           >
-            {suggestLoading ? "Getting Nova suggestions…" : "✨ AI suggest meal"}
+            {suggestLoading ? "Finding recipes…" : "✨ AI suggest meal"}
           </button>
+          {suggestions.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <p className="text-xs font-medium text-[var(--muted)]">Click to use · links open recipe</p>
+              <div className="flex flex-col gap-2">
+                {suggestions.map((s, i) => (
+                  <div
+                    key={`${s.name}-${i}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-2.5 hover:border-[var(--accent)]/40 transition-colors"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applySuggestion(s)}
+                      className="flex-1 text-left text-sm font-medium text-[var(--foreground)] hover:text-[var(--accent)]"
+                    >
+                      {s.name}
+                      <span className="ml-2 text-[10px] font-normal text-[var(--muted)]">
+                        {s.calories ?? "?"} cal{s.protein != null ? ` · ${s.protein}g pro` : ""}
+                      </span>
+                    </button>
+                    {s.url && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 rounded px-2 py-1 text-[10px] font-medium text-[var(--accent)] hover:bg-[var(--accent-10)]"
+                      >
+                        View recipe →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="mb-3 flex flex-wrap gap-2">
             <div className="flex flex-col gap-1">
               <button
