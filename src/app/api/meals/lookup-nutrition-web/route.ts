@@ -7,6 +7,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
+import { searchOpenFoodFacts } from "@/lib/open-food-facts";
 
 /** Allow up to 60s for web grounding (default Vercel timeout is too short) */
 export const maxDuration = 60;
@@ -33,7 +34,7 @@ function parseJsonResponse(text: string): { calories?: number; protein?: number;
   }
 }
 
-/** Web-grounded nutrition lookup – infers calories/macros from search results */
+/** Unified nutrition lookup: cache → Open Food Facts → Nova web grounding */
 export async function POST(req: NextRequest) {
   const rl = fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "meals-lookup-web"),
@@ -54,18 +55,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { food } = await req.json();
+    const { food, barcode } = await req.json();
     const mealName = typeof food === "string" ? food.trim() : "";
-    if (!mealName) {
-      return NextResponse.json({ error: "Food name required" }, { status: 400 });
+    const hasQuery = mealName || (typeof barcode === "string" && barcode.trim());
+
+    if (!hasQuery) {
+      return NextResponse.json({ error: "Food name or barcode required" }, { status: 400 });
     }
 
-    // ── DynamoDB nutrition cache ──
+    // ── 1. DynamoDB nutrition cache ──
     try {
-      const cached = await dbGetNutritionCache(mealName);
+      const cacheKey = mealName || barcode;
+      const cached = await dbGetNutritionCache(cacheKey);
       if (cached) {
         const res = NextResponse.json({
-          food: mealName,
+          food: mealName || barcode,
           source: `cache(${cached.source})`,
           nutrition: { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat },
           found: true,
@@ -77,9 +81,39 @@ export async function POST(req: NextRequest) {
         res.headers.set("X-RateLimit-Reset", headers.reset);
         return res;
       }
-    } catch { /* cache miss — continue to live lookup */ }
+    } catch { /* cache miss — continue */ }
 
-    const userMessage = `Search the web for the nutrition facts of this food or meal: "${mealName}". Return calories, protein (g), carbs (g), and fat (g) per typical serving as a JSON object only.`;
+    // ── 2. Open Food Facts (free, no limits) ──
+    if (typeof barcode === "string" && barcode.trim()) {
+      const { getProductByBarcode } = await import("@/lib/open-food-facts");
+      const offResult = await getProductByBarcode(barcode);
+      if (offResult && (offResult.calories > 0 || offResult.protein > 0 || offResult.carbs > 0 || offResult.fat > 0)) {
+        const final = { calories: offResult.calories, protein: offResult.protein, carbs: offResult.carbs, fat: offResult.fat };
+        dbSaveNutritionCache(barcode, { ...final, source: "openfoodfacts", cachedAt: new Date().toISOString() }).catch(() => {});
+        const res = NextResponse.json({ food: barcode, source: "openfoodfacts", nutrition: final, found: true });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+    }
+    if (mealName) {
+      const offResult = await searchOpenFoodFacts(mealName);
+      if (offResult && (offResult.calories > 0 || offResult.protein > 0 || offResult.carbs > 0 || offResult.fat > 0)) {
+        const final = { calories: offResult.calories, protein: offResult.protein, carbs: offResult.carbs, fat: offResult.fat };
+        dbSaveNutritionCache(mealName, { ...final, source: "openfoodfacts", cachedAt: new Date().toISOString() }).catch(() => {});
+        const res = NextResponse.json({ food: mealName, source: "openfoodfacts", nutrition: final, found: true });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        return res;
+      }
+    }
+
+    // ── 3. Nova web grounding (fallback) ──
+    const userMessage = `Search the web for the nutrition facts of this food or meal: "${mealName || barcode}". Return calories, protein (g), carbs (g), and fat (g) per typical serving as a JSON object only.`;
     const { text: raw, source } = await invokeNovaWithWebGroundingOrFallback(
       SYSTEM_PROMPT,
       userMessage,
@@ -105,12 +139,12 @@ export async function POST(req: NextRequest) {
     };
 
     // Cache the result in DynamoDB (fire-and-forget)
-    dbSaveNutritionCache(mealName, {
+    dbSaveNutritionCache(mealName || (typeof barcode === "string" ? barcode : ""), {
       ...finalNutrition, source: source ?? "web-grounding", cachedAt: new Date().toISOString(),
     }).catch(() => {});
 
     const res = NextResponse.json({
-      food: mealName,
+      food: mealName || barcode,
       source,
       nutrition: finalNutrition,
       found: true,

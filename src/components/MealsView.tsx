@@ -94,7 +94,7 @@ export function MealsView({
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptItems, setReceiptItems] = useState<{ name: string; quantity?: string; calories: number; protein: number; carbs: number; fat: number; selected?: boolean }[]>([]);
   const [nutritionLookupLoading, setNutritionLookupLoading] = useState(false);
-  const [nutritionSource, setNutritionSource] = useState<"usda" | "web" | "estimated" | null>(null);
+  const [nutritionSource, setNutritionSource] = useState<"usda" | "web" | "estimated" | "openfoodfacts" | null>(null);
   const [recipeUrl, setRecipeUrl] = useState("");
   const [recipeUrlLoading, setRecipeUrlLoading] = useState(false);
   const [recipeImageUrl, setRecipeImageUrl] = useState<string | null>(null);
@@ -417,7 +417,7 @@ export function MealsView({
         setPro(String(n.protein ?? ""));
         setCarb(String(n.carbs ?? ""));
         setFat(String(n.fat ?? ""));
-        const source = data.cached ? "usda" : data._src === "usda" ? (data.demoMode ? "estimated" : "usda") : "web";
+        const source = data.cached ? "usda" : data._src === "usda" ? (data.demoMode ? "estimated" : "usda") : (data.source === "openfoodfacts" ? data.source : "web");
         setNutritionSource(source);
         // Save to client-side cache for next time
         if (!data.demoMode && n.calories != null) {
@@ -743,6 +743,7 @@ export function MealsView({
               {nutritionSource && (
                 <span className="text-[10px] text-[var(--muted)]">
                   {nutritionSource === "usda" && "Source: USDA FoodData Central"}
+                  {nutritionSource === "openfoodfacts" && "Source: Open Food Facts"}
                   {nutritionSource === "web" && "Source: web search"}
                   {nutritionSource === "estimated" && "Estimated — install nova-act for real USDA lookup"}
                 </span>

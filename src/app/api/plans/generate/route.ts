@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { invokeNovaWithExtendedThinking } from "@/lib/nova";
 import { logError, logInfo } from "@/lib/logger";
 import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
+import { calculateMacros } from "@/lib/macro-calculator";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/lib/auth";
 import {
@@ -92,13 +93,24 @@ const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string
 };
 
 function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
-  const goalTargets: Record<UserProfile["goal"], Macros> = {
+  // Healthy Eater–style macro calculator from weight, height, age, activity, goal
+  const fallbackTargets: Record<UserProfile["goal"], Macros> = {
     lose_weight: { calories: 1900, protein: 150, carbs: 170, fat: 60 },
     maintain: { calories: 2300, protein: 140, carbs: 260, fat: 75 },
     build_muscle: { calories: 2600, protein: 165, carbs: 300, fat: 80 },
     improve_endurance: { calories: 2400, protein: 135, carbs: 310, fat: 70 },
   };
-  const dailyTargets = goalTargets[profile.goal] ?? goalTargets.maintain;
+  const dailyTargets =
+    profile.weight > 0 && profile.height > 0 && profile.age > 0
+      ? calculateMacros({
+          weightKg: profile.weight,
+          heightCm: profile.height,
+          age: profile.age,
+          gender: profile.gender,
+          dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
+          goal: profile.goal,
+        })
+      : (fallbackTargets[profile.goal] ?? fallbackTargets.maintain);
   const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
   const goalMeals = GOAL_MEALS[profile.goal] ?? GOAL_MEALS.maintain;
 
