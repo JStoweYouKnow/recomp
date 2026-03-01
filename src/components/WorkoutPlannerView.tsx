@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames } from "@/lib/storage";
 import type { FitnessPlan, WorkoutExercise } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
-import { getTodayLocal } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
@@ -187,6 +187,20 @@ export function WorkoutPlannerView({
 
   const weeklyPlan = editingWeekCopy ?? plan.workoutPlan.weeklyPlan;
 
+  // Viewing week: when calendar open use selectedDate's week, otherwise today's week
+  const viewingDate = calendarOpen ? selectedDate : today;
+  const viewingWeekStart = getWeekStart(viewingDate);
+
+  // Progress filtered to viewing week only — bar and day cards reflect this week
+  const progressThisWeek = useMemo(() => {
+    if (isViewingFutureDate) return {};
+    const filtered: Record<string, string> = {};
+    for (const [k, ts] of Object.entries(progress)) {
+      if (ts && isTimestampInWeek(ts, viewingWeekStart)) filtered[k] = ts;
+    }
+    return filtered;
+  }, [progress, viewingWeekStart, isViewingFutureDate]);
+
   const totalExercises = weeklyPlan.reduce(
     (sum, day) =>
       sum +
@@ -196,9 +210,9 @@ export function WorkoutPlannerView({
     0
   );
   const completedExercises = weeklyPlan.reduce((sum, day) => {
-    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "warmup")])).length;
-    const mainDone = day.exercises.filter((ex) => Boolean(progress[exerciseKey(day, ex, "main")])).length;
-    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "finisher")])).length;
+    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
+    const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
+    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
     return sum + warmupDone + mainDone + finisherDone;
   }, 0);
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
@@ -404,7 +418,7 @@ export function WorkoutPlannerView({
 
           const total =
             (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);
-          const effectiveProgress = isViewingFutureDate ? {} : progress;
+          const effectiveProgress = progressThisWeek;
           const completed =
             (day.warmups ?? []).filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "warmup")])).length +
             day.exercises.filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "main")])).length +

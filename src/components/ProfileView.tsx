@@ -29,6 +29,39 @@ const poundsToKg = (lbs: number): number => lbs * 0.45359237;
 const feetInchesToCm = (feet: number, inches: number): number => (feet * 12 + inches) * 2.54;
 const kgToLbs = (kg: number): number => kg * 2.2046226218;
 
+const AVATAR_SIZE = 192;
+
+async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const canvas = document.createElement("canvas");
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        const ratio = Math.min(maxSize / width, maxSize / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas not supported"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = url;
+  });
+}
+
 export function ProfileView({
   profile,
   isDemoMode = false,
@@ -60,6 +93,7 @@ export function ProfileView({
   );
   const [restrictions, setRestrictions] = useState(profile.dietaryRestrictions?.join(", ") ?? "");
   const [injuries, setInjuries] = useState(profile.injuriesOrLimitations?.join(", ") ?? "");
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | undefined>(profile.avatarDataUrl);
   const [calendarFeedUrl, setCalendarFeedUrl] = useState<string | null>(null);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarCopied, setCalendarCopied] = useState(false);
@@ -73,6 +107,11 @@ export function ProfileView({
   const [socialSaved, setSocialSaved] = useState(false);
   const [profileLinkCopied, setProfileLinkCopied] = useState(false);
   const usernameCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAvatarDataUrl(profile.avatarDataUrl);
+  }, [profile.avatarDataUrl]);
 
   useEffect(() => {
     if (isDemoMode || typeof window === "undefined") return;
@@ -158,6 +197,7 @@ export function ProfileView({
     onProfileUpdate({
       ...profile,
       name: name.trim() || profile.name,
+      avatarDataUrl,
       age: parseInt(age, 10) || profile.age,
       weight: Number.isFinite(lbs) && lbs > 0 ? poundsToKg(lbs) : profile.weight,
       height: totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : profile.height,
@@ -180,9 +220,57 @@ export function ProfileView({
       <p className="section-subtitle mb-6">Update your details anytime. Changes apply to your plan and recommendations.</p>
       <div className="card p-6">
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-5" noValidate>
-          <div>
-            <label className="label">Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-base w-full" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                try {
+                  const dataUrl = await resizeImageToDataUrl(file);
+                  setAvatarDataUrl(dataUrl);
+                } catch {
+                  // ignore
+                }
+                e.target.value = "";
+              }}
+            />
+            <div className="flex flex-col items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-[var(--border)] hover:border-[var(--accent)] bg-[var(--surface-elevated)] transition-colors focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                aria-label="Change profile picture"
+              >
+                {avatarDataUrl ? (
+                  <img src={avatarDataUrl} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="flex w-full h-full items-center justify-center text-2xl font-semibold text-[var(--muted)]">
+                    {name.trim() ? name.slice(0, 2).toUpperCase() : "?"}
+                  </span>
+                )}
+                <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity text-white text-xs font-medium">
+                  Change
+                </span>
+              </button>
+              {avatarDataUrl && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarDataUrl(undefined)}
+                  className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:underline"
+                >
+                  Remove photo
+                </button>
+              )}
+            </div>
+            <div className="flex-1 min-w-0 w-full sm:w-auto">
+              <label className="label">Name</label>
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-base w-full" />
+            </div>
+          </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
