@@ -401,7 +401,18 @@ export function WorkoutPlannerView({
 
       <div className="card p-5">
         <div className="mb-2 flex items-center justify-between text-sm">
-          <span className="text-[var(--muted)]">Weekly completion</span>
+          <span className="text-[var(--muted)]">
+            Weekly completion
+            {calendarOpen && (() => {
+              const d = new Date(viewingDate + "T12:00:00");
+              const mon = new Date(d);
+              mon.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
+              const sun = new Date(mon);
+              sun.setDate(mon.getDate() + 6);
+              const fmt = (x: Date) => x.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              return <span className="ml-1 text-[var(--foreground)]"> · {fmt(mon)} – {fmt(sun)}</span>;
+            })()}
+          </span>
           <span className="font-semibold">{completedExercises} / {totalExercises} exercises</span>
         </div>
         <div className="progress-track !mt-0">
