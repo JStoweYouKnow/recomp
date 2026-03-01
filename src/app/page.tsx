@@ -14,6 +14,9 @@ import { AdjustView } from "@/components/AdjustView";
 import { Dashboard } from "@/components/Dashboard";
 import { MealsView } from "@/components/MealsView";
 import { WorkoutPlannerView } from "@/components/WorkoutPlannerView";
+import { GroupsView } from "@/components/GroupsView";
+import { GroupDetailView } from "@/components/GroupDetailView";
+import { GroupCreateModal } from "@/components/GroupCreateModal";
 import { useToast } from "@/components/Toast";
 import { v4 as uuidv4 } from "uuid";
 
@@ -22,7 +25,7 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
-  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "milestones" | "profile">("onboard");
+  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "milestones" | "groups" | "profile">("onboard");
   const prevViewRef = useRef<string>("dashboard");
   const navContainerRef = useRef<HTMLElement>(null);
   const navBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -45,7 +48,7 @@ export default function Home() {
     window.addEventListener("resize", updatePill);
     return () => window.removeEventListener("resize", updatePill);
   }, [updatePill]);
-  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "milestones", "profile"] as const;
+  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "milestones", "groups", "profile"] as const;
   const getSlideClass = (v: string) => {
     const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
     const prev = VIEW_ORDER.indexOf(prevViewRef.current as typeof VIEW_ORDER[number]);
@@ -70,6 +73,8 @@ export default function Home() {
   const [planLoadingMessage, setPlanLoadingMessage] = useState("Generating your plan… (may take up to 60s)");
 
   const [wearableData, setWearableData] = useState<WearableDaySummary[]>(() => getWearableData());
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [showGroupCreate, setShowGroupCreate] = useState(false);
 
   useEffect(() => {
     const p = getProfile();
@@ -350,6 +355,7 @@ export default function Home() {
               ["workouts", "Workouts", "View and edit workout plan"],
               ["adjust", "Adjust", "Get AI plan adjustments"],
               ["milestones", "My Progress", "Track measurements and view progress"],
+              ["groups", "Groups", "Join groups and share progress"],
               ["profile", "Profile", "Edit your profile"],
             ] as const).map(([key, label, title]) => (
               <button
@@ -565,6 +571,21 @@ export default function Home() {
           />
           </div>
         )}
+        {view === "groups" && (
+          <div key="groups" className={getSlideClass("groups")}>
+            {activeGroupId ? (
+              <GroupDetailView
+                groupId={activeGroupId}
+                onBack={() => setActiveGroupId(null)}
+              />
+            ) : (
+              <GroupsView
+                onSelectGroup={(id) => setActiveGroupId(id)}
+                onCreateGroup={() => setShowGroupCreate(true)}
+              />
+            )}
+          </div>
+        )}
         {view === "profile" && profile && (
           <div key="profile" className={getSlideClass("profile")}>
           <ProfileView
@@ -590,6 +611,16 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      <GroupCreateModal
+        open={showGroupCreate}
+        onClose={() => setShowGroupCreate(false)}
+        onCreated={(groupId) => {
+          setShowGroupCreate(false);
+          setActiveGroupId(groupId);
+          navigateTo("groups");
+        }}
+      />
 
       {profile && view !== "onboard" && (
         <>

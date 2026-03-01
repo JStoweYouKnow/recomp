@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary } from "@/lib/types";
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary, ProfileVisibility, SocialSettings } from "@/lib/types";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { WearablesSection } from "./WearablesSection";
+import { getSocialSettings, saveSocialSettings } from "@/lib/storage";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
   { value: "bodyweight", label: "Bodyweight" },
@@ -63,6 +64,76 @@ export function ProfileView({
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarCopied, setCalendarCopied] = useState(false);
   const push = usePushNotifications(isDemoMode);
+
+  // Social settings state
+  const [socialVisibility, setSocialVisibility] = useState<ProfileVisibility>("badges_only");
+  const [socialUsername, setSocialUsername] = useState("");
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+  const [socialSaving, setSocialSaving] = useState(false);
+  const [socialSaved, setSocialSaved] = useState(false);
+  const [profileLinkCopied, setProfileLinkCopied] = useState(false);
+  const usernameCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isDemoMode || typeof window === "undefined") return;
+    // Load from localStorage first
+    const cached = getSocialSettings();
+    if (cached) {
+      setSocialVisibility(cached.visibility);
+      setSocialUsername(cached.username ?? "");
+    }
+    // Then fetch from server
+    fetch("/api/social/settings")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.visibility) setSocialVisibility(data.visibility);
+        if (data.username) setSocialUsername(data.username);
+      })
+      .catch(() => {});
+  }, [isDemoMode]);
+
+  const checkUsername = useCallback((value: string) => {
+    if (usernameCheckTimeout.current) clearTimeout(usernameCheckTimeout.current);
+    if (!value || value.length < 3) {
+      setUsernameStatus("idle");
+      return;
+    }
+    setUsernameStatus("checking");
+    usernameCheckTimeout.current = setTimeout(() => {
+      fetch("/api/social/username/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: value }),
+      })
+        .then((r) => r.json())
+        .then((data) => setUsernameStatus(data.available ? "available" : "taken"))
+        .catch(() => setUsernameStatus("idle"));
+    }, 500);
+  }, []);
+
+  const handleSaveSocial = async () => {
+    setSocialSaving(true);
+    setSocialSaved(false);
+    try {
+      const payload: { visibility: ProfileVisibility; username?: string } = { visibility: socialVisibility };
+      if (socialUsername.trim().length >= 3) payload.username = socialUsername.trim();
+      const res = await fetch("/api/social/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        saveSocialSettings(data);
+        setSocialSaved(true);
+        setTimeout(() => setSocialSaved(false), 2000);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSocialSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (isDemoMode || typeof window === "undefined") return;
@@ -290,6 +361,120 @@ export function ProfileView({
           </div>
         ) : (
           <p className="text-sm text-[var(--muted-foreground)]">Could not load calendar link. Try again later.</p>
+        )}
+      </div>
+
+      {/* Social / Sharing */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Sharing &amp; visibility</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Control what others see when they visit your public profile.
+        </p>
+        {isDemoMode ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Complete onboarding to set up your public profile.</p>
+        ) : (
+          <div className="space-y-4">
+            {/* Username */}
+            <div>
+              <label className="label">Username</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={socialUsername}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/[^a-zA-Z0-9_-]/g, "");
+                    setSocialUsername(v);
+                    checkUsername(v);
+                  }}
+                  placeholder="choose a username"
+                  className="input-base flex-1"
+                  maxLength={30}
+                />
+                {usernameStatus === "checking" && (
+                  <span className="text-xs text-[var(--muted)]">checking…</span>
+                )}
+                {usernameStatus === "available" && (
+                  <span className="text-xs text-[var(--accent)]">available</span>
+                )}
+                {usernameStatus === "taken" && (
+                  <span className="text-xs text-[var(--accent-terracotta)]">taken</span>
+                )}
+              </div>
+              {socialUsername.length >= 3 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-xs text-[var(--muted)] font-mono truncate">
+                    {typeof window !== "undefined" ? window.location.origin : ""}/u/{socialUsername}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/u/${socialUsername}`);
+                      setProfileLinkCopied(true);
+                      setTimeout(() => setProfileLinkCopied(false), 2000);
+                    }}
+                    className="text-xs text-[var(--accent)] hover:underline whitespace-nowrap"
+                  >
+                    {profileLinkCopied ? "Copied" : "Copy link"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Visibility level */}
+            <div>
+              <label className="label mb-2 block">Profile visibility</label>
+              <div className="space-y-2">
+                {([
+                  {
+                    value: "badges_only" as ProfileVisibility,
+                    label: "Badges & XP only",
+                    desc: "Name, avatar, badges earned, XP level, and fitness goal.",
+                  },
+                  {
+                    value: "badges_stats" as ProfileVisibility,
+                    label: "Badges + summary stats",
+                    desc: "Also shows streak length, weeks active, and macro hit rate.",
+                  },
+                  {
+                    value: "full_transparency" as ProfileVisibility,
+                    label: "Accountability Mode",
+                    desc: "Everything above plus recent meals and workout completion. Great for accountability partners.",
+                  },
+                ]).map((opt) => (
+                  <label
+                    key={opt.value}
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
+                      socialVisibility === opt.value
+                        ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                        : "border-[var(--border)] hover:border-[var(--accent)]/50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="visibility"
+                      value={opt.value}
+                      checked={socialVisibility === opt.value}
+                      onChange={() => setSocialVisibility(opt.value)}
+                      className="mt-0.5"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-[var(--foreground)]">{opt.label}</span>
+                      <p className="text-xs text-[var(--muted)] mt-0.5">{opt.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveSocial}
+              disabled={socialSaving || usernameStatus === "taken"}
+              className="btn-primary !py-2"
+            >
+              {socialSaving ? "Saving…" : socialSaved ? "Saved" : "Save sharing settings"}
+            </button>
+          </div>
         )}
       </div>
 

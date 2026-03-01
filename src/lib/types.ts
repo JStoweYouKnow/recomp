@@ -242,6 +242,80 @@ export interface CookingAppMealPayload {
   notes?: string;
 }
 
+// ── Social / Visibility ──────────────────────────────────
+export type ProfileVisibility = "badges_only" | "badges_stats" | "full_transparency";
+
+export interface SocialSettings {
+  visibility: ProfileVisibility;
+  username?: string; // unique, URL-safe slug
+}
+
+export interface PublicProfile {
+  username: string;
+  name: string;
+  avatarDataUrl?: string;
+  goal: Goal;
+  visibility: ProfileVisibility;
+  // Always shown (badges_only and above):
+  badges: Milestone[];
+  xp: number;
+  xpLevel: number;
+  // badges_stats and above:
+  streakLength?: number;
+  weeksActive?: number;
+  macroHitRate?: number;
+  // full_transparency ("Accountability Mode") only:
+  recentMeals?: { date: string; name: string; macros: Macros }[];
+  workoutCompletionRate?: number;
+}
+
+// ── Groups ───────────────────────────────────────────────
+export type GroupAccessMode = "open" | "invite_only";
+export type GroupTrackingMode = "aggregate" | "leaderboard" | "both";
+export type GroupGoalType = "lose_weight" | "build_muscle" | "consistency" | "macro_targets" | "custom";
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string;
+  goalType: GroupGoalType;
+  goalDescription?: string;
+  accessMode: GroupAccessMode;
+  trackingMode: GroupTrackingMode;
+  inviteCode?: string;
+  creatorId: string;
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface GroupMembership {
+  groupId: string;
+  groupName: string;
+  role: "owner" | "member";
+  joinedAt: string;
+}
+
+export interface GroupMessage {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatarUrl?: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface GroupMemberProgress {
+  userId: string;
+  name: string;
+  avatarDataUrl?: string;
+  xp: number;
+  xpLevel: number;
+  streakLength: number;
+  weeksActive: number;
+  macroHitRate: number;
+  updatedAt: string;
+}
+
 /** Saved recipe from a cooking app or import — used to improve meal suggestions (gourmet options within calorie budget) */
 export interface CookingAppRecipe {
   id: string;

@@ -1,4 +1,4 @@
-import type { UserProfile, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe } from "./types";
+import type { UserProfile, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage } from "./types";
 import { getTodayLocal } from "./date-utils";
 
 const STORAGE_KEYS = {
@@ -21,6 +21,10 @@ const STORAGE_KEYS = {
   recentMealTemplates: "recomp_recent_meal_templates",
   recentExerciseNames: "recomp_recent_exercise_names",
   nutritionCache: "recomp_nutrition_cache",
+  socialSettings: "recomp_social_settings",
+  myGroups: "recomp_my_groups",
+  groupCache: "recomp_group_cache",
+  groupMessagesCache: "recomp_group_messages",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -277,6 +281,57 @@ export function getShoppingList(): string[] {
 export function saveShoppingList(items: string[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.shoppingList, JSON.stringify(items));
+}
+
+/* ── Social Settings ──────────────────────────────────── */
+
+export function getSocialSettings(): SocialSettings | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.socialSettings), null);
+}
+
+export function saveSocialSettings(settings: SocialSettings): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.socialSettings, JSON.stringify(settings));
+}
+
+/* ── Groups (read-cache, server-authoritative) ───────── */
+
+export function getMyGroups(): GroupMembership[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<GroupMembership[]>(localStorage.getItem(STORAGE_KEYS.myGroups), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveMyGroups(groups: GroupMembership[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.myGroups, JSON.stringify(groups));
+}
+
+export function getCachedGroup(groupId: string): Group | null {
+  if (typeof window === "undefined") return null;
+  const map = safeParse<Record<string, Group>>(localStorage.getItem(STORAGE_KEYS.groupCache), {});
+  return map[groupId] ?? null;
+}
+
+export function saveCachedGroup(group: Group): void {
+  if (typeof window === "undefined") return;
+  const map = safeParse<Record<string, Group>>(localStorage.getItem(STORAGE_KEYS.groupCache), {});
+  map[group.id] = group;
+  localStorage.setItem(STORAGE_KEYS.groupCache, JSON.stringify(map));
+}
+
+export function getCachedGroupMessages(groupId: string): GroupMessage[] {
+  if (typeof window === "undefined") return [];
+  const map = safeParse<Record<string, GroupMessage[]>>(localStorage.getItem(STORAGE_KEYS.groupMessagesCache), {});
+  return map[groupId] ?? [];
+}
+
+export function saveCachedGroupMessages(groupId: string, messages: GroupMessage[]): void {
+  if (typeof window === "undefined") return;
+  const map = safeParse<Record<string, GroupMessage[]>>(localStorage.getItem(STORAGE_KEYS.groupMessagesCache), {});
+  map[groupId] = messages.slice(-100);
+  localStorage.setItem(STORAGE_KEYS.groupMessagesCache, JSON.stringify(map));
 }
 
 let _syncTimeout: ReturnType<typeof setTimeout> | null = null;

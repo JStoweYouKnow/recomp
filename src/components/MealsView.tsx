@@ -837,10 +837,22 @@ export function MealsView({
               <option value="snack">Snack</option>
               </select>
             </div>
-            <input type="number" placeholder="Calories" value={cal} onChange={(e) => setCal(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
-            <input type="number" placeholder="Protein (g)" value={pro} onChange={(e) => setPro(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
-            <input type="number" placeholder="Carbs (g)" value={carb} onChange={(e) => setCarb(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
-            <input type="number" placeholder="Fat (g)" value={fat} onChange={(e) => setFat(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Calories</label>
+              <input type="number" placeholder="e.g. 450" value={cal} onChange={(e) => setCal(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Protein (g)</label>
+              <input type="number" placeholder="e.g. 35" value={pro} onChange={(e) => setPro(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Carbs (g)</label>
+              <input type="number" placeholder="e.g. 40" value={carb} onChange={(e) => setCarb(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Fat (g)</label>
+              <input type="number" placeholder="e.g. 15" value={fat} onChange={(e) => setFat(e.target.value)} className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]" />
+            </div>
           </div>
           {(inspirationImage || recipeImageUrl) && (
             <img
