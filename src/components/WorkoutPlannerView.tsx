@@ -126,14 +126,20 @@ export function WorkoutPlannerView({
     [plan]
   );
 
-  // Dates that have completed exercises (for dot indicators)
+  // When viewing a future date, don't show exercises as completed (can't have done them yet)
+  const isViewingFutureDate = calendarOpen && selectedDate > today;
+
+  // Dates that have completed exercises (for dot indicators) — exclude future dates
   const completedDates = useMemo(() => {
     const dates = new Set<string>();
     for (const ts of Object.values(progress)) {
-      if (ts) dates.add(ts.slice(0, 10));
+      if (ts) {
+        const d = ts.slice(0, 10);
+        if (d <= today) dates.add(d);
+      }
     }
     return dates;
-  }, [progress]);
+  }, [progress, today]);
 
   // Auto-expand the matched day when a calendar date is selected
   useEffect(() => {
@@ -398,10 +404,11 @@ export function WorkoutPlannerView({
 
           const total =
             (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);
+          const effectiveProgress = isViewingFutureDate ? {} : progress;
           const completed =
-            (day.warmups ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "warmup")])).length +
-            day.exercises.filter((ex) => Boolean(progress[exerciseKey(day, ex, "main")])).length +
-            (day.finishers ?? []).filter((ex) => Boolean(progress[exerciseKey(day, ex, "finisher")])).length;
+            (day.warmups ?? []).filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "warmup")])).length +
+            day.exercises.filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "main")])).length +
+            (day.finishers ?? []).filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "finisher")])).length;
           const allDone = total > 0 && completed === total;
           const isExpanded = calendarOpen ? true : expandedDay === dayIndex;
           const isEditing = editingDay === dayIndex;
@@ -476,7 +483,8 @@ export function WorkoutPlannerView({
                     <button
                       onClick={(e) => { e.stopPropagation(); setDayCompletion(day, !allDone); }}
                       className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${allDone ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"}`}
-                      disabled={total === 0}
+                      disabled={total === 0 || isViewingFutureDate}
+                      title={isViewingFutureDate ? "Can't mark future workouts complete" : undefined}
                     >
                       {allDone ? "Clear completion" : "Mark all complete"}
                     </button>
@@ -541,8 +549,8 @@ export function WorkoutPlannerView({
                           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Warm-ups</p>
                           <div className="space-y-2">
                             {(day.warmups ?? []).map((exercise, exIndex) => {
-                              const isDone = Boolean(progress[exerciseKey(day, exercise, "warmup")]);
-                              const completedAt = progress[exerciseKey(day, exercise, "warmup")];
+                              const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "warmup")]);
+                              const completedAt = effectiveProgress[exerciseKey(day, exercise, "warmup")];
                               const restTime = parseRest(exercise.notes);
                               return (
                                 <div
@@ -554,7 +562,7 @@ export function WorkoutPlannerView({
                                   {isEditing ? (
                                     <>
                                       <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
-                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
                                         <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
                                         <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
                                         <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
@@ -568,7 +576,7 @@ export function WorkoutPlannerView({
                                     </>
                                   ) : (
                                     <div className="flex items-start gap-3">
-                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
                                       <div className="flex-1 min-w-0">
                                         <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
                                         <div className="mt-1.5 flex flex-wrap gap-2">
@@ -599,8 +607,8 @@ export function WorkoutPlannerView({
                             <span /><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest</span>
                           </div>
                           {day.exercises.map((exercise, exIndex) => {
-                        const isDone = Boolean(progress[exerciseKey(day, exercise, "main")]);
-                        const completedAt = progress[exerciseKey(day, exercise, "main")];
+                        const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "main")]);
+                        const completedAt = effectiveProgress[exerciseKey(day, exercise, "main")];
                         const restTime = parseRest(exercise.notes);
 
                         return (
@@ -620,6 +628,7 @@ export function WorkoutPlannerView({
                                     type="checkbox"
                                     checked={isDone}
                                     onChange={() => toggleComplete(day, exercise, "main")}
+                                    disabled={isViewingFutureDate}
                                     aria-label={`Mark ${exercise.name || "exercise"} complete`}
                                     className="h-4 w-4 accent-[var(--accent)]"
                                   />
@@ -707,6 +716,7 @@ export function WorkoutPlannerView({
                                   type="checkbox"
                                   checked={isDone}
                                   onChange={() => toggleComplete(day, exercise, "main")}
+                                  disabled={isViewingFutureDate}
                                   aria-label={`Mark ${exercise.name || "exercise"} complete`}
                                   className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
                                 />
@@ -793,15 +803,15 @@ export function WorkoutPlannerView({
                           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Finishers (optional)</p>
                           <div className="space-y-2">
                             {(day.finishers ?? []).map((exercise, exIndex) => {
-                              const isDone = Boolean(progress[exerciseKey(day, exercise, "finisher")]);
-                              const completedAt = progress[exerciseKey(day, exercise, "finisher")];
+                              const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "finisher")]);
+                              const completedAt = effectiveProgress[exerciseKey(day, exercise, "finisher")];
                               const restTime = parseRest(exercise.notes);
                               return (
                                 <div key={`finisher-${exIndex}`} className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"}`}>
                                   {isEditing ? (
                                     <>
                                       <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
-                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
                                         <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
                                         <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
                                         <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
@@ -815,7 +825,7 @@ export function WorkoutPlannerView({
                                     </>
                                   ) : (
                                     <div className="flex items-start gap-3">
-                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
                                       <div className="flex-1 min-w-0">
                                         <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
                                         <div className="mt-1.5 flex flex-wrap gap-2">
