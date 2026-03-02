@@ -667,6 +667,27 @@ export async function dbDeleteGroupMessage(groupId: string, messageId: string, t
   );
 }
 
+export async function dbUpdateGroupMessagePin(
+  groupId: string,
+  messageId: string,
+  timestamp: string,
+  pinned: boolean
+): Promise<GroupMessage | null> {
+  const doc = getDocClient();
+  const key = { PK: `GROUP#${groupId}`, SK: `MSG#${timestamp}#${messageId}` };
+  const { Item } = await doc.send(new GetCommand({ TableName: TABLE, Key: key }));
+  if (!Item?.data) return null;
+  const msg = Item.data as GroupMessage;
+  const updated: GroupMessage = { ...msg, pinnedAt: pinned ? new Date().toISOString() : undefined };
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { ...key, data: updated, updatedAt: new Date().toISOString() },
+    })
+  );
+  return updated;
+}
+
 // ── Group Progress ───────────────────────────────────────
 export async function dbSaveGroupProgress(groupId: string, userId: string, progress: GroupMemberProgress): Promise<void> {
   const doc = getDocClient();

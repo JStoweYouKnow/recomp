@@ -302,6 +302,7 @@ export interface GroupMessage {
   authorAvatarUrl?: string;
   text: string;
   createdAt: string;
+  pinnedAt?: string; // ISO timestamp when pinned, undefined if not pinned
 }
 
 export interface GroupMemberProgress {

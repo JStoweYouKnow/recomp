@@ -71,6 +71,32 @@ export function GroupDetailView({
     } catch {}
   }, [groupId]);
 
+  const handlePinToggle = async (msg: GroupMessage) => {
+    const pinned = !msg.pinnedAt;
+    try {
+      const res = await fetch(
+        `/api/groups/${groupId}/messages/${msg.id}?ts=${encodeURIComponent(msg.createdAt)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pinned }),
+        }
+      );
+      if (res.ok) {
+        const updated = await res.json();
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? updated : m))
+        );
+        saveCachedGroupMessages(
+          groupId,
+          messages.map((m) => (m.id === msg.id ? updated : m))
+        );
+      }
+    } catch {
+      showToast("Failed to update pin", "error");
+    }
+  };
+
   const fetchProgress = useCallback(async () => {
     try {
       const res = await fetch(`/api/groups/${groupId}/progress`);
@@ -358,26 +384,55 @@ export function GroupDetailView({
           {messages.length === 0 ? (
             <p className="text-sm text-[var(--muted)] text-center py-12">No messages yet. Start the conversation!</p>
           ) : (
-            messages.map((msg) => (
-              <div key={msg.id} className="flex gap-2">
-                {msg.authorAvatarUrl ? (
-                  <img src={msg.authorAvatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
-                ) : (
-                  <div className="w-7 h-7 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-xs text-[var(--accent)] shrink-0 mt-0.5">
-                    {msg.authorName.charAt(0).toUpperCase()}
+            [...messages]
+              .sort((a, b) => {
+                const aPinned = a.pinnedAt ? 1 : 0;
+                const bPinned = b.pinnedAt ? 1 : 0;
+                if (aPinned !== bPinned) return bPinned - aPinned;
+                return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+              })
+              .map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-2 p-2 -mx-2 rounded-lg transition-colors ${msg.pinnedAt ? "bg-[var(--accent)]/5 border-l-2 border-[var(--accent)]" : ""}`}
+                >
+                  {msg.authorAvatarUrl ? (
+                    <img src={msg.authorAvatarUrl} alt="" className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-xs text-[var(--accent)] shrink-0 mt-0.5">
+                      {msg.authorName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-[var(--foreground)]">{msg.authorName}</span>
+                      <span className="text-[10px] text-[var(--muted)]">
+                        {new Date(msg.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                      </span>
+                      {msg.pinnedAt && (
+                        <span className="text-[10px] text-[var(--accent)] font-medium">Pinned</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handlePinToggle(msg)}
+                        className="ml-auto text-[var(--muted)] hover:text-[var(--accent)] p-1 -m-1 rounded transition-colors"
+                        title={msg.pinnedAt ? "Unpin" : "Pin to top"}
+                        aria-label={msg.pinnedAt ? "Unpin message" : "Pin message"}
+                      >
+                        <svg
+                          className="w-3.5 h-3.5"
+                          fill={msg.pinnedAt ? "currentColor" : "none"}
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <p className="text-sm text-[var(--foreground)] mt-0.5 whitespace-pre-wrap break-words">{msg.text}</p>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-medium text-[var(--foreground)]">{msg.authorName}</span>
-                    <span className="text-[10px] text-[var(--muted)]">
-                      {new Date(msg.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <p className="text-sm text-[var(--foreground)] mt-0.5 whitespace-pre-wrap break-words">{msg.text}</p>
                 </div>
-              </div>
-            ))
+              ))
           )}
           <div ref={messagesEndRef} />
         </div>
