@@ -21,11 +21,13 @@ export function TransformationPreview({
     if (!file || !file.type.startsWith("image/")) return;
     setFullBodyPhotoLoading(true);
     try {
+      const { resizeImageForApi } = await import("@/lib/image-utils");
+      const { blob } = await resizeImageForApi(file);
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(r.result as string);
         r.onerror = () => reject(new Error("Failed to read file"));
-        r.readAsDataURL(file);
+        r.readAsDataURL(blob);
       });
       const segmented = await segmentPersonFromPhoto(dataUrl);
       onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: segmented, goalPhotoDataUrl: undefined });
@@ -105,7 +107,7 @@ export function TransformationPreview({
               </svg>
             </div>
             <p className="text-sm font-medium text-[var(--foreground)]">Add your photo</p>
-            <p className="mt-1 text-xs text-[var(--muted)]">Upload full-body photo to generate after image</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Upload full-body photo (JPEG/PNG — auto-resized for best results)</p>
             <div className="mt-3 flex flex-wrap gap-2 justify-center">
               <label className="btn-primary !text-xs cursor-pointer">
                 <input type="file" accept="image/*" onChange={handleFullBodyPhotoUpload} className="sr-only" aria-label="Upload full body photo" />

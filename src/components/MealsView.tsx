@@ -259,8 +259,10 @@ export function MealsView({
     setPhotoLoading(true);
     setShowAdd(true);
     try {
+      const { prepareImageForUpload } = await import("@/lib/image-utils");
+      const blob = await prepareImageForUpload(file);
       const fd = new FormData();
-      fd.append("image", file);
+      fd.append("image", blob, "photo.jpg");
       const res = await fetch("/api/meals/analyze-photo", { method: "POST", body: fd });
       const d = await res.json();
       setName(d.name ?? "Meal");
@@ -281,8 +283,10 @@ export function MealsView({
     setReceiptLoading(true);
     setReceiptItems([]);
     try {
+      const { prepareImageForUpload } = await import("@/lib/image-utils");
+      const blob = await prepareImageForUpload(file);
       const fd = new FormData();
-      fd.append("image", file);
+      fd.append("image", blob, "receipt.jpg");
       const res = await fetch("/api/meals/analyze-receipt", { method: "POST", body: fd });
       const data = await res.json();
       if (data.items && Array.isArray(data.items)) {
@@ -625,16 +629,16 @@ export function MealsView({
       {!showAdd ? (
         <div className="space-y-2">
           <p className="text-xs text-[var(--muted)]">Log with one tap, or use voice or a photo for faster entry.</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
           <button onClick={() => setShowAdd(true)} className="btn-primary">+ Log a meal</button>
           <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50" title="Describe your meal by voice">
             {voiceLoading ? "Listening…" : "Voice log"}
           </button>
-          <label className="btn-secondary !text-xs cursor-pointer" title="Take a photo of your plate to estimate macros">
+          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of your plate — JPEG/PNG, large photos auto-resize for best results">
             <input type="file" accept="image/*" className="hidden" onChange={handlePhotoLog} disabled={photoLoading} />
             {photoLoading ? "Analyzing…" : "Snap plate"}
           </label>
-          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt to log items">
+          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt — JPEG/PNG, large photos auto-resize">
             <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
             {receiptLoading ? "Scanning…" : "Scan receipt"}
           </label>

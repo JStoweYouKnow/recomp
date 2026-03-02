@@ -20,9 +20,9 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const image = formData.get("image") as File | null;
-    if (!image) {
-      return NextResponse.json({ error: "Image required" }, { status: 400 });
-    }
+    if (!image) return NextResponse.json({ error: "Image required" }, { status: 400 });
+    if (!image.type?.startsWith("image/")) return NextResponse.json({ error: "Unsupported file type" }, { status: 400 });
+    if (image.size > 10 * 1024 * 1024) return NextResponse.json({ error: "Image too large (max 10MB)" }, { status: 413 });
 
     const bytes = await image.arrayBuffer();
     const base64 = Buffer.from(bytes).toString("base64");
