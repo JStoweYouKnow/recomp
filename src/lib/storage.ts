@@ -1,4 +1,4 @@
-import type { UserProfile, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage } from "./types";
+import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage } from "./types";
 import { getTodayLocal } from "./date-utils";
 
 const STORAGE_KEYS = {
@@ -25,6 +25,7 @@ const STORAGE_KEYS = {
   myGroups: "recomp_my_groups",
   groupCache: "recomp_group_cache",
   groupMessagesCache: "recomp_group_messages",
+  measurementTargets: "recomp_measurement_targets",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -44,6 +45,19 @@ export function getProfile(): UserProfile | null {
 export function saveProfile(profile: UserProfile): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.profile, JSON.stringify(profile));
+}
+
+export function getMeasurementTargets(): MeasurementTargets | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(STORAGE_KEYS.measurementTargets);
+  if (raw == null || raw === "") return null;
+  const parsed = safeParse<MeasurementTargets>(raw, {});
+  return Object.keys(parsed).length ? parsed : null;
+}
+
+export function saveMeasurementTargets(targets: MeasurementTargets): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.measurementTargets, JSON.stringify(targets));
 }
 
 export function getMeals(): MealEntry[] {

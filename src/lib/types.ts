@@ -95,6 +95,13 @@ export interface FitnessPlan {
   reasoning?: string;
 }
 
+/** User-defined targets for body measurements (e.g. from smart scale) */
+export interface MeasurementTargets {
+  targetWeightLbs?: number;
+  targetBodyFatPercent?: number;
+  targetMuscleMassLbs?: number;
+}
+
 export type WearableProvider = "oura" | "fitbit" | "apple" | "garmin" | "android" | "scale";
 
 export interface WearableConnection {

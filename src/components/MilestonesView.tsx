@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { getBadgeInfo } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
-import type { Milestone, WearableDaySummary } from "@/lib/types";
+import { getMeasurementTargets, saveMeasurementTargets } from "@/lib/storage";
+import type { Milestone, WearableDaySummary, MeasurementTargets } from "@/lib/types";
 
 
 const BADGE_ICONS: Record<string, string> = {
@@ -50,6 +51,41 @@ export function MilestonesView({
   const [scaleBmr, setScaleBmr] = useState("");
   const [scaleMetabolicAge, setScaleMetabolicAge] = useState("");
   const [loading, setLoading] = useState(false);
+  const [targets, setTargets] = useState<MeasurementTargets>({});
+  const [targetWeight, setTargetWeight] = useState("");
+  const [targetBodyFat, setTargetBodyFat] = useState("");
+  const [targetMuscle, setTargetMuscle] = useState("");
+
+  useEffect(() => {
+    const t = getMeasurementTargets();
+    if (t) {
+      setTargets(t);
+      setTargetWeight(t.targetWeightLbs != null ? String(t.targetWeightLbs) : "");
+      setTargetBodyFat(t.targetBodyFatPercent != null ? String(t.targetBodyFatPercent) : "");
+      setTargetMuscle(t.targetMuscleMassLbs != null ? String(t.targetMuscleMassLbs) : "");
+    }
+  }, []);
+
+  const saveTargets = (next: MeasurementTargets) => {
+    setTargets(next);
+    saveMeasurementTargets(next);
+  };
+
+  const handleSaveTargets = () => {
+    const tw = targetWeight.trim() ? parseFloat(targetWeight) : undefined;
+    const tb = targetBodyFat.trim() ? parseFloat(targetBodyFat) : undefined;
+    const tm = targetMuscle.trim() ? parseFloat(targetMuscle) : undefined;
+    if (tw == null && tb == null && tm == null) {
+      saveTargets({});
+      return;
+    }
+    const next: MeasurementTargets = {};
+    if (tw != null && Number.isFinite(tw) && tw >= 44 && tw <= 1100) next.targetWeightLbs = tw;
+    if (tb != null && Number.isFinite(tb) && tb >= 0 && tb <= 100) next.targetBodyFatPercent = tb;
+    if (tm != null && Number.isFinite(tm) && tm >= 0 && tm <= 500) next.targetMuscleMassLbs = tm;
+    saveTargets(next);
+    showToast("Targets saved", "success");
+  };
 
   const hasExtras = useMemo(() => {
     return wearableData.some(
@@ -331,6 +367,106 @@ export function MilestonesView({
           {loading ? "Adding…" : "Add weigh-in"}
         </button>
       </div>
+
+      {/* Measurement targets */}
+      <div className="card rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-[var(--foreground)] text-sm">Measurement targets</h3>
+        <p className="text-[11px] text-[var(--muted)]">Set goals to track progress. Leave blank to skip.</p>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
+          <div>
+            <label className="label text-[10px]">Target weight (lbs)</label>
+            <input
+              type="number"
+              step="0.1"
+              min={44}
+              max={1100}
+              value={targetWeight}
+              onChange={(e) => setTargetWeight(e.target.value)}
+              placeholder="e.g. 165"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Target body fat %</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={100}
+              value={targetBodyFat}
+              onChange={(e) => setTargetBodyFat(e.target.value)}
+              placeholder="e.g. 18"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+          <div>
+            <label className="label text-[10px]">Target muscle (lbs)</label>
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              max={500}
+              value={targetMuscle}
+              onChange={(e) => setTargetMuscle(e.target.value)}
+              placeholder="e.g. 90"
+              className="input-base w-full text-sm py-1.5"
+            />
+          </div>
+        </div>
+        <button onClick={handleSaveTargets} className="btn-primary text-xs py-1.5 px-3">
+          Save targets
+        </button>
+      </div>
+
+      {measurementHistory.length > 0 && (targets.targetWeightLbs != null || targets.targetBodyFatPercent != null || targets.targetMuscleMassLbs != null) && (
+        <div className="card rounded-xl p-4">
+          <h3 className="font-semibold text-[var(--foreground)] mb-3 text-sm">Progress toward targets</h3>
+          <div className="flex flex-wrap gap-4 text-sm">
+            {targets.targetWeightLbs != null && measurementHistory[0]?.weight != null && (() => {
+              const curr = measurementHistory[0].weight!;
+              const tgt = targets.targetWeightLbs!;
+              const delta = (tgt - curr);
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--muted)]">Weight:</span>
+                  <span className="font-medium tabular-nums">{Math.round(curr)} → {tgt} lbs</span>
+                  <span className="text-[10px] text-[var(--muted)]">
+                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)} to gain` : `${delta.toFixed(1)} to lose`}
+                  </span>
+                </div>
+              );
+            })()}
+            {targets.targetBodyFatPercent != null && measurementHistory[0]?.bodyFatPercent != null && (() => {
+              const curr = measurementHistory[0].bodyFatPercent!;
+              const tgt = targets.targetBodyFatPercent!;
+              const delta = (tgt - curr);
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--muted)]">Body fat:</span>
+                  <span className="font-medium tabular-nums">{curr}% → {tgt}%</span>
+                  <span className="text-[10px] text-[var(--muted)]">
+                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)}% to gain` : `${delta.toFixed(1)}% to lose`}
+                  </span>
+                </div>
+              );
+            })()}
+            {targets.targetMuscleMassLbs != null && measurementHistory[0]?.muscleMass != null && (() => {
+              const curr = measurementHistory[0].muscleMass!;
+              const tgt = targets.targetMuscleMassLbs!;
+              const delta = (tgt - curr);
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--muted)]">Muscle:</span>
+                  <span className="font-medium tabular-nums">{Math.round(curr)} → {tgt} lbs</span>
+                  <span className="text-[10px] text-[var(--muted)]">
+                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)} to gain` : `${delta.toFixed(1)} to lose`}
+                  </span>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {measurementHistory.length > 0 && (
         <div className="card rounded-xl p-4">
