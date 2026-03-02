@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
-import { segmentPersonFromPhoto } from "@/lib/body-segmentation";
 import type { UserProfile } from "@/lib/types";
 
 export function TransformationPreview({
@@ -29,8 +28,7 @@ export function TransformationPreview({
         r.onerror = () => reject(new Error("Failed to read file"));
         r.readAsDataURL(blob);
       });
-      const segmented = await segmentPersonFromPhoto(dataUrl);
-      onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: segmented, goalPhotoDataUrl: undefined });
+      onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: dataUrl, goalPhotoDataUrl: undefined });
     } catch (err) {
       console.error("Full body photo error:", err);
       showToast(err instanceof Error ? err.message : "Photo processing failed. Try a different image (JPEG or PNG).", "error");
