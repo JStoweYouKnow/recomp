@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
-import { getTodayLocal } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 import { TransformationPreview } from "./dashboard/TransformationPreview";
@@ -184,6 +184,28 @@ export function Dashboard({
     const mondayBased = dow === 0 ? 6 : dow - 1;
     return mondayBased < plan.workoutPlan.weeklyPlan.length ? mondayBased : null;
   }, [plan]);
+
+  // Progress for the viewing week only — so Diet/Workout cards refresh when changing weeks
+  const dashViewingWeekStart = getWeekStart(dashCalendarDate);
+  const dashWorkoutProgressForWeek = useMemo(() => {
+    const filtered: Record<string, string> = {};
+    for (const [k, ts] of Object.entries(workoutProgress)) {
+      if (!ts) continue;
+      const parts = k.split(":");
+      const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+      if (isWeekScoped && parts[1] === dashViewingWeekStart && parts.length >= 7) {
+        const [planId, , day, section, exercise, sets, reps, ...noteParts] = parts;
+        const notes = noteParts.join(":") ?? "";
+        const legacy = section === "main"
+          ? `${planId}:${day}:${exercise}:${sets}:${reps}:${notes}`
+          : `${planId}:${day}:${section}:${exercise}:${sets}:${reps}:${notes}`;
+        filtered[legacy] = ts;
+      } else if (!isWeekScoped && isTimestampInWeek(ts, dashViewingWeekStart)) {
+        filtered[k] = ts;
+      }
+    }
+    return filtered;
+  }, [workoutProgress, dashViewingWeekStart]);
 
   const dashCalMeals = useMemo(() => meals.filter((m) => m.date === dashCalendarDate), [meals, dashCalendarDate]);
   const dashCalMealTotals = useMemo(() => dashCalMeals.reduce(
@@ -438,9 +460,9 @@ export function Dashboard({
                 const warmups = workoutDay.warmups ?? [];
                 const finishers = workoutDay.finishers ?? [];
                 const completed =
-                  warmups.filter((ex) => Boolean(workoutProgress[keyFor(ex, "warmup")])).length +
-                  workoutDay.exercises.filter((ex) => Boolean(workoutProgress[keyFor(ex, "main")])).length +
-                  finishers.filter((ex) => Boolean(workoutProgress[keyFor(ex, "finisher")])).length;
+                  warmups.filter((ex) => Boolean(dashWorkoutProgressForWeek[keyFor(ex, "warmup")])).length +
+                  workoutDay.exercises.filter((ex) => Boolean(dashWorkoutProgressForWeek[keyFor(ex, "main")])).length +
+                  finishers.filter((ex) => Boolean(dashWorkoutProgressForWeek[keyFor(ex, "finisher")])).length;
                 const total = warmups.length + workoutDay.exercises.length + finishers.length;
                 const allDone = total > 0 && completed === total;
                 return (
@@ -464,7 +486,7 @@ export function Dashboard({
                         ...finishers.map((ex) => ({ ex, section: "finisher" as const })),
                       ].map(({ ex, section }, i) => {
                         const key = keyFor(ex, section);
-                        const isDone = Boolean(workoutProgress[key]);
+                        const isDone = Boolean(dashWorkoutProgressForWeek[key]);
                         const gifKey = ex.name.toLowerCase().trim();
                         const gif = exerciseGifs[gifKey];
                         const isExpanded = expandedExerciseDemos.has(gifKey);
