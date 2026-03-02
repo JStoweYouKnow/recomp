@@ -34,10 +34,11 @@ export async function POST(req: NextRequest) {
 
     if (isJudgeMode()) {
       const normalized = food.toLowerCase().trim();
-      const calories = 160 + (normalized.length % 6) * 35;
-      const protein = 10 + (normalized.length % 5) * 4;
-      const carbs = 12 + (normalized.length % 7) * 3;
-      const fat = 4 + (normalized.length % 4) * 2;
+      const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+      const calories = 100 + (hash % 400) || 1;
+      const protein = 8 + (hash % 45) || 1;
+      const carbs = 10 + (hash % 55) || 1;
+      const fat = 3 + (hash % 22) || 1;
       const res = NextResponse.json({
         food,
         nutrition: { calories, protein, carbs, fat },
@@ -113,9 +114,15 @@ export async function POST(req: NextRequest) {
       const isNovaActMissing = msg.includes("nova-act") || msg.includes("nova_act") || msg.includes("ImportError");
       if (isPythonUnavailable || isNovaActMissing) {
         const normalized = food.toLowerCase().trim();
+        const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
         const res = NextResponse.json({
           food,
-          nutrition: { calories: 120 + (normalized.length % 8) * 40, protein: 8 + (normalized.length % 4) * 5, carbs: 10 + (normalized.length % 6) * 4, fat: 4 + (normalized.length % 3) * 3 },
+          nutrition: {
+            calories: 80 + (hash % 450) || 1,
+            protein: 5 + (hash % 45) || 1,
+            carbs: 5 + (hash % 60) || 1,
+            fat: 2 + (hash % 25) || 1,
+          },
           demoMode: true,
           source: "estimated",
           note: isNovaActMissing

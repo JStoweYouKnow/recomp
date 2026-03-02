@@ -166,12 +166,17 @@ def run_demo_mode(food: str) -> dict:
             "demoMode": True,
         }
 
-    # Reasonable estimate for unknown foods
+    # Reasonable estimate for unknown foods — use hash so different foods get varied values
+    h = sum(ord(c) * (i + 1) for i, c in enumerate(food_lower)) % 100000
+    est_cal = 80 + (h % 420)
+    est_pro = 5 + (h % 45)
+    est_carb = 5 + ((h * 7) % 60)
+    est_fat = 2 + ((h * 11) % 23)
     return {
         "food": food,
         "source": "USDA FoodData Central",
         "nutrition": {
-            "calories": 150, "protein": 10, "carbs": 15, "fat": 5,
+            "calories": est_cal, "protein": est_pro, "carbs": est_carb, "fat": est_fat,
             "fiber": 2, "sugar": 3, "sodium": 50, "cholesterol": 20,
             "saturated_fat": 1.5, "vitamin_d": 0, "calcium": 20,
             "iron": 1, "potassium": 150,
