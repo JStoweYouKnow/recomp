@@ -94,8 +94,8 @@ export function TransformationPreview({
       <div className="grid gap-6 sm:grid-cols-2">
         {profile.fullBodyPhotoDataUrl ? (
           <div className="flex flex-col items-center">
-            <div className="relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--border-soft)] bg-[var(--surface-elevated)]" style={{ minHeight: 180 }}>
-              <img src={profile.fullBodyPhotoDataUrl} alt="Current body photo" className="w-full h-full object-cover" />
+            <div className="relative w-full aspect-[3/4] max-h-80 rounded-xl overflow-hidden border border-[var(--border-soft)] bg-[var(--surface-elevated)] flex items-center justify-center" style={{ minHeight: 200 }}>
+              <img src={profile.fullBodyPhotoDataUrl} alt="Current body photo" className="max-w-full max-h-full w-auto h-auto object-contain" />
             </div>
             <p className="mt-2 text-xs font-medium text-[var(--muted)]">You now</p>
           </div>
@@ -118,8 +118,8 @@ export function TransformationPreview({
         )}
         {profile.goalPhotoDataUrl ? (
           <div className="flex flex-col items-center">
-            <div className="relative w-full aspect-[3/4] max-h-64 rounded-xl overflow-hidden border border-[var(--accent)]/40 bg-[var(--accent)]/5" style={{ minHeight: 180 }}>
-              <img src={profile.goalPhotoDataUrl} alt="AI-generated goal body" className="w-full h-full object-cover" />
+            <div className="relative w-full aspect-[3/4] max-h-80 rounded-xl overflow-hidden border border-[var(--accent)]/40 bg-[var(--accent)]/5 flex items-center justify-center" style={{ minHeight: 200 }}>
+              <img src={profile.goalPhotoDataUrl} alt="AI-generated goal body" className="max-w-full max-h-full w-auto h-auto object-contain" />
               <div className="absolute top-2 right-2 rounded-full bg-[var(--accent)]/90 px-2 py-0.5 text-[10px] font-semibold text-white">Goal</div>
             </div>
             <p className="mt-2 text-xs font-medium text-[var(--muted)]">Your goal (AI-generated)</p>
