@@ -350,69 +350,61 @@ export function MealsView({
         return;
       }
 
-      // ── 2. Try Act/nutrition API first (always works: USDA, Python, or estimated fallback) ──
-      const actResult = await (async (): Promise<NutritionData | null> => {
-        if (isActServiceConfigured()) {
-          try {
-            const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
-            if (d?.nutrition) return d;
-          } catch {
-            /* fall through to API */
-          }
+      // ── 2. Act API first — always returns nutrition (USDA, Python, or estimated fallback) ──
+      let data: NutritionData | null = null;
+
+      if (isActServiceConfigured()) {
+        try {
+          const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+          if (d?.nutrition) data = d;
+        } catch {
+          /* fall through to API */
         }
+      }
+      if (!data?.nutrition) {
         const res = await fetch("/api/act/nutrition", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ food }),
         });
-        if (!res.ok) return null;
-        const d = (await res.json()) as NutritionData;
-        return d?.nutrition ? d : null;
-      })();
+        if (res.ok) {
+          const d = (await res.json()) as NutritionData;
+          if (d?.nutrition) data = d;
+        }
+      }
 
-      if (actResult?.nutrition) {
-        const n = actResult.nutrition;
+      // ── 3. Web grounding fallback if Act failed or returned error ──
+      if (!data?.nutrition) {
+        try {
+          const res = await fetch("/api/meals/lookup-nutrition-web", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ food }),
+          });
+          if (res.ok) {
+            const d = (await res.json()) as NutritionData;
+            if (d?.nutrition) data = { ...d, _src: "web" };
+          }
+        } catch {
+          /* web failed */
+        }
+      }
+
+      if (data?.nutrition) {
+        const n = data.nutrition;
         setCal(String(n.calories ?? ""));
         setPro(String(n.protein ?? ""));
         setCarb(String(n.carbs ?? ""));
         setFat(String(n.fat ?? ""));
-        const isEstimated = actResult.demoMode || actResult.note?.toLowerCase().includes("estimated");
-        setNutritionSource(actResult.cached ? "usda" : isEstimated ? "estimated" : "usda");
+        const isEstimated = data.demoMode || data.note?.toLowerCase().includes("estimated");
+        const source = data.cached ? "usda" : isEstimated ? "estimated" : (data as { _src?: string })._src === "web" ? "web" : "usda";
+        setNutritionSource(source);
         if (!isEstimated && n.calories != null) {
-          saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source: "usda" });
+          saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source });
         }
-        setNutritionLookupLoading(false);
-        return;
+      } else {
+        showToast?.("Nutrition lookup failed. Try a more specific food name.", "error");
       }
-
-      // ── 3. Fallback: web grounding (Open Food Facts + Nova) ──
-      try {
-        const res = await fetch("/api/meals/lookup-nutrition-web", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ food }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({})) as { error?: string };
-          throw new Error(err.error || "Web lookup failed");
-        }
-        const d = (await res.json()) as NutritionData;
-        if (d?.nutrition) {
-          const n = d.nutrition;
-          setCal(String(n.calories ?? ""));
-          setPro(String(n.protein ?? ""));
-          setCarb(String(n.carbs ?? ""));
-          setFat(String(n.fat ?? ""));
-          setNutritionSource((d.source === "openfoodfacts" ? d.source : "web") as "usda" | "web" | "estimated" | "openfoodfacts");
-          saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source: d.source ?? "web" });
-          setNutritionLookupLoading(false);
-          return;
-        }
-      } catch (webErr) {
-        /* try next */
-      }
-
-      showToast?.("Nutrition lookup failed. Try a more specific food name, or check that Nova Act is configured.", "error");
     } catch (err) {
       showToast?.(err instanceof Error ? err.message : "Nutrition lookup failed", "error");
     } finally {
