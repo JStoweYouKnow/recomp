@@ -336,7 +336,7 @@ export function MealsView({
     setNutritionLookupLoading(true);
     setNutritionSource(null);
     try {
-      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string; cached?: boolean };
+      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string; cached?: boolean; _src?: "web" };
 
       // ── 1. Check client-side cache (instant) ──
       const localCached = getNutritionCache(food);
@@ -397,7 +397,7 @@ export function MealsView({
         setCarb(String(n.carbs ?? ""));
         setFat(String(n.fat ?? ""));
         const isEstimated = data.demoMode || data.note?.toLowerCase().includes("estimated");
-        const source = data.cached ? "usda" : isEstimated ? "estimated" : (data as { _src?: string })._src === "web" ? "web" : "usda";
+        const source = data.cached ? "usda" : isEstimated ? "estimated" : data._src === "web" ? "web" : "usda";
         setNutritionSource(source);
         if (!isEstimated && n.calories != null) {
           saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source });
