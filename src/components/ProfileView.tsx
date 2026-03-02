@@ -271,7 +271,6 @@ export function ProfileView({
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-base w-full" />
             </div>
           </div>
-          </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="label">Age</label>

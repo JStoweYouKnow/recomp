@@ -151,16 +151,24 @@ export function WorkoutPlannerView({
   }, [calendarOpen, selectedDate, matchDayToDate]);
 
   type ExSection = "warmup" | "main" | "finisher";
-  const exerciseKey = (day: FitnessPlan["workoutPlan"]["weeklyPlan"][number], exercise: WorkoutExercise, section: ExSection = "main") => {
+  /** Key for progress lookup. Include weekStart to scope completions to a specific week. */
+  const exerciseKey = (
+    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+    exercise: WorkoutExercise,
+    section: ExSection = "main",
+    weekStart?: string
+  ) => {
     if (!plan) return "";
-    // Main uses legacy key (no section) for Dashboard compatibility
-    if (section === "main") return `${plan.id}:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
-    return `${plan.id}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
+    const base =
+      section === "main"
+        ? `${plan.id}:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`
+        : `${plan.id}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
+    return weekStart ? `${plan.id}:${weekStart}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}` : base;
   };
 
   useEffect(() => {
     if (!plan) return;
-    const validKeys = new Set(
+    const validLegacyKeys = new Set(
       (editingWeekCopy ?? plan.workoutPlan.weeklyPlan).flatMap((day) => {
         const warmups = (day.warmups ?? []).map((ex) => exerciseKey(day, ex, "warmup"));
         const main = day.exercises.map((ex) => exerciseKey(day, ex, "main"));
@@ -168,7 +176,14 @@ export function WorkoutPlannerView({
         return [...warmups, ...main, ...finishers];
       })
     );
-    const cleaned = Object.fromEntries(Object.entries(progress).filter(([k]) => validKeys.has(k)));
+    // Keep valid legacy keys and all week-scoped keys. Remove invalid legacy keys.
+    const cleaned = Object.fromEntries(
+      Object.entries(progress).filter(([k]) => {
+        const parts = k.split(":");
+        const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+        return isWeekScoped || validLegacyKeys.has(k);
+      })
+    );
     if (Object.keys(cleaned).length !== Object.keys(progress).length) {
       setProgress(cleaned);
       saveWorkoutProgress(cleaned);
@@ -191,15 +206,37 @@ export function WorkoutPlannerView({
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
 
-  // Progress filtered to viewing week only — bar and day cards reflect this week
+  /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
+  const toLegacyLookupKey = useCallback((key: string): string | null => {
+    const parts = key.split(":");
+    const hasWeek = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+    if (hasWeek && parts.length >= 7) {
+      const [planId, , day, section, exercise, sets, reps, ...noteParts] = parts;
+      const notes = noteParts.join(":") ?? "";
+      if (section === "main") return `${planId}:${day}:${exercise}:${sets}:${reps}:${notes}`;
+      return `${planId}:${day}:${section}:${exercise}:${sets}:${reps}:${notes}`;
+    }
+    if (!hasWeek && parts.length >= 5) return key;
+    return null;
+  }, []);
+
+  // Progress for viewing week — keyed by legacy format for lookup
   const progressThisWeek = useMemo(() => {
     if (isViewingFutureDate) return {};
     const filtered: Record<string, string> = {};
     for (const [k, ts] of Object.entries(progress)) {
-      if (ts && isTimestampInWeek(ts, viewingWeekStart)) filtered[k] = ts;
+      const parts = k.split(":");
+      const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+      const legacyKey = toLegacyLookupKey(k);
+      if (!legacyKey) continue;
+      if (isWeekScoped && parts[1] === viewingWeekStart) {
+        filtered[legacyKey] = ts;
+      } else if (!isWeekScoped && ts && isTimestampInWeek(ts, viewingWeekStart)) {
+        filtered[legacyKey] = ts;
+      }
     }
     return filtered;
-  }, [progress, viewingWeekStart, isViewingFutureDate]);
+  }, [progress, viewingWeekStart, isViewingFutureDate, toLegacyLookupKey]);
 
   const totalExercises = weeklyPlan.reduce(
     (sum, day) =>
@@ -274,10 +311,17 @@ export function WorkoutPlannerView({
     exercise: WorkoutExercise,
     section: ExSection = "main"
   ) => {
-    const key = exerciseKey(day, exercise, section);
+    const key = exerciseKey(day, exercise, section, viewingWeekStart);
+    const legacyKey = exerciseKey(day, exercise, section);
     const next = { ...progress };
-    if (next[key]) delete next[key];
-    else next[key] = new Date().toISOString();
+    const ts = new Date().toISOString();
+    if (next[key]) {
+      delete next[key];
+      delete next[legacyKey];
+    } else {
+      next[key] = ts;
+      next[legacyKey] = ts; // Dashboard uses legacy keys
+    }
     setProgress(next);
     saveWorkoutProgress(next);
   };
@@ -287,20 +331,39 @@ export function WorkoutPlannerView({
     complete: boolean
   ) => {
     const next = { ...progress };
+    const ts = new Date().toISOString();
     for (const ex of day.warmups ?? []) {
-      const key = exerciseKey(day, ex, "warmup");
-      if (complete) next[key] = new Date().toISOString();
-      else delete next[key];
+      const key = exerciseKey(day, ex, "warmup", viewingWeekStart);
+      const legacyKey = exerciseKey(day, ex, "warmup");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
     }
     for (const exercise of day.exercises) {
-      const key = exerciseKey(day, exercise, "main");
-      if (complete) next[key] = new Date().toISOString();
-      else delete next[key];
+      const key = exerciseKey(day, exercise, "main", viewingWeekStart);
+      const legacyKey = exerciseKey(day, exercise, "main");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
     }
     for (const ex of day.finishers ?? []) {
-      const key = exerciseKey(day, ex, "finisher");
-      if (complete) next[key] = new Date().toISOString();
-      else delete next[key];
+      const key = exerciseKey(day, ex, "finisher", viewingWeekStart);
+      const legacyKey = exerciseKey(day, ex, "finisher");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
     }
     setProgress(next);
     saveWorkoutProgress(next);
