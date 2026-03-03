@@ -40,7 +40,11 @@ export interface JudgeHealthPayload {
 export function buildJudgeHealthPayload(): JudgeHealthPayload {
   const judgeMode = isJudgeMode();
   const bedrockReady = hasBedrockSetup();
-  const actConfigured = Boolean(process.env.NOVA_ACT_API_KEY || process.env.NOVA_ACT_USER_DATA_DIR);
+  const actConfigured = Boolean(
+    process.env.NOVA_ACT_API_KEY ||
+    process.env.NOVA_ACT_USER_DATA_DIR ||
+    process.env.ACT_SERVICE_URL
+  );
   const reelConfigured = Boolean(process.env.NOVA_REEL_S3_BUCKET);
   const dynamoConfigured = Boolean(process.env.DYNAMODB_TABLE_NAME);
 

@@ -6,7 +6,7 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 const EXPO_TOKEN_PREFIX = "ExponentPushToken[";
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(
+  const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "push-subscribe-expo"),
     5,
     60_000

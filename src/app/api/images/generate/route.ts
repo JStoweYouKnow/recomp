@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   try {
-    const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "images-generate"), 20, 60_000);
+    const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "images-generate"), 20, 60_000);
     if (!rl.ok) {
       const headers = getRateLimitHeaderValues(rl);
       const res = NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });

@@ -152,7 +152,16 @@ export function ShoppingList({ plan }: { plan: FitnessPlan | null }) {
     <div className="card p-6">
       <h3 className="section-title !text-base mb-1">Shopping list</h3>
       <p className="section-subtitle mb-4">
-        Build a list from your diet plan. Search Amazon for each item and add to cart.
+        Build a list from your diet plan. Nova Act searches Amazon when configured; otherwise use the search links to add items manually.
+        {" "}
+        <a
+          href="https://github.com/JStoweYouKnow/recomp#nova-act-optional"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[var(--accent)] hover:underline"
+        >
+          Setup Nova Act for live search
+        </a>
       </p>
 
       {/* Load from plan */}

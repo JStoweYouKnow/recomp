@@ -4,7 +4,7 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 /** Manual weight entry — for scales without app sync or quick logging.
  * Accepts { date, weightLbs, bodyFatPercent? } (all weights in lbs). Returns a WearableDaySummary suitable for onDataFetched. */
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "scale-entry"), 30, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "scale-entry"), 30, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {

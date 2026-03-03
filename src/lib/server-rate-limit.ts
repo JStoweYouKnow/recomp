@@ -24,12 +24,37 @@ export function getClientKey(ipOrId: string | null, routeKey: string): string {
   return `${routeKey}:${client}`;
 }
 
-export function fixedWindowRateLimit(
+/** Use Upstash Redis when UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set; otherwise in-memory. */
+export async function fixedWindowRateLimit(
   key: string,
   limit: number,
   windowMs: number,
   now = Date.now()
-): RateLimitResult {
+): Promise<RateLimitResult> {
+  const upstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const upstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (upstashUrl && upstashToken) {
+    try {
+      const { Ratelimit } = await import("@upstash/ratelimit");
+      const { Redis } = await import("@upstash/redis");
+      const windowSec = Math.max(1, Math.ceil(windowMs / 1000));
+      const limiter = new Ratelimit({
+        redis: Redis.fromEnv(),
+        limiter: Ratelimit.fixedWindow(limit, `${windowSec} s`),
+        prefix: "recomp-rl",
+      });
+      const { success, remaining, limit: lim, reset } = await limiter.limit(key);
+      return {
+        ok: success,
+        remaining,
+        limit: lim,
+        resetAt: reset * 1000,
+      };
+    } catch (err) {
+      console.warn("Upstash rate limit failed, falling back to in-memory:", err instanceof Error ? err.message : err);
+    }
+  }
+
   const existing = buckets.get(key);
   if (!existing || now >= existing.resetAt) {
     const resetAt = now + windowMs;
@@ -73,7 +98,7 @@ export function getRateLimitHeaderValues(
   };
 }
 
-// Test helper for deterministic rate-limit tests.
+/** Test helper for deterministic rate-limit tests. Resets in-memory buckets only. */
 export function __resetRateLimitBuckets(): void {
   buckets.clear();
 }

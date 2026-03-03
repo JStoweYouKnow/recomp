@@ -52,7 +52,7 @@ const VoiceJsonSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic"), 30, 60_000);
+    const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic"), 30, 60_000);
     if (!rl.ok) {
       const headers = getRateLimitHeaderValues(rl);
       const res = NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });

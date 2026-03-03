@@ -28,16 +28,20 @@ Most Nova integrations use one or two models for text generation. Recomp demonst
 - **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
 - **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
 - **Browser automation** via Nova Act — grocery search with one-tap Amazon links; add-to-cart requires local session (see [Nova Act](#nova-act-optional))
-- **Multimodal understanding** — plate photos, receipt scans, body segmentation, and text all processed by Nova Lite
+- **Multimodal understanding** — plate photos, receipt scans, and text all processed by Nova Lite
 - **Extended thinking** for complex reasoning during plan generation
 
 The result: a production-grade app that treats Nova not as a text generator, but as an **AI operating system**.
 
 ## Impact
 
-Recomp makes body recomposition accessible to anyone with a browser. **Community impact**: Fitness guidance is often siloed, expensive, or generic. Recomp uses Nova for personalized plans and real-time meal logging (voice, photo, receipt scan, text) at no per-use cost beyond AWS. **Enterprise potential**: Wearable integration (Oura, Fitbit, Apple Health) enables employer wellness without app sprawl.
+**Community:** Recomp removes cost and complexity barriers—no subscription wall, no trainer required. Voice + photo logging (Nova Sonic, Lite) lets users log meals in seconds vs. manual entry. Multimodal embeddings power "similar meals" so repeat logging is one tap. Web-grounding and Act deliver USDA-backed nutrition without separate apps.
 
-**Impact & roadmap:** Community impact (accessibility, cost, personalization). Enterprise use cases: corporate wellness, health plans, gyms. Post-hackathon: open source, self-host, mobile PWA, freemium tier, enterprise licensing.
+**Enterprise:** Wearable integration (Oura, Fitbit, Apple Health) surfaces sleep, activity, and readiness in one place. Single API for corporate wellness dashboards; no per-user licensing from third-party nutrition APIs. DynamoDB sync supports multi-device and team deployments.
+
+**Differentiators:** (1) 4-way meal logging (text, voice, photo, receipt) in one flow—competitors typically offer 1–2. (2) Dynamic caloric budget that adjusts with activity, not a fixed target. (3) Multi-agent weekly review with web-grounded research and wearable synthesis. (4) Nova Act grocery automation → one-tap Amazon links for plan-aligned ingredients.
+
+**Roadmap:** Open source, self-host, mobile PWA, freemium tier, enterprise licensing.
 
 ## Innovation Highlights
 
@@ -46,7 +50,7 @@ What makes Recomp novel — both technically and as a product:
 - **Dynamic agent routing** — The weekly review coordinator examines available data (meals, wearables) and selectively invokes specialist agents. No wearable data? Skip the biometrics agent, run research-only. No meals logged? Skip meal analysis. This is genuinely adaptive agentic behavior.
 - **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
 - **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
-- **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal. Body segmentation ensures clean compositing.
+- **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal.
 - **Nova Act grocery & nutrition** — Searches Amazon for diet-plan ingredients; returns one-tap links in cloud; add-to-cart requires local session. USDA nutrition via Act service (Railway) or web grounding.
 - **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
 - **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
@@ -138,6 +142,10 @@ DYNAMODB_TABLE_NAME=RecompTable
 # Optional — Web grounding (research / nutrition lookup)
 BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID=us.amazon.nova-2-lite-v1:0
 # IAM: add bedrock:InvokeTool on arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding
+
+# Optional — shared rate limiting (recommended for production with family/multiple users)
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=xxx
 
 # Optional
 NOVA_REEL_S3_BUCKET=your-bucket-name
@@ -442,7 +450,8 @@ src/
 
 ### Security
 
-- **Rate limiting** on all API routes (fixed-window, in-memory). *Note:* On serverless (Vercel), limits are per-instance; for production consider Redis/Upstash for shared limits.
+- **Rate limiting** on all API routes (fixed-window). Uses **Upstash Redis** when `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set; otherwise in-memory (per-instance on Vercel). For production with multiple users, [create an Upstash Redis](https://console.upstash.com/redis) and add the env vars to Vercel.
+- **Judge mode** (`JUDGE_MODE=true`): Forces deterministic fallbacks for Nova Act, Nova Reel, DynamoDB, and wearables. Use when optional integrations are unavailable (e.g. no Act service, no S3 for Reel). Ensures demos run reliably without external dependencies. Check status at `GET /api/judge/health`.
 - **Zod schema validation** on registration and voice input
 - **Cookie-based auth** (httpOnly `recomp_uid` cookie)
 - **Input sanitization** on AI context payloads

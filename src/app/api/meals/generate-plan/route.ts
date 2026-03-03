@@ -5,7 +5,7 @@ import { generateDayPlan, type GeneratedMeal } from "@/lib/recipe-suggestions";
 import type { Macros } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-generate-plan"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-generate-plan"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {

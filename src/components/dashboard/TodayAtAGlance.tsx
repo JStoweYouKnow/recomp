@@ -281,7 +281,12 @@ function TodayWorkoutCard({
 }) {
   const idx = matchWorkoutDay(today);
   const w = idx !== null ? plan.workoutPlan.weeklyPlan[idx] : null;
-  const done = w ? w.exercises.filter((ex) => Boolean(workoutProgress[`${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`])).length : 0;
+  const done = w
+    ? w.exercises.filter((ex) => {
+        const ts = workoutProgress[`${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`];
+        return ts && ts.slice(0, 10) === today;
+      }).length
+    : 0;
   const total = w?.exercises.length ?? 0;
 
   return (
@@ -312,7 +317,8 @@ function TodayWorkoutCard({
           </div>
           {w.exercises.slice(0, 8).map((ex, i) => {
             const key = `${plan.id}:${w.day}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
-            const isDone = Boolean(workoutProgress[key]);
+            const ts = workoutProgress[key];
+            const isDone = Boolean(ts && ts.slice(0, 10) === today);
             const gifKey = ex.name.toLowerCase().trim();
             const gif = exerciseGifs[gifKey];
             const isExpanded = expandedExerciseDemos.has(gifKey);

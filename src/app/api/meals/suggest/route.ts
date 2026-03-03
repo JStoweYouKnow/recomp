@@ -18,7 +18,7 @@ When the user provides recipes from their cooking app, prefer those or similar o
 Respond with valid JSON only.`;
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-suggest"), 15, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-suggest"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   if (requireAuthForAI()) {
     const userId = await getUserId(req.headers);

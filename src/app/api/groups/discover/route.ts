@@ -4,7 +4,7 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 import { dbListOpenGroups } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-discover"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-discover"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();

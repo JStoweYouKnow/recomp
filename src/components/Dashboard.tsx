@@ -10,6 +10,7 @@ import { TransformationPreview } from "./dashboard/TransformationPreview";
 import { ShoppingList } from "./dashboard/ShoppingList";
 import { EvidenceResultsCard } from "./dashboard/EvidenceResultsCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
+import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
 
 /* ── Exercise GIF cache (localStorage-backed) ── */
@@ -566,7 +567,7 @@ export function Dashboard({
       {/* ── Shopping list → Amazon (Nova Act) ── */}
       <ShoppingList plan={plan} />
 
-      <div className="pt-6 mt-2 border-t border-[var(--border-soft)]">
+      <div className="pt-6 mt-2 border-t border-[var(--border-soft)] flex flex-wrap items-center justify-between gap-2">
         <button
           onClick={() => {
             if (typeof window !== "undefined" && window.confirm("This will clear all your data and return you to setup. Continue?")) {
@@ -578,6 +579,7 @@ export function Dashboard({
         >
           Start over with new profile
         </button>
+        <FeedbackButton />
       </div>
     </div>
   );

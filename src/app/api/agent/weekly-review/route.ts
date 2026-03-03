@@ -403,7 +403,7 @@ async function runAgent(
 // ---------------------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(
+  const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "weekly-review"),
     5,
     60_000
@@ -499,7 +499,52 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const agentResults = await Promise.all(agentPromises);
+    let agentResults = await Promise.all(agentPromises);
+
+    // Reflection: if a specialist report is thin but we have data, run one follow-up round
+    const THIN_THRESHOLD = 180;
+    const mealRes = agentResults.find((r) => r.agent.startsWith("Meal"))?.result;
+    const wellnessRes = agentResults.find((r) => r.agent.startsWith("Wellness"))?.result;
+    const mealThin = hasMealData && mealRes && mealRes.output.length < THIN_THRESHOLD;
+    const wellnessThin = wellnessRes && wellnessRes.output.length < THIN_THRESHOLD;
+
+    if (mealThin || wellnessThin) {
+      const followUps: Promise<{ agent: string; result: AgentResult }>[] = [];
+      if (mealThin) {
+        followUps.push(
+          runAgent(
+            client,
+            MEAL_AGENT_SYSTEM,
+            `Your previous report was brief. Provide more specific, quantitative analysis: macro gaps (exact numbers), meal timing patterns, days under/over target. Use analyze_meals with focus 'all' again, then write a detailed report.`,
+            buildMealAgentTools(),
+            async (name, input) => {
+              if (name === "analyze_meals") return executeMealAnalysis(safeMeals, safeTargets, (input as { focus: string }).focus);
+              return JSON.stringify({ error: `Unknown tool: ${name}` });
+            }
+          ).then((result) => ({ agent: "Meal Analyst (reflection)", result }))
+        );
+      }
+      if (wellnessThin) {
+        followUps.push(
+          runAgent(
+            client,
+            WELLNESS_AGENT_SYSTEM,
+            `Your previous report was brief. Provide more specific analysis: cite exact metrics (sleep scores, steps, HR), connect to ${safeGoal}, and include 2-3 evidence-based recommendations from research_nutrition.`,
+            buildWellnessAgentTools(),
+            async (name, input) => {
+              if (name === "check_wearables") return executeWearableAnalysis(safeWearable, (input as { metric: string }).metric);
+              if (name === "research_nutrition") return await executeResearch((input as { query: string }).query);
+              return JSON.stringify({ error: `Unknown tool: ${name}` });
+            }
+          ).then((result) => ({ agent: "Wellness Agent (reflection)", result }))
+        );
+      }
+      const reflectionResults = await Promise.all(followUps);
+      agentResults = agentResults.map((r) => {
+        const rf = reflectionResults.find((rf) => rf.agent.startsWith(r.agent.split(" ")[0]));
+        return rf ?? r;
+      });
+    }
 
     // Build specialist reports map
     const mealResult = agentResults.find((r) => r.agent.startsWith("Meal"))?.result
@@ -512,6 +557,7 @@ export async function POST(req: NextRequest) {
       mealAgentRun: hasMealData,
       wellnessMode: hasWearableData ? "full" : "research-only",
       agentsInvoked: agentResults.map((r) => r.agent),
+      reflectionRound: mealThin || wellnessThin,
     };
 
     // -----------------------------------------------------------------------

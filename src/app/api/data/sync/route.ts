@@ -15,7 +15,7 @@ import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, RicoMessage } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {

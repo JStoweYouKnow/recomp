@@ -751,6 +751,25 @@ export async function dbRemoveFromGroupsIndex(groupId: string, goalType?: GroupG
   }
 }
 
+// ── Feedback (user testing / traction) ────────────────────────────────────
+export interface FeedbackEntry {
+  rating?: number; // 1-5
+  text?: string;
+  userId?: string;
+  createdAt: string;
+}
+
+export async function dbSaveFeedback(entry: FeedbackEntry): Promise<void> {
+  const doc = getDocClient();
+  const sk = `FEEDBACK#${entry.createdAt}#${crypto.randomUUID()}`;
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: "FEEDBACK", SK: sk, data: entry, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
 export async function dbListOpenGroups(goalType?: GroupGoalType): Promise<Group[]> {
   const doc = getDocClient();
   const typesToQuery = goalType ? [goalType] : ALL_GOAL_TYPES;

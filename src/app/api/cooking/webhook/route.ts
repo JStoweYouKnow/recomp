@@ -85,7 +85,7 @@ function verifySignature(
 export async function POST(req: NextRequest) {
   try {
     // Rate limit
-    const rl = fixedWindowRateLimit(
+    const rl = await fixedWindowRateLimit(
       getClientKey(getRequestIp(req), "cooking-webhook"),
       30,
       60_000

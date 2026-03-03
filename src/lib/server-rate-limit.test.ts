@@ -2,22 +2,22 @@ import { describe, it, expect } from "vitest";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "./server-rate-limit";
 
 describe("server-rate-limit", () => {
-  it("allows within fixed window then blocks", () => {
+  it("allows within fixed window then blocks", async () => {
     const key = getClientKey("127.0.0.1", "test-route");
     const now = 1_000;
-    const a = fixedWindowRateLimit(key, 2, 1_000, now);
-    const b = fixedWindowRateLimit(key, 2, 1_000, now + 1);
-    const c = fixedWindowRateLimit(key, 2, 1_000, now + 2);
+    const a = await fixedWindowRateLimit(key, 2, 1_000, now);
+    const b = await fixedWindowRateLimit(key, 2, 1_000, now + 1);
+    const c = await fixedWindowRateLimit(key, 2, 1_000, now + 2);
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
     expect(c.ok).toBe(false);
   });
 
-  it("resets after window", () => {
+  it("resets after window", async () => {
     const key = getClientKey("127.0.0.2", "test-route");
     const now = 2_000;
-    fixedWindowRateLimit(key, 1, 1_000, now);
-    const afterReset = fixedWindowRateLimit(key, 1, 1_000, now + 1_001);
+    await fixedWindowRateLimit(key, 1, 1_000, now);
+    const afterReset = await fixedWindowRateLimit(key, 1, 1_000, now + 1_001);
     expect(afterReset.ok).toBe(true);
   });
 

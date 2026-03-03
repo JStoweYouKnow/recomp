@@ -13,7 +13,7 @@ Be reasonable - these are estimates.`;
 
 export async function POST(req: NextRequest) {
   try {
-    const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-analyze-photo"), 20, 60_000);
+    const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-analyze-photo"), 20, 60_000);
     if (!rl.ok) {
       const headers = getRateLimitHeaderValues(rl);
       const res = NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });

@@ -9,7 +9,7 @@ type Params = { params: Promise<{ groupId: string; messageId: string }> };
 const patchSchema = z.object({ pinned: z.boolean() });
 
 export async function PATCH(req: NextRequest, { params }: Params) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-msg-pin"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-msg-pin"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();
@@ -36,7 +36,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(req: NextRequest, { params }: Params) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-msg-delete"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-msg-delete"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();

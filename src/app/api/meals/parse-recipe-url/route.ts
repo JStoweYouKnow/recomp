@@ -14,7 +14,7 @@ import {
  */
 export async function POST(req: NextRequest) {
   try {
-    const rl = fixedWindowRateLimit(
+    const rl = await fixedWindowRateLimit(
       getClientKey(getRequestIp(req), "parse-recipe-url"),
       15,
       60_000

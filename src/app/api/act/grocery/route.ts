@@ -15,7 +15,7 @@ const TIMEOUT_MS_ACT_SERVICE = 280_000; // 280s — leave headroom before Vercel
 
 export async function POST(req: NextRequest) {
   try {
-    const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-grocery"), 8, 60_000);
+    const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-grocery"), 8, 60_000);
     if (!rl.ok) {
       const headers = getRateLimitHeaderValues(rl);
       const res = NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });

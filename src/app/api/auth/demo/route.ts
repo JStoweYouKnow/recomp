@@ -10,7 +10,7 @@ const DEMO_USER_ID = "demo-user-001";
  * so AI routes (Weekly Review, Reco, meal suggest, etc.) work even with REQUIRE_AUTH_FOR_AI=true.
  */
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-demo"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-demo"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const res = NextResponse.json({ ok: true, userId: DEMO_USER_ID });

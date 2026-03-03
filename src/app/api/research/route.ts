@@ -13,7 +13,7 @@ const SYSTEM_PROMPT =
 /** Web grounding – Nova searches the web for current nutrition/fitness info.
  *  Falls back to standard Nova inference if web grounding is unavailable. */
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "research"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "research"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   if (requireAuthForAI()) {
     const userId = await getUserId(req.headers);

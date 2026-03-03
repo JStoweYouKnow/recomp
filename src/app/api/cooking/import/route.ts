@@ -48,7 +48,7 @@ Rules:
 
 export async function POST(req: NextRequest) {
   try {
-    const rl = fixedWindowRateLimit(
+    const rl = await fixedWindowRateLimit(
       getClientKey(getRequestIp(req), "cooking-import"),
       10,
       60_000

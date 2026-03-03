@@ -17,7 +17,7 @@ const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the f
 export async function POST(req: NextRequest) {
   let food = "unknown";
   try {
-    const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-nutrition"), 12, 60_000);
+    const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-nutrition"), 12, 60_000);
     if (!rl.ok) {
       const headers = getRateLimitHeaderValues(rl);
       const res = NextResponse.json({ error: "Rate limit exceeded. Try again shortly." }, { status: 429 });

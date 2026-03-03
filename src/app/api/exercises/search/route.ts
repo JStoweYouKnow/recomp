@@ -31,7 +31,7 @@ interface ExerciseResult {
  * Free API, no key required.
  */
 export async function GET(req: NextRequest) {
-  const rl = fixedWindowRateLimit(
+  const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "exercise-search"),
     30,
     60_000

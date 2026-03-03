@@ -24,7 +24,7 @@ Respond with valid JSON only, no markdown. Use null for missing fields.
 Use reasonable defaults if unclear (age 30, weight 154 lbs, 5'7", gym, moderate, build muscle).`;
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(
+  const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "onboarding-voice"),
     10,
     60_000

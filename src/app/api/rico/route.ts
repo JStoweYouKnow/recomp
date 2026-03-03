@@ -21,7 +21,7 @@ The user's message plus optional context about: streak length, meals logged, XP,
 Respond as Reco. No markdown. No bullet lists unless it's 2-3 quick tips. Be human.`;
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   if (requireAuthForAI()) {

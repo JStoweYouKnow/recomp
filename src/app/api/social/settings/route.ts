@@ -10,7 +10,7 @@ const updateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings-update"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings-update"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();

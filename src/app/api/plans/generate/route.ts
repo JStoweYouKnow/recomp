@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    const rl = fixedWindowRateLimit(
+    const rl = await fixedWindowRateLimit(
       getClientKey(getRequestIp(req), "plans-generate"),
       20,
       60_000

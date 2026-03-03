@@ -35,7 +35,7 @@ function parseJsonResponse(text: string): { calories?: number; protein?: number;
 
 /** Web-grounded nutrition lookup: cache → Nova web grounding (same flow as before Open Food Facts) */
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(
+  const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "meals-lookup-web"),
     20,
     60_000

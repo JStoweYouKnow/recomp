@@ -8,7 +8,7 @@ import { v4 as uuidv4 } from "uuid";
 type Params = { params: Promise<{ groupId: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-messages-read"), 30, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-messages-read"), 30, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();
@@ -33,7 +33,7 @@ const postSchema = z.object({
 });
 
 export async function POST(req: NextRequest, { params }: Params) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-messages-post"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-messages-post"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();

@@ -7,7 +7,7 @@ import type { GroupMemberProgress } from "@/lib/types";
 type Params = { params: Promise<{ groupId: string }> };
 
 export async function GET(req: NextRequest, { params }: Params) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-progress"), 20, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-progress"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   const userId = await getUserId();

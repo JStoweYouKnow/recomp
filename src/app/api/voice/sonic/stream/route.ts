@@ -162,7 +162,7 @@ async function* buildBedrockInput(
 }
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic-stream"), 30, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic-stream"), 30, 60_000);
   if (!rl.ok) {
     const headers = getRateLimitHeaderValues(rl);
     const res = new Response(JSON.stringify({ error: "Rate limit exceeded. Try again shortly." }), {
