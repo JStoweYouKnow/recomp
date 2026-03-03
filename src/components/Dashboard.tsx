@@ -68,7 +68,14 @@ export function Dashboard({
     if (inch === 12) return { ft: ft + 1, inch: 0 };
     return { ft, inch };
   };
-  const displayWeightLbs = Math.round(kgToLbs(profile.weight));
+  // Prefer most recent weight from wearables when available
+  const displayWeightLbs = useMemo(() => {
+    const withWeight = (wearableData ?? [])
+      .filter((d) => typeof d.weight === "number")
+      .sort((a, b) => (b.date > a.date ? 1 : -1));
+    const latest = withWeight[0]?.weight;
+    return latest != null ? Math.round(latest) : Math.round(kgToLbs(profile.weight));
+  }, [wearableData, profile.weight]);
   const displayHeight = cmToFeetInches(profile.height);
   const MAX_AVATAR_SIZE = 160;
 
