@@ -8,7 +8,7 @@ Respond with valid JSON only, no markdown:
 If details are unclear, make reasonable estimates.`;
 
 export async function POST(req: NextRequest) {
-  const rl = fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-parse"), 15, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-parse"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {
