@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Please provide a rating (1-5) or feedback text." }, { status: 400 });
     }
 
-    const userId = getUserId(req.headers) ?? undefined;
+    const userId = (await getUserId(req.headers)) ?? undefined;
     const entry = {
       rating,
       text: text || undefined,
