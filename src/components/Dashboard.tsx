@@ -410,7 +410,8 @@ export function Dashboard({
                 if (idx === null) return <p className="text-xs text-[var(--muted)]">No diet plan for this day.</p>;
                 const dietDay = plan.dietPlan.weeklyPlan[idx];
                 if (!dietDay) return null;
-                const dayTotal = dietDay.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0);
+                // Use dailyTargets (reflects manual adjustments) rather than summed meal macros
+                const dayTotal = plan.dietPlan.dailyTargets?.calories ?? dietDay.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0);
                 return (
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)] mb-1">Suggested — {dietDay.day}</p>

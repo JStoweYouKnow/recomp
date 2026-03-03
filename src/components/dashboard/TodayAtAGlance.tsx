@@ -379,7 +379,8 @@ function TodayDietCard({
   const logged = meals.filter((m) => m.date === today);
   const idx = matchDietDay(today);
   const d = idx !== null ? plan.dietPlan.weeklyPlan[idx] : null;
-  const planCal = d?.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0) ?? 0;
+  // Use dailyTargets (reflects manual adjustments) rather than summed meal macros
+  const planCal = plan.dietPlan.dailyTargets?.calories ?? d?.meals.reduce((s, m) => s + (m.macros?.calories ?? 0), 0) ?? 0;
 
   return (
     <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] overflow-hidden">
