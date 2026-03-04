@@ -4,8 +4,9 @@ import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { getBadgeInfo } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
-import { getMeasurementTargets, saveMeasurementTargets } from "@/lib/storage";
-import type { Milestone, WearableDaySummary, MeasurementTargets } from "@/lib/types";
+import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, getBodyScans, saveBodyScans, syncToServer } from "@/lib/storage";
+import type { Milestone, WearableDaySummary, MeasurementTargets, BodyScan } from "@/lib/types";
+import { v4 as uuidv4 } from "uuid";
 
 
 const BADGE_ICONS: Record<string, string> = {
@@ -55,6 +56,13 @@ export function MilestonesView({
   const [targetWeight, setTargetWeight] = useState("");
   const [targetBodyFat, setTargetBodyFat] = useState("");
   const [targetMuscle, setTargetMuscle] = useState("");
+  const [bodyScanLoading, setBodyScanLoading] = useState(false);
+  const [bodyScanResult, setBodyScanResult] = useState<{ analysis?: string; bodyFatEstimate?: number | null; muscleAssessment?: string | null } | null>(null);
+  const [bodyScans, setBodyScans] = useState<BodyScan[]>(() => getBodyScans());
+  const [biofeedbackInsightsLoading, setBiofeedbackInsightsLoading] = useState(false);
+  const [biofeedbackInsights, setBiofeedbackInsights] = useState<{ correlations: { factor: string; observation: string; strength: string }[]; recommendations: string[] } | null>(null);
+  const [reelProcessing, setReelProcessing] = useState(false);
+  const [reelMessage, setReelMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const t = getMeasurementTargets();
@@ -366,6 +374,191 @@ export function MilestonesView({
         <button onClick={addManualWeight} disabled={loading || !scaleWeight.trim()} className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">
           {loading ? "Adding…" : "Add weigh-in"}
         </button>
+      </div>
+
+      {/* Body scan */}
+      <div className="card rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-[var(--foreground)] text-sm">Body scan</h3>
+        <p className="text-[11px] text-[var(--muted)]">Upload a front, side, or back photo for AI body composition assessment.</p>
+        <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-2 text-xs cursor-pointer hover:bg-[var(--surface-elevated)]/80">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={bodyScanLoading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBodyScanLoading(true);
+              setBodyScanResult(null);
+              try {
+                const { prepareImageForUpload } = await import("@/lib/image-utils");
+                const blob = await prepareImageForUpload(file);
+                const fd = new FormData();
+                fd.append("image", blob, "body.jpg");
+                const res = await fetch("/api/body-scan/analyze", { method: "POST", body: fd });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                setBodyScanResult(data);
+                const entry: BodyScan = {
+                  id: uuidv4(),
+                  date: new Date().toISOString().slice(0, 10),
+                  photos: {},
+                  analysis: data.analysis,
+                  bodyFatEstimate: data.bodyFatEstimate ?? undefined,
+                  muscleAssessment: data.muscleAssessment ?? undefined,
+                };
+                const scans = [entry, ...getBodyScans()];
+                saveBodyScans(scans);
+                setBodyScans(scans);
+                syncToServer();
+                showToast("Analysis saved");
+              } catch {
+                showToast("Analysis failed", "error");
+              } finally {
+                setBodyScanLoading(false);
+                e.target.value = "";
+              }
+            }}
+          />
+          {bodyScanLoading ? "Analyzing…" : "Upload photo"}
+        </label>
+        {bodyScanResult && (
+          <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2 text-sm animate-fade-in">
+            {bodyScanResult.analysis && <p className="text-[var(--foreground)]">{bodyScanResult.analysis}</p>}
+            {bodyScanResult.bodyFatEstimate != null && (
+              <p className="font-medium text-[var(--accent)]">Est. body fat: {bodyScanResult.bodyFatEstimate}%</p>
+            )}
+            {bodyScanResult.muscleAssessment && <p className="text-[var(--muted)]">{bodyScanResult.muscleAssessment}</p>}
+          </div>
+        )}
+        {bodyScans.length >= 2 && (
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/body-scan/progress-reel", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ scanDates: bodyScans.slice(0, 5).map((s) => s.date).sort() }),
+                  });
+                  const data = await res.json();
+                  if (data.error) throw new Error(data.error);
+                  const msg = data.message ?? `Generating progress reel from ${data.scanCount ?? bodyScans.length} scans.`;
+                  setReelMessage(msg);
+                  setReelProcessing(true);
+                  showToast(msg);
+                  // Clear processing state after 2 min (user can re-trigger if needed)
+                  setTimeout(() => {
+                    setReelProcessing(false);
+                    setReelMessage(null);
+                  }, 120_000);
+                } catch {
+                  showToast("Failed to start progress reel", "error");
+                }
+              }}
+              disabled={reelProcessing}
+              className="rounded-lg border border-[var(--accent)]/40 px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {reelProcessing ? "Processing…" : "Generate progress reel"}
+            </button>
+            {reelProcessing && reelMessage && (
+              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 text-xs text-[var(--foreground)] animate-fade-in">
+                <p className="font-medium text-[var(--accent)]">Video generation in progress</p>
+                <p className="mt-1 text-[var(--muted)]">{reelMessage}</p>
+                <p className="mt-2 text-[10px] text-[var(--muted)]">Nova Reel may take a few minutes. Check back later or enable push notifications to be notified when it’s ready.</p>
+              </div>
+            )}
+          </>
+        )}
+        {bodyScans.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-[var(--muted)]">Previous scans</p>
+            <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
+              {bodyScans.slice(0, 8).map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setBodyScanResult({ analysis: s.analysis, bodyFatEstimate: s.bodyFatEstimate, muscleAssessment: s.muscleAssessment })}
+                  className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-left hover:border-[var(--accent)]/40"
+                >
+                  {s.date} {s.bodyFatEstimate != null ? `· ${s.bodyFatEstimate}%` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Biofeedback insights */}
+      <div className="card rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-[var(--foreground)] text-sm">Biofeedback insights</h3>
+        <p className="text-[11px] text-[var(--muted)]">AI correlations between your energy, mood, meals, and sleep.</p>
+        <button
+          onClick={async () => {
+            setBiofeedbackInsightsLoading(true);
+            setBiofeedbackInsights(null);
+            try {
+              const biofeedback = getBiofeedback();
+              const meals = getMeals();
+              const twoWeeksAgo = new Date();
+              twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+              const cutoff = twoWeeksAgo.toISOString().slice(0, 10);
+              const recentBio = biofeedback.filter((b) => b.date >= cutoff);
+              const recentMeals = meals.filter((m) => m.date >= cutoff).map((m) => ({ date: m.date, name: m.name, macros: m.macros }));
+              const res = await fetch("/api/biofeedback/insights", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  biofeedback: recentBio,
+                  meals: recentMeals,
+                  wearableData: wearableData.filter((d) => d.date >= cutoff),
+                }),
+              });
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
+              setBiofeedbackInsights(data);
+              showToast("Insights ready");
+            } catch {
+              showToast("Failed to fetch insights", "error");
+            } finally {
+              setBiofeedbackInsightsLoading(false);
+            }
+          }}
+          disabled={biofeedbackInsightsLoading}
+          className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
+        >
+          {biofeedbackInsightsLoading ? "Analyzing…" : "Get insights"}
+        </button>
+        {biofeedbackInsights && (
+          <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-3 text-sm animate-fade-in">
+            {biofeedbackInsights.correlations?.length ? (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">Correlations</p>
+                <ul className="space-y-1.5">
+                  {biofeedbackInsights.correlations.map((c, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="font-medium shrink-0">{c.factor}</span>
+                      <span className="text-[var(--muted)]">{c.observation}</span>
+                      <span className="text-[10px] text-[var(--accent)]">{c.strength}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {biofeedbackInsights.recommendations?.length ? (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-2">Recommendations</p>
+                <ul className="list-disc list-inside space-y-1 text-[var(--foreground)]">
+                  {biofeedbackInsights.recommendations.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* Measurement targets */}

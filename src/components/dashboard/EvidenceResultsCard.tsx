@@ -19,7 +19,7 @@ export function EvidenceResultsCard() {
         <div>
           <h3 className="section-title !text-base">Evidence &amp; Results</h3>
           <p className="section-subtitle">
-            Sample outcomes from the pre-seeded demo user (Jordan). Use &quot;Try pre-seeded demo&quot; on the landing page to see this data.
+            Sample outcomes from a 7-day synthetic demo (Jordan). Demonstrates macro adherence, AI weekly review, and meal-logging consistency. Use &quot;Try pre-seeded demo&quot; on the landing page to load this data.
           </p>
         </div>
         <button

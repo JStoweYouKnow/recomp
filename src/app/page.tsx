@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress } from "@/lib/storage";
+import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress, getBiofeedback, getHydration, getActiveFastingSession } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
 import { computeMilestones } from "@/lib/milestones";
@@ -329,6 +329,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       {/* ── Sticky header ── */}
       <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md" role="banner">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
@@ -401,7 +404,7 @@ export default function Home() {
               }`}
               aria-current={view === key ? "page" : undefined}
             >
-              <span className="flex items-center justify-center h-5 w-5">
+              <span className="flex items-center justify-center h-5 w-5" aria-hidden>
                 {key === "dashboard" && (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
                     <rect x="3" y="3" width="7" height="7" rx="1.5" />
@@ -515,6 +518,7 @@ export default function Home() {
           <div key="workouts" className={getSlideClass("workouts")}>
           <WorkoutPlannerView
             plan={plan}
+            wearableData={wearableData}
             onUpdatePlan={(updated) => {
               savePlan(updated);
               setPlan(updated);
@@ -640,6 +644,19 @@ export default function Home() {
               xp,
               goal: profile.goal,
               recentMilestones: milestones.slice(-5).map((m) => m.id),
+              biofeedbackSummary: (() => {
+                const bio = getBiofeedback();
+                const today = getTodayLocal();
+                const latest = bio.filter((e) => e.date === today).sort((a, b) => b.time.localeCompare(a.time))[0];
+                return latest ? `Today: energy ${latest.energy}/5, mood ${latest.mood}/5, hunger ${latest.hunger}/5` : null;
+              })(),
+              hydrationToday: (() => {
+                const h = getHydration();
+                const today = getTodayLocal();
+                const total = h.filter((e) => e.date === today).reduce((s, e) => s + e.amountMl, 0);
+                return total > 0 ? total : null;
+              })(),
+              activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
             }}
             isOpen={ricoOpen}
             onClose={() => setRicoOpen(false)}

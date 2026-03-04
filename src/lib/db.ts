@@ -22,6 +22,17 @@ import type {
   GroupMembership,
   GroupMessage,
   GroupMemberProgress,
+  HydrationEntry,
+  FastingSession,
+  BiofeedbackEntry,
+  MetabolicModel,
+  PantryItem,
+  MealPrepPlan,
+  CoachSchedule,
+  Challenge,
+  BodyScan,
+  Supplement,
+  BloodWork,
 } from "./types";
 
 const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RecompTable";
@@ -787,4 +798,272 @@ export async function dbListOpenGroups(goalType?: GroupGoalType): Promise<Group[
   );
   // Merge all shards, newest first
   return results.flat().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+// ── Hydration ───────────────────────────────────────────
+export async function dbGetHydration(userId: string): Promise<HydrationEntry[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "HYDRATION#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as HydrationEntry);
+}
+
+export async function dbSaveHydrationEntry(userId: string, entry: HydrationEntry): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `HYDRATION#${entry.date}#${entry.id}`, data: entry },
+    })
+  );
+}
+
+// ── Fasting Sessions ────────────────────────────────────
+export async function dbGetFastingSessions(userId: string): Promise<FastingSession[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "FASTING#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as FastingSession);
+}
+
+export async function dbSaveFastingSession(userId: string, session: FastingSession): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `FASTING#${session.startTime}#${session.id}`, data: session },
+    })
+  );
+}
+
+// ── Biofeedback ─────────────────────────────────────────
+export async function dbGetBiofeedback(userId: string): Promise<BiofeedbackEntry[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "BIOFEEDBACK#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as BiofeedbackEntry);
+}
+
+export async function dbSaveBiofeedbackEntry(userId: string, entry: BiofeedbackEntry): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `BIOFEEDBACK#${entry.date}#${entry.id}`, data: entry },
+    })
+  );
+}
+
+// ── Metabolic Model ─────────────────────────────────────
+export async function dbGetMetabolicModel(userId: string): Promise<MetabolicModel | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "METABOLIC_MODEL" } })
+  );
+  return Item ? (Item.data as MetabolicModel) : null;
+}
+
+export async function dbSaveMetabolicModel(userId: string, model: MetabolicModel): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "METABOLIC_MODEL", data: model, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Pantry ──────────────────────────────────────────────
+export async function dbGetPantry(userId: string): Promise<PantryItem[]> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "PANTRY" } })
+  );
+  return Item ? (Item.data as PantryItem[]) : [];
+}
+
+export async function dbSavePantry(userId: string, items: PantryItem[]): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "PANTRY", data: items, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Meal Prep ───────────────────────────────────────────
+export async function dbGetMealPrepPlan(userId: string, weekStart: string): Promise<MealPrepPlan | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: `MEAL_PREP#${weekStart}` } })
+  );
+  return Item ? (Item.data as MealPrepPlan) : null;
+}
+
+export async function dbSaveMealPrepPlan(userId: string, plan: MealPrepPlan): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `MEAL_PREP#${plan.weekStart}`, data: plan, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Coach Schedule ──────────────────────────────────────
+export async function dbGetCoachSchedule(userId: string): Promise<CoachSchedule | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "COACH_SCHEDULE" } })
+  );
+  return Item ? (Item.data as CoachSchedule) : null;
+}
+
+export async function dbSaveCoachSchedule(userId: string, schedule: CoachSchedule): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "COACH_SCHEDULE", data: schedule, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Challenges ──────────────────────────────────────────
+export async function dbCreateChallenge(challenge: Challenge): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `CHALLENGE#${challenge.id}`, SK: "META", data: challenge, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+export async function dbGetChallenge(challengeId: string): Promise<Challenge | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `CHALLENGE#${challengeId}`, SK: "META" } })
+  );
+  return Item ? (Item.data as Challenge) : null;
+}
+
+export async function dbUpdateChallengeProgress(
+  challengeId: string,
+  userId: string,
+  progress: number,
+  score: number
+): Promise<void> {
+  const challenge = await dbGetChallenge(challengeId);
+  if (!challenge) return;
+  const updated = {
+    ...challenge,
+    participants: challenge.participants.map((p) =>
+      p.userId === userId ? { ...p, progress, score } : p
+    ),
+  };
+  await dbCreateChallenge(updated);
+}
+
+export async function dbGetUserChallenges(userId: string): Promise<Challenge[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "CHALLENGE#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as Challenge);
+}
+
+export async function dbAddUserChallenge(userId: string, challenge: Challenge): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `CHALLENGE#${challenge.id}`, data: challenge, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Body Scans ──────────────────────────────────────────
+export async function dbGetBodyScans(userId: string): Promise<BodyScan[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "BODY_SCAN#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as BodyScan);
+}
+
+export async function dbSaveBodyScan(userId: string, scan: BodyScan): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `BODY_SCAN#${scan.date}#${scan.id}`, data: scan },
+    })
+  );
+}
+
+// ── Supplements ─────────────────────────────────────────
+export async function dbGetSupplements(userId: string): Promise<Supplement[]> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "SUPPLEMENTS" } })
+  );
+  return Item ? (Item.data as Supplement[]) : [];
+}
+
+export async function dbSaveSupplements(userId: string, supplements: Supplement[]): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "SUPPLEMENTS", data: supplements, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Blood Work ──────────────────────────────────────────
+export async function dbGetBloodWork(userId: string): Promise<BloodWork[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "BLOODWORK#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as BloodWork);
+}
+
+export async function dbSaveBloodWork(userId: string, entry: BloodWork): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: `BLOODWORK#${entry.date}#${entry.id}`, data: entry },
+    })
+  );
 }

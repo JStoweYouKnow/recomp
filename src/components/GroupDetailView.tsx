@@ -2,8 +2,16 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/components/Toast";
-import { saveCachedGroup, saveCachedGroupMessages, getCachedGroupMessages } from "@/lib/storage";
-import type { Group, GroupMembership, GroupMessage, GroupMemberProgress, GroupTrackingMode } from "@/lib/types";
+import { saveCachedGroup, saveCachedGroupMessages, getCachedGroupMessages, getProfile } from "@/lib/storage";
+import type { Group, GroupMembership, GroupMessage, GroupMemberProgress, GroupTrackingMode, Challenge, ChallengeMetric } from "@/lib/types";
+
+const CHALLENGE_METRICS: { value: ChallengeMetric; label: string }[] = [
+  { value: "meal_streak", label: "Meal streak" },
+  { value: "macro_accuracy", label: "Macro accuracy" },
+  { value: "workout_completion", label: "Workouts" },
+  { value: "steps", label: "Steps" },
+  { value: "xp_gained", label: "XP" },
+];
 
 const GOAL_LABELS: Record<string, string> = {
   lose_weight: "Lose Weight",
@@ -45,6 +53,18 @@ export function GroupDetailView({
   const [inviteCopied, setInviteCopied] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showChallenges, setShowChallenges] = useState(false);
+  const [groupChallenges, setGroupChallenges] = useState<Challenge[]>([]);
+  const [createChallengeOpen, setCreateChallengeOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createMetric, setCreateMetric] = useState<ChallengeMetric>("meal_streak");
+  const [createTarget, setCreateTarget] = useState("");
+  const [createEnd, setCreateEnd] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    return d.toISOString().slice(0, 10);
+  });
+  const [createLoading, setCreateLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -97,6 +117,16 @@ export function GroupDetailView({
     }
   };
 
+  const fetchGroupChallenges = useCallback(async () => {
+    try {
+      const res = await fetch("/api/challenges");
+      if (res.ok) {
+        const all = await res.json();
+        setGroupChallenges(Array.isArray(all) ? all.filter((c: Challenge) => c.groupId === groupId) : []);
+      }
+    } catch {}
+  }, [groupId]);
+
   const fetchProgress = useCallback(async () => {
     try {
       const res = await fetch(`/api/groups/${groupId}/progress`);
@@ -110,8 +140,8 @@ export function GroupDetailView({
   }, [groupId]);
 
   useEffect(() => {
-    Promise.all([fetchGroup(), fetchMessages(), fetchProgress()]).finally(() => setLoading(false));
-  }, [fetchGroup, fetchMessages, fetchProgress]);
+    Promise.all([fetchGroup(), fetchMessages(), fetchProgress(), fetchGroupChallenges()]).finally(() => setLoading(false));
+  }, [fetchGroup, fetchMessages, fetchProgress, fetchGroupChallenges]);
 
   // Poll messages every 30s
   useEffect(() => {
@@ -145,6 +175,44 @@ export function GroupDetailView({
       showToast("Failed to send message", "error");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCreateGroupChallenge = async () => {
+    const targetNum = parseFloat(createTarget);
+    if (!createTitle.trim() || !Number.isFinite(targetNum) || targetNum <= 0) {
+      showToast("Fill title and target", "info");
+      return;
+    }
+    setCreateLoading(true);
+    try {
+      const profile = getProfile();
+      const res = await fetch("/api/challenges/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: createTitle.trim(),
+          description: "",
+          type: "group",
+          metric: createMetric,
+          target: targetNum,
+          startDate: new Date().toISOString().slice(0, 10),
+          endDate: createEnd,
+          groupId,
+          userName: profile?.name ?? "You",
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setCreateChallengeOpen(false);
+      setCreateTitle("");
+      setCreateTarget("");
+      fetchGroupChallenges();
+      showToast("Challenge created!");
+    } catch {
+      showToast("Failed to create challenge", "error");
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -374,6 +442,70 @@ export function GroupDetailView({
           )}
         </div>
       )}
+
+      {/* ── Group challenges (collapsible) ── */}
+      <div className="card mb-4 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowChallenges(!showChallenges)}
+          className="w-full flex items-center justify-between p-4 text-left"
+        >
+          <span className="text-sm font-semibold text-[var(--foreground)]">Challenges</span>
+          <span className="text-xs text-[var(--muted)]">{groupChallenges.length} active</span>
+          <span className={`text-[var(--muted)] transition-transform ${showChallenges ? "rotate-180" : ""}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+          </span>
+        </button>
+        {showChallenges && (
+          <div className="px-4 pb-4 space-y-3">
+            {groupChallenges.length === 0 ? (
+              <p className="text-xs text-[var(--muted)]">No group challenges yet. Create one to compete with members.</p>
+            ) : (
+              groupChallenges.map((c) => {
+                const myProgress = (c as Challenge & { myProgress?: number }).myProgress ?? c.participants[0]?.progress ?? 0;
+                const pct = c.target > 0 ? Math.min(100, Math.round((myProgress / c.target) * 100)) : 0;
+                return (
+                  <div key={c.id} className="rounded-lg border border-[var(--border-soft)] p-3">
+                    <div className="flex justify-between">
+                      <span className="font-medium text-sm">{c.title}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${c.status === "active" ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-[var(--surface-elevated)] text-[var(--muted)]"}`}>{c.status}</span>
+                    </div>
+                    <p className="text-[10px] text-[var(--muted)] mt-0.5">{CHALLENGE_METRICS.find((m) => m.value === c.metric)?.label} · {c.target} target</p>
+                    {c.status === "active" && (
+                      <div className="mt-2">
+                        <div className="flex justify-between text-[10px] mb-0.5"><span>Progress</span><span>{myProgress} / {c.target}</span></div>
+                        <div className="h-1 overflow-hidden rounded-full bg-[var(--border-soft)]">
+                          <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+            {createChallengeOpen ? (
+              <div className="rounded-lg border border-[var(--border-soft)] p-3 space-y-2">
+                <input value={createTitle} onChange={(e) => setCreateTitle(e.target.value)} placeholder="Challenge title" className="input-base w-full text-sm" />
+                <select value={createMetric} onChange={(e) => setCreateMetric(e.target.value as ChallengeMetric)} className="input-base w-full text-sm">
+                  {CHALLENGE_METRICS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" value={createTarget} onChange={(e) => setCreateTarget(e.target.value)} placeholder="Target" className="input-base text-sm" />
+                  <input type="date" value={createEnd} onChange={(e) => setCreateEnd(e.target.value)} className="input-base text-sm" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setCreateChallengeOpen(false)} className="btn-secondary !text-xs">Cancel</button>
+                  <button type="button" onClick={handleCreateGroupChallenge} disabled={createLoading} className="btn-primary !text-xs disabled:opacity-50">{createLoading ? "Creating…" : "Create"}</button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setCreateChallengeOpen(true)} className="btn-primary !text-xs !py-2 w-full">
+                Create group challenge
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ── Message board (always visible) ── */}
       <div className="card p-0 overflow-hidden">

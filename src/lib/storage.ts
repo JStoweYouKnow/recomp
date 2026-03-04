@@ -1,4 +1,4 @@
-import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage } from "./types";
+import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork } from "./types";
 import { getTodayLocal } from "./date-utils";
 
 const STORAGE_KEYS = {
@@ -26,6 +26,20 @@ const STORAGE_KEYS = {
   groupCache: "recomp_group_cache",
   groupMessagesCache: "recomp_group_messages",
   measurementTargets: "recomp_measurement_targets",
+  hydration: "recomp_hydration",
+  fastingSessions: "recomp_fasting",
+  biofeedback: "recomp_biofeedback",
+  metabolicModel: "recomp_metabolic_model",
+  recoveryAssessment: "recomp_recovery",
+  pantry: "recomp_pantry",
+  mealPrepPlan: "recomp_meal_prep",
+  savedRestaurantMeals: "recomp_restaurant_meals",
+  coachSchedule: "recomp_coach_schedule",
+  challenges: "recomp_challenges",
+  musicPreference: "recomp_music",
+  bodyScans: "recomp_body_scans",
+  supplements: "recomp_supplements",
+  bloodWork: "recomp_blood_work",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -348,6 +362,188 @@ export function saveCachedGroupMessages(groupId: string, messages: GroupMessage[
   localStorage.setItem(STORAGE_KEYS.groupMessagesCache, JSON.stringify(map));
 }
 
+/* ── Hydration Tracking ───────────────────────────────── */
+
+export function getHydration(): HydrationEntry[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<HydrationEntry[]>(localStorage.getItem(STORAGE_KEYS.hydration), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveHydration(entries: HydrationEntry[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.hydration, JSON.stringify(entries));
+}
+
+/* ── Fasting Timer ────────────────────────────────────── */
+
+export function getFastingSessions(): FastingSession[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<FastingSession[]>(localStorage.getItem(STORAGE_KEYS.fastingSessions), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveFastingSessions(sessions: FastingSession[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.fastingSessions, JSON.stringify(sessions));
+}
+
+export function getActiveFastingSession(): FastingSession | null {
+  const sessions = getFastingSessions();
+  return sessions.find((s) => !s.endTime) ?? null;
+}
+
+/* ── Biofeedback Journal ──────────────────────────────── */
+
+export function getBiofeedback(): BiofeedbackEntry[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<BiofeedbackEntry[]>(localStorage.getItem(STORAGE_KEYS.biofeedback), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveBiofeedback(entries: BiofeedbackEntry[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.biofeedback, JSON.stringify(entries));
+}
+
+/* ── Adaptive Metabolic Model ─────────────────────────── */
+
+export function getMetabolicModel(): MetabolicModel | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.metabolicModel), null);
+}
+
+export function saveMetabolicModel(model: MetabolicModel): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.metabolicModel, JSON.stringify(model));
+}
+
+/* ── Recovery Assessment ──────────────────────────────── */
+
+export function getRecoveryAssessment(): RecoveryAssessment | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.recoveryAssessment), null);
+}
+
+export function saveRecoveryAssessment(assessment: RecoveryAssessment): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.recoveryAssessment, JSON.stringify(assessment));
+}
+
+/* ── Pantry ───────────────────────────────────────────── */
+
+export function getPantry(): PantryItem[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<PantryItem[]>(localStorage.getItem(STORAGE_KEYS.pantry), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function savePantry(items: PantryItem[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.pantry, JSON.stringify(items));
+}
+
+/* ── Meal Prep Planning ───────────────────────────────── */
+
+export function getMealPrepPlan(): MealPrepPlan | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.mealPrepPlan), null);
+}
+
+export function saveMealPrepPlan(plan: MealPrepPlan): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.mealPrepPlan, JSON.stringify(plan));
+}
+
+/* ── Saved Restaurant Meals ───────────────────────────── */
+
+export function getSavedRestaurantMeals(): SavedRestaurantMeal[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<SavedRestaurantMeal[]>(localStorage.getItem(STORAGE_KEYS.savedRestaurantMeals), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveSavedRestaurantMeals(meals: SavedRestaurantMeal[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.savedRestaurantMeals, JSON.stringify(meals));
+}
+
+/* ── Coach Schedule ───────────────────────────────────── */
+
+export function getCoachSchedule(): CoachSchedule | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.coachSchedule), null);
+}
+
+export function saveCoachSchedule(schedule: CoachSchedule): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.coachSchedule, JSON.stringify(schedule));
+}
+
+/* ── Challenges ───────────────────────────────────────── */
+
+export function getChallenges(): Challenge[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<Challenge[]>(localStorage.getItem(STORAGE_KEYS.challenges), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveChallenges(challenges: Challenge[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.challenges, JSON.stringify(challenges));
+}
+
+/* ── Music Preference ─────────────────────────────────── */
+
+export function getMusicPreference(): MusicPreference | null {
+  if (typeof window === "undefined") return null;
+  return safeParse(localStorage.getItem(STORAGE_KEYS.musicPreference), null);
+}
+
+export function saveMusicPreference(pref: MusicPreference): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.musicPreference, JSON.stringify(pref));
+}
+
+/* ── Body Scans ───────────────────────────────────────── */
+
+export function getBodyScans(): BodyScan[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<BodyScan[]>(localStorage.getItem(STORAGE_KEYS.bodyScans), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveBodyScans(scans: BodyScan[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.bodyScans, JSON.stringify(scans));
+}
+
+/* ── Supplements ──────────────────────────────────────── */
+
+export function getSupplements(): Supplement[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<Supplement[]>(localStorage.getItem(STORAGE_KEYS.supplements), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveSupplements(supplements: Supplement[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.supplements, JSON.stringify(supplements));
+}
+
+/* ── Blood Work ───────────────────────────────────────── */
+
+export function getBloodWork(): BloodWork[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<BloodWork[]>(localStorage.getItem(STORAGE_KEYS.bloodWork), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveBloodWork(entries: BloodWork[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.bloodWork, JSON.stringify(entries));
+}
+
 let _syncTimeout: ReturnType<typeof setTimeout> | null = null;
 const SYNC_DEBOUNCE_MS = 800;
 
@@ -360,11 +556,23 @@ function doSync(): void {
   const ricoHistory = getRicoHistory();
   const wearableConnections = getWearableConnections();
   const wearableData = getWearableData();
+  const hydration = getHydration();
+  const fastingSessions = getFastingSessions();
+  const biofeedback = getBiofeedback();
+  const pantry = getPantry();
+  const bodyScans = getBodyScans();
+  const supplements = getSupplements();
+  const bloodWork = getBloodWork();
 
   fetch("/api/data/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData }),
+    body: JSON.stringify({
+      plan, meals, milestones, xp, hasAdjusted, ricoHistory,
+      wearableConnections, wearableData,
+      hydration, fastingSessions, biofeedback, pantry,
+      bodyScans, supplements, bloodWork,
+    }),
   }).catch(() => {});
 }
 

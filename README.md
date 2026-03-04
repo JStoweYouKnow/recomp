@@ -35,6 +35,8 @@ The result: a production-grade app that treats Nova not as a text generator, but
 
 ## Impact
 
+**Evidence & methodology:** The pre-seeded demo (Jordan) uses a 7-day synthetic dataset to demonstrate measurable outcomes: 87% macro adherence, 7/10 AI weekly score, 21 meals logged, 7-day streak. Judges can verify by clicking "Try pre-seeded demo" and "Show metrics" in the Evidence card. This illustrates the app's end-to-end impact without requiring weeks of real usage.
+
 **Community:** Recomp removes cost and complexity barriers—no subscription wall, no trainer required. Voice + photo logging (Nova Sonic, Lite) lets users log meals in seconds vs. manual entry. Multimodal embeddings power "similar meals" so repeat logging is one tap. Web-grounding and Act deliver USDA-backed nutrition without separate apps.
 
 **Enterprise:** Wearable integration (Oura, Fitbit, Apple Health) surfaces sleep, activity, and readiness in one place. Single API for corporate wellness dashboards; no per-user licensing from third-party nutrition APIs. DynamoDB sync supports multi-device and team deployments.
@@ -51,7 +53,7 @@ What makes Recomp novel — both technically and as a product:
 - **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
 - **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
 - **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal.
-- **Nova Act grocery & nutrition** — Searches Amazon for diet-plan ingredients; returns one-tap links in cloud; add-to-cart requires local session. USDA nutrition via Act service (Railway) or web grounding.
+- **Nova Act grocery & nutrition** — The Act service (entrant-built Python bridge deployed on Railway) searches Amazon for diet-plan ingredients and returns one-tap links; add-to-cart requires local session. USDA nutrition via Act or web grounding. If Act is unavailable, grocery falls back to Amazon search links; nutrition to estimated macros.
 - **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
 - **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
 
@@ -61,7 +63,7 @@ What makes Recomp novel — both technically and as a product:
 - **Repo access (if private)**: Add `testing@devpost.com` and `Amazon-Nova-hackathon@amazon.com` as collaborators (GitHub → Settings → Collaborators), or make the repo public.
 - **AWS**: For a hosted demo, configure Bedrock credentials in the deployment environment. For local evaluation, judges can run `npm run dev` with their own AWS credentials (see Setup).
 - **Demo mode**: When running without auth (e.g., first-time visit or cleared cookies), the app stores data in localStorage and shows a "Demo mode" banner. Complete onboarding to register and sync to the server.
-- **Judge reliability mode**: Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations (Nova Act, Nova Reel, DynamoDB sync, wearables). Check readiness at `/api/judge/health`.
+- **Judge reliability mode**: If external services (Act, Reel, DynamoDB) are flaky during evaluation, set `JUDGE_MODE=true` in Vercel env to force deterministic fallback. Demos then run without Act service, S3, or DynamoDB. Verify at `/api/judge/health`. The app also degrades gracefully when Act fails—grocery returns search links; nutrition returns estimated macros.
 - **Submission**: Demo video (~3 min, #AmazonNova), live URL, repo access, Devpost form.
 
 ### 2-minute golden path (judges)
@@ -78,7 +80,7 @@ If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministi
 
 Suggested flow to assess all Nova features (~5–10 min):
 
-1. **Onboarding** — Fill the form and submit. Plan generation uses Nova Lite + extended thinking.
+1. **Onboarding** — Fill the form and submit. Plan generation uses Nova Lite with extended thinking (`invokeNovaWithExtendedThinking` in `src/lib/nova.ts`) for complex multi-day plan reasoning.
 2. **Dashboard** — "Today at a Glance" (budget, macros, today's workout/diet), unified calendar with diet/workout popups and "Edit plan," transformation preview (upload photo → "after" image via Nova Canvas).
 3. **Meals / Workouts** — Use the calendar to pick a date; view or edit that day's meals or workout. On Workouts, use "Show demo" / "Hide demo" for inline exercise GIFs.
 4. **Meals — Log a meal** — Try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
@@ -105,6 +107,7 @@ Suggested flow to assess all Nova features (~5–10 min):
 - **DynamoDB persistence** — Server-side storage with cookie-based auth; falls back to localStorage when offline
 - **Demo mode indicator** — When using the app without auth (localStorage only), a banner shows "Demo mode — Data stored locally"
 - **Offline support** — Error boundaries and local-first design
+- **Accessibility** — Skip link, landmarks (banner, main, nav), aria-labels on interactive elements, focus management
 
 ## Tech Stack
 

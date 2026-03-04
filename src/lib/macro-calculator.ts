@@ -56,15 +56,22 @@ export interface MacroCalculatorInput {
   gender: "male" | "female" | "other";
   dailyActivityLevel: string;
   goal: Goal;
+  /** When the adaptive metabolic model has learned the user's true TDEE, use it instead of Mifflin-St Jeor */
+  learnedTDEE?: number;
 }
 
 export function calculateMacros(input: MacroCalculatorInput): Macros {
-  const { weightKg, heightCm, age, gender, dailyActivityLevel, goal } = input;
+  const { weightKg, heightCm, age, gender, dailyActivityLevel, goal, learnedTDEE } = input;
   const actKey = dailyActivityLevel in ACTIVITY_MULT ? dailyActivityLevel : "moderate";
   const mult = ACTIVITY_MULT[actKey] ?? 1.55;
 
-  const bmr = mifflinStJeor(weightKg, heightCm, age, gender === "other" ? "male" : gender);
-  const tdee = bmr * mult;
+  let tdee: number;
+  if (learnedTDEE && learnedTDEE >= 1200 && learnedTDEE <= 5000) {
+    tdee = learnedTDEE;
+  } else {
+    const bmr = mifflinStJeor(weightKg, heightCm, age, gender === "other" ? "male" : gender);
+    tdee = bmr * mult;
+  }
   const targetCal = Math.round(tdee + (CAL_ADJUST[goal] ?? 0));
   const cal = Math.max(1200, Math.min(4000, targetCal));
 

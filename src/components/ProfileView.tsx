@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary, ProfileVisibility, SocialSettings } from "@/lib/types";
+import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary, ProfileVisibility, SocialSettings, CoachSchedule, Supplement, BloodWork, MusicProvider } from "@/lib/types";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { WearablesSection } from "./WearablesSection";
-import { getSocialSettings, saveSocialSettings } from "@/lib/storage";
+import { getSocialSettings, saveSocialSettings, getCoachSchedule, saveCoachSchedule, getSupplements, saveSupplements, getBloodWork, saveBloodWork, getMusicPreference, saveMusicPreference, getMeals } from "@/lib/storage";
+import { syncToServer } from "@/lib/storage";
+import { v4 as uuidv4 } from "uuid";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
   { value: "bodyweight", label: "Bodyweight" },
@@ -109,9 +111,33 @@ export function ProfileView({
   const usernameCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  const [coachSchedule, setCoachSchedule] = useState<CoachSchedule | null>(() => getCoachSchedule());
+  const [checkInTimes, setCheckInTimes] = useState(coachSchedule?.checkInTimes?.join(", ") ?? "09:00, 18:00");
+  const [weeklyReviewDay, setWeeklyReviewDay] = useState(coachSchedule?.weeklyReviewDay ?? 0);
+  const [supplements, setSupplementsState] = useState<Supplement[]>(() => getSupplements());
+  const [bloodWork, setBloodWorkState] = useState<BloodWork[]>(() => getBloodWork());
+  const [musicProvider, setMusicProvider] = useState<MusicProvider>(() => getMusicPreference()?.provider ?? "spotify");
+  const [supplementAnalyzeLoading, setSupplementAnalyzeLoading] = useState(false);
+  const [supplementAnalyzeResult, setSupplementAnalyzeResult] = useState<{ deficiencies?: { nutrient: string; severity: string; evidence: string }[]; recommendations?: { action: string; priority: string; reason: string }[]; interactions?: string[] } | null>(null);
+  const [bloodWorkParseLoading, setBloodWorkParseLoading] = useState(false);
+
   useEffect(() => {
     setAvatarDataUrl(profile.avatarDataUrl);
   }, [profile.avatarDataUrl]);
+
+  useEffect(() => {
+    const s = getCoachSchedule();
+    if (s) {
+      setCoachSchedule(s);
+      setCheckInTimes(s.checkInTimes?.join(", ") ?? "09:00, 18:00");
+      setWeeklyReviewDay(s.weeklyReviewDay ?? 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    const pref = getMusicPreference();
+    if (pref) setMusicProvider(pref.provider);
+  }, []);
 
   useEffect(() => {
     if (isDemoMode || typeof window === "undefined") return;
@@ -569,6 +595,214 @@ export function ProfileView({
       {onWearableDataFetched && (
         <WearablesSection onDataFetched={onWearableDataFetched} />
       )}
+
+      {/* Coach schedule */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Coach check-ins</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">When to receive check-in reminders (HH:mm, comma-separated).</p>
+        <input
+          value={checkInTimes}
+          onChange={(e) => setCheckInTimes(e.target.value)}
+          placeholder="09:00, 18:00"
+          className="input-base w-full max-w-xs mb-2"
+        />
+        <div className="flex items-center gap-2 mb-3">
+          <label className="text-sm text-[var(--muted)]">Weekly review day:</label>
+          <select
+            value={weeklyReviewDay}
+            onChange={(e) => setWeeklyReviewDay(Number(e.target.value))}
+            className="input-base text-sm"
+          >
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => (
+              <option key={d} value={i}>{d}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const times = checkInTimes.split(/[,\s]+/).map((t) => t.trim()).filter((t) => /^\d{1,2}:\d{2}$/.test(t));
+            const next: CoachSchedule = {
+              checkInTimes: times.length ? times : ["09:00"],
+              lastCheckIn: coachSchedule?.lastCheckIn ?? new Date().toISOString(),
+              confrontations: coachSchedule?.confrontations ?? [],
+              weeklyReviewDay,
+            };
+            saveCoachSchedule(next);
+            setCoachSchedule(next);
+            syncToServer();
+          }}
+          className="btn-primary !py-2"
+        >
+          Save schedule
+        </button>
+      </div>
+
+      {/* Supplements */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Supplements</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">Track supplements and get AI analysis.</p>
+        <div className="flex flex-wrap gap-2 mb-3">
+          {supplements.map((s) => (
+            <span key={s.id} className="inline-flex items-center gap-1 rounded-full bg-[var(--surface-elevated)] px-2.5 py-1 text-xs">
+              {s.name} {s.dosage}
+              <button type="button" onClick={() => { const next = supplements.filter((x) => x.id !== s.id); setSupplementsState(next); saveSupplements(next); syncToServer(); }} className="text-[var(--muted)] hover:text-[var(--accent-terracotta)]">×</button>
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <input
+            type="text"
+            placeholder="e.g. Vitamin D"
+            className="input-base text-sm w-28"
+            id="new-supp-name"
+          />
+          <input
+            type="text"
+            placeholder="500 IU"
+            className="input-base text-sm w-20"
+            id="new-supp-dosage"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const name = (document.getElementById("new-supp-name") as HTMLInputElement)?.value?.trim();
+              if (!name) return;
+              const dosage = (document.getElementById("new-supp-dosage") as HTMLInputElement)?.value?.trim() || "—";
+              const next: Supplement = { id: uuidv4(), name, dosage, frequency: "daily", timing: "morning" };
+              const arr = [...supplements, next];
+              setSupplementsState(arr);
+              saveSupplements(arr);
+              syncToServer();
+              (document.getElementById("new-supp-name") as HTMLInputElement).value = "";
+              (document.getElementById("new-supp-dosage") as HTMLInputElement).value = "";
+            }}
+            className="btn-secondary !py-1.5 !text-xs"
+          >
+            Add
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            setSupplementAnalyzeLoading(true);
+            setSupplementAnalyzeResult(null);
+            try {
+              const meals = getMeals();
+              const dietSummary = meals.slice(-14).map((m) => m.name).join(", ");
+              const res = await fetch("/api/supplements/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  supplements: supplements.map((s) => ({ name: s.name, dosage: s.dosage, frequency: s.frequency })),
+                  bloodWork: bloodWork.length ? bloodWork : "none",
+                  dietSummary,
+                  goal: profile.goal,
+                }),
+              });
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
+              setSupplementAnalyzeResult(data);
+            } catch {
+              setSupplementAnalyzeResult({ deficiencies: [], recommendations: [], interactions: [] });
+            } finally {
+              setSupplementAnalyzeLoading(false);
+            }
+          }}
+          disabled={supplementAnalyzeLoading || supplements.length === 0}
+          className="btn-primary !py-2 !text-sm disabled:opacity-50"
+        >
+          {supplementAnalyzeLoading ? "Analyzing…" : "Analyze supplements"}
+        </button>
+        {supplementAnalyzeResult && (
+          <div className="mt-4 rounded-lg border border-[var(--border-soft)] p-3 space-y-2 text-sm animate-fade-in">
+            {supplementAnalyzeResult.deficiencies?.length ? (
+              <p><span className="font-medium">Deficiencies:</span> {supplementAnalyzeResult.deficiencies.map((d) => d.nutrient).join(", ")}</p>
+            ) : null}
+            {supplementAnalyzeResult.recommendations?.length ? (
+              <ul className="list-disc list-inside">{supplementAnalyzeResult.recommendations.map((r, i) => <li key={i}>{r.action}</li>)}</ul>
+            ) : null}
+            {supplementAnalyzeResult.interactions?.length ? (
+              <p className="text-[var(--muted)]">{supplementAnalyzeResult.interactions.join(" ")}</p>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* Blood work */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Blood work</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">Upload lab results for AI extraction. Used in supplement analysis.</p>
+        <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-2 text-sm cursor-pointer hover:bg-[var(--surface-elevated)]/80 mb-4">
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={bloodWorkParseLoading}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBloodWorkParseLoading(true);
+              try {
+                const { prepareImageForUpload } = await import("@/lib/image-utils");
+                const blob = await prepareImageForUpload(file);
+                const fd = new FormData();
+                fd.append("image", blob, "bloodwork.jpg");
+                const res = await fetch("/api/bloodwork/parse", { method: "POST", body: fd });
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                const entry: BloodWork = {
+                  id: uuidv4(),
+                  date: new Date().toISOString().slice(0, 10),
+                  markers: data.markers ?? [],
+                  notes: "From photo upload",
+                };
+                setBloodWorkState((prev) => {
+                  const next = [entry, ...prev];
+                  saveBloodWork(next);
+                  syncToServer();
+                  return next;
+                });
+              } catch {
+                // silent
+              } finally {
+                setBloodWorkParseLoading(false);
+                e.target.value = "";
+              }
+            }}
+          />
+          {bloodWorkParseLoading ? "Parsing…" : "Upload lab results"}
+        </label>
+        {bloodWork.length > 0 && (
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {bloodWork.slice(0, 3).map((b) => (
+              <div key={b.id} className="text-xs rounded-lg bg-[var(--surface-elevated)] p-2">
+                <span className="font-medium">{b.date}</span> · {b.markers?.length ?? 0} markers
+              </div>
+            ))}
+            {bloodWork.length > 3 && <p className="text-[10px] text-[var(--muted)]">+{bloodWork.length - 3} more</p>}
+          </div>
+        )}
+      </div>
+
+      {/* Music provider */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Music for workouts</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">Preferred provider for workout music suggestions.</p>
+        <select
+          value={musicProvider}
+          onChange={(e) => {
+            const p = e.target.value as MusicProvider;
+            setMusicProvider(p);
+            saveMusicPreference({ provider: p, workoutPlaylists: getMusicPreference()?.workoutPlaylists ?? {} });
+            syncToServer();
+          }}
+          className="input-base max-w-xs"
+        >
+          <option value="spotify">Spotify</option>
+          <option value="apple_music">Apple Music</option>
+        </select>
+      </div>
 
       {/* Push notifications */}
       <div className="card p-6 mt-6">

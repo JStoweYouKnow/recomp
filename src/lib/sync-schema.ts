@@ -94,6 +94,80 @@ const fitnessPlanSchema = z.object({
   reasoning: z.string().max(5000).optional(),
 }).passthrough();
 
+const hydrationEntrySchema = z.object({
+  id: z.string().max(100),
+  date: z.string().max(20),
+  time: z.string().max(10),
+  amountMl: z.number().min(0).max(10000),
+  source: z.enum(["water", "coffee", "tea", "sports_drink", "other"]).optional(),
+});
+
+const fastingSessionSchema = z.object({
+  id: z.string().max(100),
+  startTime: z.string().max(50),
+  endTime: z.string().max(50).optional(),
+  targetHours: z.number().min(1).max(168),
+  protocol: z.enum(["16:8", "18:6", "20:4", "OMAD", "custom"]),
+});
+
+const biofeedbackEntrySchema = z.object({
+  id: z.string().max(100),
+  date: z.string().max(20),
+  time: z.string().max(10),
+  energy: z.number().min(1).max(5),
+  mood: z.number().min(1).max(5),
+  hunger: z.number().min(1).max(5),
+  stress: z.number().min(1).max(5),
+  soreness: z.number().min(1).max(5),
+  notes: z.string().max(1000).optional(),
+});
+
+const pantryItemSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  category: z.enum(["protein", "carb", "fat", "produce", "dairy", "spice", "other"]),
+  addedAt: z.string().max(50),
+  expiresAt: z.string().max(50).optional(),
+});
+
+const bodyScanSchema = z.object({
+  id: z.string().max(100),
+  date: z.string().max(20),
+  photos: z.object({
+    front: z.string().optional(),
+    side: z.string().optional(),
+    back: z.string().optional(),
+  }),
+  analysis: z.string().max(5000).optional(),
+  bodyFatEstimate: z.number().min(0).max(100).optional(),
+  muscleAssessment: z.string().max(2000).optional(),
+  notes: z.string().max(1000).optional(),
+});
+
+const supplementSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  dosage: z.string().max(100),
+  frequency: z.enum(["daily", "twice_daily", "weekly", "as_needed"]),
+  timing: z.enum(["morning", "afternoon", "evening", "with_meals", "before_bed"]),
+  takenToday: z.boolean().optional(),
+});
+
+const bloodWorkMarkerSchema = z.object({
+  name: z.string().max(200),
+  value: z.number(),
+  unit: z.string().max(50),
+  normalRange: z.object({ low: z.number(), high: z.number() }),
+  status: z.enum(["low", "normal", "high"]),
+});
+
+const bloodWorkSchema = z.object({
+  id: z.string().max(100),
+  date: z.string().max(20),
+  markers: z.array(bloodWorkMarkerSchema).max(100),
+  notes: z.string().max(1000).optional(),
+});
+
 export const syncBodySchema = z.object({
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
@@ -103,6 +177,13 @@ export const syncBodySchema = z.object({
   ricoHistory: z.array(ricoMessageSchema).max(100).optional(),
   wearableConnections: z.array(wearableConnectionSchema).max(20).optional(),
   wearableData: z.array(wearableDaySummarySchema).max(2000).optional(),
+  hydration: z.array(hydrationEntrySchema).max(5000).optional(),
+  fastingSessions: z.array(fastingSessionSchema).max(500).optional(),
+  biofeedback: z.array(biofeedbackEntrySchema).max(2000).optional(),
+  pantry: z.array(pantryItemSchema).max(500).optional(),
+  bodyScans: z.array(bodyScanSchema).max(200).optional(),
+  supplements: z.array(supplementSchema).max(100).optional(),
+  bloodWork: z.array(bloodWorkSchema).max(100).optional(),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;

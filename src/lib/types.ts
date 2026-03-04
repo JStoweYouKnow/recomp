@@ -152,7 +152,38 @@ export type MilestoneType =
   | "week_warrior"
   | "plan_adjuster"
   | "early_adopter"
-  | "wearable_synced";
+  | "wearable_synced"
+  // Hydration
+  | "hydration_streak_3"
+  | "hydration_streak_7"
+  // Fasting
+  | "first_fast"
+  | "fasting_streak_7"
+  // Biofeedback
+  | "biofeedback_streak_7"
+  // Metabolic
+  | "metabolic_modeled"
+  // Recovery
+  | "recovery_listener"
+  // Pantry
+  | "pantry_stocked"
+  // Meal Prep
+  | "first_meal_prep"
+  // Restaurant
+  | "menu_scanner"
+  // Coach
+  | "coach_check_in_streak_7"
+  // Challenges
+  | "first_challenge_won"
+  | "challenge_creator"
+  // Music
+  | "music_connected"
+  // Body Scan
+  | "first_body_scan"
+  | "body_scan_streak_4"
+  // Supplements
+  | "supplement_tracker"
+  | "blood_work_uploaded";
 
 export interface Milestone {
   id: MilestoneType;
@@ -335,4 +366,212 @@ export interface CookingAppRecipe {
   fat: number;
   source?: string; // e.g. "whisk", "import"
   addedAt: string;
+}
+
+// ── Hydration Tracking ──────────────────────────────────
+export interface HydrationEntry {
+  id: string;
+  date: string;
+  time: string; // HH:mm
+  amountMl: number;
+  source?: "water" | "coffee" | "tea" | "sports_drink" | "other";
+}
+
+// ── Fasting Timer ───────────────────────────────────────
+export type FastingProtocol = "16:8" | "18:6" | "20:4" | "OMAD" | "custom";
+export type FastingPhase = "fed" | "early_fasting" | "fat_burning" | "ketosis" | "deep_ketosis";
+
+export interface FastingSession {
+  id: string;
+  startTime: string; // ISO timestamp
+  endTime?: string;
+  targetHours: number;
+  protocol: FastingProtocol;
+}
+
+// ── Biofeedback Journal ─────────────────────────────────
+export interface BiofeedbackEntry {
+  id: string;
+  date: string;
+  time: string; // HH:mm
+  energy: number; // 1-5
+  mood: number;
+  hunger: number;
+  stress: number;
+  soreness: number;
+  notes?: string;
+}
+
+export interface BiofeedbackInsight {
+  correlations: { factor: string; observation: string; strength: "strong" | "moderate" | "weak" }[];
+  recommendations: string[];
+  generatedAt: string;
+}
+
+// ── Adaptive Metabolic Model ────────────────────────────
+export interface MetabolicDataPoint {
+  date: string;
+  weightKg: number;
+  totalIntake: number; // calories consumed that day
+  totalExpenditure: number; // wearable TDEE or estimated
+}
+
+export interface MetabolicModel {
+  estimatedTDEE: number;
+  confidence: number; // 0-100
+  dataPoints: MetabolicDataPoint[];
+  lastUpdated: string;
+  history: { date: string; tdee: number; confidence: number }[];
+}
+
+// ── Recovery-Adjusted Training ──────────────────────────
+export interface RecoveryAssessment {
+  score: number; // 0-100
+  level: "low" | "moderate" | "high" | "optimal";
+  factors: { name: string; impact: "positive" | "negative" | "neutral"; value?: string }[];
+  recommendation: string;
+  modifiedWorkout?: {
+    volumeAdjustment: number; // -30 to +10 percent
+    intensityAdjustment: number;
+    suggestedSwaps: { original: string; replacement: string; reason: string }[];
+  };
+}
+
+// ── Context-Aware Meal Suggestions (Pantry) ─────────────
+export interface PantryItem {
+  id: string;
+  name: string;
+  category: "protein" | "carb" | "fat" | "produce" | "dairy" | "spice" | "other";
+  addedAt: string;
+  expiresAt?: string;
+}
+
+// ── Meal Prep Planning ──────────────────────────────────
+export interface MealPrepRecipe {
+  name: string;
+  servings: number;
+  macrosPerServing: Macros;
+  ingredients: { name: string; amount: string; category: string }[];
+  instructions: string[];
+  prepTime: number; // minutes
+  cookTime: number;
+}
+
+export interface MealPrepPlan {
+  id: string;
+  weekStart: string;
+  recipes: MealPrepRecipe[];
+  groceryList: { item: string; amount: string; category: string; checked: boolean }[];
+  batchInstructions: string[];
+  estimatedPrepTime: number;
+  createdAt: string;
+}
+
+// ── Restaurant & Menu Intelligence ──────────────────────
+export interface RestaurantMenuItem {
+  name: string;
+  description?: string;
+  estimatedMacros: Macros;
+  confidence: "high" | "medium" | "low";
+  recommended: boolean;
+  reasonForRecommendation?: string;
+}
+
+export interface SavedRestaurantMeal {
+  id: string;
+  restaurantName: string;
+  itemName: string;
+  macros: Macros;
+  savedAt: string;
+}
+
+// ── Coach Accountability Loops ──────────────────────────
+export interface CoachSchedule {
+  checkInTimes: string[]; // HH:mm format
+  lastCheckIn: string; // ISO timestamp
+  confrontations: {
+    id: string;
+    date: string;
+    pattern: string;
+    message: string;
+    acknowledged: boolean;
+  }[];
+  weeklyReviewDay: number; // 0-6 (day of week)
+}
+
+// ── Social Challenges & Betting ─────────────────────────
+export type ChallengeMetric = "meal_streak" | "macro_accuracy" | "workout_completion" | "steps" | "xp_gained";
+export type ChallengeStatus = "pending" | "active" | "completed" | "cancelled";
+
+export interface Challenge {
+  id: string;
+  type: "solo" | "group" | "duel";
+  title: string;
+  description: string;
+  metric: ChallengeMetric;
+  target: number;
+  startDate: string;
+  endDate: string;
+  stakes?: string;
+  participants: { userId: string; name: string; progress: number; score: number }[];
+  status: ChallengeStatus;
+  createdBy: string;
+  groupId?: string;
+}
+
+// ── Music Integration ───────────────────────────────────
+export type MusicProvider = "spotify" | "apple_music";
+
+export interface MusicPreference {
+  provider: MusicProvider;
+  workoutPlaylists: Record<string, string>; // workoutFocus -> playlist URL/ID
+}
+
+export interface PlaylistSuggestion {
+  name: string;
+  description: string;
+  provider: MusicProvider;
+  deepLink: string;
+  bpm: string;
+  mood: string;
+}
+
+// ── Body Scan Progress ──────────────────────────────────
+export interface BodyScan {
+  id: string;
+  date: string;
+  photos: {
+    front?: string; // base64
+    side?: string;
+    back?: string;
+  };
+  analysis?: string;
+  bodyFatEstimate?: number;
+  muscleAssessment?: string;
+  notes?: string;
+}
+
+// ── Supplement & Micronutrient Tracking ──────────────────
+export interface Supplement {
+  id: string;
+  name: string;
+  dosage: string;
+  frequency: "daily" | "twice_daily" | "weekly" | "as_needed";
+  timing: "morning" | "afternoon" | "evening" | "with_meals" | "before_bed";
+  takenToday?: boolean;
+}
+
+export interface BloodWorkMarker {
+  name: string;
+  value: number;
+  unit: string;
+  normalRange: { low: number; high: number };
+  status: "low" | "normal" | "high";
+}
+
+export interface BloodWork {
+  id: string;
+  date: string;
+  markers: BloodWorkMarker[];
+  notes?: string;
 }

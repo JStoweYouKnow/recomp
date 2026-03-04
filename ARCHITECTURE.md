@@ -130,17 +130,47 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 
 ## DynamoDB Schema (single-table)
 
+**Table:** `DYNAMODB_TABLE_NAME` (default: `RecompTable`). No sort key required for simple Get; use `begins_with(SK, :prefix)` for queries.
+
+### User-scoped entities
+
 | PK | SK | Data |
 |----|-----|------|
 | `USER#{userId}` | `PROFILE` | User profile |
 | `USER#{userId}` | `PLAN` | Fitness plan |
-| `USER#{userId}` | `META` | xp, ricoHistory, etc. |
+| `USER#{userId}` | `META` | xp, ricoHistory, activityLog, workoutProgress, etc. |
 | `USER#{userId}` | `MEAL#{date}#{id}` | Meal entry |
 | `USER#{userId}` | `MILESTONE#{id}` | Milestone |
 | `USER#{userId}` | `WCONN#{provider}` | Wearable connection |
-| `USER#{userId}` | `WDATA#{date}#{provider}` | Wearable data |
+| `USER#{userId}` | `WDATA#{date}#{provider}` | Wearable day summary |
+| `USER#{userId}` | `WEEKLY_REVIEW` | Weekly AI review |
+| `USER#{userId}` | `SOCIAL` | Social settings (visibility, username) |
+| `USER#{userId}` | `GROUP#{groupId}` | Group membership |
+| `USER#{userId}` | `PUSH#...` / `EXPO#...` | Push subscription tokens |
 
-Billing: Pay per request.
+### Groups & social
+
+| PK | SK | Data |
+|----|-----|------|
+| `GROUP#{groupId}` | `META` | Group metadata |
+| `GROUP#{groupId}` | `MEMBER#{userId}` | Group membership |
+| `GROUP#{groupId}` | `MSG#{ts}#{id}` | Group message |
+| `GROUP#{groupId}` | `PROGRESS#{userId}` | Member progress |
+| `GROUPS_INDEX#{goalType}` | `GROUP#{groupId}` | Discoverable groups by goal |
+| `INVITE#{code}` | `INVITE#{code}` | Invite code → groupId |
+| `USERNAME#{key}` | `USERNAME#{key}` | Username → userId |
+
+### Other
+
+| PK | SK | Data |
+|----|-----|------|
+| `CALENDAR#{token}` | `CALENDAR#{token}` | ICS feed config |
+| `NUTRITION#{foodKey}` | `CACHE` | USDA nutrition cache |
+| `FEEDBACK` | `FEEDBACK#{ts}#{uuid}` | User feedback entries |
+
+**Migrations:** Schema is implicit; no migration runner. Add new PK/SK patterns in `db.ts` as needed.
+
+**Billing:** Pay per request.
 
 ---
 

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache } from "@/lib/storage";
+import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache, getPantry, getActiveFastingSession, getSavedRestaurantMeals, saveSavedRestaurantMeals, syncToServer } from "@/lib/storage";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { CalendarView } from "./CalendarView";
+import { PantrySection } from "./meals/PantrySection";
+import { MealPrepSection } from "./meals/MealPrepSection";
 
 export function MealsView({
   meals,
@@ -116,7 +118,11 @@ export function MealsView({
   const [similarMeals, setSimilarMeals] = useState<{ name: string; mealId: string }[]>([]);
   const [similarLoading, setSimilarLoading] = useState(false);
   const [generatePlanLoading, setGeneratePlanLoading] = useState(false);
+  const [menuScanLoading, setMenuScanLoading] = useState(false);
+  const [menuItems, setMenuItems] = useState<{ name: string; description?: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number }; confidence: string }[]>([]);
   const { showToast } = useToast();
+  const activeFast = getActiveFastingSession();
+  const [savedRestaurantMeals, setSavedRestaurantMeals] = useState(() => getSavedRestaurantMeals());
 
   // Upcoming days (next 7) with no logged meals
   const emptyUpcomingDates = useMemo(() => {
@@ -177,30 +183,68 @@ export function MealsView({
     setSuggestions([]);
     try {
       const profile = getProfile();
-      const recipes = getCookingAppRecipes();
-      const res = await fetch("/api/meals/suggest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mealType,
-          remainingCalories: remainingCal || 500,
-          remainingProtein: remainingPro || 30,
-          restrictions: profile?.dietaryRestrictions ?? [],
-          goal: profile?.goal,
-          recipes: recipes.map((r) => ({
-            name: r.name,
-            description: r.description,
-            calories: r.calories,
-            protein: r.protein,
-            carbs: r.carbs,
-            fat: r.fat,
-            url: (r as { recipeUrl?: string }).recipeUrl,
-          })),
-        }),
-      });
-      const data = await res.json();
-      if (data.suggestions?.length) {
-        setSuggestions(data.suggestions);
+      const pantry = getPantry();
+      const recentMealNames = meals.filter((m) => new Date(m.date).getTime() > Date.now() - 2 * 86400000).map((m) => m.name);
+      const hour = new Date().getHours();
+      const timeOfDay = hour < 11 ? "morning" : hour < 15 ? "midday" : "evening";
+      let gotSuggestions = false;
+
+      if (pantry.length >= 3) {
+        try {
+          const res = await fetch("/api/meals/smart-suggest", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              remainingMacros: { calories: remainingCal || 500, protein: remainingPro || 30, carbs: Math.max(0, targets.carbs - displayTotals.carbs), fat: Math.max(0, targets.fat - displayTotals.fat) },
+              timeOfDay,
+              recentMeals: recentMealNames,
+              pantryItems: pantry.map((p) => p.name),
+              goal: profile?.goal ?? goal,
+              dietaryRestrictions: profile?.dietaryRestrictions ?? [],
+            }),
+          });
+          const data = await res.json();
+          if (data.suggestions?.length) {
+            setSuggestions(data.suggestions.map((s: { name: string; description?: string; estimatedMacros?: { calories: number; protein: number; carbs: number; fat: number } }) => ({
+              name: s.name,
+              description: s.description,
+              calories: s.estimatedMacros?.calories,
+              protein: s.estimatedMacros?.protein,
+              carbs: s.estimatedMacros?.carbs,
+              fat: s.estimatedMacros?.fat,
+            })));
+            gotSuggestions = true;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (!gotSuggestions) {
+        const recipes = getCookingAppRecipes();
+        const res = await fetch("/api/meals/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mealType,
+            remainingCalories: remainingCal || 500,
+            remainingProtein: remainingPro || 30,
+            restrictions: profile?.dietaryRestrictions ?? [],
+            goal: profile?.goal,
+            recipes: recipes.map((r) => ({
+              name: r.name,
+              description: r.description,
+              calories: r.calories,
+              protein: r.protein,
+              carbs: r.carbs,
+              fat: r.fat,
+              url: (r as { recipeUrl?: string }).recipeUrl,
+            })),
+          }),
+        });
+        const data = await res.json();
+        if (data.suggestions?.length) {
+          setSuggestions(data.suggestions);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -514,8 +558,67 @@ export function MealsView({
     showToast?.("Meal updated");
   };
 
+  const handleMenuScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMenuScanLoading(true);
+    setMenuItems([]);
+    try {
+      const { prepareImageForUpload } = await import("@/lib/image-utils");
+      const blob = await prepareImageForUpload(file);
+      const fd = new FormData();
+      fd.append("image", blob, "menu.jpg");
+      const res = await fetch("/api/meals/analyze-menu", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.items?.length) {
+        setMenuItems(data.items);
+        setShowAdd(true);
+        showToast?.(`Found ${data.items.length} menu items`);
+      }
+    } catch {
+      showToast?.("Menu scan failed");
+    }
+    setMenuScanLoading(false);
+    e.target.value = "";
+  };
+
+  const applyMenuItem = (item: { name: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number } }) => {
+    setName(item.name);
+    setCal(String(item.estimatedMacros.calories ?? ""));
+    setPro(String(item.estimatedMacros.protein ?? ""));
+    setCarb(String(item.estimatedMacros.carbs ?? ""));
+    setFat(String(item.estimatedMacros.fat ?? ""));
+    setMenuItems([]);
+  };
+
+  const saveRestaurantMeal = (item: { name: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number } }, restaurantName = "Menu") => {
+    const existing = getSavedRestaurantMeals();
+    if (existing.some((m) => m.itemName === item.name && m.restaurantName === restaurantName)) {
+      showToast?.("Already saved");
+      return;
+    }
+    const entry = {
+      id: uuidv4(),
+      restaurantName,
+      itemName: item.name,
+      macros: item.estimatedMacros,
+      savedAt: new Date().toISOString(),
+    };
+    const next = [entry, ...existing];
+    saveSavedRestaurantMeals(next);
+    setSavedRestaurantMeals(next);
+    syncToServer();
+    showToast?.("Saved for later");
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {activeFast && (
+        <div className="rounded-xl border border-[var(--accent-warm)]/40 bg-[var(--accent-warm)]/5 px-4 py-2.5 flex items-center gap-2">
+          <span className="text-[var(--accent-warm)] font-medium">Fasting</span>
+          <span className="text-xs text-[var(--muted)]">Log meals when you break your fast</span>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="section-title !text-xl">Meal tracking</h2>
@@ -535,6 +638,28 @@ export function MealsView({
           </svg>
           Calendar
         </button>
+      </div>
+
+      {/* Pantry & Meal prep */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <PantrySection />
+        <MealPrepSection
+          targets={targets}
+          onAddMeals={(meals) => {
+            for (const m of meals) {
+              const entry: MealEntry = {
+                id: uuidv4(),
+                date: isViewingToday ? today : selectedDate,
+                mealType: (m.mealType || "lunch") as MealEntry["mealType"],
+                name: m.name,
+                macros: m.macros,
+                loggedAt: new Date().toISOString(),
+              };
+              onAddMeal(entry);
+              embedMealBackground(entry);
+            }
+          }}
+        />
       </div>
 
       {/* Generate meal plan for empty upcoming days */}
@@ -643,6 +768,10 @@ export function MealsView({
             <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
             {receiptLoading ? "Scanning…" : "Scan receipt"}
           </label>
+          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of restaurant menu — extract items with macros">
+            <input type="file" accept="image/*" className="hidden" onChange={handleMenuScan} disabled={menuScanLoading} />
+            {menuScanLoading ? "Scanning…" : "Scan menu"}
+          </label>
           </div>
         </div>
       ) : (
@@ -672,11 +801,73 @@ export function MealsView({
               </div>
             </div>
           )}
+          {menuItems.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <p className="text-xs font-medium text-[var(--muted)]">Menu items — click to use, 📌 to save</p>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                {menuItems.map((item, i) => (
+                  <div key={i} className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => applyMenuItem(item)}
+                      className="px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--accent)]/40"
+                    >
+                      {item.name} · {item.estimatedMacros?.calories ?? "?"} cal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); saveRestaurantMeal(item); }}
+                      className="px-1.5 py-1.5 text-[10px] text-[var(--muted)] hover:text-[var(--accent)] border-l border-[var(--border-soft)]"
+                      title="Save for later"
+                    >
+                      📌
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {savedRestaurantMeals.length > 0 && (
+            <div className="mb-3 space-y-2">
+              <p className="text-xs font-medium text-[var(--muted)]">Saved meals</p>
+              <div className="flex flex-wrap gap-1.5">
+                {savedRestaurantMeals.slice(0, 8).map((m) => (
+                  <span
+                    key={m.id}
+                    className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applyMenuItem({ name: m.itemName, estimatedMacros: m.macros })}
+                      className="px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--accent)]/50"
+                    >
+                      {m.itemName} · {m.macros.calories} cal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const next = savedRestaurantMeals.filter((x) => x.id !== m.id);
+                        setSavedRestaurantMeals(next);
+                        saveSavedRestaurantMeals(next);
+                        syncToServer();
+                      }}
+                      className="px-1.5 py-1.5 text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)]"
+                      title="Remove"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                {savedRestaurantMeals.length > 8 && <span className="text-[10px] text-[var(--muted)]">+{savedRestaurantMeals.length - 8}</span>}
+              </div>
+            </div>
+          )}
           <button
             type="button"
             onClick={handleSuggest}
             disabled={suggestLoading}
-            title="Get atypical recipe ideas with real links that fit your remaining calories"
+            title="Get AI meal ideas — uses pantry when you have 3+ items"
             className="mb-3 rounded-lg border border-[var(--accent)] px-3 py-1.5 text-sm text-[var(--accent)] bg-[var(--accent-10)] hover:bg-[var(--accent-20)] disabled:opacity-50"
           >
             {suggestLoading ? "Finding recipes…" : "✨ AI suggest meal"}

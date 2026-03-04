@@ -14,6 +14,7 @@ export function TransformationPreview({
   const { showToast } = useToast();
   const [fullBodyPhotoLoading, setFullBodyPhotoLoading] = useState(false);
   const [goalPhotoLoading, setGoalPhotoLoading] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const handleFullBodyPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,6 +43,7 @@ export function TransformationPreview({
     const photoUrl = profile.fullBodyPhotoDataUrl;
     if (!photoUrl) return;
     setGoalPhotoLoading(true);
+    setGenerateError(null);
     try {
       const imageDataUrl = await new Promise<string>((resolve, reject) => {
         const img = new Image();
@@ -71,8 +73,9 @@ export function TransformationPreview({
         onProfileUpdate({ ...profile, goalPhotoDataUrl: data.image });
       }
     } catch (err) {
-      console.error("After image error:", err);
-      showToast(err instanceof Error ? err.message : "Failed to generate after image. Try again.", "error");
+      const msg = err instanceof Error ? err.message : "Failed to generate after image. Try again.";
+      setGenerateError(msg);
+      showToast(msg, "error");
     } finally {
       setGoalPhotoLoading(false);
     }
@@ -126,6 +129,9 @@ export function TransformationPreview({
           <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-[var(--accent)]/40 bg-[var(--accent)]/5 py-10 px-4 text-center min-h-[180px]">
             <p className="text-sm font-medium text-[var(--foreground)]">Generate &quot;after&quot; image</p>
             <p className="mt-1 text-xs text-[var(--muted)]">AI will transform your photo based on goal: {profile.goal.replace(/_/g, " ")}</p>
+            {generateError && (
+              <p className="mt-2 text-xs text-[var(--accent-terracotta)]" role="alert">{generateError}</p>
+            )}
             <button onClick={handleGenerateAfterImage} disabled={goalPhotoLoading} className="btn-primary mt-3 !text-xs">
               {goalPhotoLoading ? "Generating..." : "Generate after image"}
             </button>
@@ -144,9 +150,12 @@ export function TransformationPreview({
           {fullBodyPhotoLoading ? "Processing..." : profile.fullBodyPhotoDataUrl ? "Replace body photo" : "Upload full body photo"}
         </label>
         {profile.fullBodyPhotoDataUrl && profile.goalPhotoDataUrl && (
-          <button onClick={handleGenerateAfterImage} disabled={goalPhotoLoading} className="btn-secondary !text-xs">
-            {goalPhotoLoading ? "Regenerating..." : "Regenerate after"}
-          </button>
+          <>
+            {generateError && <span className="text-xs text-[var(--accent-terracotta)]" role="alert">{generateError}</span>}
+            <button onClick={handleGenerateAfterImage} disabled={goalPhotoLoading} className="btn-secondary !text-xs">
+              {goalPhotoLoading ? "Regenerating..." : "Regenerate after"}
+            </button>
+          </>
         )}
         {profile.fullBodyPhotoDataUrl && (
           <button onClick={() => onProfileUpdate({ ...profile, fullBodyPhotoDataUrl: undefined, goalPhotoDataUrl: undefined })} className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]">

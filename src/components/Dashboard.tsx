@@ -9,6 +9,12 @@ import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 import { TransformationPreview } from "./dashboard/TransformationPreview";
 import { ShoppingList } from "./dashboard/ShoppingList";
 import { EvidenceResultsCard } from "./dashboard/EvidenceResultsCard";
+import { HydrationWidget } from "./dashboard/HydrationWidget";
+import { FastingWidget } from "./dashboard/FastingWidget";
+import { BiofeedbackQuickEntry } from "./dashboard/BiofeedbackQuickEntry";
+import { MetabolicModelCard } from "./dashboard/MetabolicModelCard";
+import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
+import { ResearchCard } from "./dashboard/ResearchCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
@@ -342,7 +348,7 @@ export function Dashboard({
 
       {/* ── Today at a Glance ── */}
       <div className="animate-fade-in stagger-1">
-      <TodayAtAGlance
+        <TodayAtAGlance
         plan={plan}
         meals={meals}
         todaysTotals={todaysTotals}
@@ -362,6 +368,57 @@ export function Dashboard({
         onAddActivity={addActivityEntry}
         onRemoveActivity={removeActivityEntry}
       />
+      </div>
+
+      {/* ── Hydration, Fasting, Biofeedback, Metabolic, Coach ── */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
+        <HydrationWidget />
+        <FastingWidget />
+        <BiofeedbackQuickEntry />
+        <MetabolicModelCard />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
+        <CoachCheckInCard
+          profile={profile}
+          todayMeals={meals.filter((m) => m.date === today)}
+          targets={targets}
+          workoutCompletedToday={(() => {
+            if (!plan) return false;
+            const idx = matchWorkoutDay(today);
+            if (idx === null) return false;
+            const w = plan.workoutPlan.weeklyPlan[idx];
+            if (!w) return false;
+            const warmups = w.warmups ?? [];
+            const finishers = w.finishers ?? [];
+            const total = warmups.length + w.exercises.length + finishers.length;
+            if (total === 0) return false;
+            const keyFor = (ex: { name: string; sets: string; reps: string; notes?: string }, section: "warmup" | "main" | "finisher") => {
+              const base = `${plan.id}:${w.day}:`;
+              if (section === "main") return `${base}${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+              return `${base}${section}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+            };
+            const done =
+              warmups.filter((ex) => workoutProgress[keyFor(ex, "warmup")]?.slice(0, 10) === today).length +
+              w.exercises.filter((ex) => workoutProgress[keyFor(ex, "main")]?.slice(0, 10) === today).length +
+              finishers.filter((ex) => workoutProgress[keyFor(ex, "finisher")]?.slice(0, 10) === today).length;
+            return done >= total;
+          })()}
+          streak={(() => {
+            const dates = new Set(meals.map((m) => m.date));
+            if (!dates.has(today)) return 0;
+            const sorted = [...dates].sort().reverse();
+            let s = 0;
+            let prev: number | null = null;
+            for (const d of sorted) {
+              const t = new Date(d).getTime();
+              if (prev === null || prev - t === 86400000) s++;
+              else break;
+              prev = t;
+            }
+            return s;
+          })()}
+        />
+        <ResearchCard />
       </div>
 
       {/* ── Calendar Navigator ── */}

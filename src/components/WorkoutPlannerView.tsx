@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames } from "@/lib/storage";
-import type { FitnessPlan, WorkoutExercise } from "@/lib/types";
+import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference } from "@/lib/storage";
+import type { FitnessPlan, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
@@ -37,12 +37,23 @@ function extractExerciseNames(weeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan
   return names;
 }
 
+interface MusicSuggestion {
+  name: string;
+  description?: string;
+  provider: string;
+  deepLink: string;
+  bpm?: string;
+  mood?: string;
+}
+
 export function WorkoutPlannerView({
   plan,
+  wearableData = [],
   onUpdatePlan,
   onPlanSaved,
 }: {
   plan: FitnessPlan | null;
+  wearableData?: WearableDaySummary[];
   onUpdatePlan: (plan: FitnessPlan) => void;
   /** Called when edits are committed (Done editing, Move, Delete, Add day). Use for sync. */
   onPlanSaved?: () => void;
@@ -57,6 +68,10 @@ export function WorkoutPlannerView({
   const [selectedDate, setSelectedDate] = useState(today);
 
   const [expandedExerciseDemos, setExpandedExerciseDemos] = useState<Set<string>>(() => new Set());
+  const [recoveryAssessment, setRecoveryAssessment] = useState<RecoveryAssessment | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [musicSuggestions, setMusicSuggestions] = useState<Record<number, MusicSuggestion[]>>({});
+  const [musicLoading, setMusicLoading] = useState<Record<number, boolean>>({});
 
   const [exerciseGifs, setExerciseGifs] = useState<Record<string, ExerciseGif | "loading" | "none">>(() => {
     const cached = getGifCache();
@@ -369,6 +384,65 @@ export function WorkoutPlannerView({
     saveWorkoutProgress(next);
   };
 
+  /** Get today's or most recent wearable for recovery assessment */
+  const getWearableForRecovery = useCallback((): { sleepScore?: number; readinessScore?: number; heartRateResting?: number } | null => {
+    if (!wearableData?.length) return null;
+    const todayEntry = wearableData.find((d) => d.date === today);
+    const latest = todayEntry ?? wearableData.sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) return null;
+    return {
+      sleepScore: latest.sleepScore,
+      readinessScore: latest.readinessScore,
+      heartRateResting: latest.heartRateResting,
+    };
+  }, [wearableData, today]);
+
+  const fetchRecovery = useCallback(async () => {
+    const w = getWearableForRecovery();
+    const dayIdx = matchDayToDate(selectedDate);
+    if (dayIdx === null) return;
+    const day = weeklyPlan[dayIdx];
+    const todayWorkout = day ? { day: day.day, focus: day.focus, exercises: day.exercises.map((e) => e.name) } : null;
+    setRecoveryLoading(true);
+    try {
+      const res = await fetch("/api/workouts/recovery-adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wearableData: w ?? {}, todayWorkout }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRecoveryAssessment(data);
+    } catch {
+      setRecoveryAssessment(null);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }, [getWearableForRecovery, matchDayToDate, selectedDate, weeklyPlan]);
+
+  const fetchMusic = useCallback(async (dayIndex: number) => {
+    const day = weeklyPlan[dayIndex];
+    if (!day) return;
+    const pref = getMusicPreference();
+    const provider = pref?.provider ?? "spotify";
+    setMusicLoading((prev) => ({ ...prev, [dayIndex]: true }));
+    try {
+      const res = await fetch("/api/music/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutFocus: day.focus, provider }),
+      });
+      const data = await res.json();
+      if (data.suggestions?.length) {
+        setMusicSuggestions((prev) => ({ ...prev, [dayIndex]: data.suggestions }));
+      }
+    } catch {
+      setMusicSuggestions((prev) => ({ ...prev, [dayIndex]: [] }));
+    } finally {
+      setMusicLoading((prev) => ({ ...prev, [dayIndex]: false }));
+    }
+  }, [weeklyPlan]);
+
   const parseRest = (notes?: string): string | null => {
     if (!notes) return null;
     const m = notes.match(/rest[:\s]*(\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?)/i);
@@ -566,6 +640,40 @@ export function WorkoutPlannerView({
               {/* ── Expanded detail panel ── */}
               {isExpanded && (
                 <div className="border-t border-[var(--border-soft)] px-5 py-4 space-y-4">
+                  {/* Recovery badge (today's workout only) */}
+                  {selectedDate === today && matchDayToDate(selectedDate) === dayIndex && (
+                    <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Recovery</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); fetchRecovery(); }}
+                          disabled={recoveryLoading}
+                          className="rounded-lg px-2.5 py-1 text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50"
+                        >
+                          {recoveryLoading ? "Checking…" : "Check recovery"}
+                        </button>
+                      </div>
+                      {recoveryAssessment && (
+                        <div className="space-y-1 text-sm">
+                          <p className="font-medium">
+                            {recoveryAssessment.score}/100 · {recoveryAssessment.level}
+                          </p>
+                          <p className="text-[var(--muted)]">{recoveryAssessment.recommendation}</p>
+                          {recoveryAssessment.modifiedWorkout?.suggestedSwaps?.length ? (
+                            <ul className="mt-2 space-y-1 text-xs">
+                              {recoveryAssessment.modifiedWorkout.suggestedSwaps.map((s, i) => (
+                                <li key={i}>Swap {s.original} → {s.replacement}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      )}
+                      {!recoveryAssessment && !recoveryLoading && wearableData.length > 0 && (
+                        <p className="text-xs text-[var(--muted)]">Uses sleep, readiness, HR to suggest adjustments</p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Action bar */}
                   <div className="flex flex-wrap items-center gap-2">
                     <button
@@ -593,6 +701,13 @@ export function WorkoutPlannerView({
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, -1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === 0}>Move up</button>
                     <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, 1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === weeklyPlan.length - 1}>Move down</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); fetchMusic(dayIndex); }}
+                      disabled={musicLoading[dayIndex]}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                    >
+                      {musicLoading[dayIndex] ? "Loading…" : "🎵 Get music"}
+                    </button>
                     {isEditing && (
                       <button
                         onClick={(e) => {
@@ -607,6 +722,26 @@ export function WorkoutPlannerView({
                       </button>
                     )}
                   </div>
+
+                  {musicSuggestions[dayIndex]?.length ? (
+                    <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Music</p>
+                      <div className="flex flex-wrap gap-2">
+                        {musicSuggestions[dayIndex].map((s, i) => (
+                          <a
+                            key={i}
+                            href={s.deepLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-xs hover:border-[var(--accent)]/40 transition-colors"
+                          >
+                            <span className="font-medium">{s.name}</span>
+                            {s.mood && <span className="text-[var(--muted)]">{s.mood}</span>}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {/* Editable day name + focus (only in edit mode) */}
                   {isEditing && (

@@ -14,6 +14,7 @@ export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automa
 const TIMEOUT_MS_ACT_SERVICE = 280_000; // 280s — leave headroom before Vercel kills the function
 
 export async function POST(req: NextRequest) {
+  let limitedItems: string[] = [];
   try {
     const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-grocery"), 8, 60_000);
     if (!rl.ok) {
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const validStore = ["fresh", "wholefoods", "amazon"].includes(store) ? store : "fresh";
-    const limitedItems = items.slice(0, 5) as string[];
+    limitedItems = items.slice(0, 5) as string[];
 
     if (isJudgeMode()) {
       const demoResults = limitedItems.map((item, index) => ({
@@ -130,6 +131,21 @@ export async function POST(req: NextRequest) {
     }
   } catch (err) {
     console.error("Act grocery error:", err);
+    // Graceful degradation: return search links so UI still works when Act/service fails
+    if (limitedItems.length > 0) {
+      const res = NextResponse.json({
+        results: limitedItems.map((item) => ({
+          searchTerm: item,
+          found: true,
+          addedToCart: false,
+          product: { name: item, price: "—", available: true },
+          addToCartUrl: `https://www.amazon.com/s?k=${encodeURIComponent(item)}`,
+          source: "error-fallback",
+        })),
+        note: "Act service unavailable. Click each link to search Amazon.",
+      });
+      return res;
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Grocery automation failed" },
       { status: 500 }
