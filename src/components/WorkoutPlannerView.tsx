@@ -206,18 +206,8 @@ export function WorkoutPlannerView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan]);
 
-  if (!plan) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        <h2 className="section-title !text-xl">Workout planner</h2>
-        <p className="section-subtitle">Generate a plan first to manage workouts.</p>
-      </div>
-    );
-  }
-
-  const weeklyPlan = editingWeekCopy ?? plan.workoutPlan.weeklyPlan;
-
-  // Viewing week: when calendar open use selectedDate's week, otherwise today's week
+  // Compute before hooks so hooks run unconditionally (rules of hooks)
+  const weeklyPlan = plan ? (editingWeekCopy ?? plan.workoutPlan.weeklyPlan) : [];
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
 
@@ -270,19 +260,19 @@ export function WorkoutPlannerView({
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
   const commitEdit = useCallback(() => {
-    if (editingWeekCopy) {
-      const names = extractExerciseNames(editingWeekCopy);
-      if (names.length > 0) saveRecentExerciseNames(names);
-      onUpdatePlan({
-        ...plan,
-        workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
-      });
-      onPlanSaved?.();
-      setEditingWeekCopy(null);
-    }
+    if (!plan || !editingWeekCopy) return;
+    const names = extractExerciseNames(editingWeekCopy);
+    if (names.length > 0) saveRecentExerciseNames(names);
+    onUpdatePlan({
+      ...plan,
+      workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
+    });
+    onPlanSaved?.();
+    setEditingWeekCopy(null);
   }, [editingWeekCopy, plan, onUpdatePlan, onPlanSaved]);
 
   const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
+    if (!plan) return;
     if (triggerSync) {
       const names = extractExerciseNames(nextWeeklyPlan);
       if (names.length > 0) saveRecentExerciseNames(names);
@@ -461,6 +451,15 @@ export function WorkoutPlannerView({
     }
     return out;
   }, [weeklyPlan]);
+
+  if (!plan) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <h2 className="section-title !text-xl">Workout planner</h2>
+        <p className="section-subtitle">Generate a plan first to manage workouts.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   dbGetUserIdByUsername,
   dbGetProfile,
@@ -75,7 +76,7 @@ export default async function PublicProfilePage({ params }: Props) {
         <div className="text-center space-y-4 p-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">User not found</h1>
           <p className="text-[var(--muted)]">No profile exists for @{username}</p>
-          <a href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</a>
+          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</Link>
         </div>
       </div>
     );
@@ -93,7 +94,7 @@ export default async function PublicProfilePage({ params }: Props) {
       <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
         <div className="text-center space-y-4 p-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Profile unavailable</h1>
-          <a href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</a>
+          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</Link>
         </div>
       </div>
     );
@@ -225,12 +226,12 @@ export default async function PublicProfilePage({ params }: Props) {
 
         {/* CTA */}
         <div className="text-center mt-8">
-          <a
+          <Link
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--accent)] text-white font-medium hover:opacity-90 transition"
           >
             Start your own journey on Recomp
-          </a>
+          </Link>
         </div>
       </div>
     </div>
