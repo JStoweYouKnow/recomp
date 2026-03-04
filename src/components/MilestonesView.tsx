@@ -63,6 +63,8 @@ export function MilestonesView({
   const [biofeedbackInsights, setBiofeedbackInsights] = useState<{ correlations: { factor: string; observation: string; strength: string }[]; recommendations: string[] } | null>(null);
   const [reelProcessing, setReelProcessing] = useState(false);
   const [reelMessage, setReelMessage] = useState<string | null>(null);
+  const [reelVideoUrl, setReelVideoUrl] = useState<string | null>(null);
+  const [reelIsDemo, setReelIsDemo] = useState(false);
 
   useEffect(() => {
     const t = getMeasurementTargets();
@@ -438,6 +440,7 @@ export function MilestonesView({
               type="button"
               onClick={async () => {
                 try {
+                  setReelVideoUrl(null);
                   const res = await fetch("/api/body-scan/progress-reel", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -445,15 +448,62 @@ export function MilestonesView({
                   });
                   const data = await res.json();
                   if (data.error) throw new Error(data.error);
-                  const msg = data.message ?? `Generating progress reel from ${data.scanCount ?? bodyScans.length} scans.`;
-                  setReelMessage(msg);
-                  setReelProcessing(true);
-                  showToast(msg);
-                  // Clear processing state after 2 min (user can re-trigger if needed)
-                  setTimeout(() => {
+
+                  if (data.videoUrl && data.status === "completed") {
+                    setReelVideoUrl(data.videoUrl);
                     setReelProcessing(false);
                     setReelMessage(null);
-                  }, 120_000);
+                    setReelIsDemo(Boolean(data.isDemo));
+                    showToast(data.isDemo ? "Demo video — configure S3 for real reels" : "Progress reel ready");
+                    return;
+                  }
+
+                  if (data.jobId) {
+                    const msg = data.message ?? `Generating progress reel from ${data.scanCount ?? bodyScans.length} scans.`;
+                    setReelMessage(msg);
+                    setReelProcessing(true);
+                    showToast(msg);
+                    const poll = async () => {
+                      try {
+                        const pollRes = await fetch(`/api/body-scan/progress-reel?jobId=${encodeURIComponent(data.jobId)}`);
+                        const pollData = await pollRes.json();
+                        if (pollData.error) return;
+                        if (pollData.status === "Completed" && pollData.videoUrl) {
+                          setReelVideoUrl(pollData.videoUrl);
+                          setReelProcessing(false);
+                          setReelMessage(null);
+                          setReelIsDemo(false);
+                          showToast("Progress reel ready");
+                          return;
+                        }
+                        if (pollData.status === "Failed") {
+                          setReelProcessing(false);
+                          setReelMessage(null);
+                          showToast(pollData.failureMessage ?? "Video generation failed", "error");
+                          return;
+                        }
+                        setTimeout(poll, 5000);
+                      } catch {
+                        setReelProcessing(false);
+                        setReelMessage(null);
+                        showToast("Failed to check progress", "error");
+                      }
+                    };
+                    setTimeout(poll, 5000);
+                    setTimeout(() => {
+                      setReelProcessing(false);
+                      setReelMessage(null);
+                    }, 120_000);
+                  } else {
+                    const msg = data.message ?? "Progress reel requested.";
+                    setReelMessage(msg);
+                    setReelProcessing(true);
+                    showToast(msg);
+                    setTimeout(() => {
+                      setReelProcessing(false);
+                      setReelMessage(null);
+                    }, 120_000);
+                  }
                 } catch {
                   showToast("Failed to start progress reel", "error");
                 }
@@ -468,6 +518,20 @@ export function MilestonesView({
                 <p className="font-medium text-[var(--accent)]">Video generation in progress</p>
                 <p className="mt-1 text-[var(--muted)]">{reelMessage}</p>
                 <p className="mt-2 text-[10px] text-[var(--muted)]">Nova Reel may take a few minutes. Check back later or enable push notifications to be notified when it’s ready.</p>
+              </div>
+            )}
+            {reelVideoUrl && (
+              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-3 animate-fade-in">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-[var(--accent)]">Your progress reel</p>
+                  {reelIsDemo && (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--muted)]/20 text-[var(--muted)]">
+                      Demo — set NOVA_REEL_S3_BUCKET for real generation
+                    </span>
+                  )}
+                </div>
+                <video src={reelVideoUrl} controls className="w-full max-h-48 rounded-lg" />
+                <button type="button" onClick={() => { setReelVideoUrl(null); setReelIsDemo(false); }} className="mt-2 text-xs text-[var(--muted)] hover:underline">Dismiss</button>
               </div>
             )}
           </>

@@ -1,34 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
-import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
+import { rateLimitError, unauthorized, internalError } from "@/lib/api-response";
+import { researchQuery } from "@/lib/services/research";
 
 /** Allow up to 60s for web grounding */
 export const maxDuration = 60;
-
-const SYSTEM_PROMPT =
-  "You are a fitness and nutrition research assistant. Provide evidence-based, detailed answers about nutrition, exercise science, and body recomposition. Cite relevant studies or guidelines where applicable.";
 
 /** Web grounding – Nova searches the web for current nutrition/fitness info.
  *  Falls back to standard Nova inference if web grounding is unavailable. */
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "research"), 10, 60_000);
-  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!rl.ok) return rateLimitError("Rate limit exceeded");
   if (requireAuthForAI()) {
     const userId = await getUserId(req.headers);
-    if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    if (!userId) return unauthorized();
   }
 
   try {
     const { query } = await req.json();
-    const q = typeof query === "string" && query.trim() ? query.trim() : "Latest dietary guidelines for protein intake";
-
-    const { text, source } = await invokeNovaWithWebGroundingOrFallback(SYSTEM_PROMPT, q, { temperature: 0.5, maxTokens: 1024 });
-
-    return NextResponse.json({ answer: text, source });
+    const q = typeof query === "string" ? query : "";
+    const result = await researchQuery(q);
+    return NextResponse.json(result);
   } catch (err) {
     console.error("Research error:", err);
-    return NextResponse.json({ error: "Research failed", detail: err instanceof Error ? err.message : String(err) }, { status: 500 });
+    return internalError("Research failed", err);
   }
 }

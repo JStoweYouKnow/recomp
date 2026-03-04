@@ -382,10 +382,17 @@ export default function Home() {
           role="status"
           aria-live="polite"
         >
-          <span className="inline-flex items-center gap-2 rounded-full bg-[var(--surface-elevated)]/95 border border-[var(--border-soft)] px-3.5 py-2 text-sm text-[var(--muted-foreground)] shadow-[var(--shadow-soft)]">
-            <span className="h-2 w-2 rounded-full bg-[var(--accent-warm)] animate-pulse" aria-hidden />
-            <span><strong className="text-[var(--foreground)] font-medium">Demo mode</strong> — Data stored locally. Complete onboarding to sync.</span>
-          </span>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full bg-[var(--surface-elevated)]/95 border border-[var(--border-soft)] px-3.5 py-2 text-sm text-[var(--muted-foreground)] shadow-[var(--shadow-soft)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--accent-warm)] animate-pulse shrink-0" aria-hidden />
+            <span><strong className="text-[var(--foreground)] font-medium">Demo mode</strong> — Data in browser. Register to sync to cloud.</span>
+            <button
+              type="button"
+              onClick={() => navigateTo("profile")}
+              className="shrink-0 text-xs font-medium text-[var(--accent)] hover:underline"
+            >
+              Register to sync
+            </button>
+          </div>
         </div>
       )}
 

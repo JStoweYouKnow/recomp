@@ -6,6 +6,8 @@ Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
 **Repository:** [github.com/JStoweYouKnow/recomp](https://github.com/JStoweYouKnow/recomp)
 
+**Judge materials:** [JUDGE_NOTES.md](./JUDGE_NOTES.md) (novel aspects) · [IMPACT.md](./IMPACT.md) (enterprise/community impact evidence) · [API structure](./docs/API_STRUCTURE.md) (domain map, service layer)
+
 ## Quick Start for Judges
 
 > **Live demo:** [https://recomp-one.vercel.app](https://recomp-one.vercel.app)
@@ -62,7 +64,7 @@ What makes Recomp novel — both technically and as a product:
 - **Live demo**: [https://recomp-one.vercel.app/](https://recomp-one.vercel.app/). To deploy your own: [Deploy to Vercel](#deployment-vercel) — `vercel --prod` (requires `vercel login`). Add the deployment URL to your Devpost submission. Configure `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` in Vercel dashboard. **For judge demos:** "Try pre-seeded demo" sets an auth cookie via `/api/auth/demo`, so AI routes work even if `REQUIRE_AUTH_FOR_AI=true`; leave it unset/false for best experience.
 - **Repo access (if private)**: Add `testing@devpost.com` and `Amazon-Nova-hackathon@amazon.com` as collaborators (GitHub → Settings → Collaborators), or make the repo public.
 - **AWS**: For a hosted demo, configure Bedrock credentials in the deployment environment. For local evaluation, judges can run `npm run dev` with their own AWS credentials (see Setup).
-- **Demo mode**: When running without auth (e.g., first-time visit or cleared cookies), the app stores data in localStorage and shows a "Demo mode" banner. Complete onboarding to register and sync to the server.
+- **Demo mode vs logged-in:** Without auth (first visit or cleared cookies), data stays in localStorage and a "Demo mode" banner appears. Complete onboarding to register; then data syncs to DynamoDB. Judges can use "Try pre-seeded demo" for instant access with sample data.
 - **Judge reliability mode**: If external services (Act, Reel, DynamoDB) are flaky during evaluation, set `JUDGE_MODE=true` in Vercel env to force deterministic fallback. Demos then run without Act service, S3, or DynamoDB. Verify at `/api/judge/health`. The app also degrades gracefully when Act fails—grocery returns search links; nutrition returns estimated macros.
 - **Submission**: Demo video (~3 min, #AmazonNova), live URL, repo access, Devpost form.
 

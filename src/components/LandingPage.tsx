@@ -265,29 +265,37 @@ export function LandingPage({
 
       <section className="px-5 pb-20">
         <div className="mx-auto max-w-lg">
+          {/* Judges / evaluators: one-click instant demo — prominent above form */}
+          <div className="mb-8 p-4 rounded-xl border-2 border-[var(--accent)]/30 bg-[var(--accent)]/5 animate-fade-in" style={{ animationDelay: "320ms" }}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">For judges & evaluators</p>
+            <p className="mt-1 text-sm text-[var(--foreground)]">One-click instant demo — no signup. Loads 7-day sample data with auth cookie for AI routes.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onUsePreseededDemo}
+                className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent)]/90 transition-colors"
+              >
+                <span className="h-2 w-2 rounded-full bg-white animate-pulse" aria-hidden />
+                Try pre-seeded demo
+              </button>
+              <button
+                type="button"
+                onClick={onResetDemoData}
+                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] hover:underline"
+              >
+                Reset local demo data
+              </button>
+            </div>
+          </div>
+
           <div className="text-center mb-6 animate-fade-in" style={{ animationDelay: "350ms" }}>
             <h2 className="brand-title text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--foreground)] tracking-tight">
-              Create your personalized plan
+              Or create your personalized plan
             </h2>
             <p className="mt-2 text-[var(--muted)] text-sm uppercase tracking-widest font-medium">
               A few quick questions to get started
             </p>
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">Takes about 2 minutes. You can change anything later in Profile.</p>
-            <button
-              type="button"
-              onClick={onUsePreseededDemo}
-              className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-4 py-2 text-xs font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/10 hover:border-[var(--accent)]/60 transition-colors"
-            >
-              <span className="h-2 w-2 rounded-full bg-[var(--accent)] animate-pulse" aria-hidden />
-              Try pre-seeded demo <span className="text-[10px] font-normal opacity-80">— instant access</span>
-            </button>
-            <button
-              type="button"
-              onClick={onResetDemoData}
-              className="mt-2 block w-full text-[11px] text-[var(--muted)] hover:text-[var(--foreground)]"
-            >
-              Reset local demo data
-            </button>
           </div>
           {/* Voice / Form toggle — only after mount to avoid hydration mismatch */}
           {showVoiceToggle && (

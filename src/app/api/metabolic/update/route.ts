@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logError } from "@/lib/logger";
+import { rateLimitError, unauthorized, internalError } from "@/lib/api-response";
 import type { MetabolicModel, MetabolicDataPoint } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "metabolic-update"), 5, 60_000);
-  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+  if (!rl.ok) return rateLimitError("Rate limit exceeded");
 
   const userId = await getUserId(req.headers);
-  if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  if (!userId) return unauthorized();
 
   try {
     const { dataPoints, currentTDEE } = await req.json() as {
@@ -69,6 +70,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(model);
   } catch (err) {
     logError("Metabolic model update failed", err, { route: "metabolic/update" });
-    return NextResponse.json({ error: "Failed to update metabolic model" }, { status: 500 });
+    return internalError("Failed to update metabolic model", err);
   }
 }

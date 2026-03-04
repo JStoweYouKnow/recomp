@@ -100,6 +100,17 @@ The coordinator uses Nova 2 Lite tool use to delegate to specialist agents. Each
 
 ---
 
+## API Layer Separation
+
+Routes delegate business logic to services in `src/lib/services/`. See [docs/API_STRUCTURE.md](./docs/API_STRUCTURE.md) for the full domain map and migration status.
+
+| Service | Routes | Responsibility |
+|---------|--------|-----------------|
+| `services/meals.ts` | meals/suggest | Curated recipes, Nova-based meal suggestions |
+| `services/body-scan.ts` | body-scan/progress-reel | Progress reel start, poll, demo video |
+
+---
+
 ## Data Flow
 
 | Layer | Components | Responsibility |
@@ -120,7 +131,7 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 | Nova 2 Lite | plans/generate, meals/suggest, rico, agent/weekly-review, voice/parse, meals/analyze-*, research | Text generation, image understanding, tool use |
 | Nova 2 Sonic | voice/sonic, voice/sonic/stream | Bidirectional streaming voice (Reco + meal logging) |
 | Nova Canvas | images/generate, images/after | Meal inspiration; transformation preview |
-| Nova Reel | video/generate | Exercise form demo clips |
+| Nova Reel | video/generate, body-scan/progress-reel | Exercise clips; body scan transformation video |
 | Nova Act | act/grocery, act/nutrition | Grocery search; USDA nutrition lookup |
 | Nova Embeddings | embeddings | Text similarity for meal recommendations |
 | Web Grounding | research | Nutrition/fitness guidelines |
@@ -174,13 +185,25 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 
 ---
 
-## Act Service (production)
+## Nova Act Integration (UI Automation)
 
-Nova Act (nutrition, grocery) requires Python + Chromium. Vercel serverless cannot run it.
+Recomp uses **Nova Act SDK** for grocery search and nutrition lookup. Act runs browser automation (Chromium) and cannot execute inside Vercel serverless. Two deployment paths:
 
-**Deployment:** `act-service/` deploys to Railway/Render. Dockerfile uses Playwright image. Set `NOVA_ACT_API_KEY` and `ACT_SERVICE_URL` in Vercel.
+### Production (recommended): Act microservice
 
-**Flow:** Next.js routes call `ACT_SERVICE_URL` when set; fall back to local Python or estimated values.
+- **Location:** `act-service/` (Python + Nova Act SDK) deployed to Railway/Render
+- **SDK usage:** The Act service invokes `nova-act` Python package to automate Amazon Fresh/Whole Foods/Amazon product search. It opens a headless browser, navigates to the store, searches for each ingredient, and returns product links + add-to-cart URLs.
+- **Next.js → Act:** API routes (`/api/act/grocery`, `/api/act/nutrition`) call `ACT_SERVICE_URL` via HTTP POST. The service runs Nova Act tasks and returns structured JSON.
+- **Env:** Set `ACT_SERVICE_URL` (e.g. `https://recomp-production.up.railway.app`) in Vercel; optional `NOVA_ACT_API_KEY` if the service requires it.
+
+### Local development
+
+- **Fallback:** If `ACT_SERVICE_URL` is unset, Next.js invokes `scripts/nova_act_grocery.py` via `runPython()` when Python + `nova-act` are installed.
+- **Direct SDK:** The Python script imports `nova_act` and uses it to perform the same grocery/nutrition automation locally.
+
+### Judge mode
+
+- `JUDGE_MODE=true` returns deterministic fallback data (demo product results) without calling Act. Verify at `/api/judge/health`.
 
 ---
 
