@@ -10,11 +10,13 @@ import {
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
+import { recordJudgeTrace } from "@/lib/judgeTrace";
 
 export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
 const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the function
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   let food = "unknown";
   try {
     const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-nutrition"), 12, 60_000);
@@ -52,6 +54,14 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actNutrition",
+        service: "nova-act",
+        model: "nova-act",
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        detail: "judge-fallback",
+      });
       return res;
     }
 
@@ -69,6 +79,14 @@ export async function POST(req: NextRequest) {
         res.headers.set("X-RateLimit-Limit", headers.limit);
         res.headers.set("X-RateLimit-Remaining", headers.remaining);
         res.headers.set("X-RateLimit-Reset", headers.reset);
+        recordJudgeTrace({
+          action: "actNutrition",
+          service: "cache",
+          model: "nutrition-cache",
+          status: "ok",
+          durationMs: Date.now() - startedAt,
+          detail: "cache-hit",
+        });
         return res;
       }
     } catch { /* cache miss — continue to live lookup */ }
@@ -88,6 +106,13 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actNutrition",
+        service: "nova-act-service",
+        model: "nova-act",
+        status: serviceResult.error ? "fallback" : "ok",
+        durationMs: Date.now() - startedAt,
+      });
       return res;
     }
 
@@ -109,6 +134,13 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actNutrition",
+        service: "nova-act-local-python",
+        model: "nova-act",
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+      });
       return res;
     } catch (actErr) {
       const msg = actErr instanceof Error ? actErr.message : String(actErr);
@@ -135,6 +167,14 @@ export async function POST(req: NextRequest) {
         res.headers.set("X-RateLimit-Limit", headers.limit);
         res.headers.set("X-RateLimit-Remaining", headers.remaining);
         res.headers.set("X-RateLimit-Reset", headers.reset);
+        recordJudgeTrace({
+          action: "actNutrition",
+          service: "nova-act-local-python",
+          model: "nova-act",
+          status: "fallback",
+          durationMs: Date.now() - startedAt,
+          detail: isNovaActMissing ? "sdk-missing" : "python-missing",
+        });
         return res;
       }
       throw actErr;
@@ -144,6 +184,14 @@ export async function POST(req: NextRequest) {
     // Return estimated fallback instead of 500 — UI always gets fillable data
     const normalized = food.toLowerCase().trim();
     const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+    recordJudgeTrace({
+      action: "actNutrition",
+      service: "nova-act",
+      model: "nova-act",
+      status: "fallback",
+      durationMs: Date.now() - startedAt,
+      detail: "estimated-fallback",
+    });
     return NextResponse.json({
       food,
       nutrition: {

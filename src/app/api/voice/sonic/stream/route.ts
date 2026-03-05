@@ -10,6 +10,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { z } from "zod";
+import { recordJudgeTrace } from "@/lib/judgeTrace";
 
 const NOVA_SONIC = "amazon.nova-sonic-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
@@ -162,6 +163,7 @@ async function* buildBedrockInput(
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic-stream"), 30, 60_000);
   if (!rl.ok) {
     const headers = getRateLimitHeaderValues(rl);
@@ -269,9 +271,25 @@ export async function POST(req: NextRequest) {
     streamed.headers.set("X-RateLimit-Limit", headers.limit);
     streamed.headers.set("X-RateLimit-Remaining", headers.remaining);
     streamed.headers.set("X-RateLimit-Reset", headers.reset);
+    recordJudgeTrace({
+      action: "voiceSonicStream",
+      service: "bedrock-bidirectional-stream",
+      model: NOVA_SONIC,
+      status: "ok",
+      durationMs: Date.now() - startedAt,
+      detail: `mode=${mode}`,
+    });
     return streamed;
   } catch (err) {
     console.error("Nova Sonic stream error:", err);
+    recordJudgeTrace({
+      action: "voiceSonicStream",
+      service: "bedrock-bidirectional-stream",
+      model: NOVA_SONIC,
+      status: "error",
+      durationMs: Date.now() - startedAt,
+      detail: err instanceof Error ? err.message : String(err),
+    });
     if (err instanceof Error && err.message.includes("No audio provided")) {
       return new Response(JSON.stringify({ error: "No audio detected. Please hold to record and try again." }), {
         status: 400,

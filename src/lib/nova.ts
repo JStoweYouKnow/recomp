@@ -6,6 +6,7 @@ import {
   GetAsyncInvokeCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 import { NodeHttpHandler } from "@smithy/node-http-handler";
+import { recordJudgeTrace } from "@/lib/judgeTrace";
 
 const NOVA_LITE_DEFAULT = "amazon.nova-2-lite-v1:0";
 /** Nova Lite model ID or inference profile ARN — respects BEDROCK_NOVA_LITE_MODEL_ID env */
@@ -58,12 +59,31 @@ function withInferenceProfileHint(err: unknown): never {
   throw (err instanceof Error ? err : new Error(message));
 }
 
+function traceNovaCall(args: {
+  action: string;
+  service: string;
+  model?: string;
+  startedAt: number;
+  status: "ok" | "error" | "fallback";
+  detail?: string;
+}) {
+  recordJudgeTrace({
+    action: args.action,
+    service: args.service,
+    model: args.model,
+    status: args.status,
+    durationMs: Date.now() - args.startedAt,
+    detail: args.detail,
+  });
+}
+
 /** Basic text inference with Nova 2 Lite */
 export async function invokeNova(
   systemPrompt: string,
   userMessage: string,
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
+  const startedAt = Date.now();
   const client = getClient();
   const input = {
     modelId: NOVA_LITE,
@@ -79,8 +99,23 @@ export async function invokeNova(
     const response = await client.send(new ConverseCommand(input));
     const content = response.output?.message?.content ?? [];
     const textBlock = content.find((c: { text?: string }) => "text" in c);
+    traceNovaCall({
+      action: "invokeNova",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "ok",
+    });
     return (textBlock as { text: string })?.text ?? "";
   } catch (err) {
+    traceNovaCall({
+      action: "invokeNova",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "error",
+      detail: err instanceof Error ? err.message : String(err),
+    });
     withInferenceProfileHint(err);
   }
 }
@@ -92,6 +127,7 @@ export async function invokeNovaWithImage(
   imageBase64: string,
   imageFormat: "png" | "jpeg" | "gif" | "webp" = "jpeg"
 ): Promise<string> {
+  const startedAt = Date.now();
   const client = getClient();
   const imageBytes = Buffer.from(imageBase64.replace(/^data:image\/\w+;base64,/, ""), "base64");
   const input = {
@@ -117,8 +153,23 @@ export async function invokeNovaWithImage(
     const response = await client.send(new ConverseCommand(input));
     const content = response.output?.message?.content ?? [];
     const textBlock = content.find((c: { text?: string }) => "text" in c);
+    traceNovaCall({
+      action: "invokeNovaWithImage",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "ok",
+    });
     return (textBlock as { text: string })?.text ?? "";
   } catch (err) {
+    traceNovaCall({
+      action: "invokeNovaWithImage",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "error",
+      detail: err instanceof Error ? err.message : String(err),
+    });
     withInferenceProfileHint(err);
   }
 }
@@ -130,6 +181,7 @@ export async function invokeNovaWithWebGrounding(
   userMessage: string,
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<string> {
+  const startedAt = Date.now();
   const client = getWebGroundingClient();
   const input = {
     modelId: NOVA_WEB_GROUNDING_MODEL,
@@ -157,11 +209,26 @@ export async function invokeNovaWithWebGrounding(
         }
       }
     }
+    traceNovaCall({
+      action: "invokeNovaWithWebGrounding",
+      service: "bedrock-converse",
+      model: NOVA_WEB_GROUNDING_MODEL,
+      startedAt,
+      status: "ok",
+    });
     return result || "No response";
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Log the actual error for debugging before re-throwing
     console.error(`Web grounding failed (model=${NOVA_WEB_GROUNDING_MODEL}, region=${REGION}):`, message);
+    traceNovaCall({
+      action: "invokeNovaWithWebGrounding",
+      service: "bedrock-converse",
+      model: NOVA_WEB_GROUNDING_MODEL,
+      startedAt,
+      status: "error",
+      detail: message,
+    });
     withInferenceProfileHint(err);
   }
 }
@@ -172,12 +239,29 @@ export async function invokeNovaWithWebGroundingOrFallback(
   userMessage: string,
   options?: { temperature?: number; maxTokens?: number }
 ): Promise<{ text: string; source: "web-grounding" | "nova-lite" }> {
+  const startedAt = Date.now();
   try {
     const text = await invokeNovaWithWebGrounding(systemPrompt, userMessage, options);
+    traceNovaCall({
+      action: "invokeNovaWithWebGroundingOrFallback",
+      service: "bedrock-converse",
+      model: NOVA_WEB_GROUNDING_MODEL,
+      startedAt,
+      status: "ok",
+      detail: "source=web-grounding",
+    });
     return { text, source: "web-grounding" };
   } catch (err) {
     console.warn("Web grounding unavailable, falling back to Nova Lite:", err instanceof Error ? err.message : err);
     const text = await invokeNova(systemPrompt, userMessage, options);
+    traceNovaCall({
+      action: "invokeNovaWithWebGroundingOrFallback",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "fallback",
+      detail: "source=nova-lite",
+    });
     return { text, source: "nova-lite" };
   }
 }
@@ -189,6 +273,7 @@ export async function invokeNovaWithExtendedThinking(
   effort: "low" | "medium" | "high" = "high",
   options?: { maxTokens?: number }
 ): Promise<string> {
+  const startedAt = Date.now();
   const client = getClient();
   const input: {
     modelId: string;
@@ -217,14 +302,31 @@ export async function invokeNovaWithExtendedThinking(
     const response = await client.send(new ConverseCommand(input));
     const content = response.output?.message?.content ?? [];
     const textBlock = content.find((c: { text?: string }) => "text" in c);
+    traceNovaCall({
+      action: "invokeNovaWithExtendedThinking",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "ok",
+      detail: `effort=${effort}`,
+    });
     return (textBlock as { text: string })?.text ?? "";
   } catch (err) {
+    traceNovaCall({
+      action: "invokeNovaWithExtendedThinking",
+      service: "bedrock-converse",
+      model: NOVA_LITE,
+      startedAt,
+      status: "error",
+      detail: err instanceof Error ? err.message : String(err),
+    });
     withInferenceProfileHint(err);
   }
 }
 
 /** Nova Canvas – generate image from text */
 export async function invokeNovaCanvas(prompt: string, width = 512, height = 512): Promise<string> {
+  const startedAt = Date.now();
   const client = getClient();
   const payload = {
     taskType: "TEXT_IMAGE",
@@ -245,6 +347,13 @@ export async function invokeNovaCanvas(prompt: string, width = 512, height = 512
     })
   );
   const body = JSON.parse(new TextDecoder().decode(response.body));
+  traceNovaCall({
+    action: "invokeNovaCanvas",
+    service: "bedrock-invoke-model",
+    model: NOVA_CANVAS,
+    startedAt,
+    status: "ok",
+  });
   return body.images?.[0] ?? "";
 }
 
@@ -254,6 +363,7 @@ export async function invokeNovaCanvasImageVariation(
   textPrompt: string,
   options?: { similarityStrength?: number; width?: number; height?: number; negativeText?: string }
 ): Promise<string> {
+  const startedAt = Date.now();
   const client = getClient();
   const b64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
   const width = options?.width ?? 512;
@@ -282,6 +392,13 @@ export async function invokeNovaCanvasImageVariation(
     })
   );
   const body = JSON.parse(new TextDecoder().decode(response.body));
+  traceNovaCall({
+    action: "invokeNovaCanvasImageVariation",
+    service: "bedrock-invoke-model",
+    model: NOVA_CANVAS,
+    startedAt,
+    status: "ok",
+  });
   return body.images?.[0] ?? "";
 }
 
@@ -290,6 +407,7 @@ export async function startNovaReelVideo(
   prompt: string,
   s3OutputUri: string
 ): Promise<{ invocationArn: string }> {
+  const startedAt = Date.now();
   const client = getClient();
   const modelInput = {
     taskType: "TEXT_VIDEO",
@@ -308,6 +426,13 @@ export async function startNovaReelVideo(
       outputDataConfig: { s3OutputDataConfig: { s3Uri: s3OutputUri } },
     })
   );
+  traceNovaCall({
+    action: "startNovaReelVideo",
+    service: "bedrock-start-async",
+    model: NOVA_REEL,
+    startedAt,
+    status: "ok",
+  });
   return { invocationArn: response.invocationArn ?? "" };
 }
 
@@ -315,8 +440,17 @@ export async function startNovaReelVideo(
 export async function getNovaReelStatus(
   invocationArn: string
 ): Promise<{ status: string; outputLocation?: string; failureMessage?: string }> {
+  const startedAt = Date.now();
   const client = getClient();
   const response = await client.send(new GetAsyncInvokeCommand({ invocationArn }));
+  traceNovaCall({
+    action: "getNovaReelStatus",
+    service: "bedrock-get-async",
+    model: NOVA_REEL,
+    startedAt,
+    status: response.failureMessage ? "error" : "ok",
+    detail: response.status,
+  });
   return {
     status: response.status ?? "Unknown",
     outputLocation: response.outputDataConfig?.s3OutputDataConfig?.s3Uri,

@@ -9,11 +9,13 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
+import { recordJudgeTrace } from "@/lib/judgeTrace";
 
 export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
 const TIMEOUT_MS_ACT_SERVICE = 280_000; // 280s — leave headroom before Vercel kills the function
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   let limitedItems: string[] = [];
   try {
     const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "act-grocery"), 8, 60_000);
@@ -56,6 +58,14 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actGrocery",
+        service: "nova-act",
+        model: "nova-act",
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        detail: "judge-fallback",
+      });
       return res;
     }
 
@@ -70,6 +80,13 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actGrocery",
+        service: "nova-act-service",
+        model: "nova-act",
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+      });
       return res;
     }
     // Act service failed, timed out, or no results — return search links so user can still add items
@@ -90,6 +107,14 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actGrocery",
+        service: "nova-act-service",
+        model: "nova-act",
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        detail: "search-fallback",
+      });
       return res;
     }
 
@@ -103,6 +128,13 @@ export async function POST(req: NextRequest) {
       res.headers.set("X-RateLimit-Limit", headers.limit);
       res.headers.set("X-RateLimit-Remaining", headers.remaining);
       res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actGrocery",
+        service: "nova-act-local-python",
+        model: "nova-act",
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+      });
       return res;
     } catch (actErr) {
       const msg = actErr instanceof Error ? actErr.message : String(actErr);
@@ -125,6 +157,14 @@ export async function POST(req: NextRequest) {
         res.headers.set("X-RateLimit-Limit", headers.limit);
         res.headers.set("X-RateLimit-Remaining", headers.remaining);
         res.headers.set("X-RateLimit-Reset", headers.reset);
+        recordJudgeTrace({
+          action: "actGrocery",
+          service: "nova-act-local-python",
+          model: "nova-act",
+          status: "fallback",
+          durationMs: Date.now() - startedAt,
+          detail: isNovaActMissing ? "sdk-missing" : "python-missing",
+        });
         return res;
       }
       throw actErr;
@@ -144,8 +184,24 @@ export async function POST(req: NextRequest) {
         })),
         note: "Act service unavailable. Click each link to search Amazon.",
       });
+      recordJudgeTrace({
+        action: "actGrocery",
+        service: "nova-act",
+        model: "nova-act",
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        detail: "error-fallback",
+      });
       return res;
     }
+    recordJudgeTrace({
+      action: "actGrocery",
+      service: "nova-act",
+      model: "nova-act",
+      status: "error",
+      durationMs: Date.now() - startedAt,
+      detail: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Grocery automation failed" },
       { status: 500 }

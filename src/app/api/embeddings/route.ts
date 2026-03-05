@@ -6,11 +6,13 @@ import {
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
+import { recordJudgeTrace } from "@/lib/judgeTrace";
 
 const EMBEDDINGS_MODEL = "amazon.nova-2-multimodal-embeddings-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "embeddings"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   if (requireAuthForAI()) {
@@ -58,9 +60,25 @@ export async function POST(req: NextRequest) {
     );
     const result = JSON.parse(new TextDecoder().decode(response.body));
     const embedding = result.embedding ?? result.embeddings?.[0];
+    recordJudgeTrace({
+      action: "embeddings",
+      service: "bedrock-invoke-model",
+      model: EMBEDDINGS_MODEL,
+      status: "ok",
+      durationMs: Date.now() - startedAt,
+      detail: imageBase64 ? "input=image" : "input=text",
+    });
     return NextResponse.json({ embedding });
   } catch (err) {
     console.error("Embeddings error:", err);
+    recordJudgeTrace({
+      action: "embeddings",
+      service: "bedrock-invoke-model",
+      model: EMBEDDINGS_MODEL,
+      status: "error",
+      durationMs: Date.now() - startedAt,
+      detail: err instanceof Error ? err.message : String(err),
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Embedding failed" },
       { status: 500 }
