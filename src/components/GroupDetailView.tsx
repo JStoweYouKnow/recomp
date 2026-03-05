@@ -55,6 +55,9 @@ export function GroupDetailView({
   const [showMembers, setShowMembers] = useState(false);
   const [showChallenges, setShowChallenges] = useState(false);
   const [groupChallenges, setGroupChallenges] = useState<Challenge[]>([]);
+  const [leaderboardSort, setLeaderboardSort] = useState<"xp" | "streak" | "macro">("xp");
+  const [leaderboardView, setLeaderboardView] = useState<"week" | "all">("all");
+  const [activeTab, setActiveTab] = useState<"chat" | "activity">("chat");
   const [createChallengeOpen, setCreateChallengeOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createMetric, setCreateMetric] = useState<ChallengeMetric>("meal_streak");
@@ -406,34 +409,103 @@ export function GroupDetailView({
               {/* Leaderboard */}
               {(trackingMode === "leaderboard" || trackingMode === "both") && (
                 <>
+                  {/* Sort & view controls */}
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex gap-1">
+                      {(["xp", "streak", "macro"] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setLeaderboardSort(s)}
+                          className={`text-[10px] px-2 py-1 rounded-full font-medium transition-all ${
+                            leaderboardSort === s
+                              ? "bg-[var(--accent-10)] text-[var(--accent)]"
+                              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {s === "xp" ? "XP" : s === "streak" ? "Streak" : "Macros"}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      {(["all", "week"] as const).map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => setLeaderboardView(v)}
+                          className={`text-[10px] px-2 py-1 rounded-full font-medium transition-all ${
+                            leaderboardView === v
+                              ? "bg-[var(--surface-elevated)] text-[var(--foreground)]"
+                              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {v === "all" ? "All Time" : "This Week"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {progress.length === 0 ? (
                     <p className="text-sm text-[var(--muted)]">No progress data yet. Members need to sync their data.</p>
                   ) : (
                     <div className="space-y-2">
-                      {progress.map((p, i) => (
-                        <div key={p.userId} className="flex items-center gap-3 p-3 rounded-xl bg-[var(--surface-elevated)]">
-                          <span className={`w-6 text-center font-bold text-sm ${
-                            i === 0 ? "text-yellow-500" : i === 1 ? "text-gray-400" : i === 2 ? "text-amber-700" : "text-[var(--muted)]"
-                          }`}>
-                            {i + 1}
-                          </span>
-                          {p.avatarDataUrl ? (
-                            <img src={p.avatarDataUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
-                          ) : (
-                            <div className="w-8 h-8 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-sm text-[var(--accent)]">
-                              {p.name.charAt(0).toUpperCase()}
+                      {[...progress]
+                        .sort((a, b) => {
+                          if (leaderboardSort === "streak") return b.streakLength - a.streakLength;
+                          if (leaderboardSort === "macro") return b.macroHitRate - a.macroHitRate;
+                          return b.xp - a.xp;
+                        })
+                        .map((p, i) => {
+                          const profile = getProfile();
+                          const isMe = profile?.id === p.userId || profile?.name === p.name;
+                          const rankIcons = ["\ud83e\udd47", "\ud83e\udd48", "\ud83e\udd49"];
+                          const maxVal = leaderboardSort === "streak"
+                            ? Math.max(...progress.map((x) => x.streakLength), 1)
+                            : leaderboardSort === "macro"
+                              ? 100
+                              : Math.max(...progress.map((x) => x.xp), 1);
+                          const curVal = leaderboardSort === "streak" ? p.streakLength : leaderboardSort === "macro" ? p.macroHitRate : p.xp;
+                          const barPct = Math.min(100, (curVal / maxVal) * 100);
+
+                          return (
+                            <div
+                              key={p.userId}
+                              className={`rank-entry flex items-center gap-3 p-3 rounded-xl transition-all ${
+                                isMe
+                                  ? "bg-[var(--accent-10)] border border-[var(--accent)]/20"
+                                  : "bg-[var(--surface-elevated)]"
+                              }`}
+                            >
+                              <span className="w-7 text-center text-sm">
+                                {i < 3 ? rankIcons[i] : <span className="font-bold text-[var(--muted)]">{i + 1}</span>}
+                              </span>
+                              {p.avatarDataUrl ? (
+                                <img src={p.avatarDataUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-[var(--accent)]/10 flex items-center justify-center text-sm text-[var(--accent)]">
+                                  {p.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-medium text-[var(--foreground)] truncate">
+                                    {p.name}
+                                    {isMe && <span className="text-[10px] text-[var(--accent)] ml-1">(you)</span>}
+                                  </p>
+                                </div>
+                                <div className="mt-1 h-1.5 rounded-full bg-[var(--border-soft)] overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full transition-all duration-700"
+                                    style={{
+                                      width: `${barPct}%`,
+                                      background: i === 0 ? "var(--accent)" : i === 1 ? "var(--accent-sage)" : "var(--accent-warm)",
+                                    }}
+                                  />
+                                </div>
+                                <p className="text-[10px] text-[var(--muted)] mt-0.5">
+                                  Lv{xpToLevel(p.xp)} · {p.xp} XP · {p.streakLength}d streak · {p.macroHitRate}% macros
+                                </p>
+                              </div>
                             </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[var(--foreground)] truncate">{p.name}</p>
-                            <p className="text-xs text-[var(--muted)]">Level {xpToLevel(p.xp)} · {p.xp} XP</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium text-[var(--accent)]">{p.streakLength}d</p>
-                            <p className="text-xs text-[var(--muted)]">{p.macroHitRate}% macros</p>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        })}
                     </div>
                   )}
                 </>
@@ -507,11 +579,73 @@ export function GroupDetailView({
         )}
       </div>
 
-      {/* ── Message board (always visible) ── */}
+      {/* ── Message board & Activity Feed ── */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-4 pt-4 pb-2">
-          <h3 className="text-sm font-semibold text-[var(--foreground)]">Message Board</h3>
+        <div className="px-4 pt-4 pb-2 flex items-center gap-3">
+          <button
+            onClick={() => setActiveTab("chat")}
+            className={`text-sm font-semibold transition-colors pb-1 border-b-2 ${
+              activeTab === "chat" ? "text-[var(--foreground)] border-[var(--accent)]" : "text-[var(--muted)] border-transparent hover:text-[var(--foreground)]"
+            }`}
+          >
+            Chat
+          </button>
+          <button
+            onClick={() => setActiveTab("activity")}
+            className={`text-sm font-semibold transition-colors pb-1 border-b-2 ${
+              activeTab === "activity" ? "text-[var(--foreground)] border-[var(--accent)]" : "text-[var(--muted)] border-transparent hover:text-[var(--foreground)]"
+            }`}
+          >
+            Activity
+          </button>
         </div>
+
+        {/* Activity Feed */}
+        {activeTab === "activity" && (
+          <div className="h-[400px] overflow-y-auto px-4 pb-4 space-y-2">
+            {progress.length === 0 ? (
+              <p className="text-sm text-[var(--muted)] text-center py-12">No activity yet. Members need to sync progress.</p>
+            ) : (
+              progress
+                .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                .map((p) => {
+                  const icons: Record<string, string> = {
+                    streak: "\ud83d\udd25",
+                    xp: "\u2b50",
+                    macro: "\ud83c\udfaf",
+                  };
+                  const items = [];
+                  if (p.streakLength > 0) items.push({ icon: icons.streak, text: `${p.name} is on a ${p.streakLength}-day streak`, time: p.updatedAt });
+                  if (p.xp > 0) items.push({ icon: icons.xp, text: `${p.name} reached ${p.xp} XP (Level ${xpToLevel(p.xp)})`, time: p.updatedAt });
+                  if (p.macroHitRate > 70) items.push({ icon: icons.macro, text: `${p.name} hitting ${p.macroHitRate}% macro accuracy`, time: p.updatedAt });
+
+                  return items.map((item, j) => (
+                    <div key={`${p.userId}-${j}`} className="flex items-start gap-3 py-2 animate-fade-in">
+                      <span className="text-base mt-0.5">{item.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-[var(--foreground)]">{item.text}</p>
+                        <p className="text-[10px] text-[var(--muted)]">
+                          {(() => {
+                            const diff = Date.now() - new Date(item.time).getTime();
+                            const mins = Math.floor(diff / 60000);
+                            if (mins < 60) return `${mins}m ago`;
+                            const hrs = Math.floor(mins / 60);
+                            if (hrs < 24) return `${hrs}h ago`;
+                            return `${Math.floor(hrs / 24)}d ago`;
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                  ));
+                })
+            )}
+          </div>
+        )}
+
+        {/* Chat */}
+        {activeTab === "chat" && (
+          <>
+
         <div className="h-[400px] overflow-y-auto px-4 pb-2 space-y-3">
           {messages.length === 0 ? (
             <p className="text-sm text-[var(--muted)] text-center py-12">No messages yet. Start the conversation!</p>
@@ -592,6 +726,8 @@ export function GroupDetailView({
             {sending ? "…" : "Send"}
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -137,8 +137,10 @@ function buildWellnessAgentTools(): ToolConfiguration {
 function executeMealAnalysis(
   meals: MealEntry[],
   targets: Macros,
-  _focus: string
+  // focus: reserved for future workout-day context
+  _focus?: string
 ): string {
+  void _focus;
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 7);
   const recent = meals.filter((m) => new Date(m.date) >= weekAgo);
@@ -603,7 +605,6 @@ Now synthesize these into a single structured JSON review. Respond with valid JS
     );
 
     const coordContent = coordinatorResponse.output?.message?.content ?? [];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const coordText = coordContent
       .filter((c: { text?: string }) => "text" in c)
       .map((c: { text?: string }) => (c as { text: string }).text)

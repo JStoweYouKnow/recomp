@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/components/Toast";
-import { getBadgeInfo } from "@/lib/milestones";
+import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
 import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, getBodyScans, saveBodyScans, syncToServer } from "@/lib/storage";
-import type { Milestone, WearableDaySummary, MeasurementTargets, BodyScan } from "@/lib/types";
+import { WeeklyRecapCard } from "@/components/WeeklyRecapCard";
+import type { Milestone, WearableDaySummary, MeasurementTargets, BodyScan, MealEntry, Macros } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 
 
@@ -21,7 +22,22 @@ const BADGE_ICONS: Record<string, string> = {
   plan_adjuster: "🔄",
   early_adopter: "⌚",
   wearable_synced: "📊",
+  // Seasonal
+  spring_sprinter: "🌸",
+  summer_shred: "☀️",
+  harvest_gains: "🍂",
+  winter_warrior: "❄️",
+  // Hidden
+  silent_assassin: "🥷",
+  night_owl: "🦉",
+  perfectionist: "💎",
+  social_butterfly: "🦋",
+  chatterbox: "💬",
+  // Duel
+  duel_champion: "⚔️",
 };
+
+const KONAMI_CODE = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
 
 export function MilestonesView({
   milestones,
@@ -29,12 +45,18 @@ export function MilestonesView({
   progress,
   wearableData = [],
   onDataFetched,
+  meals = [],
+  streak = 0,
+  macroTargets,
 }: {
   milestones: Milestone[];
   xp: number;
   progress: Record<string, number>;
   wearableData?: WearableDaySummary[];
   onDataFetched?: (data: WearableDaySummary[]) => void;
+  meals?: MealEntry[];
+  streak?: number;
+  macroTargets?: Macros;
 }) {
   const { showToast } = useToast();
   const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
@@ -65,6 +87,25 @@ export function MilestonesView({
   const [reelMessage, setReelMessage] = useState<string | null>(null);
   const [reelVideoUrl, setReelVideoUrl] = useState<string | null>(null);
   const [reelIsDemo, setReelIsDemo] = useState(false);
+  const [konamiUnlocked, setKonamiUnlocked] = useState(false);
+
+  // Konami code easter egg
+  useEffect(() => {
+    let idx = 0;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === KONAMI_CODE[idx]) {
+        idx++;
+        if (idx === KONAMI_CODE.length) {
+          setKonamiUnlocked(true);
+          idx = 0;
+        }
+      } else {
+        idx = 0;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   useEffect(() => {
     const t = getMeasurementTargets();
@@ -186,7 +227,19 @@ export function MilestonesView({
   const levelProgress = Math.min(100, (xpInLevel / xpNeededForLevel) * 100);
 
   const earnedIds = new Set<string>(milestones.map((m) => m.id));
-  const allBadges = Object.entries(badgeInfo);
+  const seasonalSet = new Set<string>(SEASONAL_BADGES);
+  const hiddenSet = new Set<string>(HIDDEN_BADGES);
+  const allBadges = Object.entries(badgeInfo).filter(
+    ([id]) => !seasonalSet.has(id) && !hiddenSet.has(id)
+  );
+
+  // Seasonal
+  const season = getCurrentSeason();
+  const seasonDaysLeft = getSeasonDaysLeft();
+  const seasonalBadges = SEASONAL_BADGES.map((id) => ({ id, ...badgeInfo[id] }));
+
+  // Hidden
+  const hiddenBadges = HIDDEN_BADGES.map((id) => ({ id, ...badgeInfo[id] }));
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -829,6 +882,97 @@ export function MilestonesView({
           })}
         </div>
       </div>
+
+      {/* Seasonal Badges */}
+      <div className="card rounded-xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold text-[var(--accent)]">
+            {BADGE_ICONS[season.badge]} {season.name} Challenge
+          </h2>
+          <span className="text-xs text-[var(--muted)]">{seasonDaysLeft} days left</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {seasonalBadges.map((badge) => {
+            const earned = earnedIds.has(badge.id);
+            const isActive = badge.id === season.badge;
+            const badgeProgress = progress[badge.id] ?? 0;
+            return (
+              <div
+                key={badge.id}
+                className={`flex flex-col items-center rounded-lg border p-3 transition ${
+                  earned
+                    ? "badge-seasonal border-[var(--accent)]/50 bg-[var(--accent)]/10"
+                    : isActive
+                      ? "border-[var(--accent)]/30 bg-[var(--surface-elevated)]"
+                      : "border-[var(--border)] bg-[var(--surface-elevated)] opacity-50"
+                }`}
+              >
+                <span className="mb-1 text-xl">{BADGE_ICONS[badge.id] ?? "🏅"}</span>
+                <p className="text-center text-[11px] font-medium leading-tight">{badge.name}</p>
+                <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight">{badge.desc}</p>
+                {!earned && isActive && badgeProgress > 0 && (
+                  <div className="mt-1.5 w-full">
+                    <div className="h-1 overflow-hidden rounded-full bg-[var(--border-soft)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--accent)]"
+                        style={{ width: `${badgeProgress}%` }}
+                      />
+                    </div>
+                    <p className="mt-0.5 text-center text-[8px] text-[var(--muted)]">{Math.round(badgeProgress)}%</p>
+                  </div>
+                )}
+                {earned && <p className="mt-0.5 text-[9px] text-[var(--accent)]">+{badge.xp} XP</p>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Hidden Badges */}
+      <div className="card rounded-xl p-4">
+        <h2 className="mb-3 text-base font-semibold text-[var(--accent)]">Hidden Achievements</h2>
+        <p className="text-[11px] text-[var(--muted)] mb-3">Secret badges for those who go the extra mile. Can you find them all?</p>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {hiddenBadges.map((badge) => {
+            const earned = earnedIds.has(badge.id);
+            return (
+              <div
+                key={badge.id}
+                className={`flex flex-col items-center rounded-lg border p-2.5 transition ${
+                  earned
+                    ? "border-[var(--accent)]/50 bg-[var(--accent)]/10"
+                    : "badge-mystery border-dashed"
+                }`}
+              >
+                <span className="mb-1 text-lg">{earned ? (BADGE_ICONS[badge.id] ?? "🏅") : "❓"}</span>
+                <p className="text-center text-[11px] font-medium leading-tight">
+                  {earned ? badge.name : "???"}
+                </p>
+                <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight">
+                  {earned ? badge.desc : konamiUnlocked ? badge.desc : "Keep exploring..."}
+                </p>
+                {earned && <p className="mt-0.5 text-[9px] text-[var(--accent)]">+{badge.xp} XP</p>}
+              </div>
+            );
+          })}
+        </div>
+        {konamiUnlocked && (
+          <p className="mt-3 text-[10px] text-center text-[var(--accent)] animate-fade-in">
+            Konami code activated! Hidden badge hints revealed above.
+          </p>
+        )}
+      </div>
+
+      {/* Weekly Recap */}
+      {macroTargets && (
+        <WeeklyRecapCard
+          meals={meals}
+          milestones={milestones}
+          xp={xp}
+          streak={streak}
+          targets={macroTargets}
+        />
+      )}
     </div>
   );
 }

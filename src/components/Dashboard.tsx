@@ -15,6 +15,8 @@ import { BiofeedbackQuickEntry } from "./dashboard/BiofeedbackQuickEntry";
 import { MetabolicModelCard } from "./dashboard/MetabolicModelCard";
 import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
+import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
+import { DuelCard } from "./dashboard/DuelCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
@@ -221,6 +223,28 @@ export function Dashboard({
     return filtered;
   }, [workoutProgress, dashViewingWeekStart]);
 
+  const workoutCompletedToday = useMemo(() => {
+    if (!plan) return false;
+    const idx = matchWorkoutDay(today);
+    if (idx === null) return false;
+    const w = plan.workoutPlan.weeklyPlan[idx];
+    if (!w) return false;
+    const warmups = w.warmups ?? [];
+    const finishers = w.finishers ?? [];
+    const total = warmups.length + w.exercises.length + finishers.length;
+    if (total === 0) return false;
+    const keyFor = (ex: { name: string; sets: string; reps: string; notes?: string }, section: "warmup" | "main" | "finisher") => {
+      const base = `${plan.id}:${w.day}:`;
+      if (section === "main") return `${base}${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+      return `${base}${section}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
+    };
+    const done =
+      warmups.filter((ex) => workoutProgress[keyFor(ex, "warmup")]?.slice(0, 10) === today).length +
+      w.exercises.filter((ex) => workoutProgress[keyFor(ex, "main")]?.slice(0, 10) === today).length +
+      finishers.filter((ex) => workoutProgress[keyFor(ex, "finisher")]?.slice(0, 10) === today).length;
+    return done >= total;
+  }, [plan, matchWorkoutDay, today, workoutProgress]);
+
   const dashCalMeals = useMemo(() => meals.filter((m) => m.date === dashCalendarDate), [meals, dashCalendarDate]);
   const dashCalMealTotals = useMemo(() => dashCalMeals.reduce(
     (acc, m) => ({ calories: acc.calories + m.macros.calories, protein: acc.protein + m.macros.protein, carbs: acc.carbs + m.macros.carbs, fat: acc.fat + m.macros.fat }),
@@ -303,7 +327,30 @@ export function Dashboard({
           </label>
           <div>
             <h2 className="section-hero text-h4 text-[var(--foreground)]">Welcome back, {profile.name}</h2>
-            <p className="section-subtitle mt-0.5">Here&apos;s your progress today</p>
+            <p className="section-subtitle mt-0.5">
+              Here&apos;s your progress today
+              {(() => {
+                const dates = new Set(meals.map((m) => m.date));
+                if (!dates.has(today)) return null;
+                const sorted = [...dates].sort().reverse();
+                let s = 0;
+                let prev: number | null = null;
+                for (const d of sorted) {
+                  const t = new Date(d).getTime();
+                  if (prev === null || prev - t === 86400000) s++;
+                  else break;
+                  prev = t;
+                }
+                if (s < 2) return null;
+                const flameSize = s < 3 ? "streak-flame-sm" : s < 7 ? "streak-flame-md" : s < 14 ? "streak-flame-lg" : "streak-flame-xl";
+                return (
+                  <span className={`streak-flame ${flameSize} ml-2 inline-flex items-center gap-1`}>
+                    <span aria-hidden>{"\ud83d\udd25"}</span>
+                    <span className="text-xs font-semibold text-[var(--accent-warm)]">{s}d streak</span>
+                  </span>
+                );
+              })()}
+            </p>
           </div>
         </div>
         <div className="flex gap-1.5 relative z-[1]">
@@ -370,6 +417,15 @@ export function Dashboard({
       />
       </div>
 
+      {/* ── Daily Quests & Duels ── */}
+      <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
+        <DailyQuestsCard
+          todayMealCount={meals.filter((m) => m.date === today).length}
+          workoutCompleted={workoutCompletedToday}
+        />
+        <DuelCard />
+      </div>
+
       {/* ── Hydration, Fasting, Biofeedback, Metabolic, Coach ── */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
         <HydrationWidget />
@@ -382,27 +438,7 @@ export function Dashboard({
           profile={profile}
           todayMeals={meals.filter((m) => m.date === today)}
           targets={targets}
-          workoutCompletedToday={(() => {
-            if (!plan) return false;
-            const idx = matchWorkoutDay(today);
-            if (idx === null) return false;
-            const w = plan.workoutPlan.weeklyPlan[idx];
-            if (!w) return false;
-            const warmups = w.warmups ?? [];
-            const finishers = w.finishers ?? [];
-            const total = warmups.length + w.exercises.length + finishers.length;
-            if (total === 0) return false;
-            const keyFor = (ex: { name: string; sets: string; reps: string; notes?: string }, section: "warmup" | "main" | "finisher") => {
-              const base = `${plan.id}:${w.day}:`;
-              if (section === "main") return `${base}${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
-              return `${base}${section}:${ex.name}:${ex.sets}:${ex.reps}:${ex.notes ?? ""}`;
-            };
-            const done =
-              warmups.filter((ex) => workoutProgress[keyFor(ex, "warmup")]?.slice(0, 10) === today).length +
-              w.exercises.filter((ex) => workoutProgress[keyFor(ex, "main")]?.slice(0, 10) === today).length +
-              finishers.filter((ex) => workoutProgress[keyFor(ex, "finisher")]?.slice(0, 10) === today).length;
-            return done >= total;
-          })()}
+          workoutCompletedToday={workoutCompletedToday}
           streak={(() => {
             const dates = new Set(meals.map((m) => m.date));
             if (!dates.has(today)) return 0;

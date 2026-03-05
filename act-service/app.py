@@ -29,27 +29,52 @@ def _allowed_origins():
     return base
 
 
+def _is_origin_allowed(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGINS:
+        return True
+    # Allow any Vercel deployment: *.vercel.app, *-recomp-*.vercel.app
+    if origin.startswith("https://") and ".vercel.app" in origin and "recomp" in origin:
+        return True
+    if origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
+        return True
+    return False
+
+
 ALLOWED_ORIGINS = _allowed_origins()
+
+
+def _add_cors_to_response(resp, origin: str):
+    if _is_origin_allowed(origin):
+        resp.headers["Access-Control-Allow-Origin"] = origin
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+
 
 @app.after_request
 def add_cors_headers(response):
     origin = request.headers.get("Origin", "")
-    if origin in ALLOWED_ORIGINS:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    _add_cors_to_response(response, origin)
     return response
+
 
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
-        resp = make_response()
+        resp = make_response("", 204)
         origin = request.headers.get("Origin", "")
-        if origin in ALLOWED_ORIGINS:
-            resp.headers["Access-Control-Allow-Origin"] = origin
-            resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-            resp.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        _add_cors_to_response(resp, origin)
         return resp
+
+
+@app.errorhandler(Exception)
+def handle_exception(err):
+    """Ensure 500 responses include CORS headers (otherwise browser blocks)."""
+    resp = make_response(jsonify({"error": str(err)}), 500)
+    origin = request.headers.get("Origin", "")
+    _add_cors_to_response(resp, origin)
+    return resp
 
 # In Docker: app.py at /app/app.py, scripts at /app/scripts. Locally: act-service/app.py, scripts at recomp/scripts.
 _basedir = Path(__file__).resolve().parent

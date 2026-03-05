@@ -40,6 +40,11 @@ const STORAGE_KEYS = {
   bodyScans: "recomp_body_scans",
   supplements: "recomp_supplements",
   bloodWork: "recomp_blood_work",
+  theme: "recomp_theme",
+  soundsEnabled: "recomp_sounds_enabled",
+  coachPersona: "recomp_coach_persona",
+  dailyQuests: "recomp_daily_quests",
+  hiddenBadgeTracking: "recomp_hidden_badge_tracking",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -640,4 +645,41 @@ export function saveNutritionCache(food: string, item: Omit<NutritionCacheItem, 
     }
   }
   localStorage.setItem(STORAGE_KEYS.nutritionCache, JSON.stringify(map));
+}
+
+// ── Theme ──
+export type ThemeMode = "light" | "dark";
+export function getTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  return (localStorage.getItem(STORAGE_KEYS.theme) as ThemeMode) || "light";
+}
+export function saveTheme(theme: ThemeMode): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.theme, theme);
+}
+
+// ── Coach Persona ──
+export type CoachPersona = "default" | "motivator" | "scientist" | "tough_love" | "chill_friend";
+export function getCoachPersona(): CoachPersona {
+  if (typeof window === "undefined") return "default";
+  return (localStorage.getItem(STORAGE_KEYS.coachPersona) as CoachPersona) || "default";
+}
+export function saveCoachPersona(persona: CoachPersona): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.coachPersona, persona);
+}
+
+// ── Hidden Badge Tracking ──
+export interface HiddenBadgeTracking {
+  milestonesVisitCount: number;
+  lastMilestonesVisit: string;
+  ricoMessageCount: number;
+}
+export function getHiddenBadgeTracking(): HiddenBadgeTracking {
+  if (typeof window === "undefined") return { milestonesVisitCount: 0, lastMilestonesVisit: "", ricoMessageCount: 0 };
+  return safeParse(localStorage.getItem(STORAGE_KEYS.hiddenBadgeTracking), { milestonesVisitCount: 0, lastMilestonesVisit: "", ricoMessageCount: 0 });
+}
+export function saveHiddenBadgeTracking(tracking: HiddenBadgeTracking): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.hiddenBadgeTracking, JSON.stringify(tracking));
 }

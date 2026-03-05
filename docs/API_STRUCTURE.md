@@ -36,11 +36,11 @@ Domain separation and layer organization for the Recomp API.
 | Domain | Routes | Service Module | Responsibility |
 |--------|--------|----------------|----------------|
 | **Auth** | auth/register, auth/demo, auth/me | — | Registration, demo login, session |
-| **Plans** | plans/generate, plans/adjust | services/plans.ts | Plan generation, adjustment |
-| **Meals** | meals/suggest, meals/analyze-photo, meals/analyze-receipt, meals/analyze-menu, meals/menu-recommend, meals/smart-suggest, meals/generate-plan, meals/parse-recipe-url, meals/lookup-nutrition-web | services/meals.ts | Meal suggestions, photo/receipt analysis |
+| **Plans** | plans/generate, plans/adjust | — | Plan generation (Nova Lite + extended thinking), adjustment |
+| **Meals** | meals/suggest, meals/analyze-photo, meals/analyze-receipt, … | services/meals.ts | Meal suggestions, photo/receipt analysis |
 | **Body Scan** | body-scan/analyze, body-scan/progress-reel | services/body-scan.ts | Scan analysis, progress reel |
 | **Workouts** | workouts/recovery-adjust | services/workouts.ts | Recovery assessment |
-| **AI Agent** | agent/weekly-review | services/agent.ts | Multi-agent weekly review |
+| **AI Agent** | agent/weekly-review | — | Multi-agent weekly review (Nova Lite tool use) |
 | **Reco** | rico | — | Chat, delegates to nova |
 | **Research** | research | services/research.ts | Web grounding |
 | **Act** | act/grocery, act/nutrition, act/sync | act-service.ts, act-client.ts | Grocery, nutrition via Act SDK |

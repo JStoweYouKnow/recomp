@@ -50,6 +50,7 @@ export function GroupsView({
   const [challengeJoinLoading, setChallengeJoinLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
+  const [createType, setCreateType] = useState<"solo" | "duel">("solo");
   const [createMetric, setCreateMetric] = useState<ChallengeMetric>("meal_streak");
   const [createTarget, setCreateTarget] = useState("");
   const [createStart, setCreateStart] = useState(() => new Date().toISOString().slice(0, 10));
@@ -128,7 +129,7 @@ export function GroupsView({
         body: JSON.stringify({
           title: createTitle.trim(),
           description: "",
-          type: "solo",
+          type: createType,
           metric: createMetric,
           target: targetNum,
           startDate: createStart,
@@ -461,6 +462,30 @@ export function GroupsView({
                 placeholder="Title (e.g. 7-day meal streak)"
                 className="input-base w-full text-sm"
               />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateType("solo")}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg border transition ${
+                    createType === "solo"
+                      ? "border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]"
+                      : "border-[var(--border-soft)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Solo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateType("duel")}
+                  className={`flex-1 py-2 text-sm font-medium rounded-lg border transition ${
+                    createType === "duel"
+                      ? "border-[var(--accent-warm)] bg-[var(--accent-warm)]/10 text-[var(--accent-warm)]"
+                      : "border-[var(--border-soft)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  Duel
+                </button>
+              </div>
               <select
                 value={createMetric}
                 onChange={(e) => setCreateMetric(e.target.value as ChallengeMetric)}

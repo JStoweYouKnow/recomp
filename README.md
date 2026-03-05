@@ -59,6 +59,22 @@ What makes Recomp novel — both technically and as a product:
 - **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
 - **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
 
+## Nova Feature Map (judges)
+
+| Nova capability | Feature | Verify |
+|-----------------|---------|--------|
+| Nova 2 Lite | Plan generation, meal suggestions, Rico chat, weekly review agents | Onboarding → plan; Meals → suggest; Reco; Dashboard → Generate |
+| Nova 2 Sonic | Voice coach, voice meal logging | Reco → hold mic; Meals → Log meal → Voice log |
+| Nova Lite + vision | Photo meal analysis, receipt scan | Meals → Snap plate; Receipt tab |
+| Nova Canvas | Transformation preview | Dashboard → See your transformation → upload photo |
+| Nova Reel | Progress reel from body scans | Milestones → Body scan → Generate progress reel (≥2 scans) |
+| Nova Act | Grocery links, USDA nutrition | Shopping list → search; Meals → Auto-fill nutrition |
+| Embeddings | Similar meals (one-tap re-log) | Meals → tap similar meal suggestion |
+| Web grounding | Research card, nutrition fallback | Dashboard → Research; or meal lookup when Act unavailable |
+| Extended thinking | Plan generation reasoning | Onboarding → submit; plan uses `invokeNovaWithExtendedThinking` |
+
+**API check:** `curl https://recomp-one.vercel.app/api/judge/health` — all features should show `"live"`.
+
 ## Judge Access
 
 - **Live demo**: [https://recomp-one.vercel.app/](https://recomp-one.vercel.app/). To deploy your own: [Deploy to Vercel](#deployment-vercel) — `vercel --prod` (requires `vercel login`). Add the deployment URL to your Devpost submission. Configure `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` in Vercel dashboard. **For judge demos:** "Try pre-seeded demo" sets an auth cookie via `/api/auth/demo`, so AI routes work even if `REQUIRE_AUTH_FOR_AI=true`; leave it unset/false for best experience.
@@ -198,7 +214,7 @@ cd recomp && railway login && railway up
 railway variable set NOVA_ACT_API_KEY=your-key
 ```
 
-Generate domain in Railway → Settings → Networking. Add `ACT_SERVICE_URL=https://your-act.up.railway.app` to Vercel.
+Generate domain in Railway → Settings → Networking. Add `ACT_SERVICE_URL` (and `NEXT_PUBLIC_ACT_SERVICE_URL` for direct calls) in Vercel. If you see CORS errors, redeploy the act-service (`railway up`); it allows `recomp-one.vercel.app` and all `*.vercel.app` deployments containing "recomp". Add `CORS_ORIGINS=https://your-domain.com` on Railway for custom domains.
 
 **Troubleshooting:** "Authentication Failed" → set `NOVA_ACT_API_KEY`. "Python not found" → set `ACT_PYTHON` to full path. Nutrition returns estimated → install `nova-act`, restart.
 

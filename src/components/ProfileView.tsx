@@ -848,6 +848,28 @@ export function ProfileView({
           </div>
         )}
       </div>
+
+      {/* ── Sound Effects ── */}
+      <div className="card p-5">
+        <h3 className="text-h6 mb-2">Sound Effects</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Play short chimes when you log meals, earn badges, hit goals, or level up.
+        </p>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={typeof window !== "undefined" && localStorage.getItem("recomp_sounds_enabled") === "1"}
+            onChange={(e) => {
+              localStorage.setItem("recomp_sounds_enabled", e.target.checked ? "1" : "0");
+              // Force re-render
+              const ev = new Event("storage");
+              window.dispatchEvent(ev);
+            }}
+            className="h-5 w-5 rounded border-[var(--border)] text-[var(--accent)] focus:ring-[var(--accent)]"
+          />
+          <span className="text-sm text-[var(--foreground)]">Enable sound effects</span>
+        </label>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,27 @@ The user's message plus optional context about: streak length, meals logged, XP,
 
 Respond as Reco. No markdown. No bullet lists unless it's 2-3 quick tips. Be human.`;
 
+const PERSONA_PROMPTS: Record<string, string> = {
+  motivator: `\n\nSTYLE OVERRIDE: You are in HYPE MODE. Be extremely enthusiastic! Use exclamations! Celebrate EVERYTHING! Every meal logged is a WIN. Every macro hit is LEGENDARY. Pump the user up like they just scored the winning touchdown. Energy should be 11/10.`,
+  scientist: `\n\nSTYLE OVERRIDE: You are in DATA MODE. Be analytical and precise. Reference research when relevant. Use numbers, percentages, and specific measurements. Say things like "Studies show..." and "Based on your data..." Be the nerdy coach who backs everything with evidence. Still be personable, not robotic.`,
+  tough_love: `\n\nSTYLE OVERRIDE: You are in DRILL SERGEANT MODE. No excuses. Be direct, blunt, and unapologetically honest. If they missed a meal, call it out. If they're making excuses, shut it down. Short sentences. Commanding. Think tough love from someone who genuinely cares but won't coddle. Never be cruel, just relentlessly honest.`,
+  chill_friend: `\n\nSTYLE OVERRIDE: You are in CHILL MODE. Be relaxed, casual, and laid-back. Use conversational slang. Keep it light and breezy. You're the friend who happens to know about fitness. Say things like "no worries", "you got this", "honestly not a big deal". Never stress the user out. Vibe check: immaculate.`,
+};
+
+function getHolidayContext(): string {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const day = now.getDate();
+
+  if (month === 1 && day === 1) return "\n\n[It's New Year's Day! Be extra motivating about fresh starts and new goals.]";
+  if (month === 2 && day === 14) return "\n\n[It's Valentine's Day! Work in some self-love and body-positivity messaging.]";
+  if (month === 4 && day === 1) return "\n\n[It's April Fools! Be extra playful and witty. Sneak in one fitness joke.]";
+  if (month === 10 && day === 31) return "\n\n[It's Halloween! Be spooky-fun. Maybe warn about candy macros with humor.]";
+  if (month === 11 && day >= 22 && day <= 28) return "\n\n[It's Thanksgiving week! Acknowledge that holiday eating is normal. No guilt trips.]";
+  if (month === 12 && day >= 24 && day <= 26) return "\n\n[It's the holidays! Be festive and encouraging. Rest days are earned.]";
+  return "";
+}
+
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -30,15 +51,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { message, context } = await req.json();
+    const { message, context, persona } = await req.json();
     const msg = typeof message === "string" ? message : "";
     if (!msg.trim()) return NextResponse.json({ error: "Message required" }, { status: 400 });
 
     const ctx = context ?? {};
     const userPrompt = `[Context: ${JSON.stringify(ctx)}]\n\nUser: ${msg}`;
 
-    const reply = await invokeNova(RICO_SYSTEM, userPrompt, { temperature: 0.8, maxTokens: 256 });
-    logInfo("Rico chat reply", { route: "rico" });
+    let systemPrompt = RICO_SYSTEM;
+    if (persona && PERSONA_PROMPTS[persona]) {
+      systemPrompt += PERSONA_PROMPTS[persona];
+    }
+    systemPrompt += getHolidayContext();
+
+    const reply = await invokeNova(systemPrompt, userPrompt, { temperature: 0.8, maxTokens: 256 });
+    logInfo("Rico chat reply", { route: "rico", persona: persona || "default" });
     return NextResponse.json({ reply: reply.trim() });
   } catch (err) {
     logError("Rico chat failed", err, { route: "rico" });

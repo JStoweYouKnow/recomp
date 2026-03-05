@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getRicoHistory, saveRicoHistory } from "@/lib/storage";
+import { getRicoHistory, saveRicoHistory, getCoachPersona, saveCoachPersona, type CoachPersona } from "@/lib/storage";
 import {
   startRecording,
   startStreamingRecording,
@@ -29,12 +29,14 @@ export function RicoChat({
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [persona, setPersona] = useState<CoachPersona>("default");
   const recorderRef = useRef<AudioRecorder | StreamingRecorder | null>(null);
   const streamFetchRef = useRef<Promise<Response> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setMessages(getRicoHistory());
+    setPersona(getCoachPersona());
   }, []);
 
   useEffect(() => {
@@ -137,7 +139,7 @@ export function RicoChat({
       const res = await fetch("/api/rico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, context: { ...context, name: userName } }),
+        body: JSON.stringify({ message: trimmed, context: { ...context, name: userName }, persona }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -149,6 +151,14 @@ export function RicoChat({
       setLoading(false);
     }
   };
+
+  const PERSONA_OPTIONS: { id: CoachPersona; emoji: string; label: string }[] = [
+    { id: "default", emoji: "\ud83e\udde9", label: "Default" },
+    { id: "motivator", emoji: "\ud83d\udd25", label: "Hype" },
+    { id: "scientist", emoji: "\ud83e\uddec", label: "Data" },
+    { id: "tough_love", emoji: "\ud83d\udcaa", label: "Tough" },
+    { id: "chill_friend", emoji: "\ud83d\ude0e", label: "Chill" },
+  ];
 
   const handleStartRecording = async () => {
     try {
@@ -253,6 +263,24 @@ export function RicoChat({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Persona picker */}
+            <div className="flex gap-0.5">
+              {PERSONA_OPTIONS.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => { setPersona(p.id); saveCoachPersona(p.id); }}
+                  className={`rounded-md px-1.5 py-1 text-xs transition-all ${
+                    persona === p.id
+                      ? "bg-[var(--accent-10)] ring-1 ring-[var(--accent)]/30 scale-110"
+                      : "hover:bg-[var(--surface-elevated)] opacity-60 hover:opacity-100"
+                  }`}
+                  title={p.label}
+                  aria-label={`Coach style: ${p.label}`}
+                >
+                  {p.emoji}
+                </button>
+              ))}
+            </div>
             {audioSupported && (
               <button
                 onClick={() => setVoiceMode((v) => !v)}
@@ -303,7 +331,7 @@ export function RicoChat({
                         const res = await fetch("/api/rico", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ message: prompt, context: { ...context, name: userName } }),
+                          body: JSON.stringify({ message: prompt, context: { ...context, name: userName }, persona }),
                         });
                         const data = await res.json();
                         if (data.error) throw new Error(data.error);

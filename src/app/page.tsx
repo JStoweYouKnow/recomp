@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress, getBiofeedback, getHydration, getActiveFastingSession } from "@/lib/storage";
-import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
+import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
-import { computeMilestones } from "@/lib/milestones";
+import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
 import { buildDemoSeed } from "@/lib/demoSeed";
 import { MilestonesView } from "@/components/MilestonesView";
 import { RicoChat } from "@/components/RicoChat";
@@ -18,10 +18,14 @@ import { GroupsView } from "@/components/GroupsView";
 import { GroupDetailView } from "@/components/GroupDetailView";
 import { GroupCreateModal } from "@/components/GroupCreateModal";
 import { useToast } from "@/components/Toast";
+import { useConfetti } from "@/components/Confetti";
+import { playBadgeEarned, playLevelUp } from "@/lib/sounds";
+import { xpToLevel } from "@/lib/milestones";
 import { v4 as uuidv4 } from "uuid";
 
 export default function Home() {
   const { showToast } = useToast();
+  const { trigger: triggerConfetti, ConfettiOverlay } = useConfetti();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
   const [meals, setMeals] = useState<MealEntry[]>([]);
@@ -109,12 +113,24 @@ export default function Home() {
       const next = [...stored, ...newMilestones];
       setMilestonesState(next);
       saveMilestones(next);
+      // Celebrate!
+      triggerConfetti();
+      playBadgeEarned();
+      const info = getBadgeInfo();
+      const names = newMilestones.map((m) => info[m.id]?.name || m.id);
+      showToast(`Badge earned: ${names.join(", ")}!`, "success");
     }
     if (xpGained > 0) {
       const currentXp = getXP();
       const nextXp = currentXp + xpGained;
+      const prevLevel = xpToLevel(currentXp);
+      const nextLevel = xpToLevel(nextXp);
       setXp(nextXp);
       saveXP(nextXp);
+      if (nextLevel > prevLevel) {
+        playLevelUp();
+        showToast(`Level up! You're now level ${nextLevel}!`, "success");
+      }
     }
     setMilestoneProgress(progress);
   }, [meals, plan]);
@@ -329,6 +345,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {ConfettiOverlay}
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
@@ -541,6 +558,9 @@ export default function Home() {
             xp={xp}
             progress={milestoneProgress}
             wearableData={wearableData}
+            meals={meals}
+            streak={getCurrentStreakFromMeals(meals)}
+            macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
             onDataFetched={(data) => {
               const existing = getWearableData();
               const merged = [...existing];

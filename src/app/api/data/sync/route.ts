@@ -12,7 +12,7 @@ import {
   dbSaveWearableConnection,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, RicoMessage } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);

@@ -44,10 +44,42 @@ const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   // Supplements
   supplement_tracker: { name: "Supplement Savvy", desc: "Tracking 3+ supplements", xp: 30 },
   blood_work_uploaded: { name: "Data Driven Health", desc: "Uploaded blood work results", xp: 50 },
+  // Duel
+  duel_champion: { name: "Duel Champion", desc: "Won a head-to-head duel", xp: 150 },
+  // Seasonal
+  spring_sprinter: { name: "Spring Sprinter", desc: "Logged 20+ workouts in spring", xp: 200 },
+  summer_shred: { name: "Summer Shred", desc: "Maintained a 30-day streak in summer", xp: 300 },
+  harvest_gains: { name: "Harvest Gains", desc: "Hit macros 60+ days in fall", xp: 250 },
+  winter_warrior: { name: "Winter Warrior", desc: "Maintained streak through the holidays", xp: 200 },
+  // Hidden
+  silent_assassin: { name: "Silent Assassin", desc: "Hit macros 30 days without checking milestones", xp: 300 },
+  night_owl: { name: "Night Owl", desc: "Logged a meal between midnight and 4am", xp: 50 },
+  perfectionist: { name: "Perfectionist", desc: "Hit exact calorie target (within 1%) for 7 days", xp: 200 },
+  social_butterfly: { name: "Social Butterfly", desc: "Joined 3+ groups", xp: 75 },
+  chatterbox: { name: "Chatterbox", desc: "Sent 50+ messages to Reco", xp: 100 },
 };
 
 export function getBadgeInfo() {
   return BADGE_INFO;
+}
+
+export const SEASONAL_BADGES = ["spring_sprinter", "summer_shred", "harvest_gains", "winter_warrior"] as const;
+export const HIDDEN_BADGES = ["silent_assassin", "night_owl", "perfectionist", "social_butterfly", "chatterbox"] as const;
+
+export function getCurrentSeason(): { id: string; name: string; badge: string; endMonth: number; endDay: number } {
+  const month = new Date().getMonth() + 1;
+  if (month >= 3 && month <= 5) return { id: "spring", name: "Spring", badge: "spring_sprinter", endMonth: 5, endDay: 31 };
+  if (month >= 6 && month <= 8) return { id: "summer", name: "Summer", badge: "summer_shred", endMonth: 8, endDay: 31 };
+  if (month >= 9 && month <= 11) return { id: "fall", name: "Fall", badge: "harvest_gains", endMonth: 11, endDay: 30 };
+  return { id: "winter", name: "Winter", badge: "winter_warrior", endMonth: 2, endDay: 28 };
+}
+
+export function getSeasonDaysLeft(): number {
+  const season = getCurrentSeason();
+  const now = new Date();
+  const year = season.endMonth < now.getMonth() + 1 ? now.getFullYear() + 1 : now.getFullYear();
+  const end = new Date(year, season.endMonth - 1, season.endDay);
+  return Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 86400000));
 }
 
 function getDaysWithMeals(meals: MealEntry[]): Set<string> {
@@ -267,7 +299,64 @@ export function computeMilestones(
     // Supplements
     if (extras.supplements && extras.supplements.length >= 3) award("supplement_tracker");
     if (extras.bloodWork && extras.bloodWork.length >= 1) award("blood_work_uploaded");
+
+    // Duel champion
+    if (extras.challenges) {
+      const wonDuels = extras.challenges.filter(
+        (c) => c.type === "duel" && c.status === "completed" && c.participants[0]?.score > (c.participants[1]?.score ?? 0)
+      );
+      if (wonDuels.length >= 1) award("duel_champion");
+    }
   }
+
+  // ── Seasonal badges ──
+  const month = new Date().getMonth() + 1;
+  // Spring Sprinter (March-May): 20+ workouts logged
+  if (month >= 3 && month <= 5) {
+    // approximate from meals frequency as workout proxy
+    const springMeals = meals.filter((m) => {
+      const mm = new Date(m.date).getMonth() + 1;
+      return mm >= 3 && mm <= 5;
+    });
+    const springDays = new Set(springMeals.map((m) => m.date)).size;
+    progress.spring_sprinter = Math.min(100, (springDays / 20) * 100);
+    if (springDays >= 20) award("spring_sprinter");
+  }
+  // Summer Shred (June-Aug): 30-day streak
+  if (month >= 6 && month <= 8) {
+    progress.summer_shred = Math.min(100, (currentStreak / 30) * 100);
+    if (longestStreak >= 30) award("summer_shred");
+  }
+  // Harvest Gains (Sept-Nov): hit macros 60+ days
+  if (month >= 9 && month <= 11) {
+    progress.harvest_gains = Math.min(100, (daysWithMacros.size / 60) * 100);
+    if (daysWithMacros.size >= 60) award("harvest_gains");
+  }
+  // Winter Warrior (Dec-Feb): maintain streak through holidays
+  if (month === 12 || month <= 2) {
+    progress.winter_warrior = Math.min(100, (currentStreak / 14) * 100);
+    if (currentStreak >= 14) award("winter_warrior");
+  }
+
+  // ── Hidden badges ──
+  // night_owl: meal logged between midnight and 4am
+  meals.forEach((m) => {
+    if (m.loggedAt) {
+      const h = new Date(m.loggedAt).getHours();
+      if (h >= 0 && h < 4) award("night_owl");
+    }
+  });
+
+  // perfectionist: hit exact calorie target (within 1%) for 7 days
+  const dailyCalTotals = new Map<string, number>();
+  meals.forEach((m) => {
+    dailyCalTotals.set(m.date, (dailyCalTotals.get(m.date) ?? 0) + m.macros.calories);
+  });
+  let perfectDays = 0;
+  dailyCalTotals.forEach((cal) => {
+    if (Math.abs(cal - targets.calories) <= targets.calories * 0.01) perfectDays++;
+  });
+  if (perfectDays >= 7) award("perfectionist");
 
   return { newMilestones, xpGained, progress };
 }

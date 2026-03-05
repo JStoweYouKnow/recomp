@@ -46,14 +46,15 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 
 ## Validation checklist (judges)
 
-| Claim | How to verify |
-|-------|---------------|
-| 87% macro adherence | Try pre-seeded demo → Evidence card → Show metrics |
-| 7/10 weekly AI score | Same; or run Weekly Review after logging meals |
-| 4-way meal logging | Meals → Log meal → try text, Voice log, Snap plate, receipt |
-| Nova Act grocery | Shopping list → search; check for Amazon product links |
-| Web grounding research | Dashboard → Research card → ask nutrition question; response should cite `source: web-grounding` |
-| Voice coach | Reco (🧩) → hold mic; bidirectional Nova Sonic |
+| Claim | How to verify | API (optional) |
+|-------|---------------|----------------|
+| 87% macro adherence | Try pre-seeded demo → Evidence card → Show metrics | — |
+| 7/10 weekly AI score | Same; or run Weekly Review after logging meals | — |
+| 4-way meal logging | Meals → Log meal → try text, Voice log, Snap plate, receipt | POST /api/meals/analyze-photo, /api/voice/parse |
+| Nova Act grocery | Shopping list → search; check for Amazon product links | GET /api/act/status → reachable |
+| Web grounding research | Dashboard → Research card → ask nutrition question; response should cite `source: web-grounding` | POST /api/research |
+| Voice coach | Reco (🧩) → hold mic; bidirectional Nova Sonic | POST /api/rico, /api/voice/sonic/stream |
+| All integrations live | — | GET /api/judge/health → features all "live" |
 
 ---
 

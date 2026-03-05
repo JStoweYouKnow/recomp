@@ -8,7 +8,6 @@ import {
   dbGetGroupMembers,
   dbRemoveFromGroupsIndex,
   dbDeleteInviteCode,
-  dbRemoveGroupMember,
 } from "@/lib/db";
 import { z } from "zod";
 
