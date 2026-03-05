@@ -5,6 +5,8 @@ import { RicoChat } from "./RicoChat";
 vi.mock("@/lib/storage", () => ({
   getRicoHistory: () => [],
   saveRicoHistory: () => {},
+  getCoachPersona: () => "default",
+  saveCoachPersona: () => {},
 }));
 
 beforeEach(() => {

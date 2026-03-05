@@ -350,7 +350,9 @@ export function computeMilestones(
   // perfectionist: hit exact calorie target (within 1%) for 7 days
   const dailyCalTotals = new Map<string, number>();
   meals.forEach((m) => {
-    dailyCalTotals.set(m.date, (dailyCalTotals.get(m.date) ?? 0) + m.macros.calories);
+    if (!m?.date) return;
+    const calories = typeof m.macros?.calories === "number" ? m.macros.calories : 0;
+    dailyCalTotals.set(m.date, (dailyCalTotals.get(m.date) ?? 0) + calories);
   });
   let perfectDays = 0;
   dailyCalTotals.forEach((cal) => {
