@@ -71,7 +71,7 @@ export function DailyQuestsCard({ todayMealCount, workoutCompleted, onXpEarned }
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <span className="text-lg" aria-hidden>
-            \u2694\ufe0f
+            ⚔️
           </span>
           <h3 className="text-h6 font-semibold">Daily Quests</h3>
         </div>
