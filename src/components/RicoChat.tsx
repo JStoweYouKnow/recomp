@@ -18,7 +18,7 @@ export function RicoChat({
   onClose,
 }: {
   userName: string;
-  context: { streak?: number; mealsLogged?: number; xp?: number; goal?: string; recentMilestones?: string[]; biofeedbackSummary?: string | null; hydrationToday?: number | null; activeFast?: string | null };
+  context: { streak?: number; mealsLogged?: number; xp?: number; goal?: string; recentMilestones?: string[]; biofeedbackSummary?: string | null; hydrationSummary?: string | null; activeFast?: string | null };
   isOpen: boolean;
   onClose: () => void;
 }) {

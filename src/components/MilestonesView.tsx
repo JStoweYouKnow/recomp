@@ -4,9 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
-import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, getBodyScans, saveBodyScans, syncToServer } from "@/lib/storage";
+import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, getBodyScans, saveBodyScans, syncToServer, getProfile } from "@/lib/storage";
 import { WeeklyRecapCard } from "@/components/WeeklyRecapCard";
 import type { Milestone, WearableDaySummary, MeasurementTargets, BodyScan, MealEntry, Macros } from "@/lib/types";
+import { getUnitSystem, kgToLbs, lbsToKg } from "@/lib/units";
 import { v4 as uuidv4 } from "uuid";
 
 
@@ -59,6 +60,13 @@ export function MilestonesView({
   macroTargets?: Macros;
 }) {
   const { showToast } = useToast();
+  const unitSystem = useMemo(() => getUnitSystem(getProfile()), []);
+  const massUnitLabel = unitSystem === "metric" ? "kg" : "lbs";
+  const massInputMin = unitSystem === "metric" ? 20 : 44;
+  const massInputMax = unitSystem === "metric" ? 500 : 1100;
+  const muscleInputMax = unitSystem === "metric" ? 230 : 500;
+  const toDisplayMass = (lbsValue: number): number => (unitSystem === "metric" ? Math.round(lbsToKg(lbsValue) * 10) / 10 : lbsValue);
+  const toStorageLbs = (displayValue: number): number => (unitSystem === "metric" ? kgToLbs(displayValue) : displayValue);
   const [scaleDate, setScaleDate] = useState(() => getTodayLocal());
   const [scaleWeight, setScaleWeight] = useState("");
   const [scaleBodyFat, setScaleBodyFat] = useState("");
@@ -111,11 +119,11 @@ export function MilestonesView({
     const t = getMeasurementTargets();
     if (t) {
       setTargets(t);
-      setTargetWeight(t.targetWeightLbs != null ? String(t.targetWeightLbs) : "");
+      setTargetWeight(t.targetWeightLbs != null ? String(toDisplayMass(t.targetWeightLbs)) : "");
       setTargetBodyFat(t.targetBodyFatPercent != null ? String(t.targetBodyFatPercent) : "");
-      setTargetMuscle(t.targetMuscleMassLbs != null ? String(t.targetMuscleMassLbs) : "");
+      setTargetMuscle(t.targetMuscleMassLbs != null ? String(toDisplayMass(t.targetMuscleMassLbs)) : "");
     }
-  }, []);
+  }, [unitSystem]);
 
   const saveTargets = (next: MeasurementTargets) => {
     setTargets(next);
@@ -131,9 +139,15 @@ export function MilestonesView({
       return;
     }
     const next: MeasurementTargets = {};
-    if (tw != null && Number.isFinite(tw) && tw >= 44 && tw <= 1100) next.targetWeightLbs = tw;
+    if (tw != null && Number.isFinite(tw)) {
+      const weightLbs = toStorageLbs(tw);
+      if (weightLbs >= 44 && weightLbs <= 1100) next.targetWeightLbs = weightLbs;
+    }
     if (tb != null && Number.isFinite(tb) && tb >= 0 && tb <= 100) next.targetBodyFatPercent = tb;
-    if (tm != null && Number.isFinite(tm) && tm >= 0 && tm <= 500) next.targetMuscleMassLbs = tm;
+    if (tm != null && Number.isFinite(tm)) {
+      const muscleLbs = toStorageLbs(tm);
+      if (muscleLbs >= 0 && muscleLbs <= 500) next.targetMuscleMassLbs = muscleLbs;
+    }
     saveTargets(next);
     showToast("Targets saved", "success");
   };
@@ -168,9 +182,13 @@ export function MilestonesView({
   }, [wearableData]);
 
   const addManualWeight = async () => {
-    const lbs = parseFloat(scaleWeight);
-    if (!Number.isFinite(lbs) || lbs < 44 || lbs > 1100) {
-      showToast("Enter weight in lbs (44–1100)", "info");
+    const enteredWeight = parseFloat(scaleWeight);
+    const weightLbs = Number.isFinite(enteredWeight) ? toStorageLbs(enteredWeight) : NaN;
+    if (!Number.isFinite(weightLbs) || weightLbs < 44 || weightLbs > 1100) {
+      showToast(
+        unitSystem === "metric" ? "Enter weight in kg (20–500)" : "Enter weight in lbs (44–1100)",
+        "info"
+      );
       return;
     }
     setLoading(true);
@@ -180,16 +198,16 @@ export function MilestonesView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           date: scaleDate,
-          weightLbs: lbs,
+          weightLbs,
           bodyFatPercent: scaleBodyFat ? parseFloat(scaleBodyFat) : undefined,
-          muscleMass: scaleMuscle ? parseFloat(scaleMuscle) : undefined,
+          muscleMass: scaleMuscle ? toStorageLbs(parseFloat(scaleMuscle)) : undefined,
           bmi: scaleBmi ? parseFloat(scaleBmi) : undefined,
           skeletalMusclePercent: scaleSkeletalMuscle ? parseFloat(scaleSkeletalMuscle) : undefined,
-          fatFreeMass: scaleFatFreeMass ? parseFloat(scaleFatFreeMass) : undefined,
+          fatFreeMass: scaleFatFreeMass ? toStorageLbs(parseFloat(scaleFatFreeMass)) : undefined,
           subcutaneousFatPercent: scaleSubcutaneousFat ? parseFloat(scaleSubcutaneousFat) : undefined,
           visceralFat: scaleVisceralFat ? parseFloat(scaleVisceralFat) : undefined,
           bodyWaterPercent: scaleBodyWater ? parseFloat(scaleBodyWater) : undefined,
-          boneMass: scaleBoneMass ? parseFloat(scaleBoneMass) : undefined,
+          boneMass: scaleBoneMass ? toStorageLbs(parseFloat(scaleBoneMass)) : undefined,
           proteinPercent: scaleProtein ? parseFloat(scaleProtein) : undefined,
           bmr: scaleBmr ? parseFloat(scaleBmr) : undefined,
           metabolicAge: scaleMetabolicAge ? parseFloat(scaleMetabolicAge) : undefined,
@@ -257,15 +275,15 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Weight (lbs)</label>
+            <label className="label text-[10px]">{`Weight (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
-              min={44}
-              max={1100}
+              min={massInputMin}
+              max={massInputMax}
               value={scaleWeight}
               onChange={(e) => setScaleWeight(e.target.value)}
-              placeholder="e.g. 165"
+              placeholder={unitSystem === "metric" ? "e.g. 75" : "e.g. 165"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -283,15 +301,15 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Muscle (lbs)</label>
+            <label className="label text-[10px]">{`Muscle (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
               min={0}
-              max={500}
+              max={muscleInputMax}
               value={scaleMuscle}
               onChange={(e) => setScaleMuscle(e.target.value)}
-              placeholder="e.g. 85"
+              placeholder={unitSystem === "metric" ? "e.g. 39" : "e.g. 85"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -322,15 +340,15 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Fat-free (lbs)</label>
+            <label className="label text-[10px]">{`Fat-free (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
               min={0}
-              max={500}
+              max={muscleInputMax}
               value={scaleFatFreeMass}
               onChange={(e) => setScaleFatFreeMass(e.target.value)}
-              placeholder="e.g. 161"
+              placeholder={unitSystem === "metric" ? "e.g. 73" : "e.g. 161"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -374,15 +392,15 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Bone (lbs)</label>
+            <label className="label text-[10px]">{`Bone (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
               min={0}
-              max={110}
+              max={unitSystem === "metric" ? 50 : 110}
               value={scaleBoneMass}
               onChange={(e) => setScaleBoneMass(e.target.value)}
-              placeholder="e.g. 8"
+              placeholder={unitSystem === "metric" ? "e.g. 3.6" : "e.g. 8"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -684,15 +702,15 @@ export function MilestonesView({
         <p className="text-[11px] text-[var(--muted)]">Set goals to track progress. Leave blank to skip.</p>
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <div>
-            <label className="label text-[10px]">Target weight (lbs)</label>
+            <label className="label text-[10px]">{`Target weight (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
-              min={44}
-              max={1100}
+              min={massInputMin}
+              max={massInputMax}
               value={targetWeight}
               onChange={(e) => setTargetWeight(e.target.value)}
-              placeholder="e.g. 165"
+              placeholder={unitSystem === "metric" ? "e.g. 75" : "e.g. 165"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -710,15 +728,15 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Target muscle (lbs)</label>
+            <label className="label text-[10px]">{`Target muscle (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
               min={0}
-              max={500}
+              max={muscleInputMax}
               value={targetMuscle}
               onChange={(e) => setTargetMuscle(e.target.value)}
-              placeholder="e.g. 90"
+              placeholder={unitSystem === "metric" ? "e.g. 41" : "e.g. 90"}
               className="input-base w-full text-sm py-1.5"
             />
           </div>
@@ -736,12 +754,15 @@ export function MilestonesView({
               const curr = measurementHistory[0].weight!;
               const tgt = targets.targetWeightLbs!;
               const delta = (tgt - curr);
+              const currDisplay = toDisplayMass(curr);
+              const tgtDisplay = toDisplayMass(tgt);
+              const deltaDisplay = toDisplayMass(Math.abs(delta));
               return (
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--muted)]">Weight:</span>
-                  <span className="font-medium tabular-nums">{Math.round(curr)} → {tgt} lbs</span>
+                  <span className="font-medium tabular-nums">{currDisplay} → {tgtDisplay} {massUnitLabel}</span>
                   <span className="text-[10px] text-[var(--muted)]">
-                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)} to gain` : `${delta.toFixed(1)} to lose`}
+                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${deltaDisplay.toFixed(1)} to gain` : `${deltaDisplay.toFixed(1)} to lose`}
                   </span>
                 </div>
               );
@@ -764,12 +785,15 @@ export function MilestonesView({
               const curr = measurementHistory[0].muscleMass!;
               const tgt = targets.targetMuscleMassLbs!;
               const delta = (tgt - curr);
+              const currDisplay = toDisplayMass(curr);
+              const tgtDisplay = toDisplayMass(tgt);
+              const deltaDisplay = toDisplayMass(Math.abs(delta));
               return (
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--muted)]">Muscle:</span>
-                  <span className="font-medium tabular-nums">{Math.round(curr)} → {tgt} lbs</span>
+                  <span className="font-medium tabular-nums">{currDisplay} → {tgtDisplay} {massUnitLabel}</span>
                   <span className="text-[10px] text-[var(--muted)]">
-                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)} to gain` : `${delta.toFixed(1)} to lose`}
+                    {delta === 0 ? "✓ at target" : delta > 0 ? `+${deltaDisplay.toFixed(1)} to gain` : `${deltaDisplay.toFixed(1)} to lose`}
                   </span>
                 </div>
               );
@@ -799,9 +823,9 @@ export function MilestonesView({
                 {measurementHistory.slice(0, 10).map((d) => (
                   <tr key={`${d.date}-${d.provider}`} className="border-b border-[var(--border-soft)]/50">
                     <td className="py-1.5 px-1.5">{d.date}</td>
-                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.weight != null ? `${Math.round(d.weight)} lbs` : "—"}</td>
+                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.weight != null ? `${toDisplayMass(d.weight)} ${massUnitLabel}` : "—"}</td>
                     <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bodyFatPercent != null ? `${d.bodyFatPercent}%` : "—"}</td>
-                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.muscleMass != null ? `${Math.round(d.muscleMass)} lbs` : "—"}</td>
+                    <td className="text-right py-1.5 px-1.5 tabular-nums">{d.muscleMass != null ? `${toDisplayMass(d.muscleMass)} ${massUnitLabel}` : "—"}</td>
                     {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bmi != null ? d.bmi.toFixed(1) : "—"}</td>}
                     {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bmr != null ? Math.round(d.bmr) : "—"}</td>}
                     {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.metabolicAge != null ? d.metabolicAge : "—"}</td>}

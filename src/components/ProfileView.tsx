@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary, ProfileVisibility, SocialSettings, CoachSchedule, Supplement, BloodWork, MusicProvider } from "@/lib/types";
+import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary, ProfileVisibility, SocialSettings, CoachSchedule, Supplement, BloodWork, MusicProvider, MeasurementSystem } from "@/lib/types";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { WearablesSection } from "./WearablesSection";
 import { getSocialSettings, saveSocialSettings, getCoachSchedule, saveCoachSchedule, getSupplements, saveSupplements, getBloodWork, saveBloodWork, getMusicPreference, saveMusicPreference, getMeals } from "@/lib/storage";
@@ -78,9 +78,12 @@ export function ProfileView({
   const { ft, inch } = cmToFeetInches(profile.height);
   const [name, setName] = useState(profile.name);
   const [age, setAge] = useState(String(profile.age));
+  const [unitSystem, setUnitSystem] = useState<MeasurementSystem>(profile.unitSystem ?? "us");
   const [weightLbs, setWeightLbs] = useState(String(Math.round(kgToLbs(profile.weight))));
+  const [weightKg, setWeightKg] = useState(String(Math.round(profile.weight * 10) / 10));
   const [heightFeet, setHeightFeet] = useState(String(ft || 5));
   const [heightInches, setHeightInches] = useState(String(inch || 7));
+  const [heightCm, setHeightCm] = useState(String(Math.round(profile.height)));
   const [gender, setGender] = useState(profile.gender);
   const [fitnessLevel, setFitnessLevel] = useState(profile.fitnessLevel);
   const [goal, setGoal] = useState(profile.goal);
@@ -216,21 +219,30 @@ export function ProfileView({
 
   const handleSave = () => {
     const lbs = parseFloat(weightLbs);
+    const kg = parseFloat(weightKg);
     const feet = parseInt(heightFeet, 10);
     const inches = parseInt(heightInches, 10);
+    const cm = parseFloat(heightCm);
     const totalInches =
       Number.isFinite(feet) && feet > 0 ? feet * 12 + (Number.isFinite(inches) && inches >= 0 ? inches : 0) : 0;
+    const weight = unitSystem === "metric"
+      ? (Number.isFinite(kg) && kg > 0 ? kg : profile.weight)
+      : (Number.isFinite(lbs) && lbs > 0 ? poundsToKg(lbs) : profile.weight);
+    const height = unitSystem === "metric"
+      ? (Number.isFinite(cm) && cm > 0 ? cm : profile.height)
+      : (totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : profile.height);
     onProfileUpdate({
       ...profile,
       name: name.trim() || profile.name,
       avatarDataUrl,
       age: parseInt(age, 10) || profile.age,
-      weight: Number.isFinite(lbs) && lbs > 0 ? poundsToKg(lbs) : profile.weight,
-      height: totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : profile.height,
+      weight,
+      height,
       gender,
       fitnessLevel,
       goal,
       dailyActivityLevel: activity,
+      unitSystem,
       workoutLocation,
       workoutEquipment,
       workoutDaysPerWeek,
@@ -238,6 +250,30 @@ export function ProfileView({
       dietaryRestrictions: restrictions.split(",").map((s) => s.trim()).filter(Boolean),
       injuriesOrLimitations: injuries.split(",").map((s) => s.trim()).filter(Boolean),
     });
+  };
+
+  const handleUnitSystemChange = (next: MeasurementSystem) => {
+    if (next === unitSystem) return;
+    if (next === "metric") {
+      const lbs = parseFloat(weightLbs);
+      if (Number.isFinite(lbs) && lbs > 0) setWeightKg((poundsToKg(lbs)).toFixed(1));
+      const feet = parseInt(heightFeet, 10);
+      const inches = parseInt(heightInches, 10);
+      const totalInches = Number.isFinite(feet) && feet > 0
+        ? feet * 12 + (Number.isFinite(inches) && inches >= 0 ? inches : 0)
+        : 0;
+      if (totalInches > 0) setHeightCm((feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0)).toFixed(0));
+    } else {
+      const kg = parseFloat(weightKg);
+      if (Number.isFinite(kg) && kg > 0) setWeightLbs((kgToLbs(kg)).toFixed(1));
+      const cm = parseFloat(heightCm);
+      if (Number.isFinite(cm) && cm > 0) {
+        const { ft, inch } = cmToFeetInches(cm);
+        setHeightFeet(String(ft));
+        setHeightInches(String(inch));
+      }
+    }
+    setUnitSystem(next);
   };
 
   return (
@@ -297,23 +333,45 @@ export function ProfileView({
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input-base w-full" />
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <div>
               <label className="label">Age</label>
               <input type="number" value={age} onChange={(e) => setAge(e.target.value)} min={10} max={120} className="input-base w-full" />
             </div>
             <div>
-              <label className="label">Weight (lbs)</label>
-              <input type="number" step="0.1" value={weightLbs} onChange={(e) => setWeightLbs(e.target.value)} min={50} className="input-base w-full" />
+              <label className="label">Units</label>
+              <select value={unitSystem} onChange={(e) => handleUnitSystemChange(e.target.value as MeasurementSystem)} className="input-base w-full">
+                <option value="us">US (lb, ft/in, fl oz)</option>
+                <option value="metric">Metric (kg, cm, ml)</option>
+              </select>
             </div>
-            <div>
-              <label className="label">Height (ft)</label>
-              <input type="number" value={heightFeet} onChange={(e) => setHeightFeet(e.target.value)} min={3} max={8} className="input-base w-full" />
-            </div>
-            <div>
-              <label className="label">Height (in)</label>
-              <input type="number" value={heightInches} onChange={(e) => setHeightInches(e.target.value)} min={0} max={11} className="input-base w-full" />
-            </div>
+            {unitSystem === "metric" ? (
+              <>
+                <div>
+                  <label className="label">Weight (kg)</label>
+                  <input type="number" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} min={20} max={500} className="input-base w-full" />
+                </div>
+                <div>
+                  <label className="label">Height (cm)</label>
+                  <input type="number" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} min={100} max={250} className="input-base w-full" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label className="label">Weight (lbs)</label>
+                  <input type="number" step="0.1" value={weightLbs} onChange={(e) => setWeightLbs(e.target.value)} min={50} className="input-base w-full" />
+                </div>
+                <div>
+                  <label className="label">Height (ft)</label>
+                  <input type="number" value={heightFeet} onChange={(e) => setHeightFeet(e.target.value)} min={3} max={8} className="input-base w-full" />
+                </div>
+                <div>
+                  <label className="label">Height (in)</label>
+                  <input type="number" value={heightInches} onChange={(e) => setHeightInches(e.target.value)} min={0} max={11} className="input-base w-full" />
+                </div>
+              </>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

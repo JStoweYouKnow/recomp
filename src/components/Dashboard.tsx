@@ -20,6 +20,7 @@ import { DuelCard } from "./dashboard/DuelCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
+import { cmToFeetInches, kgToLbs, lbsToKg } from "@/lib/units";
 
 /* ── Exercise GIF cache (localStorage-backed) ── */
 interface ExerciseGif {
@@ -68,14 +69,7 @@ export function Dashboard({
   onNavigateToMeals?: () => void;
   onNavigateToWorkouts?: () => void;
 }) {
-  const kgToLbs = (kg: number): number => kg * 2.2046226218;
-  const cmToFeetInches = (cm: number): { ft: number; inch: number } => {
-    const totalInches = cm / 2.54;
-    const ft = Math.floor(totalInches / 12);
-    const inch = Math.round(totalInches - (ft * 12));
-    if (inch === 12) return { ft: ft + 1, inch: 0 };
-    return { ft, inch };
-  };
+  const unitSystem = profile.unitSystem ?? "us";
   // Prefer most recent weight from wearables when available
   const displayWeightLbs = useMemo(() => {
     const withWeight = (wearableData ?? [])
@@ -85,6 +79,12 @@ export function Dashboard({
     return latest != null ? Math.round(latest) : Math.round(kgToLbs(profile.weight));
   }, [wearableData, profile.weight]);
   const displayHeight = cmToFeetInches(profile.height);
+  const displayWeight = unitSystem === "metric"
+    ? `${Math.round(lbsToKg(displayWeightLbs) * 10) / 10} kg`
+    : `${displayWeightLbs} lbs`;
+  const displayHeightText = unitSystem === "metric"
+    ? `${Math.round(profile.height)} cm`
+    : `${displayHeight.ft}′${displayHeight.inch}″`;
   const MAX_AVATAR_SIZE = 160;
 
   const [weeklyReview, setWeeklyReview] = useState<WeeklyReview | null>(getWeeklyReview());
@@ -356,8 +356,8 @@ export function Dashboard({
         <div className="flex gap-1.5 relative z-[1]">
           {[
             [`${profile.age}`, "age"],
-            [`${displayWeightLbs} lbs`, "weight"],
-            [`${displayHeight.ft}′${displayHeight.inch}″`, "height"],
+            [displayWeight, "weight"],
+            [displayHeightText, "height"],
           ].map(([val, lbl]) => (
             <span key={lbl} className="badge badge-muted backdrop-blur-sm bg-white/60">
               <span className="text-[var(--foreground)] font-medium">{val}</span>
@@ -428,7 +428,7 @@ export function Dashboard({
 
       {/* ── Hydration, Fasting, Biofeedback, Metabolic, Coach ── */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
-        <HydrationWidget />
+        <HydrationWidget unitSystem={profile.unitSystem ?? "us"} />
         <FastingWidget />
         <BiofeedbackQuickEntry />
         <MetabolicModelCard />
@@ -649,7 +649,9 @@ export function Dashboard({
               <div key={`${d.date}-${d.provider}`} className="card-flat rounded-xl px-4 py-3">
                 <p className="text-caption mb-1">{d.date} · {d.provider}</p>
                 <p className="text-sm font-medium">
-                  {d.weight != null && `${Math.round(d.weight)} lbs`}
+                  {d.weight != null && (unitSystem === "metric"
+                    ? `${Math.round(lbsToKg(d.weight) * 10) / 10} kg`
+                    : `${Math.round(d.weight)} lbs`)}
                   {d.bodyFatPercent != null && ` · ${d.bodyFatPercent}% fat`}
                   {d.steps != null && ` · ${d.steps.toLocaleString()} steps`}
                   {d.sleepScore != null && ` · Sleep ${d.sleepScore}`}

@@ -1,5 +1,6 @@
 export type FitnessLevel = "beginner" | "intermediate" | "advanced" | "athlete";
 export type Goal = "lose_weight" | "maintain" | "build_muscle" | "improve_endurance";
+export type MeasurementSystem = "us" | "metric";
 export type WorkoutLocation = "home" | "gym" | "outside";
 export type WorkoutEquipment =
   | "bodyweight"
@@ -27,6 +28,7 @@ export interface UserProfile {
   dietaryRestrictions: string[];
   injuriesOrLimitations: string[];
   dailyActivityLevel: "sedentary" | "light" | "moderate" | "active" | "very_active";
+  unitSystem?: MeasurementSystem;
   workoutLocation?: WorkoutLocation;
   workoutEquipment?: WorkoutEquipment[];
   workoutDaysPerWeek?: number; // 2–7

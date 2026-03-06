@@ -21,6 +21,7 @@ import { useToast } from "@/components/Toast";
 import { useConfetti } from "@/components/Confetti";
 import { playBadgeEarned, playLevelUp } from "@/lib/sounds";
 import { xpToLevel } from "@/lib/milestones";
+import { formatHydrationAmount, getUnitSystem } from "@/lib/units";
 import { v4 as uuidv4 } from "uuid";
 import { NovaTracePanel } from "@/components/judge/NovaTracePanel";
 
@@ -171,6 +172,7 @@ export default function Home() {
       dietaryRestrictions: data.dietaryRestrictions || [],
       injuriesOrLimitations: data.injuriesOrLimitations || [],
       dailyActivityLevel: data.dailyActivityLevel || "moderate",
+      unitSystem: data.unitSystem ?? "us",
       workoutLocation: data.workoutLocation ?? "gym",
       workoutEquipment: data.workoutEquipment ?? ["free_weights", "machines"],
       workoutDaysPerWeek: data.workoutDaysPerWeek ?? 4,
@@ -710,11 +712,12 @@ export default function Home() {
                 const latest = bio.filter((e) => e.date === today).sort((a, b) => b.time.localeCompare(a.time))[0];
                 return latest ? `Today: energy ${latest.energy}/5, mood ${latest.mood}/5, hunger ${latest.hunger}/5` : null;
               })(),
-              hydrationToday: (() => {
+              hydrationSummary: (() => {
                 const h = getHydration();
                 const today = getTodayLocal();
                 const total = h.filter((e) => e.date === today).reduce((s, e) => s + e.amountMl, 0);
-                return total > 0 ? total : null;
+                if (total <= 0) return null;
+                return formatHydrationAmount(total, getUnitSystem(profile));
               })(),
               activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
             }}

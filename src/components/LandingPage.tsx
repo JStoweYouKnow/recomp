@@ -44,13 +44,23 @@ export function LandingPage({
   onResetDemoData: () => void;
 }) {
   const poundsToKg = (lbs: number): number => lbs * 0.45359237;
+  const kgToPounds = (kg: number): number => kg * 2.2046226218;
   const feetInchesToCm = (feet: number, inches: number): number => (feet * 12 + inches) * 2.54;
+  const cmToFeetInches = (cm: number): { feet: number; inches: number } => {
+    const totalInches = cm / 2.54;
+    const feet = Math.floor(totalInches / 12);
+    const inches = Math.round(totalInches - feet * 12);
+    return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
+  };
 
   const [name, setName] = useState("");
   const [age, setAge] = useState("");
+  const [unitSystem, setUnitSystem] = useState<"us" | "metric">("us");
   const [weightLbs, setWeightLbs] = useState("");
+  const [weightKg, setWeightKg] = useState("");
   const [heightFeet, setHeightFeet] = useState("");
   const [heightInches, setHeightInches] = useState("");
+  const [heightCm, setHeightCm] = useState("");
   const [gender, setGender] = useState<UserProfile["gender"]>("other");
   const [fitnessLevel, setFitnessLevel] = useState<UserProfile["fitnessLevel"]>("intermediate");
   const [goal, setGoal] = useState<UserProfile["goal"]>("maintain");
@@ -156,6 +166,7 @@ export function LandingPage({
               fitnessLevel: parsed.fitnessLevel || "intermediate",
               goal: parsed.goal || "maintain",
               dailyActivityLevel: parsed.activityLevel || "moderate",
+              unitSystem: "us",
               workoutLocation: parsed.workoutLocation || "gym",
               dietaryRestrictions: parsed.restrictions ? parsed.restrictions.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
             });
@@ -180,25 +191,59 @@ export function LandingPage({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const lbs = parseFloat(weightLbs);
+    const kg = parseFloat(weightKg);
     const feet = parseInt(heightFeet, 10);
     const inches = parseInt(heightInches, 10);
-    const totalInches =
-      Number.isFinite(feet) && feet > 0 ? feet * 12 + (Number.isFinite(inches) && inches >= 0 ? inches : 0) : 0;
+    const cm = parseFloat(heightCm);
+    const totalInches = Number.isFinite(feet) && feet > 0
+      ? feet * 12 + (Number.isFinite(inches) && inches >= 0 ? inches : 0)
+      : 0;
+    const weight = unitSystem === "metric"
+      ? (Number.isFinite(kg) && kg > 0 ? kg : 70)
+      : (Number.isFinite(lbs) && lbs > 0 ? poundsToKg(lbs) : 70);
+    const height = unitSystem === "metric"
+      ? (Number.isFinite(cm) && cm > 0 ? cm : 170)
+      : (totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : 170);
     onSubmit({
       name: name || "User",
       age: parseInt(age) || 30,
-      weight: Number.isFinite(lbs) && lbs > 0 ? poundsToKg(lbs) : 70,
-      height: totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : 170,
+      weight,
+      height,
       gender,
       fitnessLevel,
       goal,
       dailyActivityLevel: activity,
+      unitSystem,
       workoutLocation,
       workoutEquipment,
       workoutDaysPerWeek,
       workoutTimeframe,
       dietaryRestrictions: restrictions.split(",").map((s) => s.trim()).filter(Boolean),
     });
+  };
+
+  const handleUnitSystemChange = (next: "us" | "metric") => {
+    if (next === unitSystem) return;
+    if (next === "metric") {
+      const lbs = parseFloat(weightLbs);
+      if (Number.isFinite(lbs) && lbs > 0) setWeightKg((poundsToKg(lbs)).toFixed(1));
+      const feet = parseInt(heightFeet, 10);
+      const inches = parseInt(heightInches, 10);
+      const totalInches = Number.isFinite(feet) && feet > 0
+        ? feet * 12 + (Number.isFinite(inches) && inches >= 0 ? inches : 0)
+        : 0;
+      if (totalInches > 0) setHeightCm((feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0)).toFixed(0));
+    } else {
+      const kg = parseFloat(weightKg);
+      if (Number.isFinite(kg) && kg > 0) setWeightLbs((kgToPounds(kg)).toFixed(1));
+      const cm = parseFloat(heightCm);
+      if (Number.isFinite(cm) && cm > 0) {
+        const { feet, inches } = cmToFeetInches(cm);
+        setHeightFeet(String(feet));
+        setHeightInches(String(inches));
+      }
+    }
+    setUnitSystem(next);
   };
 
   return (
@@ -399,7 +444,7 @@ export function LandingPage({
                   className="input-base w-full"
                 />
               </div>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <label className="label">Age</label>
                   <input
@@ -411,42 +456,88 @@ export function LandingPage({
                   />
                 </div>
                 <div>
-                  <label className="label">Weight (lbs)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min={50}
-                    max={1000}
-                    value={weightLbs}
-                    onChange={(e) => setWeightLbs(e.target.value)}
-                    placeholder="154"
+                  <label className="label">Units</label>
+                  <select
+                    value={unitSystem}
+                    onChange={(e) => handleUnitSystemChange(e.target.value as "us" | "metric")}
                     className="input-base w-full"
-                  />
+                  >
+                    <option value="us">US (lb, ft/in, fl oz)</option>
+                    <option value="metric">Metric (kg, cm, ml)</option>
+                  </select>
                 </div>
-                <div>
-                  <label className="label">Height (ft)</label>
-                  <input
-                    type="number"
-                    min={3}
-                    max={8}
-                    value={heightFeet}
-                    onChange={(e) => setHeightFeet(e.target.value)}
-                    placeholder="5"
-                    className="input-base w-full"
-                  />
-                </div>
-                <div>
-                  <label className="label">Height (in)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={11}
-                    value={heightInches}
-                    onChange={(e) => setHeightInches(e.target.value)}
-                    placeholder="7"
-                    className="input-base w-full"
-                  />
-                </div>
+                {unitSystem === "metric" ? (
+                  <>
+                    <div>
+                      <label className="label">Weight (kg)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={20}
+                        max={500}
+                        value={weightKg}
+                        onChange={(e) => setWeightKg(e.target.value)}
+                        placeholder="70"
+                        className="input-base w-full"
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Height (cm)</label>
+                      <input
+                        type="number"
+                        step="1"
+                        min={100}
+                        max={250}
+                        value={heightCm}
+                        onChange={(e) => setHeightCm(e.target.value)}
+                        placeholder="170"
+                        className="input-base w-full"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="label">Weight (lbs)</label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={50}
+                        max={1000}
+                        value={weightLbs}
+                        onChange={(e) => setWeightLbs(e.target.value)}
+                        placeholder="154"
+                        className="input-base w-full"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="label">Height (ft)</label>
+                        <input
+                          type="number"
+                          min={3}
+                          max={8}
+                          value={heightFeet}
+                          onChange={(e) => setHeightFeet(e.target.value)}
+                          placeholder="5"
+                          className="input-base w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Height (in)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={11}
+                          value={heightInches}
+                          onChange={(e) => setHeightInches(e.target.value)}
+                          placeholder="7"
+                          className="input-base w-full"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
