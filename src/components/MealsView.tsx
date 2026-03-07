@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, saveCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache, getPantry, getActiveFastingSession, getSavedRestaurantMeals, saveSavedRestaurantMeals, syncToServer } from "@/lib/storage";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
@@ -10,6 +10,15 @@ import { v4 as uuidv4 } from "uuid";
 import { CalendarView } from "./CalendarView";
 import { PantrySection } from "./meals/PantrySection";
 import { MealPrepSection } from "./meals/MealPrepSection";
+
+type NutritionData = {
+  nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number };
+  demoMode?: boolean;
+  source?: string;
+  note?: string;
+  cached?: boolean;
+  _src?: "web";
+};
 
 export function MealsView({
   meals,
@@ -96,6 +105,7 @@ export function MealsView({
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [receiptItems, setReceiptItems] = useState<{ name: string; quantity?: string; calories: number; protein: number; carbs: number; fat: number; selected?: boolean }[]>([]);
   const [nutritionLookupLoading, setNutritionLookupLoading] = useState(false);
+  const [nutritionLookupStatus, setNutritionLookupStatus] = useState<string | null>(null);
   const [nutritionSource, setNutritionSource] = useState<"usda" | "web" | "estimated" | "openfoodfacts" | null>(null);
   const [recipeUrl, setRecipeUrl] = useState("");
   const [recipeUrlLoading, setRecipeUrlLoading] = useState(false);
@@ -123,6 +133,7 @@ export function MealsView({
   const { showToast } = useToast();
   const activeFast = getActiveFastingSession();
   const [savedRestaurantMeals, setSavedRestaurantMeals] = useState(() => getSavedRestaurantMeals());
+  const inFlightNutritionLookups = useRef<Map<string, Promise<NutritionData | null>>>(new Map());
 
   // Upcoming days (next 7) with no logged meals
   const emptyUpcomingDates = useMemo(() => {
@@ -382,10 +393,9 @@ export function MealsView({
     const food = name.trim();
     if (!food) return;
     setNutritionLookupLoading(true);
+    setNutritionLookupStatus("Checking local cache...");
     setNutritionSource(null);
     try {
-      type NutritionData = { nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number }; demoMode?: boolean; source?: string; note?: string; cached?: boolean; _src?: "web" };
-
       // ── 1. Check client-side cache (instant) ──
       const localCached = getNutritionCache(food);
       if (localCached) {
@@ -393,50 +403,75 @@ export function MealsView({
         setPro(String(localCached.protein));
         setCarb(String(localCached.carbs));
         setFat(String(localCached.fat));
-        setNutritionSource(localCached.source.startsWith("cache") ? "usda" : localCached.source as "usda" | "web" | "estimated");
-        setNutritionLookupLoading(false);
+        const rawCachedSource = String(localCached.source ?? "").toLowerCase();
+        const cachedSource = rawCachedSource.includes("openfoodfacts")
+          ? "openfoodfacts"
+          : rawCachedSource.includes("web")
+            ? "web"
+            : rawCachedSource.includes("estimated")
+              ? "estimated"
+              : "usda";
+        setNutritionSource(cachedSource);
         return;
       }
 
-      // ── 2. Act API first — always returns nutrition (USDA, Python, or estimated fallback) ──
-      let data: NutritionData | null = null;
+      const lookupKey = food.toLowerCase().replace(/\s+/g, " ").trim();
+      let lookupPromise = inFlightNutritionLookups.current.get(lookupKey);
+      if (!lookupPromise) {
+        lookupPromise = (async () => {
+          // ── 2. Act API first — always returns nutrition (USDA, Python, or estimated fallback) ──
+          let data: NutritionData | null = null;
 
-      if (isActServiceConfigured()) {
-        try {
-          const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
-          if (d?.nutrition) data = d;
-        } catch {
-          /* fall through to API */
-        }
-      }
-      if (!data?.nutrition) {
-        const res = await fetch("/api/act/nutrition", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ food }),
-        });
-        if (res.ok) {
-          const d = (await res.json()) as NutritionData;
-          if (d?.nutrition) data = d;
-        }
-      }
-
-      // ── 3. Web grounding fallback if Act failed or returned error ──
-      if (!data?.nutrition) {
-        try {
-          const res = await fetch("/api/meals/lookup-nutrition-web", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ food }),
-          });
-          if (res.ok) {
-            const d = (await res.json()) as NutritionData;
-            if (d?.nutrition) data = { ...d, _src: "web" };
+          setNutritionLookupStatus("Checking nutrition databases...");
+          if (isActServiceConfigured()) {
+            try {
+              const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
+              if (d?.nutrition) data = d;
+            } catch {
+              /* fall through to API */
+            }
           }
-        } catch {
-          /* web failed */
-        }
+          if (!data?.nutrition) {
+            setNutritionLookupStatus("Running nutrition lookup service...");
+            const res = await fetch("/api/act/nutrition", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ food }),
+            });
+            if (res.ok) {
+              const d = (await res.json()) as NutritionData;
+              if (d?.nutrition) data = d;
+            }
+          }
+
+          // ── 3. Web grounding fallback if Act failed or returned error ──
+          if (!data?.nutrition) {
+            setNutritionLookupStatus("Searching the web for nutrition...");
+            try {
+              const res = await fetch("/api/meals/lookup-nutrition-web", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ food }),
+              });
+              if (res.ok) {
+                const d = (await res.json()) as NutritionData;
+                if (d?.nutrition) data = { ...d, _src: "web" };
+              }
+            } catch {
+              /* web failed */
+            }
+          }
+
+          return data;
+        })().finally(() => {
+          inFlightNutritionLookups.current.delete(lookupKey);
+        });
+        inFlightNutritionLookups.current.set(lookupKey, lookupPromise);
+      } else {
+        setNutritionLookupStatus("Using active lookup...");
       }
+
+      const data = await lookupPromise;
 
       if (data?.nutrition) {
         const n = data.nutrition;
@@ -445,7 +480,14 @@ export function MealsView({
         setCarb(String(n.carbs ?? ""));
         setFat(String(n.fat ?? ""));
         const isEstimated = data.demoMode || data.note?.toLowerCase().includes("estimated");
-        const source = data.cached ? "usda" : isEstimated ? "estimated" : data._src === "web" ? "web" : "usda";
+        const rawSource = String(data.source ?? "").toLowerCase();
+        const source = isEstimated
+          ? "estimated"
+          : rawSource.includes("openfoodfacts")
+            ? "openfoodfacts"
+            : data._src === "web" || rawSource.includes("web")
+              ? "web"
+              : "usda";
         setNutritionSource(source);
         if (!isEstimated && n.calories != null) {
           saveNutritionCache(food, { calories: n.calories ?? 0, protein: n.protein ?? 0, carbs: n.carbs ?? 0, fat: n.fat ?? 0, source });
@@ -457,6 +499,7 @@ export function MealsView({
       showToast?.(err instanceof Error ? err.message : "Nutrition lookup failed", "error");
     } finally {
       setNutritionLookupLoading(false);
+      setNutritionLookupStatus(null);
     }
   };
 
@@ -917,6 +960,11 @@ export function MealsView({
               >
                 {nutritionLookupLoading ? "Looking up nutrition..." : "Auto-fill nutrition"}
               </button>
+              {nutritionLookupLoading && (
+                <span className="text-[10px] text-[var(--muted)] animate-pulse">
+                  {nutritionLookupStatus ?? "Looking up nutrition..."}
+                </span>
+              )}
               {nutritionSource && (
                 <span className="text-[10px] text-[var(--muted)]">
                   {nutritionSource === "usda" && "Source: USDA FoodData Central"}

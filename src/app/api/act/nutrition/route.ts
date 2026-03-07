@@ -11,6 +11,7 @@ import {
 import { isJudgeMode } from "@/lib/judgeMode";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
 import { recordJudgeTrace } from "@/lib/judgeTrace";
+import { searchOpenFoodFacts } from "@/lib/open-food-facts";
 
 export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
 const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the function
@@ -90,6 +91,47 @@ export async function POST(req: NextRequest) {
         return res;
       }
     } catch { /* cache miss — continue to live lookup */ }
+
+    // Fast path for common packaged foods before slower Act flows.
+    try {
+      const off = await searchOpenFoodFacts(food);
+      if (off) {
+        dbSaveNutritionCache(food, {
+          calories: off.calories,
+          protein: off.protein,
+          carbs: off.carbs,
+          fat: off.fat,
+          source: "openfoodfacts",
+          cachedAt: new Date().toISOString(),
+        }).catch(() => {});
+        const res = NextResponse.json({
+          food,
+          nutrition: {
+            calories: off.calories,
+            protein: off.protein,
+            carbs: off.carbs,
+            fat: off.fat,
+          },
+          source: "openfoodfacts",
+          productName: off.productName,
+        });
+        const headers = getRateLimitHeaderValues(rl);
+        res.headers.set("X-RateLimit-Limit", headers.limit);
+        res.headers.set("X-RateLimit-Remaining", headers.remaining);
+        res.headers.set("X-RateLimit-Reset", headers.reset);
+        recordJudgeTrace({
+          action: "actNutrition",
+          service: "open-food-facts",
+          model: "open-food-facts",
+          status: "ok",
+          durationMs: Date.now() - startedAt,
+          detail: "openfoodfacts-hit",
+        });
+        return res;
+      }
+    } catch {
+      // Continue to Act service fallback.
+    }
 
     const serviceResult = await callActService<Record<string, unknown>>("/nutrition", { food }, { timeoutMs: TIMEOUT_MS });
     if (serviceResult && (serviceResult.nutrition || serviceResult.error)) {
