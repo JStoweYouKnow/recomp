@@ -342,8 +342,15 @@ export function computeMilestones(
   // night_owl: meal logged between midnight and 4am
   meals.forEach((m) => {
     if (m.loggedAt) {
-      const h = new Date(m.loggedAt).getHours();
-      if (h >= 0 && h < 4) award("night_owl");
+      const loggedAt = new Date(m.loggedAt);
+      const loggedDate = Number.isNaN(loggedAt.getTime())
+        ? ""
+        : `${loggedAt.getFullYear()}-${String(loggedAt.getMonth() + 1).padStart(2, "0")}-${String(
+            loggedAt.getDate()
+          ).padStart(2, "0")}`;
+      const h = loggedAt.getHours();
+      // Only count true late-night logging events for that same meal day.
+      if (loggedDate === m.date && h >= 0 && h < 4) award("night_owl");
     }
   });
 
