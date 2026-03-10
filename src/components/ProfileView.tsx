@@ -117,13 +117,14 @@ export function ProfileView({
   // Claim Account State
   const [claimEmail, setClaimEmail] = useState(profile.email || "");
   const [claimPassword, setClaimPassword] = useState("");
-  const [claimStatus, setClaimStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [claimStatus, setClaimStatus] = useState<"idle" | "loading" | "success" | "error" | "conflict">("idle");
   const [claimErrorMessage, setClaimErrorMessage] = useState("");
 
   const handleClaimAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!claimEmail || claimPassword.length < 8) return;
     setClaimStatus("loading");
+    setClaimErrorMessage("");
     try {
       const res = await fetch("/api/auth/claim", {
         method: "POST",
@@ -131,11 +132,39 @@ export function ProfileView({
         body: JSON.stringify({ email: claimEmail, password: claimPassword }),
       });
       const data = await res.json();
+      if (res.status === 409) {
+        // Email already belongs to an existing account — offer login
+        setClaimStatus("conflict");
+        setClaimErrorMessage("This email is already linked to an account.");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Failed to claim account");
 
       setClaimStatus("success");
       onProfileUpdate({ ...profile, email: claimEmail });
       setTimeout(() => setClaimStatus("idle"), 3000);
+    } catch (err: any) {
+      setClaimStatus("error");
+      setClaimErrorMessage(err.message);
+    }
+  };
+
+  const handleLoginInstead = async () => {
+    setClaimStatus("loading");
+    setClaimErrorMessage("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: claimEmail, password: claimPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Login failed");
+
+      // Login sets the auth cookie. Clear the guest's localStorage
+      // and reload — page.tsx will pull all data from DynamoDB.
+      localStorage.clear();
+      window.location.reload();
     } catch (err: any) {
       setClaimStatus("error");
       setClaimErrorMessage(err.message);
@@ -520,6 +549,15 @@ export function ProfileView({
               <form onSubmit={handleClaimAccount} className="space-y-4">
                 {claimStatus === "error" && <p className="text-sm text-[var(--accent)]">{claimErrorMessage}</p>}
                 {claimStatus === "success" && <p className="text-sm text-green-500">Account successfully claimed!</p>}
+                {claimStatus === "conflict" && (
+                  <div className="p-3 rounded-lg border border-[var(--accent-warm)]/30 bg-[var(--accent-warm)]/5 space-y-2">
+                    <p className="text-sm text-[var(--foreground)]">{claimErrorMessage}</p>
+                    <p className="text-xs text-[var(--muted)]">If this is your account, you can log in to restore your data on this device.</p>
+                    <button type="button" onClick={handleLoginInstead} className="btn-primary !py-2 !text-sm">
+                      Log in instead
+                    </button>
+                  </div>
+                )}
                 <div className="flex flex-col sm:flex-row gap-3">
                   <div className="flex-1">
                     <label className="label">Account Email</label>
