@@ -32,12 +32,14 @@ const FEATURES = [
 
 export function LandingPage({
   onSubmit,
+  onLoginSuccess,
   loading,
   onUsePreseededDemo,
   onStartJudgeTour,
   onResetDemoData,
 }: {
-  onSubmit: (d: Partial<UserProfile>) => void;
+  onSubmit: (d: Partial<UserProfile> & { password?: string }) => void;
+  onLoginSuccess: (userId: string) => void;
   loading: boolean;
   onUsePreseededDemo: () => void;
   onStartJudgeTour: () => void;
@@ -53,7 +55,15 @@ export function LandingPage({
     return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
   };
 
+  const [mode, setMode] = useState<"choose" | "signup" | "login">("choose");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [age, setAge] = useState("");
   const [unitSystem, setUnitSystem] = useState<"us" | "metric">("us");
   const [weightLbs, setWeightLbs] = useState("");
@@ -224,6 +234,8 @@ export function LandingPage({
       : (totalInches > 0 ? feetInchesToCm(feet, Number.isFinite(inches) ? inches : 0) : 170);
     onSubmit({
       name: name || "User",
+      email: email || undefined,
+      password: password || undefined,
       age: parseInt(age) || 30,
       weight,
       height,
@@ -263,6 +275,59 @@ export function LandingPage({
     }
     setUnitSystem(next);
   };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError("");
+    setLoginLoading(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+      onLoginSuccess(data.userId);
+    } catch (err: any) {
+      setLoginError(err.message);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  if (mode === "login") {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex flex-col items-center justify-center p-5">
+        <div className="card w-full max-w-sm p-6 sm:p-8 space-y-6">
+          <div className="text-center">
+            <h2 className="brand-title text-2xl font-bold text-[var(--foreground)]">Welcome back</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">Log in to pick up where you left off</p>
+          </div>
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            {loginError && <p className="text-sm text-[var(--accent)] text-center">{loginError}</p>}
+            <div>
+              <label className="label">Email</label>
+              <input type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} required className="input-base w-full" />
+            </div>
+            <div>
+              <label className="label">Password</label>
+              <input type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required className="input-base w-full" />
+            </div>
+            <button type="submit" disabled={loginLoading} className="btn-primary w-full shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-medium)]">
+              {loginLoading ? "Logging in..." : "Log In"}
+            </button>
+          </form>
+          <div className="text-center text-sm">
+            <span className="text-[var(--muted)]">Don't have an account? </span>
+            <button onClick={() => setMode("choose")} className="text-[var(--accent)] hover:underline font-medium">Get started</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -372,15 +437,27 @@ export function LandingPage({
 
           <div className="text-center mb-6 animate-fade-in" style={{ animationDelay: "350ms" }}>
             <h2 className="brand-title text-2xl sm:text-3xl md:text-4xl font-bold text-[var(--foreground)] tracking-tight">
-              Or create your personalized plan
+              Create your personalized plan
             </h2>
-            <p className="mt-2 text-[var(--muted)] text-sm uppercase tracking-widest font-medium">
-              A few quick questions to get started
-            </p>
-            <p className="mt-1 text-xs text-[var(--muted-foreground)]">Takes about 2 minutes. You can change anything later in Profile.</p>
+            <div className="mt-4 flex flex-col items-center gap-3">
+              {mode === "choose" ? (
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button onClick={() => setMode("signup")} className="btn-primary px-8 py-3 w-full sm:w-auto shadow-[var(--shadow-soft)] hover:shadow-[var(--shadow-medium)] text-base">
+                    Get Started -&gt;
+                  </button>
+                  <button onClick={() => setMode("login")} className="btn-outline px-8 py-3 w-full sm:w-auto text-[var(--accent)] border-[var(--border-soft)] hover:bg-[var(--surface-elevated)] transition-colors text-base font-medium">
+                    Log In
+                  </button>
+                </div>
+              ) : (
+                <button onClick={() => setMode("choose")} className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] mt-2">
+                  ← Back
+                </button>
+              )}
+            </div>
           </div>
           {/* Voice / Form toggle — only after mount to avoid hydration mismatch */}
-          {showVoiceToggle && (
+          {mode === "signup" && showVoiceToggle && (
             <div className="flex flex-col items-center mb-4 animate-fade-in" style={{ animationDelay: "380ms" }}>
               <p className="text-xs text-[var(--muted)] mb-2">Answer by typing or by voice</p>
               <div className="inline-flex rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-0.5">
@@ -447,9 +524,20 @@ export function LandingPage({
                 </button>
               </div>
             </div>
-          ) : (
+          ) : mode === "signup" ? (
             <div className="card p-6 sm:p-8 animate-fade-in" style={{ animationDelay: "400ms" }}>
               <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2 pb-4 border-b border-[var(--border-soft)]">
+                  <div>
+                    <label className="label">Account Email (Optional)</label>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="your@email.com" className="input-base w-full" />
+                    <p className="text-[10px] text-[var(--muted)] mt-1">To access your data across devices</p>
+                  </div>
+                  <div>
+                    <label className="label">Password (Optional)</label>
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 8 characters" className="input-base w-full" />
+                  </div>
+                </div>
                 <div>
                   <label className="label">Name</label>
                   <input
@@ -699,7 +787,7 @@ export function LandingPage({
                 </button>
               </form>
             </div>
-          )}
+          ) : null}
         </div>
       </section>
 

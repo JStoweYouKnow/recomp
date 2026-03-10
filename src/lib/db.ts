@@ -756,7 +756,7 @@ export async function dbRemoveFromGroupsIndex(groupId: string, goalType?: GroupG
       ALL_GOAL_TYPES.map((gt) =>
         doc.send(
           new DeleteCommand({ TableName: TABLE, Key: { PK: `GROUPS_INDEX#${gt}`, SK: `GROUP#${groupId}` } })
-        ).catch(() => {})
+        ).catch(() => { })
       )
     );
   }
@@ -1066,4 +1066,50 @@ export async function dbSaveBloodWork(userId: string, entry: BloodWork): Promise
       Item: { PK: `USER#${userId}`, SK: `BLOODWORK#${entry.date}#${entry.id}`, data: entry },
     })
   );
+}
+
+// ── Traditional Email Auth ───────────────────────────────
+export interface AuthAccount {
+  userId: string;
+  email: string;
+  passwordHash: string;
+  createdAt: string;
+}
+
+export async function dbCreateAccount(account: AuthAccount): Promise<boolean> {
+  const doc = getDocClient();
+  const key = account.email.toLowerCase().trim();
+  try {
+    await doc.send(
+      new PutCommand({
+        TableName: TABLE,
+        Item: {
+          PK: `ACCOUNT#${key}`,
+          SK: `ACCOUNT#${key}`,
+          data: account,
+          updatedAt: new Date().toISOString()
+        },
+        ConditionExpression: "attribute_not_exists(PK)",
+      })
+    );
+    return true;
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "name" in err && err.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+}
+
+export async function dbVerifyAccount(email: string): Promise<AuthAccount | null> {
+  if (!email) return null;
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `ACCOUNT#${key}`, SK: `ACCOUNT#${key}` } })
+  );
+  return Item?.data ? (Item.data as AuthAccount) : null;
+}
+
+export async function dbGetUserIdByEmail(email: string): Promise<string | null> {
+  const account = await dbVerifyAccount(email);
+  return account?.userId ?? null;
 }

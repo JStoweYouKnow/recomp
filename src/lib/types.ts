@@ -16,6 +16,7 @@ export type WorkoutEquipment =
 export interface UserProfile {
   id: string;
   name: string;
+  email?: string;
   avatarDataUrl?: string; // base64 data URL for profile picture
   fullBodyPhotoDataUrl?: string; // base64 data URL for full-body photo
   goalPhotoDataUrl?: string; // AI-generated "after" image based on source photo + goal

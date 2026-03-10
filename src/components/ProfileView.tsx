@@ -114,6 +114,40 @@ export function ProfileView({
   const usernameCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  // Claim Account State
+  const [claimEmail, setClaimEmail] = useState(profile.email || "");
+  const [claimPassword, setClaimPassword] = useState("");
+  const [claimStatus, setClaimStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [claimErrorMessage, setClaimErrorMessage] = useState("");
+
+  const handleClaimAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!claimEmail || claimPassword.length < 8) return;
+    setClaimStatus("loading");
+    try {
+      const res = await fetch("/api/auth/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: claimEmail, password: claimPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to claim account");
+
+      setClaimStatus("success");
+      onProfileUpdate({ ...profile, email: claimEmail });
+      setTimeout(() => setClaimStatus("idle"), 3000);
+    } catch (err: any) {
+      setClaimStatus("error");
+      setClaimErrorMessage(err.message);
+    }
+  };
+
+  const handleLogout = () => {
+    document.cookie = "recomp_uid=; max-age=0; path=/";
+    localStorage.clear();
+    window.location.reload();
+  };
+
   const [coachSchedule, setCoachSchedule] = useState<CoachSchedule | null>(() => getCoachSchedule());
   const [checkInTimes, setCheckInTimes] = useState(coachSchedule?.checkInTimes?.join(", ") ?? "09:00, 18:00");
   const [weeklyReviewDay, setWeeklyReviewDay] = useState(coachSchedule?.weeklyReviewDay ?? 0);
@@ -157,7 +191,7 @@ export function ProfileView({
         if (data.visibility) setSocialVisibility(data.visibility);
         if (data.username) setSocialUsername(data.username);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [isDemoMode]);
 
   const checkUsername = useCallback((value: string) => {
@@ -213,7 +247,7 @@ export function ProfileView({
           setCalendarFeedUrl(`${window.location.origin}/api/calendar/feed?token=${encodeURIComponent(data.token)}`);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setCalendarLoading(false));
   }, [isDemoMode]);
 
@@ -474,6 +508,46 @@ export function ProfileView({
         </form>
       </div>
 
+      {/* Account Security & Claiming */}
+      {!isDemoMode && (
+        <div className="card p-6 mt-6 border border-[var(--active)] border-l-4 border-l-[var(--accent)] bg-[var(--surface-elevated)]/30">
+          <h3 className="font-semibold text-[var(--foreground)] mb-1">Account & Security</h3>
+          {!profile.email ? (
+            <>
+              <p className="text-sm text-[var(--muted)] mb-4">
+                You are currently using an anonymous "guest" account. Add an email and password to securely access your data from any device.
+              </p>
+              <form onSubmit={handleClaimAccount} className="space-y-4">
+                {claimStatus === "error" && <p className="text-sm text-[var(--accent)]">{claimErrorMessage}</p>}
+                {claimStatus === "success" && <p className="text-sm text-green-500">Account successfully claimed!</p>}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1">
+                    <label className="label">Account Email</label>
+                    <input type="email" value={claimEmail} onChange={(e) => setClaimEmail(e.target.value)} required className="input-base w-full" placeholder="you@example.com" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="label">Password</label>
+                    <input type="password" value={claimPassword} onChange={(e) => setClaimPassword(e.target.value)} required minLength={8} className="input-base w-full" placeholder="Min 8 characters" />
+                  </div>
+                </div>
+                <button type="submit" disabled={claimStatus === "loading" || !claimEmail || claimPassword.length < 8} className="btn-primary !py-2.5 shadow-[var(--shadow-soft)]">
+                  {claimStatus === "loading" ? "Claiming..." : "Claim Account"}
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-[var(--muted)]">
+                Your account is secured with email <strong className="text-[var(--foreground)]">{profile.email}</strong>.
+              </p>
+              <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Calendar sync — iCal / Google Calendar subscribe */}
       <div className="card p-6 mt-6">
         <h3 className="font-semibold text-[var(--foreground)] mb-1">Calendar sync</h3>
@@ -614,11 +688,10 @@ export function ProfileView({
                 ]).map((opt) => (
                   <label
                     key={opt.value}
-                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
-                      socialVisibility === opt.value
+                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${socialVisibility === opt.value
                         ? "border-[var(--accent)] bg-[var(--accent)]/5"
                         : "border-[var(--border)] hover:border-[var(--accent)]/50"
-                    }`}
+                      }`}
                   >
                     <input
                       type="radio"

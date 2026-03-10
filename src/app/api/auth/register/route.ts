@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbSaveProfile } from "@/lib/db";
+import { dbSaveProfile, dbCreateAccount } from "@/lib/db";
 import { buildSetCookieHeader, getUserId } from "@/lib/auth";
 import { logInfo, logError } from "@/lib/logger";
 import type { UserProfile } from "@/lib/types";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 
 const RegisterSchema = z.object({
+  email: z.string().email().optional(),
+  password: z.string().min(8).optional(),
   name: z.string().min(1).max(80),
   age: z.number().int().min(10).max(120).optional(),
   weight: z.number().min(20).max(500).optional(),
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest) {
 
     const normalized: UserProfile = {
       id: userId,
+      email: profile.email,
       name: profile.name,
       age: profile.age ?? 30,
       weight: profile.weight ?? 70,
@@ -65,6 +69,19 @@ export async function POST(req: NextRequest) {
     let profileSaved = true;
     try {
       await dbSaveProfile(userId, normalized);
+
+      if (profile.email && profile.password) {
+        const passwordHash = await bcrypt.hash(profile.password, 10);
+        const accountCreated = await dbCreateAccount({
+          userId,
+          email: profile.email,
+          passwordHash,
+          createdAt: new Date().toISOString()
+        });
+        if (!accountCreated) {
+          return NextResponse.json({ error: "Email already in use" }, { status: 409 });
+        }
+      }
     } catch (err) {
       // Keep local onboarding usable even when DynamoDB credentials are not configured.
       // Cookie auth is still established and the app can proceed with local storage.

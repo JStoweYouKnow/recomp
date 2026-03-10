@@ -401,6 +401,10 @@ export default function Home() {
     return (
       <LandingPage
         onSubmit={handleOnboard}
+        onLoginSuccess={() => {
+          // Cookie is set, reload the page to trigger the data restoration flow
+          window.location.reload();
+        }}
         loading={loading}
         onUsePreseededDemo={handleUsePreseededDemo}
         onStartJudgeTour={handleStartJudgeTour}
