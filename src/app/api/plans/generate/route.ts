@@ -348,7 +348,8 @@ Respond with this exact JSON structure:
       });
     }
 
-    const parsed = parseJsonResponse(raw) as {
+
+    let parsed: {
       dailyTargets: Macros;
       dietDays: { day: string; meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[] }[];
       workoutDays: {
@@ -361,6 +362,18 @@ Respond with this exact JSON structure:
       dietTips: string[];
       workoutTips: string[];
     };
+
+    try {
+      parsed = parseJsonResponse(raw) as typeof parsed;
+    } catch (parseErr) {
+      logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
+      const fallbackPlan = buildStarterPlan(profile, userId);
+      return NextResponse.json({
+        ...fallbackPlan,
+        source: "fallback-parse",
+        message: "Nova responded but the output was malformed. Returning a starter plan instead.",
+      });
+    }
 
     const plan: FitnessPlan = {
       id: uuidv4(),
