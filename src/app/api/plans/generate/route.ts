@@ -15,7 +15,7 @@ import { z } from "zod";
 
 /** Allow plan generation (extended thinking) to complete within Vercel Hobby 60s limit */
 export const maxDuration = 60;
-const PLAN_TIMEOUT_MS = 35_000;
+const PLAN_TIMEOUT_MS = 55_000;
 const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 const SYSTEM_PROMPT = `You are an expert fitness and nutrition coach powered by Amazon Nova AI. Your role is to create personalized, safe, and effective diet and workout plans.
