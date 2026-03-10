@@ -118,6 +118,8 @@ export default function Home() {
             if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
             if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
             if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
+            if (data.activityLog) saveActivityLog(data.activityLog);
+            if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
             if (data.meta) {
               if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
               if (data.meta.hasAdjusted) setHasAdjustedPlan();

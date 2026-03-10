@@ -33,6 +33,7 @@ import type {
   BodyScan,
   Supplement,
   BloodWork,
+  ActivityLogEntry,
 } from "./types";
 
 const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RecompTable";
@@ -93,7 +94,7 @@ export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
       ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
     })
   );
-  return (Items ?? []).map((i) => i.data as MealEntry).sort((a, b) => a.loggedAt.localeCompare(b.loggedAt));
+  return (Items ?? []).map((i) => i.data as MealEntry).sort((a, b) => (a.loggedAt || "").localeCompare(b.loggedAt || ""));
 }
 
 export async function dbSaveMeal(userId: string, meal: MealEntry): Promise<void> {
@@ -248,6 +249,58 @@ export async function dbSaveWeeklyReview(userId: string, review: WeeklyReview): 
     new PutCommand({
       TableName: TABLE,
       Item: { PK: `USER#${userId}`, SK: "WEEKLY_REVIEW", data: review, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+// ── Activity Log ─────────────────────────────────────────
+export async function dbGetActivityLog(userId: string): Promise<ActivityLogEntry[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "ACTLOG#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as ActivityLogEntry).sort((a, b) => (a.loggedAt || "").localeCompare(b.loggedAt || ""));
+}
+
+export async function dbSaveActivityLog(userId: string, entries: ActivityLogEntry[]): Promise<void> {
+  if (entries.length === 0) return;
+  const doc = getDocClient();
+  const chunks: ActivityLogEntry[][] = [];
+  for (let i = 0; i < entries.length; i += 25) chunks.push(entries.slice(i, i + 25));
+  for (const chunk of chunks) {
+    await doc.send(
+      new BatchWriteCommand({
+        RequestItems: {
+          [TABLE]: chunk.map((e) => ({
+            PutRequest: {
+              Item: { PK: `USER#${userId}`, SK: `ACTLOG#${e.date}#${e.id}`, data: e },
+            },
+          })),
+        },
+      })
+    );
+  }
+}
+
+// ── Workout Progress ─────────────────────────────────────
+export async function dbGetWorkoutProgress(userId: string): Promise<Record<string, string>> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "WORKOUT_PROGRESS" } })
+  );
+  return Item ? (Item.data as Record<string, string>) : {};
+}
+
+export async function dbSaveWorkoutProgress(userId: string, progress: Record<string, string>): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "WORKOUT_PROGRESS", data: progress, updatedAt: new Date().toISOString() },
     })
   );
 }

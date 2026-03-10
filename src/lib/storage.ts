@@ -568,6 +568,8 @@ function doSync(): void {
   const bodyScans = getBodyScans();
   const supplements = getSupplements();
   const bloodWork = getBloodWork();
+  const activityLog = getActivityLog();
+  const workoutProgress = getWorkoutProgress();
 
   fetch("/api/data/sync", {
     method: "POST",
@@ -577,8 +579,9 @@ function doSync(): void {
       wearableConnections, wearableData,
       hydration, fastingSessions, biofeedback, pantry,
       bodyScans, supplements, bloodWork,
+      activityLog, workoutProgress,
     }),
-  }).catch(() => {});
+  }).catch(() => { });
 }
 
 /** Persist current localStorage state to DynamoDB (fire-and-forget). Debounced so rapid changes result in a single sync. */

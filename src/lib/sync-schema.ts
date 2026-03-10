@@ -17,7 +17,7 @@ const mealEntrySchema = z.object({
   name: z.string().max(500),
   macros: macrosSchema,
   notes: z.string().max(1000).optional(),
-  imageUrl: z.string().url().max(2000).optional(),
+  imageUrl: z.string().max(2000000).optional(),
   loggedAt: z.string().max(50).optional(),
 });
 
@@ -168,6 +168,19 @@ const bloodWorkSchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+const activityLogEntrySchema = z.object({
+  id: z.string().max(100),
+  date: z.string().max(20),
+  type: z.enum(["activity", "sedentary"]),
+  label: z.string().max(200),
+  category: z.string().max(50),
+  durationMinutes: z.number().min(0).max(1440),
+  calorieAdjustment: z.number().min(-5000).max(5000),
+  loggedAt: z.string().max(50).optional(),
+});
+
+const workoutProgressMapSchema = z.record(z.string().max(100), z.string().max(5000));
+
 export const syncBodySchema = z.object({
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
@@ -184,6 +197,8 @@ export const syncBodySchema = z.object({
   bodyScans: z.array(bodyScanSchema).max(200).optional(),
   supplements: z.array(supplementSchema).max(100).optional(),
   bloodWork: z.array(bloodWorkSchema).max(100).optional(),
+  activityLog: z.array(activityLogEntrySchema).max(5000).optional(),
+  workoutProgress: workoutProgressMapSchema.optional(),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;

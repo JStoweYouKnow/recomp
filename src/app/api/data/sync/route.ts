@@ -11,12 +11,16 @@ import {
   dbGetWearableConnections,
   dbGetWearableData,
   dbGetWeeklyReview,
+  dbGetActivityLog,
+  dbGetWorkoutProgress,
   dbSavePlan,
   dbSaveMeal,
   dbSaveMilestones,
   dbSaveMeta,
   dbSaveWearableData,
   dbSaveWearableConnection,
+  dbSaveActivityLog,
+  dbSaveWorkoutProgress,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary } from "@/lib/types";
@@ -55,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData } = parsed.data;
+    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -95,6 +99,14 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveWearableData(userId, wearableData as WearableDaySummary[]));
     }
 
+    if (activityLog && activityLog.length > 0) {
+      promises.push(dbSaveActivityLog(userId, activityLog as any));
+    }
+
+    if (workoutProgress) {
+      promises.push(dbSaveWorkoutProgress(userId, workoutProgress as Record<string, string>));
+    }
+
     await Promise.all(promises);
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -124,6 +136,8 @@ export async function GET(req: NextRequest) {
       wearableConnections,
       wearableData,
       weeklyReview,
+      activityLog,
+      workoutProgress,
     ] = await Promise.all([
       dbGetProfile(userId),
       dbGetPlan(userId),
@@ -133,6 +147,8 @@ export async function GET(req: NextRequest) {
       dbGetWearableConnections(userId),
       dbGetWearableData(userId),
       dbGetWeeklyReview(userId),
+      dbGetActivityLog(userId),
+      dbGetWorkoutProgress(userId),
     ]);
 
     if (!profile) {
@@ -148,6 +164,8 @@ export async function GET(req: NextRequest) {
       wearableConnections,
       wearableData,
       weeklyReview,
+      activityLog,
+      workoutProgress,
     });
   } catch (err) {
     console.error("Sync GET error:", err);
