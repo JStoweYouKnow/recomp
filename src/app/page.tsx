@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
