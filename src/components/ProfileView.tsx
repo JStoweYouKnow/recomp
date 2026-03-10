@@ -5,7 +5,7 @@ import type { UserProfile, WorkoutLocation, WorkoutEquipment, WearableDaySummary
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 import { WearablesSection } from "./WearablesSection";
 import { getSocialSettings, saveSocialSettings, getCoachSchedule, saveCoachSchedule, getSupplements, saveSupplements, getBloodWork, saveBloodWork, getMusicPreference, saveMusicPreference, getMeals } from "@/lib/storage";
-import { syncToServer } from "@/lib/storage";
+import { syncToServer, flushSync } from "@/lib/storage";
 import { v4 as uuidv4 } from "uuid";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
@@ -142,6 +142,8 @@ export function ProfileView({
 
       setClaimStatus("success");
       onProfileUpdate({ ...profile, email: claimEmail });
+      // Force immediate sync so DynamoDB has the full profile before user switches devices
+      flushSync();
       setTimeout(() => setClaimStatus("idle"), 3000);
     } catch (err: any) {
       setClaimStatus("error");
