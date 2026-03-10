@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog } from "@/lib/storage";
+import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
@@ -147,11 +147,13 @@ export function Dashboard({
     const next = [...activityLog, entry];
     setActivityLog(next);
     saveActivityLog(next);
+    syncToServer();
   };
   const removeActivityEntry = (id: string) => {
     const next = activityLog.filter((e) => e.id !== id);
     setActivityLog(next);
     saveActivityLog(next);
+    syncToServer();
   };
 
   /* ── Dashboard calendar state ── */
@@ -396,25 +398,25 @@ export function Dashboard({
       {/* ── Today at a Glance ── */}
       <div className="animate-fade-in stagger-1">
         <TodayAtAGlance
-        plan={plan}
-        meals={meals}
-        todaysTotals={todaysTotals}
-        targets={targets}
-        todayAdjustment={todayAdjustment}
-        baseBudget={baseBudget}
-        adjustedBudget={adjustedBudget}
-        today={today}
-        workoutProgress={workoutProgress}
-        exerciseGifs={exerciseGifs}
-        expandedExerciseDemos={expandedExerciseDemos}
-        onToggleDemo={handleToggleDemo}
-        fetchExerciseGif={fetchExerciseGif}
-        matchWorkoutDay={matchWorkoutDay}
-        matchDietDay={matchDietDay}
-        activityLog={activityLog}
-        onAddActivity={addActivityEntry}
-        onRemoveActivity={removeActivityEntry}
-      />
+          plan={plan}
+          meals={meals}
+          todaysTotals={todaysTotals}
+          targets={targets}
+          todayAdjustment={todayAdjustment}
+          baseBudget={baseBudget}
+          adjustedBudget={adjustedBudget}
+          today={today}
+          workoutProgress={workoutProgress}
+          exerciseGifs={exerciseGifs}
+          expandedExerciseDemos={expandedExerciseDemos}
+          onToggleDemo={handleToggleDemo}
+          fetchExerciseGif={fetchExerciseGif}
+          matchWorkoutDay={matchWorkoutDay}
+          matchDietDay={matchDietDay}
+          activityLog={activityLog}
+          onAddActivity={addActivityEntry}
+          onRemoveActivity={removeActivityEntry}
+        />
       </div>
 
       {/* ── Daily Quests & Duels ── */}
@@ -628,11 +630,11 @@ export function Dashboard({
 
       {/* ── Weekly AI Review ── */}
       <div className="animate-fade-in stagger-3">
-      <WeeklyReviewCard
-        weeklyReview={weeklyReview}
-        reviewLoading={reviewLoading}
-        onGenerate={handleWeeklyReview}
-      />
+        <WeeklyReviewCard
+          weeklyReview={weeklyReview}
+          reviewLoading={reviewLoading}
+          onGenerate={handleWeeklyReview}
+        />
       </div>
 
       {/* ── Evidence & Results ── */}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference } from "@/lib/storage";
+import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
 import type { FitnessPlan, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
@@ -202,6 +202,7 @@ export function WorkoutPlannerView({
     if (Object.keys(cleaned).length !== Object.keys(progress).length) {
       setProgress(cleaned);
       saveWorkoutProgress(cleaned);
+      syncToServer();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan]);
@@ -329,6 +330,7 @@ export function WorkoutPlannerView({
     }
     setProgress(next);
     saveWorkoutProgress(next);
+    syncToServer();
   };
 
   const setDayCompletion = (
@@ -372,6 +374,7 @@ export function WorkoutPlannerView({
     }
     setProgress(next);
     saveWorkoutProgress(next);
+    syncToServer();
   };
 
   /** Get today's or most recent wearable for recovery assessment */
@@ -476,11 +479,10 @@ export function WorkoutPlannerView({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setCalendarOpen((v) => !v)}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-              calendarOpen
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${calendarOpen
                 ? "bg-[var(--accent)] text-white"
                 : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
-            }`}
+              }`}
             aria-pressed={calendarOpen}
           >
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -777,9 +779,8 @@ export function WorkoutPlannerView({
                               return (
                                 <div
                                   key={`warmup-${exIndex}`}
-                                  className={`rounded-lg border p-3 transition-colors ${
-                                    isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
-                                  }`}
+                                  className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
+                                    }`}
                                 >
                                   {isEditing ? (
                                     <>
@@ -829,190 +830,189 @@ export function WorkoutPlannerView({
                             <span /><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest</span>
                           </div>
                           {day.exercises.map((exercise, exIndex) => {
-                        const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "main")]);
-                        const completedAt = effectiveProgress[exerciseKey(day, exercise, "main")];
-                        const restTime = parseRest(exercise.notes);
+                            const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "main")]);
+                            const completedAt = effectiveProgress[exerciseKey(day, exercise, "main")];
+                            const restTime = parseRest(exercise.notes);
 
-                        return (
-                          <div
-                            key={`${exercise.name}-${exIndex}`}
-                            className={`rounded-lg border p-3 transition-colors ${
-                              isDone
-                                ? "border-[var(--accent)]/30 bg-[var(--accent)]/5"
-                                : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
-                            }`}
-                          >
-                            {isEditing ? (
-                              /* ── Edit mode: inline inputs ── */
-                              <>
-                                <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={isDone}
-                                    onChange={() => toggleComplete(day, exercise, "main")}
-                                    disabled={isViewingFutureDate}
-                                    aria-label={`Mark ${exercise.name || "exercise"} complete`}
-                                    className="h-4 w-4 accent-[var(--accent)]"
-                                  />
-                                  <input
-                                    value={exercise.name}
-                                    onChange={(e) =>
-                                      updateDay(dayIndex, (d) => ({
-                                        ...d,
-                                        exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)),
-                                      }))
-                                    }
-                                    placeholder="Exercise"
-                                    className="input-base rounded px-2 py-1 text-sm"
-                                    list="workout-exercise-names"
-                                  />
-                                  <input
-                                    value={exercise.sets}
-                                    onChange={(e) =>
-                                      updateDay(dayIndex, (d) => ({
-                                        ...d,
-                                        exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)),
-                                      }))
-                                    }
-                                    placeholder="Sets"
-                                    className="input-base rounded px-2 py-1 text-sm"
-                                  />
-                                  <input
-                                    value={exercise.reps}
-                                    onChange={(e) =>
-                                      updateDay(dayIndex, (d) => ({
-                                        ...d,
-                                        exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)),
-                                      }))
-                                    }
-                                    placeholder="Reps"
-                                    className="input-base rounded px-2 py-1 text-sm"
-                                  />
-                                  <div className="flex items-center gap-2 justify-end">
-                                    <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === 0) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex - 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
-                                    <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === d.exercises.length - 1) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex + 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === day.exercises.length - 1}>↓</button>
-                                    <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: d.exercises.filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
-                                  </div>
-                                </div>
-                                <input
-                                  value={exercise.notes ?? ""}
-                                  onChange={(e) =>
-                                    updateDay(dayIndex, (d) => ({
-                                      ...d,
-                                      exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)),
-                                    }))
-                                  }
-                                  placeholder="Notes (e.g. rest: 60s, tempo: 3-1-1)"
-                                  className="mt-2 input-base rounded px-2 py-1 text-xs w-full"
-                                />
-                                {(() => {
-                                  const gifKey = exercise.name.toLowerCase().trim();
-                                  const gif = exerciseGifs[gifKey];
-                                  const isExpanded = expandedExerciseDemos.has(gifKey);
-                                  const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
-                                  return (
-                                    <div className="mt-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
-                                          else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
-                                        }}
-                                        className="text-xs font-medium text-[var(--accent)] hover:underline"
-                                      >
-                                        {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
-                                      </button>
-                                      {showGif && gif && typeof gif === "object" && gif.gifUrl && (
-                                        <div className="mt-1.5 space-y-1">
-                                          <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} />
-                                        </div>
-                                      )}
+                            return (
+                              <div
+                                key={`${exercise.name}-${exIndex}`}
+                                className={`rounded-lg border p-3 transition-colors ${isDone
+                                    ? "border-[var(--accent)]/30 bg-[var(--accent)]/5"
+                                    : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
+                                  }`}
+                              >
+                                {isEditing ? (
+                                  /* ── Edit mode: inline inputs ── */
+                                  <>
+                                    <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDone}
+                                        onChange={() => toggleComplete(day, exercise, "main")}
+                                        disabled={isViewingFutureDate}
+                                        aria-label={`Mark ${exercise.name || "exercise"} complete`}
+                                        className="h-4 w-4 accent-[var(--accent)]"
+                                      />
+                                      <input
+                                        value={exercise.name}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Exercise"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                        list="workout-exercise-names"
+                                      />
+                                      <input
+                                        value={exercise.sets}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Sets"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                      />
+                                      <input
+                                        value={exercise.reps}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Reps"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                      />
+                                      <div className="flex items-center gap-2 justify-end">
+                                        <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === 0) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex - 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                        <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === d.exercises.length - 1) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex + 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === day.exercises.length - 1}>↓</button>
+                                        <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: d.exercises.filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                      </div>
                                     </div>
-                                  );
-                                })()}
-                              </>
-                            ) : (
-                              /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
-                                <div className="flex items-start gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isDone}
-                                  onChange={() => toggleComplete(day, exercise, "main")}
-                                  disabled={isViewingFutureDate}
-                                  aria-label={`Mark ${exercise.name || "exercise"} complete`}
-                                  className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
-                                      {exercise.name}
-                                    </p>
+                                    <input
+                                      value={exercise.notes ?? ""}
+                                      onChange={(e) =>
+                                        updateDay(dayIndex, (d) => ({
+                                          ...d,
+                                          exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)),
+                                        }))
+                                      }
+                                      placeholder="Notes (e.g. rest: 60s, tempo: 3-1-1)"
+                                      className="mt-2 input-base rounded px-2 py-1 text-xs w-full"
+                                    />
                                     {(() => {
                                       const gifKey = exercise.name.toLowerCase().trim();
                                       const gif = exerciseGifs[gifKey];
                                       const isExpanded = expandedExerciseDemos.has(gifKey);
                                       const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
                                       return (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
-                                            else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
-                                          }}
-                                          className="text-xs font-medium text-[var(--accent)] hover:underline"
-                                        >
-                                          {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
-                                        </button>
+                                        <div className="mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                              else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                            }}
+                                            className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                          >
+                                            {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                          </button>
+                                          {showGif && gif && typeof gif === "object" && gif.gifUrl && (
+                                            <div className="mt-1.5 space-y-1">
+                                              <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} />
+                                            </div>
+                                          )}
+                                        </div>
                                       );
                                     })()}
-                                  </div>
-                                  <div className="mt-1.5 flex flex-wrap gap-2">
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
-                                      <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
-                                      <span className="text-[var(--muted)]">sets</span>
-                                    </span>
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
-                                      <span className="font-semibold text-[var(--foreground)]">{exercise.reps}</span>
-                                      <span className="text-[var(--muted)]">reps</span>
-                                    </span>
-                                    {restTime && (
-                                      <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs">
-                                        <span className="font-semibold text-[var(--accent-warm)]">{restTime}</span>
-                                        <span className="text-[var(--muted)]">rest</span>
-                                      </span>
-                                    )}
-                                  </div>
-                                  {(() => {
-                                    const gifKey = exercise.name.toLowerCase().trim();
-                                    const gif = exerciseGifs[gifKey];
-                                    const isExpanded = expandedExerciseDemos.has(gifKey);
-                                    const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
-                                    if (!showGif) return null;
-                                    return (
-                                      <div className="mt-2 space-y-1">
-                                        <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
+                                  </>
+                                ) : (
+                                  /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
+                                  <div className="flex items-start gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isDone}
+                                      onChange={() => toggleComplete(day, exercise, "main")}
+                                      disabled={isViewingFutureDate}
+                                      aria-label={`Mark ${exercise.name || "exercise"} complete`}
+                                      className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
+                                          {exercise.name}
+                                        </p>
+                                        {(() => {
+                                          const gifKey = exercise.name.toLowerCase().trim();
+                                          const gif = exerciseGifs[gifKey];
+                                          const isExpanded = expandedExerciseDemos.has(gifKey);
+                                          const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                                else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                              }}
+                                              className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                            >
+                                              {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                            </button>
+                                          );
+                                        })()}
                                       </div>
-                                    );
-                                  })()}
-                                  {exercise.notes && !restTime && (
-                                    <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
-                                  )}
-                                  {exercise.notes && restTime && exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").trim() && (
-                                    <p className="mt-1 text-xs text-[var(--muted)] italic">
-                                      {exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim()}
-                                    </p>
-                                  )}
-                                  {isDone && completedAt && (
-                                    <p className="mt-1 text-[10px] text-[var(--accent)]">
-                                      Completed {new Date(completedAt).toLocaleString()}
-                                    </p>
-                                  )}
-                                </div>
+                                      <div className="mt-1.5 flex flex-wrap gap-2">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                          <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
+                                          <span className="text-[var(--muted)]">sets</span>
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                          <span className="font-semibold text-[var(--foreground)]">{exercise.reps}</span>
+                                          <span className="text-[var(--muted)]">reps</span>
+                                        </span>
+                                        {restTime && (
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs">
+                                            <span className="font-semibold text-[var(--accent-warm)]">{restTime}</span>
+                                            <span className="text-[var(--muted)]">rest</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(() => {
+                                        const gifKey = exercise.name.toLowerCase().trim();
+                                        const gif = exerciseGifs[gifKey];
+                                        const isExpanded = expandedExerciseDemos.has(gifKey);
+                                        const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                        if (!showGif) return null;
+                                        return (
+                                          <div className="mt-2 space-y-1">
+                                            <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
+                                          </div>
+                                        );
+                                      })()}
+                                      {exercise.notes && !restTime && (
+                                        <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
+                                      )}
+                                      {exercise.notes && restTime && exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").trim() && (
+                                        <p className="mt-1 text-xs text-[var(--muted)] italic">
+                                          {exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim()}
+                                        </p>
+                                      )}
+                                      {isDone && completedAt && (
+                                        <p className="mt-1 text-[10px] text-[var(--accent)]">
+                                          Completed {new Date(completedAt).toLocaleString()}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
                           {isEditing && (
                             <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: [...d.exercises, { name: "New exercise", sets: "3", reps: "10-12", notes: "rest: 60s" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add exercise</button>
                           )}

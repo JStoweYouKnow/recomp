@@ -13,6 +13,13 @@ import {
   dbGetWeeklyReview,
   dbGetActivityLog,
   dbGetWorkoutProgress,
+  dbGetHydration,
+  dbGetFastingSessions,
+  dbGetBiofeedback,
+  dbGetPantry,
+  dbGetBodyScans,
+  dbGetSupplements,
+  dbGetBloodWork,
   dbSavePlan,
   dbSaveMeal,
   dbSaveMilestones,
@@ -21,6 +28,13 @@ import {
   dbSaveWearableConnection,
   dbSaveActivityLog,
   dbSaveWorkoutProgress,
+  dbSaveHydrationEntry,
+  dbSaveFastingSession,
+  dbSaveBiofeedbackEntry,
+  dbSavePantry,
+  dbSaveBodyScan,
+  dbSaveSupplements,
+  dbSaveBloodWork,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary } from "@/lib/types";
@@ -59,7 +73,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress } = parsed.data;
+    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -107,6 +121,34 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveWorkoutProgress(userId, workoutProgress as Record<string, string>));
     }
 
+    if (hydration && hydration.length > 0) {
+      for (const entry of hydration) promises.push(dbSaveHydrationEntry(userId, entry as any));
+    }
+
+    if (fastingSessions && fastingSessions.length > 0) {
+      for (const session of fastingSessions) promises.push(dbSaveFastingSession(userId, session as any));
+    }
+
+    if (biofeedback && biofeedback.length > 0) {
+      for (const entry of biofeedback) promises.push(dbSaveBiofeedbackEntry(userId, entry as any));
+    }
+
+    if (pantry && pantry.length > 0) {
+      promises.push(dbSavePantry(userId, pantry as any));
+    }
+
+    if (bodyScans && bodyScans.length > 0) {
+      for (const scan of bodyScans) promises.push(dbSaveBodyScan(userId, scan as any));
+    }
+
+    if (supplements && supplements.length > 0) {
+      promises.push(dbSaveSupplements(userId, supplements as any));
+    }
+
+    if (bloodWork && bloodWork.length > 0) {
+      for (const bw of bloodWork) promises.push(dbSaveBloodWork(userId, bw as any));
+    }
+
     await Promise.all(promises);
     return NextResponse.json({ ok: true });
   } catch (err) {
@@ -138,6 +180,13 @@ export async function GET(req: NextRequest) {
       weeklyReview,
       activityLog,
       workoutProgress,
+      hydration,
+      fastingSessions,
+      biofeedback,
+      pantry,
+      bodyScans,
+      supplements,
+      bloodWork,
     ] = await Promise.all([
       dbGetProfile(userId),
       dbGetPlan(userId),
@@ -147,26 +196,46 @@ export async function GET(req: NextRequest) {
       dbGetWearableConnections(userId),
       dbGetWearableData(userId),
       dbGetWeeklyReview(userId),
-      dbGetActivityLog(userId),
-      dbGetWorkoutProgress(userId),
+      dbGetActivityLog(userId).catch(() => []),
+      dbGetWorkoutProgress(userId).catch(() => ({})),
+      dbGetHydration(userId).catch(() => []),
+      dbGetFastingSessions(userId).catch(() => []),
+      dbGetBiofeedback(userId).catch(() => []),
+      dbGetPantry(userId).catch(() => []),
+      dbGetBodyScans(userId).catch(() => []),
+      dbGetSupplements(userId).catch(() => []),
+      dbGetBloodWork(userId).catch(() => []),
     ]);
 
     if (!profile) {
       return NextResponse.json({ error: "No profile found" }, { status: 404 });
     }
 
-    return NextResponse.json({
+    const payload = {
       profile,
       plan,
-      meals,
-      milestones,
-      meta,
-      wearableConnections,
-      wearableData,
-      weeklyReview,
-      activityLog,
-      workoutProgress,
-    });
+      meals: meals.length > 0 ? meals : undefined,
+      milestones: milestones.length > 0 ? milestones : undefined,
+      wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
+      wearableData: wearableData.length > 0 ? wearableData : undefined,
+      weeklyReview: weeklyReview ?? undefined,
+      activityLog: activityLog.length > 0 ? activityLog : undefined,
+      workoutProgress: Object.keys(workoutProgress).length > 0 ? workoutProgress : undefined,
+      hydration: hydration.length > 0 ? hydration : undefined,
+      fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
+      biofeedback: biofeedback.length > 0 ? biofeedback : undefined,
+      pantry: pantry.length > 0 ? pantry : undefined,
+      bodyScans: bodyScans.length > 0 ? bodyScans : undefined,
+      supplements: supplements.length > 0 ? supplements : undefined,
+      bloodWork: bloodWork.length > 0 ? bloodWork : undefined,
+      meta: {
+        xp: meta.xp,
+        hasAdjusted: meta.hasAdjusted,
+        ricoHistory: meta.ricoHistory,
+      },
+    };
+
+    return NextResponse.json(payload);
   } catch (err) {
     console.error("Sync GET error:", err);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
