@@ -179,7 +179,7 @@ const activityLogEntrySchema = z.object({
   loggedAt: z.string().max(50).optional(),
 });
 
-const workoutProgressMapSchema = z.record(z.string().max(100), z.string().max(5000));
+const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
 export const syncBodySchema = z.object({
   plan: fitnessPlanSchema.optional().nullable(),
