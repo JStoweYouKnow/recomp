@@ -386,7 +386,7 @@ export function MealsView({
         const existing = getMealEmbeddings().filter((e) => e.mealId !== meal.id);
         saveMealEmbeddings([...existing, { mealId: meal.id, embedding: data.embedding }]);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const handleNutritionLookup = async () => {
@@ -669,11 +669,10 @@ export function MealsView({
         </div>
         <button
           onClick={() => setCalendarOpen((v) => !v)}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-            calendarOpen
+          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${calendarOpen
               ? "bg-[var(--accent)] text-white"
               : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
-          }`}
+            }`}
           aria-pressed={calendarOpen}
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -799,22 +798,22 @@ export function MealsView({
         <div className="space-y-2">
           <p className="text-xs text-[var(--muted)]">Log with one tap, or use voice or a photo for faster entry.</p>
           <div className="flex flex-wrap gap-2 items-center">
-          <button onClick={() => setShowAdd(true)} className="btn-primary">+ Log a meal</button>
-          <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50" title="Describe your meal by voice">
-            {voiceLoading ? "Listening…" : "Voice log"}
-          </button>
-          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of your plate — JPEG/PNG, large photos auto-resize for best results">
-            <input type="file" accept="image/*" className="hidden" onChange={handlePhotoLog} disabled={photoLoading} />
-            {photoLoading ? "Analyzing…" : "Snap plate"}
-          </label>
-          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt — JPEG/PNG, large photos auto-resize">
-            <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
-            {receiptLoading ? "Scanning…" : "Scan receipt"}
-          </label>
-          <label className="btn-secondary !text-xs cursor-pointer" title="Photo of restaurant menu — extract items with macros">
-            <input type="file" accept="image/*" className="hidden" onChange={handleMenuScan} disabled={menuScanLoading} />
-            {menuScanLoading ? "Scanning…" : "Scan menu"}
-          </label>
+            <button onClick={() => setShowAdd(true)} className="btn-primary">+ Log a meal</button>
+            <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50" title="Describe your meal by voice">
+              {voiceLoading ? "Listening…" : "Voice log"}
+            </button>
+            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of your plate — JPEG/PNG, large photos auto-resize for best results">
+              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoLog} disabled={photoLoading} />
+              {photoLoading ? "Analyzing…" : "Snap plate"}
+            </label>
+            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt — JPEG/PNG, large photos auto-resize">
+              <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
+              {receiptLoading ? "Scanning…" : "Scan receipt"}
+            </label>
+            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of restaurant menu — extract items with macros">
+              <input type="file" accept="image/*" className="hidden" onChange={handleMenuScan} disabled={menuScanLoading} />
+              {menuScanLoading ? "Scanning…" : "Scan menu"}
+            </label>
           </div>
         </div>
       ) : (
@@ -1012,9 +1011,25 @@ export function MealsView({
               <input
                 placeholder="e.g. Grilled chicken salad"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setName(val);
+                  const match = getRecentMealTemplates().find((t) => t.name.toLowerCase() === val.trim().toLowerCase());
+                  if (match) {
+                    setCal(String(match.macros.calories ?? ""));
+                    setPro(String(match.macros.protein ?? ""));
+                    setCarb(String(match.macros.carbs ?? ""));
+                    setFat(String(match.macros.fat ?? ""));
+                  }
+                }}
+                list="recent-meals-list"
                 className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
               />
+              <datalist id="recent-meals-list">
+                {getRecentMealTemplates().map((t) => (
+                  <option key={`${t.name}-${t.lastUsed}`} value={t.name} />
+                ))}
+              </datalist>
               {(similarMeals.length > 0 || (name.trim().length >= 2 && getMealEmbeddings().length === 0 && !similarLoading)) && (
                 <p className="text-[10px] text-[var(--muted)] mt-1">
                   {similarMeals.length > 0 ? (
@@ -1056,10 +1071,10 @@ export function MealsView({
                 onChange={(e) => setMealType(e.target.value as MealEntry["mealType"])}
                 className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
               >
-              <option value="breakfast">Breakfast</option>
-              <option value="lunch">Lunch</option>
-              <option value="dinner">Dinner</option>
-              <option value="snack">Snack</option>
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+                <option value="snack">Snack</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">
@@ -1109,11 +1124,10 @@ export function MealsView({
                   setCookingTab(cookingTab === t ? "off" : t);
                   if (t === "recipes") setRecipeLibrary(getCookingAppRecipes());
                 }}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-                  cookingTab === t
+                className={`rounded-md px-3 py-1 text-xs font-medium transition ${cookingTab === t
                     ? "bg-[var(--accent)] text-white"
                     : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
+                  }`}
               >
                 {t === "connect" ? "Connect" : t === "import" ? "Import" : t === "recipes" ? "Recipes" : "History"}
               </button>
@@ -1508,111 +1522,111 @@ export function MealsView({
                   {meals.map((m) => (
                     <li key={m.id}>
                       {editDraft?.id === m.id ? (
-                  <div className="card p-3 space-y-3 animate-slide-up max-w-2xl">
-                    <h4 className="text-sm font-semibold">Edit meal</h4>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <label className="label !mb-1">Name</label>
-                        <input
-                          value={editDraft.name}
-                          onChange={(e) => setEditDraft((d) => d ? { ...d, name: e.target.value } : null)}
-                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="label !mb-1">Date</label>
-                        <input
-                          type="date"
-                          value={editDraft.date}
-                          onChange={(e) => setEditDraft((d) => d ? { ...d, date: e.target.value } : null)}
-                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                        />
-                      </div>
-                      <div>
-                        <label className="label !mb-1">Meal type</label>
-                        <select
-                          value={editDraft.mealType}
-                          onChange={(e) => setEditDraft((d) => d ? { ...d, mealType: e.target.value as MealEntry["mealType"] } : null)}
-                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                        >
-                          <option value="breakfast">Breakfast</option>
-                          <option value="lunch">Lunch</option>
-                          <option value="dinner">Dinner</option>
-                          <option value="snack">Snack</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="label !mb-1">Notes (optional)</label>
-                        <input
-                          value={editDraft.notes ?? ""}
-                          onChange={(e) => setEditDraft((d) => d ? { ...d, notes: e.target.value || undefined } : null)}
-                          placeholder="e.g. Restaurant, portion size"
-                          className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                        />
-                      </div>
-                      <div className="sm:col-span-2 grid grid-cols-4 gap-2">
-                        <div>
-                          <label className="label !mb-1">Cal</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.macros.calories || ""}
-                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, calories: parseInt(e.target.value) || 0 } } : null)}
-                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                          />
+                        <div className="card p-3 space-y-3 animate-slide-up max-w-2xl">
+                          <h4 className="text-sm font-semibold">Edit meal</h4>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="label !mb-1">Name</label>
+                              <input
+                                value={editDraft.name}
+                                onChange={(e) => setEditDraft((d) => d ? { ...d, name: e.target.value } : null)}
+                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="label !mb-1">Date</label>
+                              <input
+                                type="date"
+                                value={editDraft.date}
+                                onChange={(e) => setEditDraft((d) => d ? { ...d, date: e.target.value } : null)}
+                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                              />
+                            </div>
+                            <div>
+                              <label className="label !mb-1">Meal type</label>
+                              <select
+                                value={editDraft.mealType}
+                                onChange={(e) => setEditDraft((d) => d ? { ...d, mealType: e.target.value as MealEntry["mealType"] } : null)}
+                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                              >
+                                <option value="breakfast">Breakfast</option>
+                                <option value="lunch">Lunch</option>
+                                <option value="dinner">Dinner</option>
+                                <option value="snack">Snack</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="label !mb-1">Notes (optional)</label>
+                              <input
+                                value={editDraft.notes ?? ""}
+                                onChange={(e) => setEditDraft((d) => d ? { ...d, notes: e.target.value || undefined } : null)}
+                                placeholder="e.g. Restaurant, portion size"
+                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                              />
+                            </div>
+                            <div className="sm:col-span-2 grid grid-cols-4 gap-2">
+                              <div>
+                                <label className="label !mb-1">Cal</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.macros.calories || ""}
+                                  onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, calories: parseInt(e.target.value) || 0 } } : null)}
+                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                />
+                              </div>
+                              <div>
+                                <label className="label !mb-1">P (g)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.macros.protein || ""}
+                                  onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, protein: parseInt(e.target.value) || 0 } } : null)}
+                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                />
+                              </div>
+                              <div>
+                                <label className="label !mb-1">C (g)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.macros.carbs || ""}
+                                  onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, carbs: parseInt(e.target.value) || 0 } } : null)}
+                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                />
+                              </div>
+                              <div>
+                                <label className="label !mb-1">F (g)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={editDraft.macros.fat || ""}
+                                  onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, fat: parseInt(e.target.value) || 0 } } : null)}
+                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={handleSaveEdit} className="btn-primary !text-sm">Save</button>
+                            <button onClick={() => setEditDraft(null)} className="btn-secondary !text-sm">Cancel</button>
+                          </div>
                         </div>
-                        <div>
-                          <label className="label !mb-1">P (g)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.macros.protein || ""}
-                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, protein: parseInt(e.target.value) || 0 } } : null)}
-                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                          />
+                      ) : (
+                        <div className="flex items-center gap-2 card card-compact rounded-lg">
+                          {m.imageUrl && (
+                            <img src={m.imageUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium truncate">{m.name}</p>
+                            <p className="text-[10px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P</p>
+                          </div>
+                          <div className="flex gap-0.5 flex-shrink-0">
+                            <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent)] !px-1.5 !py-0.5 !min-h-0">Edit</button>
+                            <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-1.5 !py-0.5 !min-h-0">Del</button>
+                          </div>
                         </div>
-                        <div>
-                          <label className="label !mb-1">C (g)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.macros.carbs || ""}
-                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, carbs: parseInt(e.target.value) || 0 } } : null)}
-                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                          />
-                        </div>
-                        <div>
-                          <label className="label !mb-1">F (g)</label>
-                          <input
-                            type="number"
-                            min={0}
-                            value={editDraft.macros.fat || ""}
-                            onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, fat: parseInt(e.target.value) || 0 } } : null)}
-                            className="input-base rounded-lg px-3 py-2 text-sm w-full"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={handleSaveEdit} className="btn-primary !text-sm">Save</button>
-                      <button onClick={() => setEditDraft(null)} className="btn-secondary !text-sm">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 card card-compact rounded-lg">
-                    {m.imageUrl && (
-                      <img src={m.imageUrl} alt="" className="h-8 w-8 rounded object-cover flex-shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{m.name}</p>
-                      <p className="text-[10px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P</p>
-                    </div>
-                    <div className="flex gap-0.5 flex-shrink-0">
-                      <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent)] !px-1.5 !py-0.5 !min-h-0">Edit</button>
-                      <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-1.5 !py-0.5 !min-h-0">Del</button>
-                    </div>
-                  </div>
-                )}
+                      )}
                     </li>
                   ))}
                 </ul>
