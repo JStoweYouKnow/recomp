@@ -7,6 +7,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
+import { parseQuantityAndFood } from "@/lib/food-quantity-parser";
 
 /** Allow up to 60s for web grounding (default Vercel timeout is too short) */
 export const maxDuration = 60;
@@ -60,14 +61,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Food name required" }, { status: 400 });
     }
 
-    // ── 1. DynamoDB nutrition cache ──
+    // ── Parse quantity (e.g. "3 boiled eggs" → quantity:3, food:"boiled egg") ──
+    const parsed = parseQuantityAndFood(mealName);
+    const baseFood = parsed.food;
+    const quantity = parsed.quantity;
+
+    const applyQuantity = (n: { calories?: number; protein?: number; carbs?: number; fat?: number }) => ({
+      calories: Math.round((n.calories ?? 0) * quantity),
+      protein: Math.round((n.protein ?? 0) * quantity),
+      carbs: Math.round((n.carbs ?? 0) * quantity * 10) / 10,
+      fat: Math.round((n.fat ?? 0) * quantity * 10) / 10,
+    });
+
+    // ── 1. DynamoDB nutrition cache (try exact input, then base food) ──
     try {
-      const cached = await dbGetNutritionCache(mealName);
+      const cached = await dbGetNutritionCache(mealName) ?? (baseFood !== mealName ? await dbGetNutritionCache(baseFood) : null);
       if (cached) {
+        const isBaseHit = !await dbGetNutritionCache(mealName).catch(() => null);
+        const nutrition = isBaseHit
+          ? applyQuantity({ calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat })
+          : { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat };
         const res = NextResponse.json({
           food: mealName,
           source: `cache(${cached.source})`,
-          nutrition: { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat },
+          nutrition,
           found: true,
           cached: true,
         });
@@ -80,7 +97,9 @@ export async function POST(req: NextRequest) {
     } catch { /* cache miss — continue to live lookup */ }
 
     // ── 2. Nova web grounding ──
-    const userMessage = `Search the web for the nutrition facts of this food or meal: "${mealName}". Return calories, protein (g), carbs (g), and fat (g) per typical serving as a JSON object only.`;
+    // Ask for per-unit nutrition so we can multiply by quantity for accuracy
+    const quantityNote = quantity !== 1 ? ` The user asked about ${quantity} units — return nutrition for ONE single ${baseFood} only, and I will multiply.` : "";
+    const userMessage = `Search the web for the nutrition facts of this food or meal: "${baseFood}".${quantityNote} Return calories, protein (g), carbs (g), and fat (g) per typical single serving as a JSON object only.`;
     const { text: raw, source } = await invokeNovaWithWebGroundingOrFallback(
       SYSTEM_PROMPT,
       userMessage,
@@ -98,17 +117,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const finalNutrition = {
+    // Per-unit values from web grounding
+    const perUnit = {
       calories: Math.round(nutrition.calories ?? 0),
       protein: Math.round(nutrition.protein ?? 0),
       carbs: Math.round(nutrition.carbs ?? 0),
       fat: Math.round(nutrition.fat ?? 0),
     };
 
-    // Cache the result in DynamoDB (fire-and-forget)
-    dbSaveNutritionCache(mealName, {
-      ...finalNutrition, source: source ?? "web-grounding", cachedAt: new Date().toISOString(),
+    // Cache per-unit values under the base food name
+    dbSaveNutritionCache(baseFood, {
+      ...perUnit, source: source ?? "web-grounding", cachedAt: new Date().toISOString(),
     }).catch(() => {});
+
+    // Apply quantity multiplier for the final response
+    const finalNutrition = applyQuantity(perUnit);
 
     const res = NextResponse.json({
       food: mealName,

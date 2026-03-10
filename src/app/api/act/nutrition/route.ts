@@ -12,6 +12,7 @@ import { isJudgeMode } from "@/lib/judgeMode";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
 import { recordJudgeTrace } from "@/lib/judgeTrace";
 import { searchOpenFoodFacts } from "@/lib/open-food-facts";
+import { parseQuantityAndFood, lookupCommonFood } from "@/lib/food-quantity-parser";
 
 export const maxDuration = 300; // Allow up to 5 min for Nova Act browser automation
 const TIMEOUT_MS = 280_000; // 280s — leave headroom before Vercel kills the function
@@ -37,17 +38,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Food name required" }, { status: 400 });
     }
 
+    // ── Parse quantity from input (e.g. "3 boiled eggs" → quantity:3, food:"boiled egg") ──
+    const parsed = parseQuantityAndFood(food);
+    const baseFood = parsed.food;
+    const quantity = parsed.quantity;
+
+    /** Helper: multiply nutrition values by the parsed quantity */
+    const applyQuantity = (n: { calories?: number; protein?: number; carbs?: number; fat?: number }) => ({
+      calories: Math.round((n.calories ?? 0) * quantity),
+      protein: Math.round((n.protein ?? 0) * quantity),
+      carbs: Math.round((n.carbs ?? 0) * quantity * 10) / 10,
+      fat: Math.round((n.fat ?? 0) * quantity * 10) / 10,
+    });
+
     if (isJudgeMode()) {
-      const normalized = food.toLowerCase().trim();
-      const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
-      const calories = 100 + (hash % 400) || 1;
-      const protein = 8 + (hash % 45) || 1;
-      const carbs = 10 + (hash % 55) || 1;
-      const fat = 3 + (hash % 22) || 1;
+      // Use common foods DB for judge mode instead of hash
+      const known = lookupCommonFood(baseFood);
+      const nutrition = known
+        ? applyQuantity(known)
+        : (() => {
+            const normalized = food.toLowerCase().trim();
+            const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+            return { calories: 100 + (hash % 400) || 1, protein: 8 + (hash % 45) || 1, carbs: 10 + (hash % 55) || 1, fat: 3 + (hash % 22) || 1 };
+          })();
       const res = NextResponse.json({
         food,
-        nutrition: { calories, protein, carbs, fat },
-        source: "judge-fallback",
+        nutrition,
+        source: known ? "judge-common-foods" : "judge-fallback",
         demoMode: true,
         note: "JUDGE_MODE deterministic fallback response",
       });
@@ -66,13 +83,17 @@ export async function POST(req: NextRequest) {
       return res;
     }
 
-    // ── DynamoDB nutrition cache ──
+    // ── DynamoDB nutrition cache (try exact input first, then base food) ──
     try {
-      const cached = await dbGetNutritionCache(food);
+      const cached = await dbGetNutritionCache(food) ?? (baseFood !== food ? await dbGetNutritionCache(baseFood) : null);
       if (cached) {
+        const isBaseHit = !await dbGetNutritionCache(food).catch(() => null);
+        const nutrition = isBaseHit
+          ? applyQuantity({ calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat })
+          : { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat };
         const res = NextResponse.json({
           food,
-          nutrition: { calories: cached.calories, protein: cached.protein, carbs: cached.carbs, fat: cached.fat },
+          nutrition,
           source: `cache(${cached.source})`,
           cached: true,
         });
@@ -93,10 +114,12 @@ export async function POST(req: NextRequest) {
     } catch { /* cache miss — continue to live lookup */ }
 
     // Fast path for common packaged foods before slower Act flows.
+    // Try the full input first, then base food name for better matching.
     try {
-      const off = await searchOpenFoodFacts(food);
+      const off = await searchOpenFoodFacts(food) ?? (baseFood !== food ? await searchOpenFoodFacts(baseFood) : null);
       if (off) {
-        dbSaveNutritionCache(food, {
+        // Cache the per-unit values under the base food name
+        dbSaveNutritionCache(baseFood, {
           calories: off.calories,
           protein: off.protein,
           carbs: off.carbs,
@@ -104,14 +127,15 @@ export async function POST(req: NextRequest) {
           source: "openfoodfacts",
           cachedAt: new Date().toISOString(),
         }).catch(() => {});
+        const nutrition = applyQuantity({
+          calories: off.calories,
+          protein: off.protein,
+          carbs: off.carbs,
+          fat: off.fat,
+        });
         const res = NextResponse.json({
           food,
-          nutrition: {
-            calories: off.calories,
-            protein: off.protein,
-            carbs: off.carbs,
-            fat: off.fat,
-          },
+          nutrition,
           source: "openfoodfacts",
           productName: off.productName,
         });
@@ -189,21 +213,25 @@ export async function POST(req: NextRequest) {
       const isPythonUnavailable = msg.includes("Python not found") || msg.includes("ENOENT") || msg.includes("spawn");
       const isNovaActMissing = msg.includes("nova-act") || msg.includes("nova_act") || msg.includes("ImportError");
       if (isPythonUnavailable || isNovaActMissing) {
-        const normalized = food.toLowerCase().trim();
-        const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+        // Use common foods DB for accurate fallback; only hash for truly unknown foods
+        const known = lookupCommonFood(baseFood);
+        const nutrition = known
+          ? applyQuantity(known)
+          : (() => {
+              const normalized = food.toLowerCase().trim();
+              const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+              return { calories: 80 + (hash % 450) || 1, protein: 5 + (hash % 45) || 1, carbs: 5 + (hash % 60) || 1, fat: 2 + (hash % 25) || 1 };
+            })();
         const res = NextResponse.json({
           food,
-          nutrition: {
-            calories: 80 + (hash % 450) || 1,
-            protein: 5 + (hash % 45) || 1,
-            carbs: 5 + (hash % 60) || 1,
-            fat: 2 + (hash % 25) || 1,
-          },
-          demoMode: true,
-          source: "estimated",
-          note: isNovaActMissing
-            ? "Estimated values — run: pip install nova-act"
-            : "Estimated values — install Python 3 and Nova Act for USDA lookup",
+          nutrition,
+          demoMode: !known,
+          source: known ? "common-foods" : "estimated",
+          note: known
+            ? undefined
+            : isNovaActMissing
+              ? "Estimated values — run: pip install nova-act"
+              : "Estimated values — install Python 3 and Nova Act for USDA lookup",
         });
         const headers = getRateLimitHeaderValues(rl);
         res.headers.set("X-RateLimit-Limit", headers.limit);
@@ -224,8 +252,22 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("Act nutrition error:", err);
     // Return estimated fallback instead of 500 — UI always gets fillable data
-    const normalized = food.toLowerCase().trim();
-    const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+    // Use common foods DB first for accurate values; hash only for truly unknown foods
+    const { quantity: errQty, food: errBase } = parseQuantityAndFood(food);
+    const errApply = (n: { calories?: number; protein?: number; carbs?: number; fat?: number }) => ({
+      calories: Math.round((n.calories ?? 0) * errQty),
+      protein: Math.round((n.protein ?? 0) * errQty),
+      carbs: Math.round((n.carbs ?? 0) * errQty * 10) / 10,
+      fat: Math.round((n.fat ?? 0) * errQty * 10) / 10,
+    });
+    const errKnown = lookupCommonFood(errBase);
+    const nutrition = errKnown
+      ? errApply(errKnown)
+      : (() => {
+          const normalized = food.toLowerCase().trim();
+          const hash = normalized.split("").reduce((h, c) => ((h * 31 + c.charCodeAt(0)) >>> 0) % 100000, 0);
+          return { calories: 80 + (hash % 450) || 1, protein: 5 + (hash % 45) || 1, carbs: 5 + (hash % 60) || 1, fat: 2 + (hash % 25) || 1 };
+        })();
     recordJudgeTrace({
       action: "actNutrition",
       service: "nova-act",
@@ -236,15 +278,10 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({
       food,
-      nutrition: {
-        calories: 80 + (hash % 450) || 1,
-        protein: 5 + (hash % 45) || 1,
-        carbs: 5 + (hash % 60) || 1,
-        fat: 2 + (hash % 25) || 1,
-      },
-      demoMode: true,
-      source: "estimated",
-      note: "Estimated values — lookup encountered an error",
+      nutrition,
+      demoMode: !errKnown,
+      source: errKnown ? "common-foods" : "estimated",
+      note: errKnown ? undefined : "Estimated values — lookup encountered an error",
     });
   }
 }
