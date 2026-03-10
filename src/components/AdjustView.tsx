@@ -6,6 +6,7 @@ import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
 export function AdjustView({
   plan,
   goal,
+  unitSystem = "us",
   feedback,
   setFeedback,
   result,
@@ -15,6 +16,7 @@ export function AdjustView({
 }: {
   plan: FitnessPlan | null;
   goal: UserProfile["goal"];
+  unitSystem?: "us" | "metric";
   feedback: string;
   setFeedback: (s: string) => void;
   result: Record<string, unknown> | null;
@@ -65,7 +67,11 @@ export function AdjustView({
         <textarea
           value={feedback}
           onChange={(e) => setFeedback(e.target.value)}
-          placeholder="e.g. Feeling tired, want to increase protein, lost 4 lbs..."
+          placeholder={
+            unitSystem === "metric"
+              ? "e.g. Feeling tired, want to increase protein, lost 2 kg..."
+              : "e.g. Feeling tired, want to increase protein, lost 4 lbs..."
+          }
           rows={3}
           className="w-full input-base"
         />

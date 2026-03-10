@@ -21,6 +21,7 @@ Respond with valid JSON only, no markdown. Use null for missing fields.
   "workoutLocation": "home" | "gym" | "outside" | null,
   "restrictions": string | null
 }
+Users may describe measurements in US or metric units. Always convert to output fields weightLbs and heightFt/heightIn.
 Use reasonable defaults if unclear (age 30, weight 154 lbs, 5'7", gym, moderate, build muscle).`;
 
 export async function POST(req: NextRequest) {

@@ -615,6 +615,7 @@ export default function Home() {
           <AdjustView
             plan={plan}
             goal={profile?.goal ?? "maintain"}
+            unitSystem={profile?.unitSystem ?? "us"}
             feedback={adjustFeedback}
             setFeedback={setAdjustFeedback}
             result={adjustResult}

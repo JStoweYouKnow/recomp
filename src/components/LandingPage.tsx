@@ -87,7 +87,7 @@ export function LandingPage({
     setShowVoiceToggle(isAudioSupported());
   }, []);
 
-  const voiceSystemPrompt = `You are Reco, the onboarding assistant for Recomp, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight (in pounds), height (feet and inches), gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
+  const voiceSystemPrompt = `You are Reco, the onboarding assistant for Recomp, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight, height, gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. Users may answer in US or metric units. Convert to the output schema below (weightLbs + heightFt/heightIn). After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
 
   const handleVoiceStart = useCallback(async () => {
     try {
@@ -156,17 +156,35 @@ export function LandingPage({
           try {
             const parsed = JSON.parse(dataMatch[1]);
             const poundsToKg = (lbs: number): number => lbs * 0.45359237;
+            const kgToPounds = (kg: number): number => kg * 2.2046226218;
             const feetInchesToCm = (feet: number, inches: number): number => (feet * 12 + inches) * 2.54;
+            const cmToFeetInches = (cm: number): { feet: number; inches: number } => {
+              const totalInches = cm / 2.54;
+              const feet = Math.floor(totalInches / 12);
+              const inches = Math.round(totalInches - feet * 12);
+              return inches === 12 ? { feet: feet + 1, inches: 0 } : { feet, inches };
+            };
+            const hasMetricFields = Number.isFinite(parsed.weightKg) || Number.isFinite(parsed.heightCm);
+            const weightLbs = Number.isFinite(parsed.weightLbs)
+              ? parsed.weightLbs
+              : (Number.isFinite(parsed.weightKg) ? kgToPounds(parsed.weightKg) : 154);
+            const heightFromMetric = Number.isFinite(parsed.heightCm) ? cmToFeetInches(parsed.heightCm) : null;
+            const heightFt = Number.isFinite(parsed.heightFt)
+              ? parsed.heightFt
+              : (heightFromMetric?.feet ?? 5);
+            const heightIn = Number.isFinite(parsed.heightIn)
+              ? parsed.heightIn
+              : (heightFromMetric?.inches ?? 7);
             onSubmit({
               name: parsed.name || "User",
               age: parsed.age || 30,
-              weight: poundsToKg(parsed.weightLbs || 154),
-              height: feetInchesToCm(parsed.heightFt || 5, parsed.heightIn || 7),
+              weight: poundsToKg(weightLbs),
+              height: feetInchesToCm(heightFt, heightIn),
               gender: parsed.gender || "other",
               fitnessLevel: parsed.fitnessLevel || "intermediate",
               goal: parsed.goal || "maintain",
               dailyActivityLevel: parsed.activityLevel || "moderate",
-              unitSystem: "us",
+              unitSystem: hasMetricFields ? "metric" : "us",
               workoutLocation: parsed.workoutLocation || "gym",
               dietaryRestrictions: parsed.restrictions ? parsed.restrictions.split(",").map((s: string) => s.trim()).filter(Boolean) : [],
             });
@@ -260,9 +278,9 @@ export function LandingPage({
             <span className="brand-title !text-lg text-[var(--accent)] leading-none">Recomp</span>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)]/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
-              Amazon Nova AI Hackathon
-            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
+            Amazon Nova AI Hackathon
+          </span>
         </div>
       </header>
 
@@ -395,9 +413,8 @@ export function LandingPage({
                 )}
                 {voiceMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${
-                      m.role === "user" ? "bg-[var(--accent)]/15" : "bg-[var(--surface-elevated)]"
-                    }`}>
+                    <div className={`max-w-[85%] rounded-2xl px-4 py-2 text-sm ${m.role === "user" ? "bg-[var(--accent)]/15" : "bg-[var(--surface-elevated)]"
+                      }`}>
                       {m.text}
                     </div>
                   </div>
@@ -411,14 +428,13 @@ export function LandingPage({
                   onTouchStart={handleVoiceStart}
                   onTouchEnd={handleVoiceStop}
                   disabled={voiceProcessing || loading}
-                  className={`flex h-16 w-16 items-center justify-center rounded-full transition-all ${
-                    isRecording ? "bg-[var(--accent-terracotta)] scale-110 shadow-lg animate-pulse" : "bg-[var(--accent)] hover:bg-[var(--accent-hover)] hover:scale-105"
-                  } disabled:opacity-50`}
+                  className={`flex h-16 w-16 items-center justify-center rounded-full transition-all ${isRecording ? "bg-[var(--accent-terracotta)] scale-110 shadow-lg animate-pulse" : "bg-[var(--accent)] hover:bg-[var(--accent-hover)] hover:scale-105"
+                    } disabled:opacity-50`}
                   aria-label={isRecording ? "Release to send" : "Hold to talk"}
                 >
                   <svg className="h-7 w-7 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z"/>
-                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z" />
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
                   </svg>
                 </button>
                 <p className="text-xs text-[var(--muted)]">
@@ -432,85 +448,101 @@ export function LandingPage({
               </div>
             </div>
           ) : (
-          <div className="card p-6 sm:p-8 animate-fade-in" style={{ animationDelay: "400ms" }}>
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="label">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your name"
-                  className="input-base w-full"
-                />
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="card p-6 sm:p-8 animate-fade-in" style={{ animationDelay: "400ms" }}>
+              <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <label className="label">Age</label>
+                  <label className="label">Name</label>
                   <input
-                    type="number"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    placeholder="30"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your name"
                     className="input-base w-full"
                   />
                 </div>
-                <div>
-                  <label className="label">Units</label>
-                  <select
-                    value={unitSystem}
-                    onChange={(e) => handleUnitSystemChange(e.target.value as "us" | "metric")}
-                    className="input-base w-full"
-                  >
-                    <option value="us">US (lb, ft/in, fl oz)</option>
-                    <option value="metric">Metric (kg, cm, ml)</option>
-                  </select>
+                <div className="flex flex-col gap-2">
+                  <span className="label">Units</span>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer bg-[var(--surface-elevated)] p-2 rounded-lg border border-[var(--border-soft)] hover:border-[var(--accent)]/50 transition-colors">
+                      <input
+                        type="radio"
+                        name="unitSystem"
+                        value="us"
+                        checked={unitSystem === "us"}
+                        onChange={() => handleUnitSystemChange("us")}
+                        className="w-4 h-4 cursor-pointer accent-[var(--accent)]"
+                      />
+                      <span className="text-sm">US (lb, ft/in)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-[var(--surface-elevated)] p-2 rounded-lg border border-[var(--border-soft)] hover:border-[var(--accent)]/50 transition-colors">
+                      <input
+                        type="radio"
+                        name="unitSystem"
+                        value="metric"
+                        checked={unitSystem === "metric"}
+                        onChange={() => handleUnitSystemChange("metric")}
+                        className="w-4 h-4 cursor-pointer accent-[var(--accent)]"
+                      />
+                      <span className="text-sm">Metric (kg, cm)</span>
+                    </label>
+                  </div>
                 </div>
-                {unitSystem === "metric" ? (
-                  <>
-                    <div>
-                      <label className="label">Weight (kg)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min={20}
-                        max={500}
-                        value={weightKg}
-                        onChange={(e) => setWeightKg(e.target.value)}
-                        placeholder="70"
-                        className="input-base w-full"
-                      />
-                    </div>
-                    <div>
-                      <label className="label">Height (cm)</label>
-                      <input
-                        type="number"
-                        step="1"
-                        min={100}
-                        max={250}
-                        value={heightCm}
-                        onChange={(e) => setHeightCm(e.target.value)}
-                        placeholder="170"
-                        className="input-base w-full"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div>
-                      <label className="label">Weight (lbs)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min={50}
-                        max={1000}
-                        value={weightLbs}
-                        onChange={(e) => setWeightLbs(e.target.value)}
-                        placeholder="154"
-                        className="input-base w-full"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+
+                <div className={`grid grid-cols-2 ${unitSystem === "us" ? "sm:grid-cols-4" : "sm:grid-cols-3"} gap-3`}>
+                  <div>
+                    <label className="label">Age</label>
+                    <input
+                      type="number"
+                      value={age}
+                      onChange={(e) => setAge(e.target.value)}
+                      placeholder="30"
+                      className="input-base w-full"
+                    />
+                  </div>
+                  {unitSystem === "metric" ? (
+                    <>
+                      <div>
+                        <label className="label">Weight (kg)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min={20}
+                          max={500}
+                          value={weightKg}
+                          onChange={(e) => setWeightKg(e.target.value)}
+                          placeholder="70"
+                          className="input-base w-full"
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Height (cm)</label>
+                        <input
+                          type="number"
+                          step="1"
+                          min={100}
+                          max={250}
+                          value={heightCm}
+                          onChange={(e) => setHeightCm(e.target.value)}
+                          placeholder="170"
+                          className="input-base w-full"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="label">Weight (lbs)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min={50}
+                          max={1000}
+                          value={weightLbs}
+                          onChange={(e) => setWeightLbs(e.target.value)}
+                          placeholder="154"
+                          className="input-base w-full"
+                        />
+                      </div>
                       <div>
                         <label className="label">Height (ft)</label>
                         <input
@@ -535,139 +567,138 @@ export function LandingPage({
                           className="input-base w-full"
                         />
                       </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Gender</label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value as UserProfile["gender"])}
-                    className="input-base w-full"
-                  >
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="other">Other</option>
-                  </select>
+                    </>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Gender</label>
+                    <select
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value as UserProfile["gender"])}
+                      className="input-base w-full"
+                    >
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Fitness level</label>
+                    <select
+                      value={fitnessLevel}
+                      onChange={(e) => setFitnessLevel(e.target.value as UserProfile["fitnessLevel"])}
+                      className="input-base w-full"
+                    >
+                      <option value="beginner">Beginner</option>
+                      <option value="intermediate">Intermediate</option>
+                      <option value="advanced">Advanced</option>
+                      <option value="athlete">Athlete</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Goal</label>
+                    <select
+                      value={goal}
+                      onChange={(e) => setGoal(e.target.value as UserProfile["goal"])}
+                      className="input-base w-full"
+                    >
+                      <option value="lose_weight">Lose weight</option>
+                      <option value="maintain">Maintain</option>
+                      <option value="build_muscle">Build muscle</option>
+                      <option value="improve_endurance">Improve endurance</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Activity level</label>
+                    <select
+                      value={activity}
+                      onChange={(e) => setActivity(e.target.value as UserProfile["dailyActivityLevel"])}
+                      className="input-base w-full"
+                    >
+                      <option value="sedentary">Sedentary</option>
+                      <option value="light">Light</option>
+                      <option value="moderate">Moderate</option>
+                      <option value="active">Active</option>
+                      <option value="very_active">Very active</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
-                  <label className="label">Fitness level</label>
+                  <label className="label">Where do you work out?</label>
                   <select
-                    value={fitnessLevel}
-                    onChange={(e) => setFitnessLevel(e.target.value as UserProfile["fitnessLevel"])}
+                    value={workoutLocation}
+                    onChange={(e) => setWorkoutLocation(e.target.value as WorkoutLocation)}
                     className="input-base w-full"
                   >
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                    <option value="athlete">Athlete</option>
+                    <option value="home">Home</option>
+                    <option value="gym">Gym</option>
+                    <option value="outside">Outside (parks, trails)</option>
                   </select>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Goal</label>
-                  <select
-                    value={goal}
-                    onChange={(e) => setGoal(e.target.value as UserProfile["goal"])}
-                    className="input-base w-full"
-                  >
-                    <option value="lose_weight">Lose weight</option>
-                    <option value="maintain">Maintain</option>
-                    <option value="build_muscle">Build muscle</option>
-                    <option value="improve_endurance">Improve endurance</option>
-                  </select>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Workouts per week</label>
+                    <select
+                      value={workoutDaysPerWeek}
+                      onChange={(e) => setWorkoutDaysPerWeek(Number(e.target.value))}
+                      className="input-base w-full"
+                    >
+                      {[2, 3, 4, 5, 6, 7].map((n) => (
+                        <option key={n} value={n}>
+                          {n} days
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Preferred workout time</label>
+                    <select
+                      value={workoutTimeframe}
+                      onChange={(e) => setWorkoutTimeframe(e.target.value as UserProfile["workoutTimeframe"])}
+                      className="input-base w-full"
+                    >
+                      <option value="morning">Morning</option>
+                      <option value="afternoon">Afternoon</option>
+                      <option value="evening">Evening</option>
+                      <option value="flexible">Flexible</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
-                  <label className="label">Activity level</label>
-                  <select
-                    value={activity}
-                    onChange={(e) => setActivity(e.target.value as UserProfile["dailyActivityLevel"])}
-                    className="input-base w-full"
-                  >
-                    <option value="sedentary">Sedentary</option>
-                    <option value="light">Light</option>
-                    <option value="moderate">Moderate</option>
-                    <option value="active">Active</option>
-                    <option value="very_active">Very active</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="label">Where do you work out?</label>
-                <select
-                  value={workoutLocation}
-                  onChange={(e) => setWorkoutLocation(e.target.value as WorkoutLocation)}
-                  className="input-base w-full"
-                >
-                  <option value="home">Home</option>
-                  <option value="gym">Gym</option>
-                  <option value="outside">Outside (parks, trails)</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Workouts per week</label>
-                  <select
-                    value={workoutDaysPerWeek}
-                    onChange={(e) => setWorkoutDaysPerWeek(Number(e.target.value))}
-                    className="input-base w-full"
-                  >
-                    {[2, 3, 4, 5, 6, 7].map((n) => (
-                      <option key={n} value={n}>
-                        {n} days
-                      </option>
+                  <label className="label">Equipment you have access to</label>
+                  <p className="text-xs text-[var(--muted)] mb-1">Select all that apply — you can change this anytime in Profile.</p>
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {EQUIPMENT_OPTIONS.map(({ value, label }) => (
+                      <label key={value} className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={workoutEquipment.includes(value)}
+                          onChange={() => toggleEquipment(value)}
+                          className="rounded border-[var(--border)]"
+                        />
+                        <span className="text-sm">{label}</span>
+                      </label>
                     ))}
-                  </select>
+                  </div>
                 </div>
                 <div>
-                  <label className="label">Preferred workout time</label>
-                  <select
-                    value={workoutTimeframe}
-                    onChange={(e) => setWorkoutTimeframe(e.target.value as UserProfile["workoutTimeframe"])}
+                  <label className="label">Dietary restrictions</label>
+                  <input
+                    type="text"
+                    value={restrictions}
+                    onChange={(e) => setRestrictions(e.target.value)}
+                    placeholder="e.g. gluten-free, vegetarian"
                     className="input-base w-full"
-                  >
-                    <option value="morning">Morning</option>
-                    <option value="afternoon">Afternoon</option>
-                    <option value="evening">Evening</option>
-                    <option value="flexible">Flexible</option>
-                  </select>
+                  />
                 </div>
-              </div>
-              <div>
-                <label className="label">Equipment you have access to</label>
-                <p className="text-xs text-[var(--muted)] mb-1">Select all that apply — you can change this anytime in Profile.</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {EQUIPMENT_OPTIONS.map(({ value, label }) => (
-                    <label key={value} className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={workoutEquipment.includes(value)}
-                        onChange={() => toggleEquipment(value)}
-                        className="rounded border-[var(--border)]"
-                      />
-                      <span className="text-sm">{label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="label">Dietary restrictions</label>
-                <input
-                  type="text"
-                  value={restrictions}
-                  onChange={(e) => setRestrictions(e.target.value)}
-                  placeholder="e.g. gluten-free, vegetarian"
-                  className="input-base w-full"
-                />
-              </div>
-              <button type="submit" disabled={loading} className="btn-primary w-full !py-4 !text-base font-semibold shadow-[var(--shadow-medium)] hover:shadow-[var(--shadow-strong)] transition-shadow">
-                {loading ? "Generating your plan with Amazon Nova…" : "Create my plan"}
-              </button>
-            </form>
-          </div>
+                <button type="submit" disabled={loading} className="btn-primary w-full !py-4 !text-base font-semibold shadow-[var(--shadow-medium)] hover:shadow-[var(--shadow-strong)] transition-shadow">
+                  {loading ? "Generating your plan with Amazon Nova…" : "Create my plan"}
+                </button>
+              </form>
+            </div>
           )}
         </div>
       </section>
