@@ -1,7 +1,11 @@
-"use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, getWearableData, saveWearableData, getWearableConnections, saveWearableConnections, getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan, syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress, getBiofeedback, getHydration, getActiveFastingSession } from "@/lib/storage";
+import {
+  getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
+  getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
+  getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
+  syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
+  getBiofeedback, getHydration, getActiveFastingSession
+} from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
 import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
@@ -82,17 +86,51 @@ export default function Home() {
   const [wearableData, setWearableData] = useState<WearableDaySummary[]>(() => getWearableData());
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [showGroupCreate, setShowGroupCreate] = useState(false);
+  const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
     const p = getProfile();
-    setProfile(p);
     if (p) {
+      setProfile(p);
       setPlan(getPlan());
       setMeals(getMeals());
       setWearableData(getWearableData());
       setMilestonesState(getMilestones());
       setXp(getXP());
-      setView(p ? "dashboard" : "onboard");
+      setView("dashboard");
+      setRestoring(false);
+    } else {
+      // Attempt to restore from cloud
+      fetch("/api/data/sync")
+        .then((res) => {
+          if (!res.ok) throw new Error("No data");
+          return res.json();
+        })
+        .then((data) => {
+          if (data.profile) {
+            saveProfile(data.profile);
+            setProfile(data.profile);
+            if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
+            if (data.meals) { saveMeals(data.meals); setMeals(data.meals); }
+            if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
+            if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
+            if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
+            if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
+            if (data.meta) {
+              if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
+              if (data.meta.hasAdjusted) setHasAdjustedPlan();
+            }
+            setView("dashboard");
+          } else {
+            setView("onboard");
+          }
+        })
+        .catch(() => {
+          setView("onboard");
+        })
+        .finally(() => {
+          setRestoring(false);
+        });
     }
   }, []);
 
@@ -343,6 +381,20 @@ export default function Home() {
     showToast("Guided judge tour started: Evidence → Meals → Weekly Review → Reco.", "info");
   };
 
+  if (restoring) {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center flex-col gap-4">
+        <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-4 animate-thinking-pulse">
+          <svg className="h-7 w-7 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        </div>
+        <p className="text-[var(--foreground)] text-sm font-medium animate-pulse">Checking for existing profile...</p>
+      </div>
+    );
+  }
+
   if (profile === null && view === "onboard") {
     return (
       <LandingPage
@@ -366,7 +418,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
           <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
             <span className="flex items-center gap-1" aria-hidden="true">
-              <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+              <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
             </span>
             <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
             <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
@@ -435,9 +487,8 @@ export default function Home() {
             <button
               key={key}
               onClick={() => navigateTo(key)}
-              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-2xl transition-all duration-150 ${
-                view === key ? "text-[var(--accent)]" : "text-[var(--muted)]"
-              }`}
+              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-2xl transition-all duration-150 ${view === key ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                }`}
               aria-current={view === key ? "page" : undefined}
             >
               <span className="flex items-center justify-center h-5 w-5" aria-hidden>
@@ -506,136 +557,136 @@ export default function Home() {
         )}
         {view === "dashboard" && (
           <div key="dashboard" className={getSlideClass("dashboard")}>
-          <Dashboard
-            profile={profile!}
-            plan={plan}
-            meals={meals}
-            todaysTotals={todaysTotals}
-            targets={targets}
-            wearableData={wearableData}
-            onProfileUpdate={(updated) => {
-              saveProfile(updated);
-              setProfile(updated);
-              syncToServer();
-            }}
-            onPlanUpdate={(updated) => {
-              savePlan(updated);
-              setPlan(updated);
-              syncToServer();
-            }}
-            onRegeneratePlan={handleRegeneratePlan}
-            planRegenerating={planRegenerating}
-            planLoadingMessage={planLoadingMessage}
-            onNavigateToMeals={() => navigateTo("meals")}
-            onNavigateToWorkouts={() => navigateTo("workouts")}
-            onReset={() => {
-              localStorage.clear();
-              setProfile(null);
-              setPlan(null);
-              setMeals([]);
-              setWearableData([]);
-              setMilestonesState([]);
-              setXp(0);
-              setMilestoneProgress({});
-              saveWearableData([]);
-              saveWearableConnections([]);
-              navigateTo("onboard");
-            }}
-          />
+            <Dashboard
+              profile={profile!}
+              plan={plan}
+              meals={meals}
+              todaysTotals={todaysTotals}
+              targets={targets}
+              wearableData={wearableData}
+              onProfileUpdate={(updated) => {
+                saveProfile(updated);
+                setProfile(updated);
+                syncToServer();
+              }}
+              onPlanUpdate={(updated) => {
+                savePlan(updated);
+                setPlan(updated);
+                syncToServer();
+              }}
+              onRegeneratePlan={handleRegeneratePlan}
+              planRegenerating={planRegenerating}
+              planLoadingMessage={planLoadingMessage}
+              onNavigateToMeals={() => navigateTo("meals")}
+              onNavigateToWorkouts={() => navigateTo("workouts")}
+              onReset={() => {
+                localStorage.clear();
+                setProfile(null);
+                setPlan(null);
+                setMeals([]);
+                setWearableData([]);
+                setMilestonesState([]);
+                setXp(0);
+                setMilestoneProgress({});
+                saveWearableData([]);
+                saveWearableConnections([]);
+                navigateTo("onboard");
+              }}
+            />
           </div>
         )}
         {view === "meals" && (
           <div key="meals" className={getSlideClass("meals")}>
-          <MealsView
-            meals={meals}
-            todaysMeals={todaysMeals}
-            todaysTotals={todaysTotals}
-            targets={targets}
-            goal={profile?.goal ?? "maintain"}
-            onAddMeal={(m) => {
-              const next = [...meals, m];
-              setMeals(next);
-              saveMeals(next);
-              syncToServer();
-            }}
-            onEditMeal={(m) => {
-              const next = meals.map((x) => (x.id === m.id ? m : x));
-              setMeals(next);
-              saveMeals(next);
-              syncToServer();
-            }}
-            onDeleteMeal={(id) => {
-              const next = meals.filter((x) => x.id !== id);
-              setMeals(next);
-              saveMeals(next);
-              syncToServer();
-            }}
-          />
+            <MealsView
+              meals={meals}
+              todaysMeals={todaysMeals}
+              todaysTotals={todaysTotals}
+              targets={targets}
+              goal={profile?.goal ?? "maintain"}
+              onAddMeal={(m) => {
+                const next = [...meals, m];
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+              onEditMeal={(m) => {
+                const next = meals.map((x) => (x.id === m.id ? m : x));
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+              onDeleteMeal={(id) => {
+                const next = meals.filter((x) => x.id !== id);
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+            />
           </div>
         )}
         {view === "workouts" && (
           <div key="workouts" className={getSlideClass("workouts")}>
-          <WorkoutPlannerView
-            plan={plan}
-            wearableData={wearableData}
-            onUpdatePlan={(updated) => {
-              savePlan(updated);
-              setPlan(updated);
-            }}
-            onPlanSaved={syncToServer}
-          />
+            <WorkoutPlannerView
+              plan={plan}
+              wearableData={wearableData}
+              onUpdatePlan={(updated) => {
+                savePlan(updated);
+                setPlan(updated);
+              }}
+              onPlanSaved={syncToServer}
+            />
           </div>
         )}
         {view === "milestones" && (
           <div key="milestones" className={getSlideClass("milestones")}>
-          <MilestonesView
-            milestones={milestones}
-            xp={xp}
-            progress={milestoneProgress}
-            wearableData={wearableData}
-            meals={meals}
-            streak={getCurrentStreakFromMeals(meals)}
-            macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
-            onDataFetched={(data) => {
-              const existing = getWearableData();
-              const merged = [...existing];
-              (data as WearableDaySummary[]).forEach((d) => {
-                const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                if (i >= 0) merged[i] = { ...merged[i], ...d };
-                else merged.push(d);
-              });
-              saveWearableData(merged);
-              setWearableData(merged);
-            }}
-          />
+            <MilestonesView
+              milestones={milestones}
+              xp={xp}
+              progress={milestoneProgress}
+              wearableData={wearableData}
+              meals={meals}
+              streak={getCurrentStreakFromMeals(meals)}
+              macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
+              onDataFetched={(data) => {
+                const existing = getWearableData();
+                const merged = [...existing];
+                (data as WearableDaySummary[]).forEach((d) => {
+                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                  if (i >= 0) merged[i] = { ...merged[i], ...d };
+                  else merged.push(d);
+                });
+                saveWearableData(merged);
+                setWearableData(merged);
+              }}
+            />
           </div>
         )}
         {view === "adjust" && (
           <div key="adjust" className={getSlideClass("adjust")}>
-          <AdjustView
-            plan={plan}
-            goal={profile?.goal ?? "maintain"}
-            unitSystem={profile?.unitSystem ?? "us"}
-            feedback={adjustFeedback}
-            setFeedback={setAdjustFeedback}
-            result={adjustResult}
-            loading={loading}
-            onAdjust={handleAdjust}
-            onApplyAdjustments={(newTargets) => {
-              if (plan && newTargets) {
-                setHasAdjustedPlan();
-                const updated = {
-                  ...plan,
-                  dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
-                };
-                savePlan(updated);
-                setPlan(updated);
-                setAdjustResult(null);
-                setAdjustFeedback("");
-                syncToServer();
-              }
-            }}
-          />
+            <AdjustView
+              plan={plan}
+              goal={profile?.goal ?? "maintain"}
+              unitSystem={profile?.unitSystem ?? "us"}
+              feedback={adjustFeedback}
+              setFeedback={setAdjustFeedback}
+              result={adjustResult}
+              loading={loading}
+              onAdjust={handleAdjust}
+              onApplyAdjustments={(newTargets) => {
+                if (plan && newTargets) {
+                  setHasAdjustedPlan();
+                  const updated = {
+                    ...plan,
+                    dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
+                  };
+                  savePlan(updated);
+                  setPlan(updated);
+                  setAdjustResult(null);
+                  setAdjustFeedback("");
+                  syncToServer();
+                }
+              }}
+            />
           </div>
         )}
         {view === "groups" && (
@@ -655,26 +706,26 @@ export default function Home() {
         )}
         {view === "profile" && profile && (
           <div key="profile" className={getSlideClass("profile")}>
-          <ProfileView
-            profile={profile}
-            isDemoMode={isDemoMode}
-            onProfileUpdate={(updated) => {
-              saveProfile(updated);
-              setProfile(updated);
-              syncToServer();
-            }}
-            onWearableDataFetched={(data) => {
-              const existing = getWearableData();
-              const merged = [...existing];
-              (data as WearableDaySummary[]).forEach((d) => {
-                const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                if (i >= 0) merged[i] = { ...merged[i], ...d };
-                else merged.push(d);
-              });
-              saveWearableData(merged);
-              setWearableData(merged);
-            }}
-          />
+            <ProfileView
+              profile={profile}
+              isDemoMode={isDemoMode}
+              onProfileUpdate={(updated) => {
+                saveProfile(updated);
+                setProfile(updated);
+                syncToServer();
+              }}
+              onWearableDataFetched={(data) => {
+                const existing = getWearableData();
+                const merged = [...existing];
+                (data as WearableDaySummary[]).forEach((d) => {
+                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                  if (i >= 0) merged[i] = { ...merged[i], ...d };
+                  else merged.push(d);
+                });
+                saveWearableData(merged);
+                setWearableData(merged);
+              }}
+            />
           </div>
         )}
       </main>
@@ -697,7 +748,7 @@ export default function Home() {
             aria-label="Chat with Reco"
             title="Chat with Reco"
           >
-            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
           </button>
           <RicoChat
             userName={profile.name}

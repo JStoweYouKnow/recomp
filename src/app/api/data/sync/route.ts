@@ -3,10 +3,17 @@ import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { isJudgeMode } from "@/lib/judgeMode";
 import {
+  dbGetProfile,
+  dbGetPlan,
+  dbGetMeals,
+  dbGetMilestones,
+  dbGetMeta,
+  dbGetWearableConnections,
+  dbGetWearableData,
+  dbGetWeeklyReview,
   dbSavePlan,
   dbSaveMeal,
   dbSaveMilestones,
-  dbGetMeta,
   dbSaveMeta,
   dbSaveWearableData,
   dbSaveWearableConnection,
@@ -93,5 +100,57 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("Sync error:", err);
     return NextResponse.json({ ok: true, mode: "dynamo-unavailable", persisted: false });
+  }
+}
+
+export async function GET(req: NextRequest) {
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync-get"), 10, 60_000);
+  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+
+  try {
+    if (isJudgeMode() || !process.env.DYNAMODB_TABLE_NAME) {
+      return NextResponse.json({ error: "Unavailable" }, { status: 503 });
+    }
+
+    const userId = await getUserId();
+    if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const [
+      profile,
+      plan,
+      meals,
+      milestones,
+      meta,
+      wearableConnections,
+      wearableData,
+      weeklyReview,
+    ] = await Promise.all([
+      dbGetProfile(userId),
+      dbGetPlan(userId),
+      dbGetMeals(userId),
+      dbGetMilestones(userId),
+      dbGetMeta(userId),
+      dbGetWearableConnections(userId),
+      dbGetWearableData(userId),
+      dbGetWeeklyReview(userId),
+    ]);
+
+    if (!profile) {
+      return NextResponse.json({ error: "No profile found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      profile,
+      plan,
+      meals,
+      milestones,
+      meta,
+      wearableConnections,
+      wearableData,
+      weeklyReview,
+    });
+  } catch (err) {
+    console.error("Sync GET error:", err);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
