@@ -330,7 +330,7 @@ Respond with this exact JSON structure:
       invokeNovaWithExtendedThinking(
         SYSTEM_PROMPT,
         userMessage,
-        "high",
+        "medium",
         { maxTokens: 8192 }
       ),
       new Promise<typeof timeoutToken>((resolve) => {
