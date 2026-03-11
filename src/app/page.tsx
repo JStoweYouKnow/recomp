@@ -6,7 +6,9 @@ import {
   getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
   getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
   syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
-  getBiofeedback, getHydration, getActiveFastingSession
+  getBiofeedback, getHydration, getActiveFastingSession,
+  saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
+  saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
 } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
@@ -120,9 +122,17 @@ export default function Home() {
             if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
             if (data.activityLog) saveActivityLog(data.activityLog);
             if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
+            if (data.hydration) saveHydration(data.hydration);
+            if (data.fastingSessions) saveFastingSessions(data.fastingSessions);
+            if (data.biofeedback) saveBiofeedback(data.biofeedback);
+            if (data.pantry) savePantry(data.pantry);
+            if (data.bodyScans) saveBodyScans(data.bodyScans);
+            if (data.supplements) saveSupplements(data.supplements);
+            if (data.bloodWork) saveBloodWork(data.bloodWork);
             if (data.meta) {
               if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
               if (data.meta.hasAdjusted) setHasAdjustedPlan();
+              if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
             }
             setView("dashboard");
           } else {
