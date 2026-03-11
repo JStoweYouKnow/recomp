@@ -441,7 +441,10 @@ export default function Home() {
             <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
             <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
           </button>
-          <span className="hidden md:inline-flex items-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">Amazon Nova AI</span>
+          <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)] backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]/60" aria-hidden />
+            Amazon Nova AI
+          </span>
 
           <nav ref={navContainerRef} className="nav-morphing flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
             {pillStyle && (

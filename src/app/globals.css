@@ -14,9 +14,9 @@
   --border-soft: #ebe6df;
   --input-bg: #ffffff;
   --card-bg: #ffffff;
-  --shadow-soft: 0 2px 8px rgba(61, 55, 48, 0.04), 0 1px 3px rgba(61, 55, 48, 0.02);
-  --shadow-medium: 0 6px 20px rgba(61, 55, 48, 0.06), 0 2px 6px rgba(61, 55, 48, 0.03);
-  --shadow-strong: 0 12px 40px rgba(61, 55, 48, 0.08), 0 4px 12px rgba(61, 55, 48, 0.04);
+  --shadow-soft: 0 4px 12px rgba(61, 55, 48, 0.03), 0 1px 3px rgba(61, 55, 48, 0.02);
+  --shadow-medium: 0 8px 24px rgba(61, 55, 48, 0.05), 0 3px 8px rgba(61, 55, 48, 0.02);
+  --shadow-strong: 0 16px 48px rgba(61, 55, 48, 0.08), 0 4px 16px rgba(61, 55, 48, 0.03);
 
   /* Accent variants (earth-tone) */
   --accent-sage: #7d8c4a;
@@ -46,7 +46,7 @@
   --font-body: var(--font-plus-jakarta), "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-plus-jakarta), "Inter", system-ui, sans-serif;
 
-  --font-size-caption: 0.6875rem;
+  --font-size-caption: 0.75rem; /* Increased from 0.6875rem (11px) to 12px for accessibility */
   --font-size-small: 0.8125rem;
   --font-size-body: 0.9375rem;
   --font-size-body-lg: 1.0625rem;
@@ -486,7 +486,7 @@ h6 {
   position: relative;
   display: inline-flex;
   align-items: center;
-  padding: 0.5rem 0.875rem;
+  padding: 0.5rem 1.125rem; /* Increased horizontal padding for breathing room */
   font-size: var(--font-size-small);
   font-weight: var(--font-weight-medium);
   color: var(--muted);
@@ -502,7 +502,9 @@ h6 {
 }
 .nav-item-active {
   color: var(--accent);
-  background: var(--accent-10);
+  background: rgba(107, 124, 60, 0.08); /* accent-10 */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   font-weight: var(--font-weight-semibold);
   box-shadow: 0 0 0 1px rgba(107, 124, 60, 0.2);
   transition: background 150ms ease, box-shadow 150ms ease;
