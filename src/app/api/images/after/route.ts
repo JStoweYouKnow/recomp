@@ -10,28 +10,31 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 
-function getGoalPrompt(goal: Goal): { text: string; negativeText?: string } {
+const NEGATIVE_TEXT = "cartoon, anime, illustration, painting, distorted face, changed face, different person, extra limbs, blur, deformed, disfigured, bad anatomy, wrong proportions, watermark, text, logo";
+
+function getGoalPrompt(goal: Goal): { text: string; negativeText: string } {
+  const identity = "CRITICAL: This must look like the EXACT SAME PERSON. Preserve their face, facial features, skin tone, hair color, hair style, ethnicity, and body proportions precisely. Only modify body composition.";
   switch (goal) {
     case "lose_weight":
       return {
-        text: "The same person with a leaner, slimmer physique. Reduced body fat, more defined waist. Natural, photorealistic fitness transformation. Same pose, lighting, and background.",
-        negativeText: "cartoon, distorted face, extra limbs, blur",
+        text: `${identity} Show this same person with a leaner, slimmer physique — reduced body fat, more defined waistline, visible muscle tone underneath. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        negativeText: NEGATIVE_TEXT,
       };
     case "build_muscle":
       return {
-        text: "The same person with more muscular, athletic physique. Visible muscle definition, increased muscle mass. Natural, photorealistic fitness transformation. Same pose, lighting, and background.",
-        negativeText: "cartoon, distorted face, extra limbs, blur",
+        text: `${identity} Show this same person with a more muscular, athletic physique — increased muscle mass in arms, chest, shoulders, and legs, visible muscle definition. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        negativeText: NEGATIVE_TEXT,
       };
     case "improve_endurance":
       return {
-        text: "The same person with a leaner, more athletic build. Toned body, fit appearance. Natural, photorealistic fitness transformation. Same pose, lighting, and background.",
-        negativeText: "cartoon, distorted face, extra limbs, blur",
+        text: `${identity} Show this same person with a leaner, more athletic build — toned muscles, reduced body fat, fit runner's physique. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        negativeText: NEGATIVE_TEXT,
       };
     case "maintain":
     default:
       return {
-        text: "The same person looking healthy and fit. Slightly toned, well-maintained physique. Natural, photorealistic. Same pose, lighting, and background.",
-        negativeText: "cartoon, distorted face, extra limbs, blur",
+        text: `${identity} Show this same person looking healthy, fit, and well-maintained — slightly more toned, healthy skin glow. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic photo.`,
+        negativeText: NEGATIVE_TEXT,
       };
   }
 }
@@ -72,9 +75,9 @@ export async function POST(req: NextRequest) {
 
     const { text, negativeText } = getGoalPrompt(safeGoal);
     const base64Image = await invokeNovaCanvasImageVariation(imageDataUrl, text, {
-      similarityStrength: 0.75,
-      width: 512,
-      height: 768,
+      similarityStrength: 0.9,
+      width: 1024,
+      height: 1536,
       negativeText,
     });
 

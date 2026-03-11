@@ -361,7 +361,7 @@ export async function invokeNovaCanvas(prompt: string, width = 512, height = 512
 export async function invokeNovaCanvasImageVariation(
   imageBase64: string,
   textPrompt: string,
-  options?: { similarityStrength?: number; width?: number; height?: number; negativeText?: string }
+  options?: { similarityStrength?: number; width?: number; height?: number; negativeText?: string; quality?: "standard" | "premium" }
 ): Promise<string> {
   const startedAt = Date.now();
   const client = getClient();
@@ -378,7 +378,7 @@ export async function invokeNovaCanvasImageVariation(
     },
     imageGenerationConfig: {
       seed: Math.floor(Math.random() * 858993460),
-      quality: "standard",
+      quality: options?.quality ?? "standard",
       width,
       height,
       numberOfImages: 1,
