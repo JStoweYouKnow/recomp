@@ -14,6 +14,22 @@ export function WeeklyReviewCard({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  const handleShare = async () => {
+    if (!weeklyReview) return;
+    const text = `Weekly AI Review \n\n${weeklyReview.summary}\n\nMeal Analysis: ${weeklyReview.mealAnalysis || 'N/A'}\nWearable Insights: ${weeklyReview.wearableInsights || 'N/A'}\nRecommendations:\n${(weeklyReview.recommendations || []).map(r => `- ${r}`).join('\n')}\n\nGenerated via Recomp AI`;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "My Recomp AI Review", text });
+      } catch (e) {
+        /* user cancelled or share failed */
+      }
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      alert("Review copied to clipboard!");
+    }
+  };
+
   return (
     <div className="card p-6">
       <div className="flex items-start justify-between gap-4 mb-4">
@@ -22,9 +38,16 @@ export function WeeklyReviewCard({
           <p className="section-subtitle">Autonomous agent analyzes meals, wearables &amp; research</p>
           <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mt-0.5">Powered by Amazon Nova multi-agent</p>
         </div>
-        <button onClick={onGenerate} disabled={reviewLoading} className="btn-primary flex-shrink-0">
-          {reviewLoading ? "Analyzing..." : "Generate"}
-        </button>
+        <div className="flex gap-2">
+          {weeklyReview && !reviewLoading && (
+            <button onClick={handleShare} className="btn-secondary flex-shrink-0 !px-3">
+              Export
+            </button>
+          )}
+          <button onClick={onGenerate} disabled={reviewLoading} className="btn-primary flex-shrink-0">
+            {reviewLoading ? "Analyzing..." : "Generate"}
+          </button>
+        </div>
       </div>
       {reviewLoading && (
         <div className="flex flex-col gap-3" role="status" aria-live="polite">

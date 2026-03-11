@@ -1,7 +1,19 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getRicoHistory, saveRicoHistory, getCoachPersona, saveCoachPersona, type CoachPersona } from "@/lib/storage";
+import { 
+  getRicoHistory, 
+  saveRicoHistory, 
+  getCoachPersona, 
+  saveCoachPersona, 
+  type CoachPersona,
+  saveMeasurementTargets,
+  getMeasurementTargets,
+  saveMeals,
+  getMeals,
+  syncToServer
+} from "@/lib/storage";
+import { v4 as uuidv4 } from "uuid";
 import {
   startRecording,
   startStreamingRecording,
@@ -144,6 +156,39 @@ export function RicoChat({
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
+
+      // Execute AI Agent tool calls
+      if (data.actions && Array.isArray(data.actions)) {
+        let changed = false;
+        for (const act of data.actions) {
+          if (act.type === "update_macros") {
+            const current = getMeasurementTargets();
+            saveMeasurementTargets({ ...current, ...act.payload });
+            changed = true;
+          } else if (act.type === "log_meal") {
+            const meals = getMeals();
+            meals.push({
+              id: uuidv4(),
+              date: new Date().toLocaleDateString("en-CA"),
+              name: act.payload.name,
+              mealType: "snack", // default to snack for quick logs
+              loggedAt: new Date().toISOString(),
+              macros: {
+                calories: act.payload.calories,
+                protein: act.payload.protein,
+                carbs: act.payload.carbs,
+                fat: act.payload.fat,
+              },
+            });
+            saveMeals(meals);
+            changed = true;
+          }
+        }
+        if (changed) {
+          syncToServer();
+          window.dispatchEvent(new Event("userDataUpdated"));
+        }
+      }
     } catch (e) {
       console.error(e);
       addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again in a sec.", at: new Date().toISOString() });

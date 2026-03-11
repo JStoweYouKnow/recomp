@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
-import { invokeNova } from "@/lib/nova";
+import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
+import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
 import { logInfo, logError } from "@/lib/logger";
+
+const REGION = process.env.AWS_REGION ?? "us-east-1";
 
 const RICO_SYSTEM = `You are Reco, an AI fitness coach for the Recomp app. You're warm, motivating, and genuinely care about the user's progress.
 
@@ -16,7 +19,12 @@ PERSONALITY:
 - Never lecture. Be conversational.
 
 CONTEXT YOU RECEIVE:
-The user's message plus optional context about: streak length, meals logged, XP, recent milestones, goal, and whether they've been inconsistent lately.
+The user's message plus optional context about: streak length, meals logged, XP, recent milestones, goal, current macros, and whether they've been inconsistent lately.
+
+You have access to tools! You are an AGENT, not just a chatbot.
+1. If the user asks to change their calorie or macro targets, use the 'update_macros' tool.
+2. If the user tells you they ate something and wants to log it, estimate the macros and use the 'log_meal' tool.
+Always confirm to the user what you just did when using a tool (e.g. "I've updated your macros to 2000 calories!").
 
 Respond as Reco. No markdown. No bullet lists unless it's 2-3 quick tips. Be human.`;
 
@@ -41,6 +49,48 @@ function getHolidayContext(): string {
   return "";
 }
 
+const RICO_TOOLS: ToolConfiguration = {
+  tools: [
+    {
+      toolSpec: {
+        name: "update_macros",
+        description: "Updates the user's daily macronutrient targets based on their goals.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              calories: { type: "number", description: "Daily calorie target" },
+              protein: { type: "number", description: "Daily protein target in grams" },
+              carbs: { type: "number", description: "Daily carbs target in grams" },
+              fat: { type: "number", description: "Daily fat target in grams" }
+            },
+            required: ["calories", "protein", "carbs", "fat"]
+          }
+        }
+      }
+    },
+    {
+      toolSpec: {
+        name: "log_meal",
+        description: "Logs a food item or meal directly into the user's food diary.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Name of the meal/food" },
+              calories: { type: "number" },
+              protein: { type: "number" },
+              carbs: { type: "number" },
+              fat: { type: "number" }
+            },
+            required: ["name", "calories", "protein", "carbs", "fat"]
+          }
+        }
+      }
+    }
+  ]
+};
+
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -64,9 +114,54 @@ export async function POST(req: NextRequest) {
     }
     systemPrompt += getHolidayContext();
 
-    const reply = await invokeNova(systemPrompt, userPrompt, { temperature: 0.8, maxTokens: 256 });
-    logInfo("Rico chat reply", { route: "rico", persona: persona || "default" });
-    return NextResponse.json({ reply: reply.trim() });
+    const client = new BedrockRuntimeClient({ region: REGION });
+    const messages: Message[] = [{ role: "user", content: [{ text: userPrompt }] }];
+
+    const command = new ConverseCommand({
+      modelId: NOVA_LITE_MODEL_ID,
+      messages,
+      system: [{ text: systemPrompt }],
+      toolConfig: RICO_TOOLS,
+      inferenceConfig: { temperature: 0.7, maxTokens: 512, topP: 0.9 },
+    });
+
+    const response = await client.send(command);
+    const output = response.output?.message;
+    
+    if (!output || !output.content) {
+      throw new Error("Empty response from Bedrock");
+    }
+
+    let replyText = "";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const actions: any[] = [];
+
+    // Parse blocks for text and tool uses
+    for (const block of output.content) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((block as any).text) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        replyText += (block as any).text;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((block as any).toolUse) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = (block as any).toolUse;
+        actions.push({ type: t.name, payload: t.input });
+      }
+    }
+
+    // In a multi-turn agent we would send the tool result back to the model.
+    // However, since we want the client to execute the action locally (to update localStorage/state instantly), 
+    // we return the action to the client directly. Often the model will include text explaining what it did.
+    // If it *only* returned a tool call (no text), we supply a default reply.
+    if (!replyText && actions.length > 0) {
+      if (actions[0].type === "update_macros") replyText = "I've updated your daily targets!";
+      if (actions[0].type === "log_meal") replyText = `I've logged ${actions[0].payload.name} for you.`;
+    }
+
+    logInfo("Rico chat reply", { route: "rico", persona: persona || "default", actions: actions.length });
+    return NextResponse.json({ reply: replyText.trim(), actions });
   } catch (err) {
     logError("Rico chat failed", err, { route: "rico" });
     return NextResponse.json({ error: "Reco is taking a breather. Try again." }, { status: 500 });
