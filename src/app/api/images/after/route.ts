@@ -10,30 +10,30 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 
-const NEGATIVE_TEXT = "cartoon, anime, illustration, painting, distorted face, changed face, different person, different skin color, changed skin tone, lighter skin, darker skin, changed ethnicity, extra limbs, blur, deformed, disfigured, bad anatomy, wrong proportions, watermark, text, logo";
+const NEGATIVE_TEXT = "face, head, cartoon, anime, illustration, painting, different skin color, changed skin tone, lighter skin, darker skin, changed ethnicity, extra limbs, blur, deformed, disfigured, bad anatomy, wrong proportions, watermark, text, logo, unrealistic, exaggerated muscles, bodybuilder";
 
 function getGoalPrompt(goal: Goal): { text: string; negativeText: string } {
-  const identity = "CRITICAL: This must look like the EXACT SAME PERSON. Preserve their face, facial features, skin tone, hair color, hair style, ethnicity, and body proportions precisely. Only modify body composition.";
+  const framing = "Photo framed from the neck down showing only the torso, arms, and legs. No face or head visible. Preserve the exact same skin tone, clothing, pose, lighting, and background from the source image.";
   switch (goal) {
     case "lose_weight":
       return {
-        text: `${identity} Show this same person with a leaner, slimmer physique — reduced body fat, more defined waistline, visible muscle tone underneath. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        text: `${framing} Show a realistic, naturally achievable body after consistent fat loss — moderately leaner midsection, slightly more defined arms and waist. Subtle, believable changes like someone who lost 15-20 lbs over several months. Photorealistic photo, natural body.`,
         negativeText: NEGATIVE_TEXT,
       };
     case "build_muscle":
       return {
-        text: `${identity} Show this same person with a more muscular, athletic physique — increased muscle mass in arms, chest, shoulders, and legs, visible muscle definition. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        text: `${framing} Show a realistic, naturally achievable body after consistent strength training — moderately more defined arms, chest, and shoulders, slightly broader upper body. Subtle, believable changes like someone who gained 10-15 lbs of muscle over several months. Photorealistic photo, natural body.`,
         negativeText: NEGATIVE_TEXT,
       };
     case "improve_endurance":
       return {
-        text: `${identity} Show this same person with a leaner, more athletic build — toned muscles, reduced body fat, fit runner's physique. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic fitness transformation photo.`,
+        text: `${framing} Show a realistic, naturally achievable body after consistent cardio training — lean and toned, slightly slimmer midsection, defined legs. Subtle, believable changes like an active runner or cyclist. Photorealistic photo, natural body.`,
         negativeText: NEGATIVE_TEXT,
       };
     case "maintain":
     default:
       return {
-        text: `${identity} Show this same person looking healthy, fit, and well-maintained — slightly more toned, healthy skin glow. Keep the exact same face, skin tone, hair, clothing, pose, lighting, and background. Photorealistic photo.`,
+        text: `${framing} Show the same body looking healthy, well-maintained, and slightly more toned — minimal changes, just a healthier, more vibrant appearance. Photorealistic photo, natural body.`,
         negativeText: NEGATIVE_TEXT,
       };
   }
