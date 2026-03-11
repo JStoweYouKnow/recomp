@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/components/Toast";
 import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
-import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, syncToServer, getProfile } from "@/lib/storage";
+import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, syncToServer, getProfile, getBodyScans, saveBodyScans } from "@/lib/storage";
 import { WeeklyRecapCard } from "@/components/WeeklyRecapCard";
-import type { Milestone, WearableDaySummary, MeasurementTargets, MealEntry, Macros } from "@/lib/types";
+import type { Milestone, WearableDaySummary, MeasurementTargets, MealEntry, Macros, BodyScan } from "@/lib/types";
+import { v4 as uuidv4 } from "uuid";
 import { getUnitSystem, kgToLbs, lbsToKg } from "@/lib/units";
 
 
@@ -92,6 +93,80 @@ export function MilestonesView({
   const [reelVideoUrl, setReelVideoUrl] = useState<string | null>(null);
   const [reelIsDemo, setReelIsDemo] = useState(false);
   const [konamiUnlocked, setKonamiUnlocked] = useState(false);
+
+  // Progress photos state
+  const [bodyScans, setBodyScans] = useState<BodyScan[]>(() => getBodyScans());
+  const [photoDate, setPhotoDate] = useState(() => getTodayLocal());
+  const [photoNotes, setPhotoNotes] = useState("");
+  const [photoPreviews, setPhotoPreviews] = useState<{ front?: string; side?: string; back?: string }>({});
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  const frontInputRef = useRef<HTMLInputElement>(null);
+  const sideInputRef = useRef<HTMLInputElement>(null);
+  const backInputRef = useRef<HTMLInputElement>(null);
+
+  const resizePhoto = useCallback(async (file: File, maxSize = 800): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas not supported")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.8));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Failed to load")); };
+      img.src = url;
+    });
+  }, []);
+
+  const handlePhotoSelect = useCallback(async (angle: "front" | "side" | "back", file: File | undefined) => {
+    if (!file) return;
+    try {
+      const dataUrl = await resizePhoto(file);
+      setPhotoPreviews((prev) => ({ ...prev, [angle]: dataUrl }));
+    } catch { /* ignore */ }
+  }, [resizePhoto]);
+
+  const addProgressPhotos = () => {
+    if (!photoPreviews.front && !photoPreviews.side && !photoPreviews.back) {
+      showToast("Add at least one photo", "info");
+      return;
+    }
+    const scan: BodyScan = {
+      id: uuidv4(),
+      date: photoDate,
+      photos: { ...photoPreviews },
+      notes: photoNotes.trim() || undefined,
+    };
+    const next = [scan, ...bodyScans];
+    setBodyScans(next);
+    saveBodyScans(next);
+    syncToServer();
+    setPhotoPreviews({});
+    setPhotoNotes("");
+    if (frontInputRef.current) frontInputRef.current.value = "";
+    if (sideInputRef.current) sideInputRef.current.value = "";
+    if (backInputRef.current) backInputRef.current.value = "";
+    showToast("Progress photos saved", "success");
+  };
+
+  const deleteBodyScan = (id: string) => {
+    const next = bodyScans.filter((s) => s.id !== id);
+    setBodyScans(next);
+    saveBodyScans(next);
+    syncToServer();
+    showToast("Photos removed");
+  };
 
   // Konami code easter egg
   useEffect(() => {
@@ -444,6 +519,159 @@ export function MilestonesView({
           {loading ? "Adding…" : "Add weigh-in"}
         </button>
       </div>
+
+      {/* Progress Photos */}
+      <div className="card rounded-xl p-4 space-y-4">
+        <div>
+          <h3 className="font-semibold text-[var(--foreground)] text-sm">Progress Photos</h3>
+          <p className="text-[11px] text-[var(--muted)]">Track your transformation over time with front, side, and back photos.</p>
+        </div>
+
+        {/* Upload form */}
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-3 items-end">
+            <div>
+              <label className="label text-[10px]">Date</label>
+              <input
+                type="date"
+                value={photoDate}
+                onChange={(e) => setPhotoDate(e.target.value.slice(0, 10))}
+                className="input-base text-sm py-1.5"
+              />
+            </div>
+            <div className="flex-1 min-w-[140px]">
+              <label className="label text-[10px]">Notes (optional)</label>
+              <input
+                type="text"
+                value={photoNotes}
+                onChange={(e) => setPhotoNotes(e.target.value)}
+                placeholder="e.g. Week 4, feeling leaner"
+                className="input-base w-full text-sm py-1.5"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {(["front", "side", "back"] as const).map((angle) => (
+              <div key={angle} className="space-y-1">
+                <label className="label text-[10px] capitalize">{angle}</label>
+                {photoPreviews[angle] ? (
+                  <div className="relative">
+                    <img
+                      src={photoPreviews[angle]}
+                      alt={angle}
+                      className="w-full aspect-[3/4] object-cover rounded-lg border border-[var(--border-soft)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhotoPreviews((p) => { const n = { ...p }; delete n[angle]; return n; });
+                        const ref = angle === "front" ? frontInputRef : angle === "side" ? sideInputRef : backInputRef;
+                        if (ref.current) ref.current.value = "";
+                      }}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white text-xs flex items-center justify-center hover:bg-black/80"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center justify-center aspect-[3/4] rounded-lg border-2 border-dashed border-[var(--border-soft)] hover:border-[var(--accent)] cursor-pointer transition-colors bg-[var(--surface-elevated)]">
+                    <span className="text-lg">📷</span>
+                    <span className="text-[10px] text-[var(--muted)] mt-1 capitalize">{angle}</span>
+                    <input
+                      ref={angle === "front" ? frontInputRef : angle === "side" ? sideInputRef : backInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => { handlePhotoSelect(angle, e.target.files?.[0]); }}
+                    />
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={addProgressPhotos}
+            disabled={!photoPreviews.front && !photoPreviews.side && !photoPreviews.back}
+            className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50"
+          >
+            Add progress photos
+          </button>
+        </div>
+
+        {/* Gallery timeline */}
+        {bodyScans.length > 0 && (
+          <div className="space-y-4 pt-2 border-t border-[var(--border-soft)]">
+            <h4 className="text-xs font-semibold text-[var(--muted)] uppercase tracking-wider">Timeline</h4>
+            {bodyScans
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .map((scan) => (
+                <div key={scan.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-[var(--foreground)]">{scan.date}</p>
+                      {scan.notes && <p className="text-[11px] text-[var(--muted)]">{scan.notes}</p>}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => deleteBodyScan(scan.id)}
+                      className="text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["front", "side", "back"] as const).map((angle) => (
+                      <div key={angle}>
+                        {scan.photos[angle] ? (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPhoto(scan.photos[angle]!)}
+                            className="w-full focus:outline-none focus:ring-2 focus:ring-[var(--accent)] rounded-lg"
+                          >
+                            <img
+                              src={scan.photos[angle]}
+                              alt={`${angle} — ${scan.date}`}
+                              className="w-full aspect-[3/4] object-cover rounded-lg border border-[var(--border-soft)] hover:border-[var(--accent)] transition-colors"
+                            />
+                          </button>
+                        ) : (
+                          <div className="w-full aspect-[3/4] rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] flex items-center justify-center">
+                            <span className="text-[10px] text-[var(--muted)] capitalize">No {angle}</span>
+                          </div>
+                        )}
+                        <p className="text-center text-[10px] text-[var(--muted)] mt-0.5 capitalize">{angle}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* Expanded photo modal */}
+      {expandedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setExpandedPhoto(null)}
+        >
+          <div className="relative max-w-lg w-full max-h-[90vh]">
+            <img
+              src={expandedPhoto}
+              alt="Progress photo"
+              className="w-full h-auto max-h-[85vh] object-contain rounded-xl"
+            />
+            <button
+              type="button"
+              onClick={() => setExpandedPhoto(null)}
+              className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white text-lg flex items-center justify-center hover:bg-black/80"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Journey Recap */}
       {meals.length >= 5 && (
