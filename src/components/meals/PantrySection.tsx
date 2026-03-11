@@ -64,7 +64,7 @@ export function PantrySection() {
             <select
               value={newCategory}
               onChange={(e) => setNewCategory(e.target.value as PantryItem["category"])}
-              className="input-base rounded-lg px-2 py-2 text-sm w-auto min-w-[6rem]"
+              className="input-base rounded-lg px-2 py-2 text-sm w-auto min-w-[7rem] flex-shrink-0"
             >
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>

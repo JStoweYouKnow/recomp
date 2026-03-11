@@ -13,10 +13,17 @@ const PROTOCOLS: { protocol: FastingSession["protocol"]; hours: number }[] = [
   { protocol: "OMAD", hours: 23 },
 ];
 
-function formatElapsed(ms: number): string {
-  const h = Math.floor(ms / 3600000);
-  const m = Math.floor((ms % 3600000) / 60000);
-  return `${h}h ${m}m`;
+function formatElapsedParts(ms: number): { hours: number; minutes: number } {
+  return {
+    hours: Math.floor(ms / 3600000),
+    minutes: Math.floor((ms % 3600000) / 60000),
+  };
+}
+
+function protocolLabel(protocol: string, hours: number): string {
+  if (protocol === "OMAD") return "OMAD · 1 meal/day";
+  const eat = 24 - hours;
+  return `${hours}h fast · ${eat}h eat`;
 }
 
 export function FastingWidget() {
@@ -59,17 +66,30 @@ export function FastingWidget() {
   if (active) {
     const targetMs = active.targetHours * 3600000;
     const progress = Math.min(100, (elapsed / targetMs) * 100);
+    const { hours, minutes } = formatElapsedParts(elapsed);
+    const remainingMs = Math.max(0, targetMs - elapsed);
+    const remaining = formatElapsedParts(remainingMs);
     return (
       <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">Fasting</h4>
           <span className="text-[10px] text-[var(--muted)]">{active.protocol}</span>
         </div>
-        <p className="text-2xl font-bold tabular-nums text-[var(--accent)]">{formatElapsed(elapsed)}</p>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-1">Elapsed</p>
+          <p className="text-2xl font-bold tabular-nums text-[var(--accent)]">
+            {hours}<span className="text-sm font-medium text-[var(--muted)]"> hrs </span>
+            {minutes}<span className="text-sm font-medium text-[var(--muted)]"> min</span>
+          </p>
+        </div>
         <div className="progress-track !mt-0">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
-        <p className="text-[10px] text-[var(--muted)]">Target: {active.targetHours}h</p>
+        <p className="text-xs text-[var(--muted)]">
+          {remainingMs > 0
+            ? <>{remaining.hours}h {remaining.minutes}m remaining of {active.targetHours}h goal</>
+            : <span className="text-[var(--accent)] font-medium">🎉 Goal reached!</span>}
+        </p>
         <button type="button" onClick={endFast} className="btn-secondary text-xs w-full py-2">
           End fast
         </button>
@@ -80,16 +100,17 @@ export function FastingWidget() {
   return (
     <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
       <h4 className="text-sm font-semibold">Fasting Timer</h4>
-      <p className="text-xs text-[var(--muted)]">Start a fast to track</p>
+      <p className="text-xs text-[var(--muted)]">Choose a protocol to start tracking your fast</p>
       <div className="grid grid-cols-2 gap-1.5">
         {PROTOCOLS.map(({ protocol, hours }) => (
           <button
             key={protocol}
             type="button"
             onClick={() => startFast(hours, protocol)}
-            className="btn-secondary text-xs py-2"
+            className="btn-secondary text-xs py-2 flex flex-col items-center gap-0.5"
           >
-            {protocol}
+            <span className="font-semibold">{protocol}</span>
+            <span className="text-[10px] text-[var(--muted)] font-normal">{protocolLabel(protocol, hours)}</span>
           </button>
         ))}
       </div>
