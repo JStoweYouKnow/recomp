@@ -10,7 +10,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 
-const NEGATIVE_TEXT = "cartoon, anime, illustration, painting, distorted face, changed face, different person, extra limbs, blur, deformed, disfigured, bad anatomy, wrong proportions, watermark, text, logo";
+const NEGATIVE_TEXT = "cartoon, anime, illustration, painting, distorted face, changed face, different person, different skin color, changed skin tone, lighter skin, darker skin, changed ethnicity, extra limbs, blur, deformed, disfigured, bad anatomy, wrong proportions, watermark, text, logo";
 
 function getGoalPrompt(goal: Goal): { text: string; negativeText: string } {
   const identity = "CRITICAL: This must look like the EXACT SAME PERSON. Preserve their face, facial features, skin tone, hair color, hair style, ethnicity, and body proportions precisely. Only modify body composition.";
