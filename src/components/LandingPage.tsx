@@ -291,8 +291,8 @@ export function LandingPage({
         throw new Error(data.error || "Login failed");
       }
       onLoginSuccess(data.userId);
-    } catch (err: any) {
-      setLoginError(err.message);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoginLoading(false);
     }
@@ -321,7 +321,7 @@ export function LandingPage({
             </button>
           </form>
           <div className="text-center text-sm">
-            <span className="text-[var(--muted)]">Don't have an account? </span>
+            <span className="text-[var(--muted)]">Don&apos;t have an account? </span>
             <button onClick={() => setMode("choose")} className="text-[var(--accent)] hover:underline font-medium">Get started</button>
           </div>
         </div>

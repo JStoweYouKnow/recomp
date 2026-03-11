@@ -145,9 +145,9 @@ export function ProfileView({
       // Force immediate sync so DynamoDB has the full profile before user switches devices
       flushSync();
       setTimeout(() => setClaimStatus("idle"), 3000);
-    } catch (err: any) {
+    } catch (err) {
       setClaimStatus("error");
-      setClaimErrorMessage(err.message);
+      setClaimErrorMessage(err instanceof Error ? err.message : "Failed to claim account");
     }
   };
 
@@ -167,9 +167,9 @@ export function ProfileView({
       // and reload — page.tsx will pull all data from DynamoDB.
       localStorage.clear();
       window.location.reload();
-    } catch (err: any) {
+    } catch (err) {
       setClaimStatus("error");
-      setClaimErrorMessage(err.message);
+      setClaimErrorMessage(err instanceof Error ? err.message : "Login failed");
     }
   };
 
@@ -546,7 +546,7 @@ export function ProfileView({
           {!profile.email ? (
             <>
               <p className="text-sm text-[var(--muted)] mb-4">
-                You are currently using an anonymous "guest" account. Add an email and password to securely access your data from any device.
+                You are currently using an anonymous &quot;guest&quot; account. Add an email and password to securely access your data from any device.
               </p>
               <form onSubmit={handleClaimAccount} className="space-y-4">
                 {claimStatus === "error" && <p className="text-sm text-[var(--accent)]">{claimErrorMessage}</p>}

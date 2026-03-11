@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Too many requests" }, { status: 429 });
         }
 
-        let userId = await getUserId(req.headers);
+        const userId = await getUserId(req.headers);
         if (!userId) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }

@@ -37,7 +37,7 @@ import {
   dbSaveBloodWork,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (activityLog && activityLog.length > 0) {
-      promises.push(dbSaveActivityLog(userId, activityLog as any));
+      promises.push(dbSaveActivityLog(userId, activityLog as ActivityLogEntry[]));
     }
 
     if (workoutProgress) {
@@ -122,31 +122,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (hydration && hydration.length > 0) {
-      for (const entry of hydration) promises.push(dbSaveHydrationEntry(userId, entry as any));
+      for (const entry of hydration) promises.push(dbSaveHydrationEntry(userId, entry as HydrationEntry));
     }
 
     if (fastingSessions && fastingSessions.length > 0) {
-      for (const session of fastingSessions) promises.push(dbSaveFastingSession(userId, session as any));
+      for (const session of fastingSessions) promises.push(dbSaveFastingSession(userId, session as FastingSession));
     }
 
     if (biofeedback && biofeedback.length > 0) {
-      for (const entry of biofeedback) promises.push(dbSaveBiofeedbackEntry(userId, entry as any));
+      for (const entry of biofeedback) promises.push(dbSaveBiofeedbackEntry(userId, entry as BiofeedbackEntry));
     }
 
     if (pantry && pantry.length > 0) {
-      promises.push(dbSavePantry(userId, pantry as any));
+      promises.push(dbSavePantry(userId, pantry as PantryItem[]));
     }
 
     if (bodyScans && bodyScans.length > 0) {
-      for (const scan of bodyScans) promises.push(dbSaveBodyScan(userId, scan as any));
+      for (const scan of bodyScans) promises.push(dbSaveBodyScan(userId, scan as BodyScan));
     }
 
     if (supplements && supplements.length > 0) {
-      promises.push(dbSaveSupplements(userId, supplements as any));
+      promises.push(dbSaveSupplements(userId, supplements as Supplement[]));
     }
 
     if (bloodWork && bloodWork.length > 0) {
-      for (const bw of bloodWork) promises.push(dbSaveBloodWork(userId, bw as any));
+      for (const bw of bloodWork) promises.push(dbSaveBloodWork(userId, bw as BloodWork));
     }
 
     await Promise.all(promises);
