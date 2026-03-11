@@ -76,8 +76,8 @@ export async function POST(req: NextRequest) {
     const { text, negativeText } = getGoalPrompt(safeGoal);
     const base64Image = await invokeNovaCanvasImageVariation(imageDataUrl, text, {
       similarityStrength: 0.9,
-      width: 1024,
-      height: 1536,
+      width: 512,
+      height: 768,
       negativeText,
     });
 
