@@ -357,51 +357,6 @@ export async function invokeNovaCanvas(prompt: string, width = 512, height = 512
   return body.images?.[0] ?? "";
 }
 
-/** Nova Canvas – generate image variation from source image + text prompt (e.g. body transformation) */
-export async function invokeNovaCanvasImageVariation(
-  imageBase64: string,
-  textPrompt: string,
-  options?: { similarityStrength?: number; width?: number; height?: number; negativeText?: string; quality?: "standard" | "premium" }
-): Promise<string> {
-  const startedAt = Date.now();
-  const client = getClient();
-  const b64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-  const width = options?.width ?? 512;
-  const height = options?.height ?? 768;
-  const payload = {
-    taskType: "IMAGE_VARIATION",
-    imageVariationParams: {
-      images: [b64],
-      text: textPrompt.slice(0, 1024),
-      similarityStrength: options?.similarityStrength ?? 0.7,
-      ...(options?.negativeText && { negativeText: options.negativeText.slice(0, 1024) }),
-    },
-    imageGenerationConfig: {
-      seed: Math.floor(Math.random() * 858993460),
-      quality: options?.quality ?? "standard",
-      width,
-      height,
-      numberOfImages: 1,
-    },
-  };
-  const response = await client.send(
-    new InvokeModelCommand({
-      modelId: NOVA_CANVAS,
-      body: JSON.stringify(payload),
-      contentType: "application/json",
-    })
-  );
-  const body = JSON.parse(new TextDecoder().decode(response.body));
-  traceNovaCall({
-    action: "invokeNovaCanvasImageVariation",
-    service: "bedrock-invoke-model",
-    model: NOVA_CANVAS,
-    startedAt,
-    status: "ok",
-  });
-  return body.images?.[0] ?? "";
-}
-
 /** Nova Reel – start async video generation (requires S3 bucket) */
 export async function startNovaReelVideo(
   prompt: string,

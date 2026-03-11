@@ -18,8 +18,6 @@ export interface UserProfile {
   name: string;
   email?: string;
   avatarDataUrl?: string; // base64 data URL for profile picture
-  fullBodyPhotoDataUrl?: string; // base64 data URL for full-body photo
-  goalPhotoDataUrl?: string; // AI-generated "after" image based on source photo + goal
   age: number;
   weight: number; // kg
   height: number; // cm
@@ -181,9 +179,6 @@ export type MilestoneType =
   | "challenge_creator"
   // Music
   | "music_connected"
-  // Body Scan
-  | "first_body_scan"
-  | "body_scan_streak_4"
   // Supplements
   | "supplement_tracker"
   | "blood_work_uploaded";

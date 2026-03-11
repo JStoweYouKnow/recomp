@@ -6,7 +6,7 @@ import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
-import { TransformationPreview } from "./dashboard/TransformationPreview";
+
 import { ShoppingList } from "./dashboard/ShoppingList";
 import { EvidenceResultsCard } from "./dashboard/EvidenceResultsCard";
 import { HydrationWidget } from "./dashboard/HydrationWidget";
@@ -665,9 +665,6 @@ export function Dashboard({
           </div>
         </div>
       )}
-
-      {/* ── Transformation Preview ── */}
-      <TransformationPreview profile={profile} onProfileUpdate={onProfileUpdate} />
 
       {/* ── Shopping list → Amazon (Nova Act) ── */}
       <ShoppingList plan={plan} />

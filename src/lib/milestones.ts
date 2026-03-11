@@ -38,9 +38,6 @@ const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   challenge_creator: { name: "Challenge Maker", desc: "Created a challenge", xp: 30 },
   // Music
   music_connected: { name: "Workout DJ", desc: "Set up music for workouts", xp: 20 },
-  // Body Scan
-  first_body_scan: { name: "First Look", desc: "Captured your first body scan", xp: 30 },
-  body_scan_streak_4: { name: "Transformation Tracker", desc: "4 weekly body scans", xp: 100 },
   // Supplements
   supplement_tracker: { name: "Supplement Savvy", desc: "Tracking 3+ supplements", xp: 30 },
   blood_work_uploaded: { name: "Data Driven Health", desc: "Uploaded blood work results", xp: 50 },
@@ -287,14 +284,6 @@ export function computeMilestones(
 
     // Music
     if (extras.musicPreference) award("music_connected");
-
-    // Body scans
-    if (extras.bodyScans) {
-      progress.first_body_scan = extras.bodyScans.length >= 1 ? 100 : 0;
-      progress.body_scan_streak_4 = Math.min(100, (extras.bodyScans.length / 4) * 100);
-      if (extras.bodyScans.length >= 1) award("first_body_scan");
-      if (extras.bodyScans.length >= 4) award("body_scan_streak_4");
-    }
 
     // Supplements
     if (extras.supplements && extras.supplements.length >= 3) award("supplement_tracker");

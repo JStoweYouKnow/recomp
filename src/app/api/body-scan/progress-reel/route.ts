@@ -6,10 +6,11 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 import { logError, logInfo } from "@/lib/logger";
 import { isJudgeMode } from "@/lib/judgeMode";
 import {
-  startProgressReel,
-  pollProgressReel,
-  DEMO_PROGRESS_REEL_VIDEO,
-} from "@/lib/services/body-scan";
+  startJourneyRecap,
+  pollJourneyRecap,
+  DEMO_JOURNEY_RECAP_VIDEO,
+  type JourneyRecapData,
+} from "@/lib/services/journey-recap";
 
 export const maxDuration = 60;
 
@@ -34,10 +35,10 @@ async function getPresignedVideoUrl(s3FolderUri: string, expiresIn = 3600): Prom
 }
 
 const S3_BUCKET = normalizeBucket(process.env.NOVA_REEL_S3_BUCKET);
-const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "recomp-progress-reel").replace(/^\/|\/$/g, "");
+const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "recomp-journey-recap").replace(/^\/|\/$/g, "");
 
 export async function POST(req: NextRequest) {
-  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "progress-reel"), 2, 3600_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "journey-recap"), 2, 3600_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded (2/hour)", code: "RATE_LIMIT" }, { status: 429 });
 
   const userId = await getUserId(req.headers);
@@ -45,49 +46,56 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { scanDates, action, jobId } = body;
+    const { action, jobId } = body;
 
     // Poll existing job
     if (action === "poll" && typeof jobId === "string" && jobId.trim()) {
-      const result = await pollProgressReel(jobId.trim(), getPresignedVideoUrl);
+      const result = await pollJourneyRecap(jobId.trim(), getPresignedVideoUrl);
       return NextResponse.json(result);
     }
 
-    // Start new job
-    if (!scanDates || !Array.isArray(scanDates) || scanDates.length < 2) {
-      return NextResponse.json({ error: "At least 2 body scans required", code: "VALIDATION_ERROR" }, { status: 400 });
+    // Validate recap data
+    const recapData: JourneyRecapData = {
+      name: typeof body.name === "string" ? body.name.slice(0, 50) : "User",
+      goal: typeof body.goal === "string" ? body.goal.slice(0, 50) : "fitness",
+      daysActive: Math.max(1, Number(body.daysActive) || 1),
+      weeksActive: Math.max(1, Number(body.weeksActive) || 1),
+      totalMealsLogged: Math.max(0, Number(body.totalMealsLogged) || 0),
+      currentStreak: Math.max(0, Number(body.currentStreak) || 0),
+      badgesEarned: Math.max(0, Number(body.badgesEarned) || 0),
+      level: Math.max(1, Number(body.level) || 1),
+      xp: Math.max(0, Number(body.xp) || 0),
+    };
+
+    if (recapData.totalMealsLogged < 5) {
+      return NextResponse.json({ error: "Log at least 5 meals before generating a journey recap", code: "VALIDATION_ERROR" }, { status: 400 });
     }
 
     const useReelFallback = !S3_BUCKET || isJudgeMode();
 
     if (useReelFallback) {
-      logInfo("Progress reel fallback (no S3 or JUDGE_MODE)", { route: "body-scan/progress-reel", scanCount: scanDates.length });
+      logInfo("Journey recap fallback (no S3 or JUDGE_MODE)", { route: "journey-recap", meals: recapData.totalMealsLogged });
       return NextResponse.json({
         status: "completed",
-        videoUrl: DEMO_PROGRESS_REEL_VIDEO,
+        videoUrl: DEMO_JOURNEY_RECAP_VIDEO,
         message: "Demo video returned. Set NOVA_REEL_S3_BUCKET for live Nova Reel generation.",
         source: isJudgeMode() ? "judge-fallback" : "s3-unconfigured-fallback",
         isDemo: true,
       });
     }
 
-    const result = await startProgressReel({
-      scanDates,
-      userId,
-      s3Bucket: S3_BUCKET,
-      s3Prefix: S3_PREFIX,
-    });
-    logInfo("Progress reel started", { route: "body-scan/progress-reel", jobId: result.jobId, scanCount: result.scanCount });
+    const result = await startJourneyRecap(recapData, userId, S3_BUCKET, S3_PREFIX);
+    logInfo("Journey recap started", { route: "journey-recap", jobId: result.jobId });
     return NextResponse.json(result);
   } catch (err) {
-    logError("Progress reel failed", err, { route: "body-scan/progress-reel" });
+    logError("Journey recap failed", err, { route: "journey-recap" });
     const detail = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: "Progress reel generation failed", code: "INTERNAL_ERROR", detail }, { status: 500 });
+    return NextResponse.json({ error: "Journey recap generation failed", code: "INTERNAL_ERROR", detail }, { status: 500 });
   }
 }
 
 export async function GET(req: NextRequest) {
-  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "progress-reel-poll"), 30, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "journey-recap-poll"), 30, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded", code: "RATE_LIMIT" }, { status: 429 });
 
   const userId = await getUserId(req.headers);
@@ -99,10 +107,10 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await pollProgressReel(jobId.trim(), getPresignedVideoUrl);
+    const result = await pollJourneyRecap(jobId.trim(), getPresignedVideoUrl);
     return NextResponse.json(result);
   } catch (err) {
-    logError("Progress reel poll failed", err, { route: "body-scan/progress-reel", jobId });
+    logError("Journey recap poll failed", err, { route: "journey-recap", jobId });
     const detail = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: "Failed to fetch job status", code: "INTERNAL_ERROR", detail }, { status: 500 });
   }

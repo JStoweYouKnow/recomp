@@ -4,11 +4,10 @@ import { useState, useMemo, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
-import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, getBodyScans, saveBodyScans, syncToServer, getProfile } from "@/lib/storage";
+import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, syncToServer, getProfile } from "@/lib/storage";
 import { WeeklyRecapCard } from "@/components/WeeklyRecapCard";
-import type { Milestone, WearableDaySummary, MeasurementTargets, BodyScan, MealEntry, Macros } from "@/lib/types";
+import type { Milestone, WearableDaySummary, MeasurementTargets, MealEntry, Macros } from "@/lib/types";
 import { getUnitSystem, kgToLbs, lbsToKg } from "@/lib/units";
-import { v4 as uuidv4 } from "uuid";
 
 
 const BADGE_ICONS: Record<string, string> = {
@@ -86,9 +85,6 @@ export function MilestonesView({
   const [targetWeight, setTargetWeight] = useState("");
   const [targetBodyFat, setTargetBodyFat] = useState("");
   const [targetMuscle, setTargetMuscle] = useState("");
-  const [bodyScanLoading, setBodyScanLoading] = useState(false);
-  const [bodyScanResult, setBodyScanResult] = useState<{ analysis?: string; bodyFatEstimate?: number | null; muscleAssessment?: string | null } | null>(null);
-  const [bodyScans, setBodyScans] = useState<BodyScan[]>(() => getBodyScans());
   const [biofeedbackInsightsLoading, setBiofeedbackInsightsLoading] = useState(false);
   const [biofeedbackInsights, setBiofeedbackInsights] = useState<{ correlations: { factor: string; observation: string; strength: string }[]; recommendations: string[] } | null>(null);
   const [reelProcessing, setReelProcessing] = useState(false);
@@ -449,182 +445,129 @@ export function MilestonesView({
         </button>
       </div>
 
-      {/* Body scan */}
-      <div className="card rounded-xl p-4 space-y-3">
-        <h3 className="font-semibold text-[var(--foreground)] text-sm">Body scan</h3>
-        <p className="text-[11px] text-[var(--muted)]">Upload a front, side, or back photo for AI body composition assessment.</p>
-        <label className="inline-flex items-center gap-2 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-2 text-xs cursor-pointer hover:bg-[var(--surface-elevated)]/80">
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            disabled={bodyScanLoading}
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setBodyScanLoading(true);
-              setBodyScanResult(null);
+      {/* Journey Recap */}
+      {meals.length >= 5 && (
+        <div className="card rounded-xl p-4 space-y-3">
+          <h3 className="font-semibold text-[var(--foreground)] text-sm">Journey Recap</h3>
+          <p className="text-[11px] text-[var(--muted)]">Generate a personalized video recap of your fitness journey powered by Nova Reel.</p>
+          <button
+            type="button"
+            onClick={async () => {
               try {
-                const { prepareImageForUpload } = await import("@/lib/image-utils");
-                const blob = await prepareImageForUpload(file);
-                const fd = new FormData();
-                fd.append("image", blob, "body.jpg");
-                const res = await fetch("/api/body-scan/analyze", { method: "POST", body: fd });
+                setReelVideoUrl(null);
+                const profile = getProfile();
+                const allMeals = getMeals();
+                const mealDates = new Set(allMeals.map((m) => m.date));
+                const sortedDates = [...mealDates].sort();
+                const firstDate = sortedDates[0];
+                const lastDate = sortedDates[sortedDates.length - 1];
+                const daysActive = firstDate && lastDate
+                  ? Math.max(1, Math.ceil((new Date(lastDate).getTime() - new Date(firstDate).getTime()) / 86400000) + 1)
+                  : 1;
+                const weeksActive = Math.max(1, Math.ceil(daysActive / 7));
+                const goalLabels: Record<string, string> = {
+                  lose_weight: "fat loss",
+                  build_muscle: "building muscle",
+                  improve_endurance: "improving endurance",
+                  maintain: "maintaining fitness",
+                };
+                const recapData = {
+                  name: profile?.name ?? "User",
+                  goal: goalLabels[profile?.goal ?? "maintain"] ?? "fitness",
+                  daysActive,
+                  weeksActive,
+                  totalMealsLogged: allMeals.length,
+                  currentStreak: streak,
+                  badgesEarned: milestones.length,
+                  level: Math.floor(Math.sqrt(xp / 100)) + 1,
+                  xp,
+                };
+                const res = await fetch("/api/body-scan/progress-reel", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(recapData),
+                });
                 const data = await res.json();
                 if (data.error) throw new Error(data.error);
-                setBodyScanResult(data);
-                const entry: BodyScan = {
-                  id: uuidv4(),
-                  date: new Date().toISOString().slice(0, 10),
-                  photos: {},
-                  analysis: data.analysis,
-                  bodyFatEstimate: data.bodyFatEstimate ?? undefined,
-                  muscleAssessment: data.muscleAssessment ?? undefined,
-                };
-                const scans = [entry, ...getBodyScans()];
-                saveBodyScans(scans);
-                setBodyScans(scans);
-                syncToServer();
-                showToast("Analysis saved");
-              } catch {
-                showToast("Analysis failed", "error");
-              } finally {
-                setBodyScanLoading(false);
-                e.target.value = "";
-              }
-            }}
-          />
-          {bodyScanLoading ? "Analyzing…" : "Upload photo"}
-        </label>
-        {bodyScanResult && (
-          <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2 text-sm animate-fade-in">
-            {bodyScanResult.analysis && <p className="text-[var(--foreground)]">{bodyScanResult.analysis}</p>}
-            {bodyScanResult.bodyFatEstimate != null && (
-              <p className="font-medium text-[var(--accent)]">Est. body fat: {bodyScanResult.bodyFatEstimate}%</p>
-            )}
-            {bodyScanResult.muscleAssessment && <p className="text-[var(--muted)]">{bodyScanResult.muscleAssessment}</p>}
-          </div>
-        )}
-        {bodyScans.length >= 2 && (
-          <>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  setReelVideoUrl(null);
-                  const res = await fetch("/api/body-scan/progress-reel", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ scanDates: bodyScans.slice(0, 5).map((s) => s.date).sort() }),
-                  });
-                  const data = await res.json();
-                  if (data.error) throw new Error(data.error);
 
-                  if (data.videoUrl && data.status === "completed") {
-                    setReelVideoUrl(data.videoUrl);
-                    setReelProcessing(false);
-                    setReelMessage(null);
-                    setReelIsDemo(Boolean(data.isDemo));
-                    showToast(data.isDemo ? "Demo video — configure S3 for real reels" : "Progress reel ready");
-                    return;
-                  }
+                if (data.videoUrl && data.status === "completed") {
+                  setReelVideoUrl(data.videoUrl);
+                  setReelProcessing(false);
+                  setReelMessage(null);
+                  setReelIsDemo(Boolean(data.isDemo));
+                  showToast(data.isDemo ? "Demo video — configure S3 for real reels" : "Journey recap ready");
+                  return;
+                }
 
-                  if (data.jobId) {
-                    const msg = data.message ?? `Generating progress reel from ${data.scanCount ?? bodyScans.length} scans.`;
-                    setReelMessage(msg);
-                    setReelProcessing(true);
-                    showToast(msg);
-                    const poll = async () => {
-                      try {
-                        const pollRes = await fetch(`/api/body-scan/progress-reel?jobId=${encodeURIComponent(data.jobId)}`);
-                        const pollData = await pollRes.json();
-                        if (pollData.error) return;
-                        if (pollData.status === "Completed" && pollData.videoUrl) {
-                          setReelVideoUrl(pollData.videoUrl);
-                          setReelProcessing(false);
-                          setReelMessage(null);
-                          setReelIsDemo(false);
-                          showToast("Progress reel ready");
-                          return;
-                        }
-                        if (pollData.status === "Failed") {
-                          setReelProcessing(false);
-                          setReelMessage(null);
-                          showToast(pollData.failureMessage ?? "Video generation failed", "error");
-                          return;
-                        }
-                        setTimeout(poll, 5000);
-                      } catch {
+                if (data.jobId) {
+                  const msg = data.message ?? "Generating your journey recap video.";
+                  setReelMessage(msg);
+                  setReelProcessing(true);
+                  showToast(msg);
+                  const poll = async () => {
+                    try {
+                      const pollRes = await fetch(`/api/body-scan/progress-reel?jobId=${encodeURIComponent(data.jobId)}`);
+                      const pollData = await pollRes.json();
+                      if (pollData.error) return;
+                      if (pollData.status === "Completed" && pollData.videoUrl) {
+                        setReelVideoUrl(pollData.videoUrl);
                         setReelProcessing(false);
                         setReelMessage(null);
-                        showToast("Failed to check progress", "error");
+                        setReelIsDemo(false);
+                        showToast("Journey recap ready");
+                        return;
                       }
-                    };
-                    setTimeout(poll, 5000);
-                    setTimeout(() => {
+                      if (pollData.status === "Failed") {
+                        setReelProcessing(false);
+                        setReelMessage(null);
+                        showToast(pollData.failureMessage ?? "Video generation failed", "error");
+                        return;
+                      }
+                      setTimeout(poll, 5000);
+                    } catch {
                       setReelProcessing(false);
                       setReelMessage(null);
-                    }, 120_000);
-                  } else {
-                    const msg = data.message ?? "Progress reel requested.";
-                    setReelMessage(msg);
-                    setReelProcessing(true);
-                    showToast(msg);
-                    setTimeout(() => {
-                      setReelProcessing(false);
-                      setReelMessage(null);
-                    }, 120_000);
-                  }
-                } catch {
-                  showToast("Failed to start progress reel", "error");
+                      showToast("Failed to check progress", "error");
+                    }
+                  };
+                  setTimeout(poll, 5000);
+                  setTimeout(() => {
+                    setReelProcessing(false);
+                    setReelMessage(null);
+                  }, 120_000);
                 }
-              }}
-              disabled={reelProcessing}
-              className="rounded-lg border border-[var(--accent)]/40 px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {reelProcessing ? "Processing…" : "Generate progress reel"}
-            </button>
-            {reelProcessing && reelMessage && (
-              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 text-xs text-[var(--foreground)] animate-fade-in">
-                <p className="font-medium text-[var(--accent)]">Video generation in progress</p>
-                <p className="mt-1 text-[var(--muted)]">{reelMessage}</p>
-                <p className="mt-2 text-[10px] text-[var(--muted)]">Nova Reel may take a few minutes. Check back later or enable push notifications to be notified when it’s ready.</p>
-              </div>
-            )}
-            {reelVideoUrl && (
-              <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-3 animate-fade-in">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-medium text-[var(--accent)]">Your progress reel</p>
-                  {reelIsDemo && (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--muted)]/20 text-[var(--muted)]">
-                      Demo — set NOVA_REEL_S3_BUCKET for real generation
-                    </span>
-                  )}
-                </div>
-                <video src={reelVideoUrl} controls className="w-full max-h-48 rounded-lg" />
-                <button type="button" onClick={() => { setReelVideoUrl(null); setReelIsDemo(false); }} className="mt-2 text-xs text-[var(--muted)] hover:underline">Dismiss</button>
-              </div>
-            )}
-          </>
-        )}
-        {bodyScans.length > 0 && (
-          <div className="space-y-1">
-            <p className="text-xs font-medium text-[var(--muted)]">Previous scans</p>
-            <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
-              {bodyScans.slice(0, 8).map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => setBodyScanResult({ analysis: s.analysis, bodyFatEstimate: s.bodyFatEstimate, muscleAssessment: s.muscleAssessment })}
-                  className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2.5 py-1.5 text-xs text-left hover:border-[var(--accent)]/40"
-                >
-                  {s.date} {s.bodyFatEstimate != null ? `· ${s.bodyFatEstimate}%` : ""}
-                </button>
-              ))}
+              } catch {
+                showToast("Failed to start journey recap", "error");
+              }
+            }}
+            disabled={reelProcessing}
+            className="rounded-lg border border-[var(--accent)]/40 px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {reelProcessing ? "Processing…" : "Generate journey recap"}
+          </button>
+          {reelProcessing && reelMessage && (
+            <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 text-xs text-[var(--foreground)] animate-fade-in">
+              <p className="font-medium text-[var(--accent)]">Video generation in progress</p>
+              <p className="mt-1 text-[var(--muted)]">{reelMessage}</p>
+              <p className="mt-2 text-[10px] text-[var(--muted)]">Nova Reel may take a few minutes. Check back later.</p>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+          {reelVideoUrl && (
+            <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--surface-elevated)] p-3 animate-fade-in">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-[var(--accent)]">Your journey recap</p>
+                {reelIsDemo && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--muted)]/20 text-[var(--muted)]">
+                    Demo — set NOVA_REEL_S3_BUCKET for real generation
+                  </span>
+                )}
+              </div>
+              <video src={reelVideoUrl} controls className="w-full max-h-48 rounded-lg" />
+              <button type="button" onClick={() => { setReelVideoUrl(null); setReelIsDemo(false); }} className="mt-2 text-xs text-[var(--muted)] hover:underline">Dismiss</button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Biofeedback insights */}
       <div className="card rounded-xl p-4 space-y-3">
