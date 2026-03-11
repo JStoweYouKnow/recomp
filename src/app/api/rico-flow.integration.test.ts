@@ -9,14 +9,25 @@ vi.mock("@/lib/server-rate-limit", () => ({
   getClientKey: () => "test-key",
   getRequestIp: () => "127.0.0.1",
 }));
-vi.mock("@/lib/nova", () => ({ invokeNova: vi.fn() }));
+vi.mock("@aws-sdk/client-bedrock-runtime", () => {
+  return {
+    BedrockRuntimeClient: class {
+      send = vi.fn().mockResolvedValue({
+        output: {
+          message: {
+            content: [
+              { text: "Keep it up! You're doing great with your consistency." }
+            ]
+          }
+        }
+      });
+    },
+    ConverseCommand: class {}
+  };
+});
+vi.mock("@/lib/nova", () => ({ NOVA_LITE_MODEL_ID: "amazon.nova-2-lite-v1:0" }));
 
 describe("Rico flow integration", () => {
-  beforeEach(async () => {
-    const { invokeNova } = await import("@/lib/nova");
-    vi.mocked(invokeNova).mockResolvedValue("Keep it up! You're doing great with your consistency.");
-  });
-
   it("accepts a message and returns a reply", async () => {
     const { POST } = await import("@/app/api/rico/route");
     const req = new Request("http://localhost/api/rico", {
