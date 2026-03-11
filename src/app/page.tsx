@@ -640,6 +640,7 @@ export default function Home() {
               onUpdatePlan={(updated) => {
                 savePlan(updated);
                 setPlan(updated);
+                syncToServer();
               }}
               onPlanSaved={syncToServer}
             />
