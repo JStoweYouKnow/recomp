@@ -59,7 +59,7 @@ export function TodayAtAGlance({
 
   return (
     <div className="card card-accent-border p-6">
-      <h3 className="section-title !text-base mb-4">Today at a glance</h3>
+      <h3 className="card-section-title mb-4">Today at a glance</h3>
       <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
         {/* Left: Budget + macros */}
         <div className="space-y-4">
@@ -73,7 +73,7 @@ export function TodayAtAGlance({
                 )}
               </span>
             </div>
-            <div className={`progress-track !mt-0 ${pct(todaysTotals.calories, adjustedBudget) >= 90 && pct(todaysTotals.calories, adjustedBudget) <= 110 ? "ring-2 ring-[var(--accent)]/30 ring-offset-1 ring-offset-[var(--background)] rounded-full" : ""}`}>
+            <div className={`progress-track-thin ${pct(todaysTotals.calories, adjustedBudget) >= 90 && pct(todaysTotals.calories, adjustedBudget) <= 110 ? "ring-2 ring-[var(--accent)]/30 ring-offset-1 ring-offset-[var(--background)] rounded-full" : ""}`}>
               <div className="progress-fill" style={{ width: `${pct(todaysTotals.calories, adjustedBudget)}%` }} />
             </div>
             <p className="text-caption mt-1 tabular-nums">{Math.max(0, adjustedBudget - todaysTotals.calories)} cal remaining</p>
@@ -117,10 +117,10 @@ export function TodayAtAGlance({
                       </span>
                     </div>
                   </div>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
+                  <p className="text-label font-semibold uppercase tracking-wider text-[var(--muted)]">{key}</p>
                   <p className={`text-sm font-bold tabular-nums leading-tight ${adherenceColor}`}>
                     {key === "calories" ? current : `${current}g`}
-                    <span className="stat-value-dim !text-[10px]"> / {key === "calories" ? target : `${target}g`}</span>
+                    <span className="text-label text-[var(--muted)] font-normal"> / {key === "calories" ? target : `${target}g`}</span>
                   </p>
                 </div>
               );
@@ -131,7 +131,7 @@ export function TodayAtAGlance({
               {showActivityForm ? "Close" : "+ Log activity"}
             </button>
             {todayActivities.length > 0 && (
-              <span className="text-[10px] text-[var(--muted)]">{todayActivities.length} activity entries</span>
+              <span className="text-label text-[var(--muted)]">{todayActivities.length} activity entries</span>
             )}
           </div>
         </div>
@@ -182,7 +182,7 @@ export function TodayAtAGlance({
                   <div key={a.id} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <span className={`inline-block h-1.5 w-1.5 rounded-full ${a.type === "activity" ? "bg-[var(--accent)]" : "bg-[var(--accent-terracotta)]"}`} aria-hidden="true" />
-                      <span className={`text-[10px] font-medium uppercase ${a.type === "activity" ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>{a.type === "activity" ? "active" : "rest"}</span>
+                      <span className={`text-label font-medium uppercase ${a.type === "activity" ? "text-[var(--accent)]" : "text-[var(--accent-terracotta)]"}`}>{a.type === "activity" ? "active" : "rest"}</span>
                       <span>{a.label}</span>
                       <span className="text-caption">{a.durationMinutes} min</span>
                     </div>
@@ -249,7 +249,7 @@ function ActivityForm({ today, onAdd }: { today: string; onAdd: (entry: Activity
             </button>
           ))}
         </div>
-        <p className="text-[10px] text-[var(--muted)] mt-1">Only log unusually sedentary periods.</p>
+        <p className="text-label text-[var(--muted)] mt-1">Only log unusually sedentary periods.</p>
       </div>
     </div>
   );
@@ -304,7 +304,7 @@ function TodayWorkoutCard({
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold">Today&apos;s workout</p>
-          {!w ? <p className="text-[10px] text-[var(--muted)]">Rest day</p> : <p className="text-[10px] text-[var(--muted)]">{w.focus} · {done}/{total} done</p>}
+          {!w ? <p className="text-label text-[var(--muted)]">Rest day</p> : <p className="text-label text-[var(--muted)]">{w.focus} · {done}/{total} done</p>}
         </div>
         <svg className={`h-4 w-4 text-[var(--muted)] flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -312,7 +312,7 @@ function TodayWorkoutCard({
       </button>
       {expanded && w && (
         <div className="border-t border-[var(--border-soft)] px-3 py-2 space-y-1.5">
-          <div className="progress-track !mt-0">
+          <div className="progress-track-thin">
             <div className="progress-fill" style={{ width: `${total > 0 ? Math.round((done / total) * 100) : 0}%` }} />
           </div>
           {w.exercises.slice(0, 8).map((ex, i) => {
@@ -337,7 +337,7 @@ function TodayWorkoutCard({
                       onToggleDemo(gifKey, !isExpanded);
                       if (!isExpanded) fetchExerciseGif(ex.name);
                     }}
-                    className="text-[10px] font-medium text-[var(--accent)] hover:underline flex-shrink-0"
+                    className="text-label font-medium text-[var(--accent)] hover:underline flex-shrink-0"
                   >
                     {gif === "loading" ? "…" : showGif ? "Hide demo" : "Show demo"}
                   </button>
@@ -350,7 +350,7 @@ function TodayWorkoutCard({
               </div>
             );
           })}
-          {total > 8 && <p className="text-[10px] text-[var(--muted)]">+{total - 8} more · see calendar</p>}
+          {total > 8 && <p className="text-label text-[var(--muted)]">+{total - 8} more · see calendar</p>}
         </div>
       )}
       {expanded && !w && (
@@ -397,7 +397,7 @@ function TodayDietCard({
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-xs font-semibold">Today&apos;s diet</p>
-          <p className="text-[10px] text-[var(--muted)]">
+          <p className="text-label text-[var(--muted)]">
             {logged.length} meal{logged.length !== 1 ? "s" : ""} logged{d ? ` · plan ${planCal} cal` : ""}
           </p>
         </div>
@@ -413,25 +413,25 @@ function TodayDietCard({
             <>
               {logged.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-semibold uppercase text-[var(--muted)] mb-1">Logged</p>
+                  <p className="text-label font-semibold uppercase text-[var(--muted)] mb-1">Logged</p>
                   {logged.slice(0, 4).map((m) => (
                     <div key={m.id} className="flex justify-between text-xs">
                       <span className="truncate">{m.name}</span>
                       <span className="text-[var(--muted)] tabular-nums">{m.macros.calories} cal</span>
                     </div>
                   ))}
-                  {logged.length > 4 && <p className="text-[10px] text-[var(--muted)]">+{logged.length - 4} more</p>}
+                  {logged.length > 4 && <p className="text-label text-[var(--muted)]">+{logged.length - 4} more</p>}
                 </div>
               )}
               <div>
-                <p className="text-[10px] font-semibold uppercase text-[var(--muted)] mb-1">Suggested</p>
+                <p className="text-label font-semibold uppercase text-[var(--muted)] mb-1">Suggested</p>
                 {d.meals.slice(0, 4).map((m, i) => (
                   <div key={i} className="flex justify-between text-xs">
                     <span className="capitalize text-[var(--muted)]">{m.mealType}</span>
                     <span className="tabular-nums">{m.macros?.calories ?? 0} cal</span>
                   </div>
                 ))}
-                {d.meals.length > 4 && <p className="text-[10px] text-[var(--muted)]">+{d.meals.length - 4} more</p>}
+                {d.meals.length > 4 && <p className="text-label text-[var(--muted)]">+{d.meals.length - 4} more</p>}
               </div>
             </>
           )}

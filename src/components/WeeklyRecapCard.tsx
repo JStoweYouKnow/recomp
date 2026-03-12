@@ -170,15 +170,15 @@ export function WeeklyRecapCard({ meals, milestones, xp, streak, targets }: Week
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="card-flat rounded-xl p-3 text-center">
             <p className="text-lg font-bold text-[var(--foreground)] tabular-nums">{weekMeals.length}</p>
-            <p className="text-[10px] text-[var(--muted)] uppercase tracking-wider">Meals</p>
+            <p className="text-label text-[var(--muted)] uppercase tracking-wider">Meals</p>
           </div>
           <div className="card-flat rounded-xl p-3 text-center">
             <p className="text-lg font-bold text-[var(--foreground)] tabular-nums">{daysLogged}/7</p>
-            <p className="text-[10px] text-[var(--muted)] uppercase tracking-wider">Days Active</p>
+            <p className="text-label text-[var(--muted)] uppercase tracking-wider">Days Active</p>
           </div>
           <div className="card-flat rounded-xl p-3 text-center">
             <p className="text-lg font-bold text-[var(--accent)] tabular-nums">{macroAccuracy}%</p>
-            <p className="text-[10px] text-[var(--muted)] uppercase tracking-wider">Macro Acc.</p>
+            <p className="text-label text-[var(--muted)] uppercase tracking-wider">Macro Acc.</p>
           </div>
         </div>
 
@@ -198,7 +198,7 @@ export function WeeklyRecapCard({ meals, milestones, xp, streak, targets }: Week
             <p className="text-xs text-[var(--muted)] mb-1.5">Badges Earned</p>
             <div className="flex flex-wrap gap-1.5">
               {weekBadges.map((b) => (
-                <span key={b.id} className="badge badge-accent text-[10px]">
+                <span key={b.id} className="badge badge-accent text-label">
                   {badgeInfo[b.id]?.name || b.id}
                 </span>
               ))}

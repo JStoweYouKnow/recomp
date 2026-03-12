@@ -378,7 +378,7 @@ export function Dashboard({
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
           </div>
-          <h3 className="section-title !text-base mb-1">Creating your plan</h3>
+          <h3 className="card-section-title mb-1">Creating your plan</h3>
           <p className="text-sm text-[var(--muted)]">{planLoadingMessage || "Generating your plan… (may take up to 60s)"}</p>
           <div className="mt-4 h-1.5 w-32 mx-auto rounded-full bg-[var(--border-soft)] overflow-hidden">
             <div className="h-full w-1/3 rounded-full bg-[var(--accent)] animate-pulse" style={{ width: "33%" }} />
@@ -387,7 +387,7 @@ export function Dashboard({
       )}
       {!plan && !planRegenerating && (
         <div className="card p-8 text-center animate-fade-in border-dashed border-2 border-[var(--border-soft)]">
-          <h3 className="section-title !text-base mb-2">No plan yet</h3>
+          <h3 className="card-section-title mb-2">No plan yet</h3>
           <p className="text-sm text-[var(--muted)] mb-4">Your personalized plan couldn’t be created or hasn’t loaded. Generate one now.</p>
           <button type="button" onClick={onRegeneratePlan} disabled={planRegenerating} className="btn-primary px-6 py-2.5">
             Generate my plan
@@ -463,7 +463,7 @@ export function Dashboard({
       {plan && (
         <div className="space-y-4 animate-fade-in stagger-2">
           <div>
-            <h3 className="section-title !text-base">Weekly calendar</h3>
+            <h3 className="card-section-title">Weekly calendar</h3>
             <p className="section-subtitle">Select a date to view diet and workout for that day</p>
           </div>
           <CalendarView
@@ -645,7 +645,7 @@ export function Dashboard({
       {/* ── Wearable data ── */}
       {wearableData && wearableData.length > 0 && (
         <div className="card p-6">
-          <h3 className="section-title !text-base mb-4">Wearable data</h3>
+          <h3 className="card-section-title mb-4">Wearable data</h3>
           <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             {wearableData.slice(0, 5).map((d) => (
               <div key={`${d.date}-${d.provider}`} className="card-flat rounded-xl px-4 py-3">

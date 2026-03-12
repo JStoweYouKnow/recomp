@@ -49,9 +49,11 @@ export default function Home() {
     const container = navContainerRef.current;
     const btn = navBtnRefs.current[view];
     if (!container || !btn) return;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
     setPillStyle({
-      transform: `translateX(${btn.offsetLeft}px)`,
-      width: `${btn.offsetWidth}px`,
+      transform: `translateX(${bRect.left - cRect.left}px)`,
+      width: `${bRect.width}px`,
     });
   }, [view]);
 
@@ -432,19 +434,14 @@ export default function Home() {
       {/* ── Sticky header ── */}
       <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md" role="banner">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-4">
-            <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
-              <span className="flex items-center gap-1" aria-hidden="true">
-                <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
-              </span>
-              <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
-              <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
-            </button>
-            <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)] backdrop-blur-md whitespace-nowrap">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]/60" aria-hidden />
-              Amazon Nova AI
+          <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
             </span>
-          </div>
+            <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Recomp</span>
+            <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
+          </button>
+          <span className="hidden md:inline-flex items-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">Amazon Nova AI</span>
 
           <nav ref={navContainerRef} className="nav-morphing flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
             {pillStyle && (

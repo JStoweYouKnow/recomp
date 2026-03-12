@@ -82,9 +82,9 @@ export function NovaTracePanel() {
             <div key={entry.id} className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)]/70 p-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-medium">{entry.action}</p>
-                <span className="text-[10px] text-[var(--muted)]">{entry.durationMs ?? 0}ms</span>
+                <span className="text-label text-[var(--muted)]">{entry.durationMs ?? 0}ms</span>
               </div>
-              <p className="text-[11px] text-[var(--muted)]">
+              <p className="text-label-lg text-[var(--muted)]">
                 {entry.service}
                 {entry.model ? ` · ${entry.model}` : ""}
                 {" · "}
@@ -92,7 +92,7 @@ export function NovaTracePanel() {
                   {entry.status}
                 </span>
               </p>
-              {entry.detail && <p className="text-[10px] text-[var(--muted)] mt-1">{entry.detail}</p>}
+              {entry.detail && <p className="text-label text-[var(--muted)] mt-1">{entry.detail}</p>}
             </div>
           ))
         )}

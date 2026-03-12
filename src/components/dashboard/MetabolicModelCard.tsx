@@ -110,7 +110,7 @@ export function MetabolicModelCard() {
           type="button"
           onClick={handleUpdate}
           disabled={loading}
-          className="btn-secondary !text-xs !py-1.5 disabled:opacity-50"
+          className="btn-secondary text-xs py-1.5 disabled:opacity-50"
         >
           {loading ? "Updating…" : "Update model"}
         </button>
@@ -132,7 +132,7 @@ export function MetabolicModelCard() {
         <span className="text-xs text-[var(--muted)]">cal/day</span>
         <span className={`text-xs font-medium ${confidenceColor}`}>({displayModel.confidence}% confidence)</span>
       </div>
-      <p className="text-[10px] text-[var(--muted)]">
+      <p className="text-label text-[var(--muted)]">
         Based on {displayModel.dataPoints.length} data points. Used for macro calculations when available.
       </p>
       <button

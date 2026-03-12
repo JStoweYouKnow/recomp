@@ -47,13 +47,13 @@ export function HydrationWidget({ unitSystem = "us" }: { unitSystem?: "us" | "me
           </svg>
         </span>
         <h4 className="text-sm font-semibold">Hydration</h4>
-        <span className="text-[10px] text-[var(--muted)] ml-auto tabular-nums">
+        <span className="text-label text-[var(--muted)] ml-auto tabular-nums">
           {unitSystem === "metric"
             ? `${todayTotalMl} / ${DEFAULT_TARGET_ML} ml`
             : `${todayTotalFlOz} / ${DEFAULT_TARGET_FL_OZ} fl oz`}
         </span>
       </div>
-      <div className="progress-track !mt-0">
+      <div className="progress-track-thin">
         <div className="progress-fill" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex flex-wrap gap-1.5">

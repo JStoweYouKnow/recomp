@@ -52,9 +52,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             key={t.id}
             className={`rounded-lg px-4 py-2 text-sm font-medium shadow-lg animate-fade-in ${
               t.type === "error"
-                ? "bg-red-600/95 text-white"
+                ? "bg-[var(--error)] text-white"
                 : t.type === "success"
-                  ? "bg-emerald-600/95 text-white"
+                  ? "bg-[var(--success)] text-white"
                   : "bg-[var(--surface-elevated)] text-[var(--foreground)] border border-[var(--border-soft)]"
             }`}
             role="alert"

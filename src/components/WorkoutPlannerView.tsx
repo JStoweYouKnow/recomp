@@ -597,7 +597,7 @@ export function WorkoutPlannerView({
                     {day.day.replace(/^Day\s*/i, "").slice(0, 3)}
                   </span>
                   {allDone && (
-                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-[10px] text-white">
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-label text-white">
                       ✓
                     </span>
                   )}
@@ -624,7 +624,7 @@ export function WorkoutPlannerView({
                     <p className={`text-sm font-medium ${allDone ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
                       {completed}/{total}
                     </p>
-                    <p className="text-[10px] text-[var(--muted)]">done</p>
+                    <p className="text-label text-[var(--muted)]">done</p>
                   </div>
                   <svg
                     className={`h-4 w-4 text-[var(--muted)] transition-transform ${isExpanded ? "rotate-180" : ""}`}
@@ -808,7 +808,7 @@ export function WorkoutPlannerView({
                                           {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
                                         </div>
                                         {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
-                                        {isDone && completedAt && <p className="mt-1 text-[10px] text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-label text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
                                       </div>
                                     </div>
                                   )}
@@ -826,7 +826,7 @@ export function WorkoutPlannerView({
                       {(day.exercises.length > 0 || isEditing) && (
                         <div className="space-y-2">
                           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Main workout</p>
-                          <div className="hidden sm:grid sm:grid-cols-[auto_2fr_1fr_1fr_1fr] gap-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
+                          <div className="hidden sm:grid sm:grid-cols-[auto_2fr_1fr_1fr_1fr] gap-2 px-3 text-label font-semibold uppercase tracking-wider text-[var(--muted)]">
                             <span /><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest</span>
                           </div>
                           {day.exercises.map((exercise, exIndex) => {
@@ -1003,7 +1003,7 @@ export function WorkoutPlannerView({
                                         </p>
                                       )}
                                       {isDone && completedAt && (
-                                        <p className="mt-1 text-[10px] text-[var(--accent)]">
+                                        <p className="mt-1 text-label text-[var(--accent)]">
                                           Completed {new Date(completedAt).toLocaleString()}
                                         </p>
                                       )}
@@ -1056,7 +1056,7 @@ export function WorkoutPlannerView({
                                           {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
                                         </div>
                                         {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
-                                        {isDone && completedAt && <p className="mt-1 text-[10px] text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-label text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
                                       </div>
                                     </div>
                                   )}

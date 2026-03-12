@@ -566,12 +566,12 @@ export function GroupDetailView({
                   <input type="date" value={createEnd} onChange={(e) => setCreateEnd(e.target.value)} className="input-base text-sm" />
                 </div>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setCreateChallengeOpen(false)} className="btn-secondary !text-xs">Cancel</button>
-                  <button type="button" onClick={handleCreateGroupChallenge} disabled={createLoading} className="btn-primary !text-xs disabled:opacity-50">{createLoading ? "Creating…" : "Create"}</button>
+                  <button type="button" onClick={() => setCreateChallengeOpen(false)} className="btn-secondary btn-sm">Cancel</button>
+                  <button type="button" onClick={handleCreateGroupChallenge} disabled={createLoading} className="btn-primary btn-sm disabled:opacity-50">{createLoading ? "Creating…" : "Create"}</button>
                 </div>
               </div>
             ) : (
-              <button type="button" onClick={() => setCreateChallengeOpen(true)} className="btn-primary !text-xs !py-2 w-full">
+              <button type="button" onClick={() => setCreateChallengeOpen(true)} className="btn-primary btn-sm w-full">
                 Create group challenge
               </button>
             )}
@@ -721,7 +721,7 @@ export function GroupDetailView({
             type="button"
             onClick={handleSend}
             disabled={sending || !newMessage.trim()}
-            className="btn-primary !py-2 !px-4"
+            className="btn-primary btn-sm"
           >
             {sending ? "…" : "Send"}
           </button>

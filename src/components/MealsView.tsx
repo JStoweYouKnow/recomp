@@ -1622,8 +1622,8 @@ export function MealsView({
                             <p className="text-[10px] text-[var(--muted)]">{m.macros.calories} cal · {m.macros.protein}g P</p>
                           </div>
                           <div className="flex gap-0.5 flex-shrink-0">
-                            <button onClick={() => setEditDraft({ ...m })} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent)] !px-1.5 !py-0.5 !min-h-0">Edit</button>
-                            <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost !text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] !px-1.5 !py-0.5 !min-h-0">Del</button>
+                            <button onClick={() => setEditDraft({ ...m })} className="btn-ghost btn-compact text-label text-[var(--muted)] hover:text-[var(--accent)]">Edit</button>
+                            <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost btn-compact text-label text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Del</button>
                           </div>
                         </div>
                       )}

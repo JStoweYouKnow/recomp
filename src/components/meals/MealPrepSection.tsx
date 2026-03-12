@@ -108,14 +108,14 @@ export function MealPrepSection({
                     <button
                       type="button"
                       onClick={() => onAddMeals([{ name: r.name, macros: r.macrosPerServing, mealType: "lunch" }])}
-                      className="shrink-0 rounded px-2 py-0.5 text-[10px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10"
+                      className="shrink-0 rounded px-2 py-0.5 text-label font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10"
                     >
                       Add
                     </button>
                   )}
                 </div>
               ))}
-              {plan.recipes.length > 4 && <p className="text-[10px] text-[var(--muted)]">+{plan.recipes.length - 4} more</p>}
+              {plan.recipes.length > 4 && <p className="text-label text-[var(--muted)]">+{plan.recipes.length - 4} more</p>}
               <button type="button" onClick={fetchGrocery} disabled={groceryLoading} className="btn-secondary text-xs py-1.5 w-full">
                 {groceryLoading ? "Loading…" : "Get grocery list"}
               </button>
@@ -127,7 +127,7 @@ export function MealPrepSection({
                       <span className="text-[var(--muted)]">{g.amount}</span>
                     </div>
                   ))}
-                  {groceryList.length > 12 && <p className="text-[10px] text-[var(--muted)]">+{groceryList.length - 12} more</p>}
+                  {groceryList.length > 12 && <p className="text-label text-[var(--muted)]">+{groceryList.length - 12} more</p>}
                 </div>
               )}
             </div>

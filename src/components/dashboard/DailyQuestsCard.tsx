@@ -80,7 +80,7 @@ export function DailyQuestsCard({ todayMealCount, workoutCompleted, onXpEarned }
             {completedCount}/{quests.length}
           </span>
           {allComplete && (
-            <span className="badge badge-accent text-[10px]">
+            <span className="badge badge-accent text-label">
               +50 bonus XP
             </span>
           )}
@@ -118,7 +118,7 @@ export function DailyQuestsCard({ todayMealCount, workoutCompleted, onXpEarned }
                 </span>
               </div>
               <div className="mt-1">
-                <div className="progress-track !h-[4px] !mt-0">
+                <div className="progress-track-thin">
                   <div
                     className="progress-fill"
                     style={{
@@ -128,7 +128,7 @@ export function DailyQuestsCard({ todayMealCount, workoutCompleted, onXpEarned }
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-[var(--muted)] mt-0.5">
+              <p className="text-label-lg text-[var(--muted)] mt-0.5">
                 {q.description} ({q.progress}/{q.target})
               </p>
             </div>

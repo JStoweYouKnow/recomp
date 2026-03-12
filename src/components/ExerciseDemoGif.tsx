@@ -37,7 +37,7 @@ export function ExerciseDemoGif({
         onError={() => setLoadFailed(true)}
       />
       {targetMuscles?.length ? (
-        <p className="text-[10px] text-[var(--muted)] mt-1">Target: {targetMuscles.join(", ")}</p>
+        <p className="text-label text-[var(--muted)] mt-1">Target: {targetMuscles.join(", ")}</p>
       ) : null}
     </div>
   );

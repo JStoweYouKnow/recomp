@@ -204,7 +204,7 @@ export function GroupCreateModal({
             type="button"
             onClick={handleCreate}
             disabled={creating || !name.trim()}
-            className="btn-primary w-full !py-2.5"
+            className="btn-primary w-full"
           >
             {creating ? "Creating…" : "Create group"}
           </button>

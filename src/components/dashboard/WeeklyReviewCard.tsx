@@ -34,9 +34,9 @@ export function WeeklyReviewCard({
     <div className="card p-6">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <h3 className="section-title !text-base">Weekly AI Review</h3>
+          <h3 className="card-section-title">Weekly AI Review</h3>
           <p className="section-subtitle">Autonomous agent analyzes meals, wearables &amp; research</p>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mt-0.5">Powered by Amazon Nova multi-agent</p>
+          <p className="text-label uppercase tracking-wider text-[var(--muted)] mt-0.5">Powered by Amazon Nova multi-agent</p>
         </div>
         <div className="flex gap-2">
           {weeklyReview && !reviewLoading && (

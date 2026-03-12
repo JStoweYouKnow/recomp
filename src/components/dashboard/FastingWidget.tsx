@@ -73,16 +73,16 @@ export function FastingWidget() {
       <div className="rounded-xl border border-[var(--border-soft)] bg-[var(--surface)] p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-semibold">Fasting</h4>
-          <span className="text-[10px] text-[var(--muted)]">{active.protocol}</span>
+          <span className="text-label text-[var(--muted)]">{active.protocol}</span>
         </div>
         <div>
-          <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mb-1">Elapsed</p>
+          <p className="text-label uppercase tracking-wider text-[var(--muted)] mb-1">Elapsed</p>
           <p className="text-2xl font-bold tabular-nums text-[var(--accent)]">
             {hours}<span className="text-sm font-medium text-[var(--muted)]"> hrs </span>
             {minutes}<span className="text-sm font-medium text-[var(--muted)]"> min</span>
           </p>
         </div>
-        <div className="progress-track !mt-0">
+        <div className="progress-track-thin">
           <div className="progress-fill" style={{ width: `${progress}%` }} />
         </div>
         <p className="text-xs text-[var(--muted)]">
@@ -110,7 +110,7 @@ export function FastingWidget() {
             className="btn-secondary text-xs py-2 flex flex-col items-center gap-0.5"
           >
             <span className="font-semibold">{protocol}</span>
-            <span className="text-[10px] text-[var(--muted)] font-normal">{protocolLabel(protocol, hours)}</span>
+            <span className="text-label text-[var(--muted)] font-normal">{protocolLabel(protocol, hours)}</span>
           </button>
         ))}
       </div>

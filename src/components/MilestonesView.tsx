@@ -337,7 +337,7 @@ export function MilestonesView({
         <h3 className="font-semibold text-[var(--foreground)] text-sm">Body measurements</h3>
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 lg:grid-cols-6">
           <div>
-            <label className="label text-[10px]">Date</label>
+            <label className="label text-label">Date</label>
             <input
               type="date"
               value={scaleDate}
@@ -346,7 +346,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">{`Weight (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Weight (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -359,7 +359,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Body fat %</label>
+            <label className="label text-label">Body fat %</label>
             <input
               type="number"
               step="0.1"
@@ -372,7 +372,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">{`Muscle (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Muscle (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -385,7 +385,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">BMI</label>
+            <label className="label text-label">BMI</label>
             <input
               type="number"
               step="0.1"
@@ -398,7 +398,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Sk. muscle %</label>
+            <label className="label text-label">Sk. muscle %</label>
             <input
               type="number"
               step="0.1"
@@ -411,7 +411,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">{`Fat-free (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Fat-free (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -424,7 +424,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Subq. fat %</label>
+            <label className="label text-label">Subq. fat %</label>
             <input
               type="number"
               step="0.1"
@@ -437,7 +437,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Visceral fat</label>
+            <label className="label text-label">Visceral fat</label>
             <input
               type="number"
               step="1"
@@ -450,7 +450,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Body water %</label>
+            <label className="label text-label">Body water %</label>
             <input
               type="number"
               step="0.1"
@@ -463,7 +463,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">{`Bone (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Bone (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -476,7 +476,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Protein %</label>
+            <label className="label text-label">Protein %</label>
             <input
               type="number"
               step="0.1"
@@ -489,7 +489,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">BMR (kcal)</label>
+            <label className="label text-label">BMR (kcal)</label>
             <input
               type="number"
               step="1"
@@ -502,7 +502,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Metabolic age</label>
+            <label className="label text-label">Metabolic age</label>
             <input
               type="number"
               step="1"
@@ -524,14 +524,14 @@ export function MilestonesView({
       <div className="card rounded-xl p-4 space-y-4">
         <div>
           <h3 className="font-semibold text-[var(--foreground)] text-sm">Progress Photos</h3>
-          <p className="text-[11px] text-[var(--muted)]">Track your transformation over time with front, side, and back photos.</p>
+          <p className="text-label-lg text-[var(--muted)]">Track your transformation over time with front, side, and back photos.</p>
         </div>
 
         {/* Upload form */}
         <div className="space-y-3">
           <div className="flex flex-wrap gap-3 items-end">
             <div>
-              <label className="label text-[10px]">Date</label>
+              <label className="label text-label">Date</label>
               <input
                 type="date"
                 value={photoDate}
@@ -540,7 +540,7 @@ export function MilestonesView({
               />
             </div>
             <div className="flex-1 min-w-[140px]">
-              <label className="label text-[10px]">Notes (optional)</label>
+              <label className="label text-label">Notes (optional)</label>
               <input
                 type="text"
                 value={photoNotes}
@@ -553,7 +553,7 @@ export function MilestonesView({
           <div className="grid grid-cols-3 gap-2">
             {(["front", "side", "back"] as const).map((angle) => (
               <div key={angle} className="space-y-1">
-                <label className="label text-[10px] capitalize">{angle}</label>
+                <label className="label text-label capitalize">{angle}</label>
                 {photoPreviews[angle] ? (
                   <div className="relative">
                     <img
@@ -576,7 +576,7 @@ export function MilestonesView({
                 ) : (
                   <label className="flex flex-col items-center justify-center aspect-[3/4] rounded-lg border-2 border-dashed border-[var(--border-soft)] hover:border-[var(--accent)] cursor-pointer transition-colors bg-[var(--surface-elevated)]">
                     <span className="text-lg">📷</span>
-                    <span className="text-[10px] text-[var(--muted)] mt-1 capitalize">{angle}</span>
+                    <span className="text-label text-[var(--muted)] mt-1 capitalize">{angle}</span>
                     <input
                       ref={angle === "front" ? frontInputRef : angle === "side" ? sideInputRef : backInputRef}
                       type="file"
@@ -610,12 +610,12 @@ export function MilestonesView({
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium text-[var(--foreground)]">{scan.date}</p>
-                      {scan.notes && <p className="text-[11px] text-[var(--muted)]">{scan.notes}</p>}
+                      {scan.notes && <p className="text-label-lg text-[var(--muted)]">{scan.notes}</p>}
                     </div>
                     <button
                       type="button"
                       onClick={() => deleteBodyScan(scan.id)}
-                      className="text-[10px] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:underline"
+                      className="text-label text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:underline"
                     >
                       Remove
                     </button>
@@ -637,10 +637,10 @@ export function MilestonesView({
                           </button>
                         ) : (
                           <div className="w-full aspect-[3/4] rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] flex items-center justify-center">
-                            <span className="text-[10px] text-[var(--muted)] capitalize">No {angle}</span>
+                            <span className="text-label text-[var(--muted)] capitalize">No {angle}</span>
                           </div>
                         )}
-                        <p className="text-center text-[10px] text-[var(--muted)] mt-0.5 capitalize">{angle}</p>
+                        <p className="text-center text-label text-[var(--muted)] mt-0.5 capitalize">{angle}</p>
                       </div>
                     ))}
                   </div>
@@ -677,7 +677,7 @@ export function MilestonesView({
       {meals.length >= 5 && (
         <div className="card rounded-xl p-4 space-y-3">
           <h3 className="font-semibold text-[var(--foreground)] text-sm">Journey Recap</h3>
-          <p className="text-[11px] text-[var(--muted)]">Generate a personalized video recap of your fitness journey powered by Nova Reel.</p>
+          <p className="text-label-lg text-[var(--muted)]">Generate a personalized video recap of your fitness journey powered by Nova Reel.</p>
           <button
             type="button"
             onClick={async () => {
@@ -777,7 +777,7 @@ export function MilestonesView({
             <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 text-xs text-[var(--foreground)] animate-fade-in">
               <p className="font-medium text-[var(--accent)]">Video generation in progress</p>
               <p className="mt-1 text-[var(--muted)]">{reelMessage}</p>
-              <p className="mt-2 text-[10px] text-[var(--muted)]">Nova Reel may take a few minutes. Check back later.</p>
+              <p className="mt-2 text-label text-[var(--muted)]">Nova Reel may take a few minutes. Check back later.</p>
             </div>
           )}
           {reelVideoUrl && (
@@ -785,7 +785,7 @@ export function MilestonesView({
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-medium text-[var(--accent)]">Your journey recap</p>
                 {reelIsDemo && (
-                  <span className="text-[10px] px-2 py-0.5 rounded bg-[var(--muted)]/20 text-[var(--muted)]">
+                  <span className="text-label px-2 py-0.5 rounded bg-[var(--muted)]/20 text-[var(--muted)]">
                     Demo — set NOVA_REEL_S3_BUCKET for real generation
                   </span>
                 )}
@@ -800,7 +800,7 @@ export function MilestonesView({
       {/* Biofeedback insights */}
       <div className="card rounded-xl p-4 space-y-3">
         <h3 className="font-semibold text-[var(--foreground)] text-sm">Biofeedback insights</h3>
-        <p className="text-[11px] text-[var(--muted)]">AI correlations between your energy, mood, meals, and sleep.</p>
+        <p className="text-label-lg text-[var(--muted)]">AI correlations between your energy, mood, meals, and sleep.</p>
         <button
           onClick={async () => {
             setBiofeedbackInsightsLoading(true);
@@ -847,7 +847,7 @@ export function MilestonesView({
                     <li key={i} className="flex gap-2">
                       <span className="font-medium shrink-0">{c.factor}</span>
                       <span className="text-[var(--muted)]">{c.observation}</span>
-                      <span className="text-[10px] text-[var(--accent)]">{c.strength}</span>
+                      <span className="text-label text-[var(--accent)]">{c.strength}</span>
                     </li>
                   ))}
                 </ul>
@@ -870,10 +870,10 @@ export function MilestonesView({
       {/* Measurement targets */}
       <div className="card rounded-xl p-4 space-y-3">
         <h3 className="font-semibold text-[var(--foreground)] text-sm">Measurement targets</h3>
-        <p className="text-[11px] text-[var(--muted)]">Set goals to track progress. Leave blank to skip.</p>
+        <p className="text-label-lg text-[var(--muted)]">Set goals to track progress. Leave blank to skip.</p>
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
           <div>
-            <label className="label text-[10px]">{`Target weight (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Target weight (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -886,7 +886,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">Target body fat %</label>
+            <label className="label text-label">Target body fat %</label>
             <input
               type="number"
               step="0.1"
@@ -899,7 +899,7 @@ export function MilestonesView({
             />
           </div>
           <div>
-            <label className="label text-[10px]">{`Target muscle (${massUnitLabel})`}</label>
+            <label className="label text-label">{`Target muscle (${massUnitLabel})`}</label>
             <input
               type="number"
               step="0.1"
@@ -932,7 +932,7 @@ export function MilestonesView({
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--muted)]">Weight:</span>
                   <span className="font-medium tabular-nums">{currDisplay} → {tgtDisplay} {massUnitLabel}</span>
-                  <span className="text-[10px] text-[var(--muted)]">
+                  <span className="text-label text-[var(--muted)]">
                     {delta === 0 ? "✓ at target" : delta > 0 ? `+${deltaDisplay.toFixed(1)} to gain` : `${deltaDisplay.toFixed(1)} to lose`}
                   </span>
                 </div>
@@ -946,7 +946,7 @@ export function MilestonesView({
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--muted)]">Body fat:</span>
                   <span className="font-medium tabular-nums">{curr}% → {tgt}%</span>
-                  <span className="text-[10px] text-[var(--muted)]">
+                  <span className="text-label text-[var(--muted)]">
                     {delta === 0 ? "✓ at target" : delta > 0 ? `+${delta.toFixed(1)}% to gain` : `${delta.toFixed(1)}% to lose`}
                   </span>
                 </div>
@@ -963,7 +963,7 @@ export function MilestonesView({
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--muted)]">Muscle:</span>
                   <span className="font-medium tabular-nums">{currDisplay} → {tgtDisplay} {massUnitLabel}</span>
-                  <span className="text-[10px] text-[var(--muted)]">
+                  <span className="text-label text-[var(--muted)]">
                     {delta === 0 ? "✓ at target" : delta > 0 ? `+${deltaDisplay.toFixed(1)} to gain` : `${deltaDisplay.toFixed(1)} to lose`}
                   </span>
                 </div>
@@ -1017,12 +1017,12 @@ export function MilestonesView({
               {level}
             </div>
             <div>
-              <p className="text-[10px] text-[var(--muted)]">Level</p>
+              <p className="text-label text-[var(--muted)]">Level</p>
               <p className="text-base font-bold">{level}</p>
             </div>
           </div>
           <div className="flex-1 min-w-[160px]">
-            <div className="mb-0.5 flex justify-between text-[10px] text-[var(--muted)]">
+            <div className="mb-0.5 flex justify-between text-label text-[var(--muted)]">
               <span>{xp} XP</span>
               <span>{xpForNext} to next</span>
             </div>
@@ -1059,7 +1059,7 @@ export function MilestonesView({
                 }`}
               >
                 <span className="mb-1 text-lg">{BADGE_ICONS[id] ?? "🏅"}</span>
-                <p className="text-center text-[11px] font-medium text-[var(--foreground)] leading-tight">{info.name}</p>
+                <p className="text-center text-label-lg font-medium text-[var(--foreground)] leading-tight">{info.name}</p>
                 <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight line-clamp-2">{info.desc}</p>
                 {!earned && displayProgress != null && displayProgress > 0 && (
                   <div className="mt-1 w-full">
@@ -1103,7 +1103,7 @@ export function MilestonesView({
                 }`}
               >
                 <span className="mb-1 text-xl">{BADGE_ICONS[badge.id] ?? "🏅"}</span>
-                <p className="text-center text-[11px] font-medium leading-tight">{badge.name}</p>
+                <p className="text-center text-label-lg font-medium leading-tight">{badge.name}</p>
                 <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight">{badge.desc}</p>
                 {!earned && isActive && badgeProgress > 0 && (
                   <div className="mt-1.5 w-full">
@@ -1126,7 +1126,7 @@ export function MilestonesView({
       {/* Hidden Badges */}
       <div className="card rounded-xl p-4">
         <h2 className="mb-3 text-base font-semibold text-[var(--accent)]">Hidden Achievements</h2>
-        <p className="text-[11px] text-[var(--muted)] mb-3">Secret badges for those who go the extra mile. Can you find them all?</p>
+        <p className="text-label-lg text-[var(--muted)] mb-3">Secret badges for those who go the extra mile. Can you find them all?</p>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {hiddenBadges.map((badge) => {
             const earned = earnedIds.has(badge.id);
@@ -1140,7 +1140,7 @@ export function MilestonesView({
                 }`}
               >
                 <span className="mb-1 text-lg">{earned ? (BADGE_ICONS[badge.id] ?? "🏅") : "❓"}</span>
-                <p className="text-center text-[11px] font-medium leading-tight">
+                <p className="text-center text-label-lg font-medium leading-tight">
                   {earned ? badge.name : "???"}
                 </p>
                 <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight">
@@ -1152,7 +1152,7 @@ export function MilestonesView({
           })}
         </div>
         {konamiUnlocked && (
-          <p className="mt-3 text-[10px] text-center text-[var(--accent)] animate-fade-in">
+          <p className="mt-3 text-label text-center text-[var(--accent)] animate-fade-in">
             Konami code activated! Hidden badge hints revealed above.
           </p>
         )}
