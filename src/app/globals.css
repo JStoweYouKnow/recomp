@@ -461,6 +461,16 @@ h6 {
   font-weight: var(--font-weight-normal);
 }
 
+.hide-spinners::-webkit-outer-spin-button,
+.hide-spinners::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.hide-spinners {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* ── Label ── */
 .label {
   display: block;

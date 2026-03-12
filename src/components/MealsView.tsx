@@ -1530,7 +1530,7 @@ export function MealsView({
                               <input
                                 value={editDraft.name}
                                 onChange={(e) => setEditDraft((d) => d ? { ...d, name: e.target.value } : null)}
-                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                className="input-base rounded-lg px-2 py-2 text-sm w-full"
                               />
                             </div>
                             <div>
@@ -1539,7 +1539,7 @@ export function MealsView({
                                 type="date"
                                 value={editDraft.date}
                                 onChange={(e) => setEditDraft((d) => d ? { ...d, date: e.target.value } : null)}
-                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                className="input-base rounded-lg px-2 py-2 text-sm w-full"
                               />
                             </div>
                             <div>
@@ -1547,7 +1547,7 @@ export function MealsView({
                               <select
                                 value={editDraft.mealType}
                                 onChange={(e) => setEditDraft((d) => d ? { ...d, mealType: e.target.value as MealEntry["mealType"] } : null)}
-                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                className="input-base rounded-lg px-2 py-2 text-sm w-full"
                               >
                                 <option value="breakfast">Breakfast</option>
                                 <option value="lunch">Lunch</option>
@@ -1561,48 +1561,48 @@ export function MealsView({
                                 value={editDraft.notes ?? ""}
                                 onChange={(e) => setEditDraft((d) => d ? { ...d, notes: e.target.value || undefined } : null)}
                                 placeholder="e.g. Restaurant, portion size"
-                                className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                className="input-base rounded-lg px-2 py-2 text-sm w-full"
                               />
                             </div>
                             <div className="sm:col-span-2 grid grid-cols-4 gap-2">
                               <div>
-                                <label className="label !mb-1">Cal</label>
+                                <label className="label !mb-1 text-center">Cal</label>
                                 <input
                                   type="number"
                                   min={0}
                                   value={editDraft.macros.calories || ""}
                                   onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, calories: parseInt(e.target.value) || 0 } } : null)}
-                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                  className="input-base rounded-lg px-1.5 py-2 text-sm w-full text-center hide-spinners"
                                 />
                               </div>
                               <div>
-                                <label className="label !mb-1">P (g)</label>
+                                <label className="label !mb-1 text-center">P (g)</label>
                                 <input
                                   type="number"
                                   min={0}
                                   value={editDraft.macros.protein || ""}
                                   onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, protein: parseInt(e.target.value) || 0 } } : null)}
-                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                  className="input-base rounded-lg px-1.5 py-2 text-sm w-full text-center hide-spinners"
                                 />
                               </div>
                               <div>
-                                <label className="label !mb-1">C (g)</label>
+                                <label className="label !mb-1 text-center">C (g)</label>
                                 <input
                                   type="number"
                                   min={0}
                                   value={editDraft.macros.carbs || ""}
                                   onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, carbs: parseInt(e.target.value) || 0 } } : null)}
-                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                  className="input-base rounded-lg px-1.5 py-2 text-sm w-full text-center hide-spinners"
                                 />
                               </div>
                               <div>
-                                <label className="label !mb-1">F (g)</label>
+                                <label className="label !mb-1 text-center">F (g)</label>
                                 <input
                                   type="number"
                                   min={0}
                                   value={editDraft.macros.fat || ""}
                                   onChange={(e) => setEditDraft((d) => d ? { ...d, macros: { ...d.macros, fat: parseInt(e.target.value) || 0 } } : null)}
-                                  className="input-base rounded-lg px-3 py-2 text-sm w-full"
+                                  className="input-base rounded-lg px-1.5 py-2 text-sm w-full text-center hide-spinners"
                                 />
                               </div>
                             </div>
