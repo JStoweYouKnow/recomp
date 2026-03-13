@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer } from "@/lib/storage";
+import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer, getChallenges } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
@@ -459,11 +459,17 @@ export function Dashboard({
         <FastingWidget />
       </div>
 
-      {/* ── Duels & Research ── */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 animate-fade-in stagger-2">
-        <DuelCard />
-        <ResearchCard />
-      </div>
+      {/* ── Duels & Research (Research full-width when no active duels) ── */}
+      {getChallenges().some((c) => c.type === "duel" && c.status === "active") ? (
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 animate-fade-in stagger-2">
+          <DuelCard />
+          <ResearchCard />
+        </div>
+      ) : (
+        <div className="animate-fade-in stagger-2">
+          <ResearchCard />
+        </div>
+      )}
 
       {/* ── Calendar Navigator ── */}
       {plan && (
