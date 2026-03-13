@@ -45,12 +45,29 @@ function parseJsonResponse(text: string): unknown {
   return JSON.parse(match[0]);
 }
 
-const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string; dinner: string; snack: string; tips: string[] }> = {
+type MealOpt = string | string[];
+const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: MealOpt; lunch: MealOpt; dinner: MealOpt; snack: MealOpt; tips: string[] }> = {
   lose_weight: {
-    breakfast: "High-volume, protein-rich: eggs or Greek yogurt with veggies and berries to stay full on fewer calories",
-    lunch: "Large salad with grilled chicken or fish, light dressing; add quinoa or chickpeas for fiber and satiety",
-    dinner: "Lean protein (chicken breast, white fish) with steamed veggies and a small portion of whole grains",
-    snack: "Vegetable sticks and hummus, or a small handful of almonds with an apple",
+    breakfast: [
+      "High-volume, protein-rich: eggs or Greek yogurt with veggies and berries to stay full on fewer calories",
+      "Egg white veggie omelet with spinach and tomato, or a smoothie with protein powder and berries",
+      "Cottage cheese with cucumber, cherry tomatoes, and a sprinkle of everything bagel seasoning",
+    ],
+    lunch: [
+      "Large salad with grilled chicken or fish, light dressing; add quinoa or chickpeas for fiber and satiety",
+      "Turkey lettuce wraps with hummus and shredded veggies; side of apple slices",
+      "White fish or shrimp with a big portion of roasted vegetables and a small serving of brown rice",
+    ],
+    dinner: [
+      "Lean protein (chicken breast, white fish) with steamed veggies and a small portion of whole grains",
+      "Grilled chicken or tofu stir-fry with lots of vegetables and minimal oil",
+      "Baked cod or turkey meatballs with zucchini noodles and a light marinara",
+    ],
+    snack: [
+      "Vegetable sticks and hummus, or a small handful of almonds with an apple",
+      "Greek yogurt with berries, or rice cakes with peanut butter",
+      "Bell pepper slices with guacamole, or a small portion of edamame",
+    ],
     tips: [
       "Prioritize protein and fiber at each meal—they keep you full on fewer calories.",
       "Use smaller plates; eat slowly. Drink water before meals.",
@@ -58,10 +75,26 @@ const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string
     ],
   },
   maintain: {
-    breakfast: "Balanced plate: oatmeal with nuts and fruit, or eggs with avocado toast—mix it up day to day",
-    lunch: "Varied lunches: grain bowl, wrap, or soup with a side of vegetables and protein",
-    dinner: "Balanced plate: protein, vegetables, and quality carbs (rice, potato, whole grains)",
-    snack: "Greek yogurt, fruit with nut butter, or a small portion of trail mix",
+    breakfast: [
+      "Balanced plate: oatmeal with nuts and fruit, or eggs with avocado toast—mix it up day to day",
+      "Yogurt parfait with granola and berries, or a breakfast burrito with eggs and black beans",
+      "Whole-grain toast with nut butter and banana, or a veggie scramble with toast",
+    ],
+    lunch: [
+      "Varied lunches: grain bowl, wrap, or soup with a side of vegetables and protein",
+      "Mediterranean bowl with chickpeas, feta, cucumber, and olives; or a turkey club wrap",
+      "Leftover dinner over greens, or a hearty soup with a side salad and bread",
+    ],
+    dinner: [
+      "Balanced plate: protein, vegetables, and quality carbs (rice, potato, whole grains)",
+      "Grilled salmon or chicken with roasted vegetables and a small portion of pasta or rice",
+      "Tacos or burrito bowl with lean protein, beans, and plenty of veggies",
+    ],
+    snack: [
+      "Greek yogurt, fruit with nut butter, or a small portion of trail mix",
+      "Apple with almond butter, or popcorn with a sprinkle of nutritional yeast",
+      "Cheese and crackers, or a small smoothie with fruit and milk",
+    ],
     tips: [
       "Keep variety in your meals to avoid boredom and stay consistent.",
       "Listen to hunger cues; adjust portions based on activity level.",
@@ -69,10 +102,26 @@ const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string
     ],
   },
   build_muscle: {
-    breakfast: "Oatmeal with eggs and banana, or protein pancakes—aim for 30–40g protein to kick off muscle synthesis",
-    lunch: "Chicken/beef rice bowl with vegetables; or a large sandwich with extra meat and a side of fruit",
-    dinner: "Generous protein (steak, salmon, or chicken thigh) with potatoes or rice and greens",
-    snack: "Protein shake, Greek yogurt with honey, or cottage cheese with fruit",
+    breakfast: [
+      "Oatmeal with eggs and banana, or protein pancakes—aim for 30–40g protein to kick off muscle synthesis",
+      "Egg scramble with cheese, whole-grain toast, and a side of fruit",
+      "Protein smoothie with banana, oats, and Greek yogurt; or cottage cheese with honey and nuts",
+    ],
+    lunch: [
+      "Chicken/beef rice bowl with vegetables; or a large sandwich with extra meat and a side of fruit",
+      "Turkey or chicken wrap with doubled protein, avocado, and a side of sweet potato fries",
+      "Lean beef or salmon over rice with steamed broccoli and a drizzle of teriyaki",
+    ],
+    dinner: [
+      "Generous protein (steak, salmon, or chicken thigh) with potatoes or rice and greens",
+      "Grilled chicken thighs or pork chop with mashed potatoes and a large green salad",
+      "Salmon fillet or lean steak with roasted sweet potato and asparagus or green beans",
+    ],
+    snack: [
+      "Protein shake, Greek yogurt with honey, or cottage cheese with fruit",
+      "Beef jerky and an apple, or a protein bar with a banana",
+      "Cottage cheese with pineapple, or peanut butter on whole-grain crackers with milk",
+    ],
     tips: [
       "Spread protein evenly across 4–5 meals (aim for ~0.8g per lb bodyweight).",
       "Eat a carb + protein meal within 1–2 hours after training.",
@@ -80,10 +129,26 @@ const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string
     ],
   },
   improve_endurance: {
-    breakfast: "Carb-focused: oatmeal or toast with peanut butter and banana; add eggs for protein",
-    lunch: "Pasta, rice, or wrap with lean protein and vegetables—carbs fuel your long sessions",
-    dinner: "Salmon or chicken with sweet potato and roasted vegetables for recovery",
-    snack: "Banana and nuts, energy bar, or a small smoothie",
+    breakfast: [
+      "Carb-focused: oatmeal or toast with peanut butter and banana; add eggs for protein",
+      "Overnight oats with berries and a scoop of protein; or bagel with cream cheese and fruit",
+      "Pancakes or French toast with syrup and a side of eggs and fruit",
+    ],
+    lunch: [
+      "Pasta, rice, or wrap with lean protein and vegetables—carbs fuel your long sessions",
+      "Rice bowl with chicken or tofu, veggies, and a generous portion of rice or noodles",
+      "Large sandwich on whole grain with lean meat, avocado, and a side of chips or fruit",
+    ],
+    dinner: [
+      "Salmon or chicken with sweet potato and roasted vegetables for recovery",
+      "Pasta with lean meat sauce and a side salad, or stir-fry with extra rice",
+      "Grilled chicken or fish with quinoa, roasted vegetables, and a drizzle of olive oil",
+    ],
+    snack: [
+      "Banana and nuts, energy bar, or a small smoothie",
+      "Toast with honey or jam, or a granola bar with a glass of chocolate milk",
+      "Fig bars or dates with nut butter, or a recovery drink after long sessions",
+    ],
     tips: [
       "Carbs are your main fuel; eat them before and after endurance sessions.",
       "Aim for 3–5g carbs per kg bodyweight on heavy training days.",
@@ -91,6 +156,11 @@ const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: string; lunch: string
     ],
   },
 };
+
+function pickMealByDay(opt: MealOpt, dayIndex: number): string {
+  const arr = Array.isArray(opt) ? opt : [opt];
+  return arr[dayIndex % arr.length] ?? arr[0] ?? "";
+}
 
 function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
   // Healthy Eater–style macro calculator from weight, height, age, activity, goal
@@ -114,27 +184,27 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
   const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
   const goalMeals = GOAL_MEALS[profile.goal] ?? GOAL_MEALS.maintain;
 
-  const dietPlanDays = WEEK_DAYS.map((day) => ({
+  const dietPlanDays = WEEK_DAYS.map((day, dayIndex) => ({
     day,
     meals: [
       {
         mealType: "Breakfast",
-        description: goalMeals.breakfast,
+        description: pickMealByDay(goalMeals.breakfast, dayIndex),
         macros: { calories: Math.round(dailyTargets.calories * 0.28), protein: Math.round(dailyTargets.protein * 0.28), carbs: Math.round(dailyTargets.carbs * 0.3), fat: Math.round(dailyTargets.fat * 0.3) },
       },
       {
         mealType: "Lunch",
-        description: goalMeals.lunch,
+        description: pickMealByDay(goalMeals.lunch, dayIndex),
         macros: { calories: Math.round(dailyTargets.calories * 0.34), protein: Math.round(dailyTargets.protein * 0.34), carbs: Math.round(dailyTargets.carbs * 0.35), fat: Math.round(dailyTargets.fat * 0.33) },
       },
       {
         mealType: "Dinner",
-        description: goalMeals.dinner,
+        description: pickMealByDay(goalMeals.dinner, dayIndex),
         macros: { calories: Math.round(dailyTargets.calories * 0.3), protein: Math.round(dailyTargets.protein * 0.3), carbs: Math.round(dailyTargets.carbs * 0.28), fat: Math.round(dailyTargets.fat * 0.3) },
       },
       {
         mealType: "Snack",
-        description: goalMeals.snack,
+        description: pickMealByDay(goalMeals.snack, dayIndex),
         macros: { calories: Math.round(dailyTargets.calories * 0.08), protein: Math.round(dailyTargets.protein * 0.08), carbs: Math.round(dailyTargets.carbs * 0.07), fat: Math.round(dailyTargets.fat * 0.07) },
       },
     ],

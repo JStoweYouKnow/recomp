@@ -520,9 +520,9 @@ export function Dashboard({
                     <div className="space-y-1.5">
                       {dietDay.meals.map((m, i) => (
                         <div key={i} className="flex items-start justify-between gap-2 text-xs">
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <span className="font-medium capitalize">{m.mealType}</span>
-                            <p className="text-[var(--muted)] truncate">{m.description}</p>
+                            <p className="text-[var(--muted)] break-words">{m.description}</p>
                           </div>
                           <span className="text-[var(--muted)] tabular-nums flex-shrink-0">{m.macros?.calories ?? 0} cal</span>
                         </div>
