@@ -419,21 +419,21 @@ export function Dashboard({
         />
       </div>
 
-      {/* ── Daily Quests & Duels ── */}
+      {/* ── Daily Quests & Adaptive TDEE (paired so TDEE expander doesn't elongate other cards) ── */}
       <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
         <DailyQuestsCard
           todayMealCount={meals.filter((m) => m.date === today).length}
           workoutCompleted={workoutCompletedToday}
         />
-        <DuelCard />
+        <MetabolicModelCard />
       </div>
 
-      {/* ── Hydration, Fasting, Biofeedback, Metabolic, Coach ── */}
+      {/* ── Hydration, Fasting, Biofeedback, Duels ── */}
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
         <HydrationWidget unitSystem={profile.unitSystem ?? "us"} />
         <FastingWidget />
         <BiofeedbackQuickEntry />
-        <MetabolicModelCard />
+        <DuelCard />
       </div>
       <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
         <CoachCheckInCard
