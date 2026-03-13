@@ -8,6 +8,42 @@ import { syncToServer } from "@/lib/storage";
 
 const lbsToKg = (lbs: number) => lbs * 0.45359237;
 
+function TDEEExplainer() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="text-[var(--accent)] hover:underline"
+      >
+        {open ? "Hide explanation" : "How does this work?"}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 text-[var(--muted)] leading-relaxed">
+          <p>
+            Most TDEE calculators use generic formulas based on age, height, and
+            an activity guess. <strong className="text-[var(--foreground)]">Adaptive TDEE</strong> learns
+            your <em>actual</em> metabolism from your own data.
+          </p>
+          <p>
+            It works by comparing what you eat to how your weight changes over
+            time. If you eat 2,000 cal/day and lose 1 lb per week, you must be
+            burning more than 2,000 — the math tells us exactly how much.
+          </p>
+          <p>
+            The more days you log, the more accurate it gets. After 7+ days
+            you&apos;ll see an initial estimate. By 30 days the confidence is
+            high and your macro targets automatically adjust to match your real
+            metabolism.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function MetabolicModelCard() {
   const { showToast } = useToast();
   const [model, setModel] = useState<MetabolicModel | null>(() => getMetabolicModel());
@@ -103,6 +139,7 @@ export function MetabolicModelCard() {
         <p className="text-xs text-[var(--muted)] mb-3">
           Log meals and weight for 7+ days to learn your true metabolism.
         </p>
+        <TDEEExplainer />
         {error && (
           <p className="text-xs text-[var(--accent-terracotta)] mb-2" role="alert">{error}</p>
         )}
@@ -135,6 +172,7 @@ export function MetabolicModelCard() {
       <p className="text-label text-[var(--muted)]">
         Based on {displayModel.dataPoints.length} data points. Used for macro calculations when available.
       </p>
+      <TDEEExplainer />
       <button
         type="button"
         onClick={handleUpdate}
