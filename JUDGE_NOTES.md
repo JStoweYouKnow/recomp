@@ -34,13 +34,13 @@ Quick reference for judges: what makes Recomp novel beyond typical fitness apps.
 
 ---
 
-## 4. Transformation preview (Nova Canvas)
+## 4. Nova Canvas image generation
 
-**What:** Upload full-body photo → AI generates "after" image based on goal (lose weight, build muscle, etc.).
+**What:** AI-generated meal inspiration, workout illustrations, and motivational images via Nova Canvas. Includes responsible AI disclosure ("AI-generated image — for inspiration only").
 
-**Why it matters:** Novel use of image-to-image for motivation; not just text goals.
+**Why it matters:** Demonstrates Nova Canvas in a practical context — users see what their meal or exercise looks like before committing, increasing engagement.
 
-**Where:** Dashboard → "See your transformation" card; `/api/images/after`.
+**Where:** Meals → Log meal → "Inspire" button; `/api/images/generate`.
 
 ---
 
@@ -71,6 +71,16 @@ Quick reference for judges: what makes Recomp novel beyond typical fitness apps.
 **Why it matters:** Evidence-based answers without leaving the app; differentiator from generic chatbot advice.
 
 **Where:** Dashboard → Research card; `/api/research`.
+
+---
+
+## 8. Responsible AI practices
+
+**What:** AI-generated images carry "AI-generated — for inspiration only" disclaimers. Nutrition estimates surface data sources (USDA, Open Food Facts). Coach recommendations include context-specific caveats. All AI features degrade gracefully (no silent failures).
+
+**Why it matters:** Production-grade AI requires transparency. Users should understand what's AI-generated vs. verified data.
+
+**Where:** MealsView (image disclaimer); nova.ts (error handling + fallback); weekly-review route (source attribution).
 
 ---
 

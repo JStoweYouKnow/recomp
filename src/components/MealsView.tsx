@@ -1095,11 +1095,16 @@ export function MealsView({
             </div>
           </div>
           {(inspirationImage || recipeImageUrl) && (
-            <img
-              src={recipeImageUrl ?? `data:image/png;base64,${inspirationImage}`}
-              alt="Meal"
-              className="mt-3 max-h-36 rounded-lg object-cover"
-            />
+            <div className="mt-3">
+              <img
+                src={recipeImageUrl ?? `data:image/png;base64,${inspirationImage}`}
+                alt="Meal"
+                className="max-h-36 rounded-lg object-cover"
+              />
+              {inspirationImage && !recipeImageUrl && (
+                <p className="text-[10px] text-[var(--muted)] mt-1 italic">AI-generated image via Nova Canvas — for inspiration only</p>
+              )}
+            </div>
           )}
           <div className="mt-3 flex gap-2">
             <button onClick={handleAdd} className="btn-primary rounded-lg px-4 py-2">

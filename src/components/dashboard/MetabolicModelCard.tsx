@@ -18,25 +18,56 @@ function TDEEExplainer() {
         onClick={() => setOpen(!open)}
         className="text-[var(--accent)] hover:underline"
       >
-        {open ? "Hide explanation" : "How does this work?"}
+        {open ? "Hide explanation" : "How does Adaptive TDEE work?"}
       </button>
       {open && (
-        <div className="mt-2 space-y-2 text-[var(--muted)] leading-relaxed">
+        <div className="mt-2 space-y-3 text-[var(--muted)] leading-relaxed">
           <p>
             Most TDEE calculators use generic formulas based on age, height, and
             an activity guess. <strong className="text-[var(--foreground)]">Adaptive TDEE</strong> learns
             your <em>actual</em> metabolism from your own data.
           </p>
+
+          <div className="grid grid-cols-3 gap-2 text-center py-2">
+            <div className="rounded-lg bg-[var(--surface-alt,var(--background))] p-2">
+              <div className="text-base font-bold text-[var(--foreground)]">1</div>
+              <div className="text-[10px] leading-tight mt-0.5">You log meals &amp; weigh-ins</div>
+            </div>
+            <div className="rounded-lg bg-[var(--surface-alt,var(--background))] p-2">
+              <div className="text-base font-bold text-[var(--foreground)]">2</div>
+              <div className="text-[10px] leading-tight mt-0.5">AI compares intake vs. weight change</div>
+            </div>
+            <div className="rounded-lg bg-[var(--surface-alt,var(--background))] p-2">
+              <div className="text-base font-bold text-[var(--foreground)]">3</div>
+              <div className="text-[10px] leading-tight mt-0.5">Your real burn rate emerges</div>
+            </div>
+          </div>
+
           <p>
-            It works by comparing what you eat to how your weight changes over
-            time. If you eat 2,000 cal/day and lose 1 lb per week, you must be
-            burning more than 2,000 — the math tells us exactly how much.
+            <strong className="text-[var(--foreground)]">Example:</strong> If
+            you eat 2,000 cal/day and lose 1 lb per week, you&apos;re actually
+            burning ~2,500 cal/day — the 500 cal deficit accounts for the fat
+            loss (~3,500 cal/lb ÷ 7 days).
           </p>
-          <p>
-            The more days you log, the more accurate it gets. After 7+ days
-            you&apos;ll see an initial estimate. By 30 days the confidence is
-            high and your macro targets automatically adjust to match your real
-            metabolism.
+
+          <div className="rounded-lg border border-[var(--border-soft)] p-2 space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--muted)]" />
+              <span><strong className="text-[var(--foreground)]">7 days:</strong> Initial estimate appears</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-warm)]" />
+              <span><strong className="text-[var(--foreground)]">14 days:</strong> Estimate stabilizes</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)]" />
+              <span><strong className="text-[var(--foreground)]">30+ days:</strong> High confidence — macro targets auto-adjust</span>
+            </div>
+          </div>
+
+          <p className="text-[var(--muted)] italic">
+            Unlike static calculators, your TDEE updates as your body adapts —
+            so your plan stays accurate even as you gain muscle or lose fat.
           </p>
         </div>
       )}
