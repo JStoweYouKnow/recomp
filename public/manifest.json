@@ -1,0 +1,17 @@
+{
+  "name": "Recomp",
+  "short_name": "Recomp",
+  "description": "AI-powered diet & workout plans",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9f7",
+  "theme_color": "#4a7c59",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

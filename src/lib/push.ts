@@ -24,6 +24,16 @@ export interface PushPayload {
   data?: { url?: string };
 }
 
+/** Push payload that deep-links to Rico chat when tapped. Use for "Chat with Reco" reminders. */
+export function ricoReminderPayload(baseUrl: string): PushPayload {
+  return {
+    title: "Reco",
+    body: "Your coach is here when you need support.",
+    tag: "rico",
+    data: { url: `${baseUrl.replace(/\/$/, "")}/?open=rico` },
+  };
+}
+
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number }> {
   const [subs, expoTokens] = await Promise.all([
     dbGetPushSubscriptions(userId),

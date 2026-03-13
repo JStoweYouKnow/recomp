@@ -62,6 +62,17 @@ export default function Home() {
     window.addEventListener("resize", updatePill);
     return () => window.removeEventListener("resize", updatePill);
   }, [updatePill]);
+
+  // Refresh state when Rico or other code updates data (e.g. log_meal from chat)
+  useEffect(() => {
+    const handler = () => {
+      setMeals(getMeals());
+      setMilestonesState(getMilestones());
+      setXp(getXP());
+    };
+    window.addEventListener("userDataUpdated", handler);
+    return () => window.removeEventListener("userDataUpdated", handler);
+  }, []);
   const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "milestones", "groups", "profile"] as const;
   const getSlideClass = (v: string) => {
     const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
@@ -80,6 +91,16 @@ export default function Home() {
   const [adjustFeedback, setAdjustFeedback] = useState("");
   const [adjustResult, setAdjustResult] = useState<Record<string, unknown> | null>(null);
   const [ricoOpen, setRicoOpen] = useState(false);
+
+  // Deep-link: ?open=rico opens Rico chat (used by push notifications, home screen shortcuts)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("open") === "rico") {
+      setRicoOpen(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [milestones, setMilestonesState] = useState(getMilestones());
   const [xp, setXp] = useState(getXP());
   const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});

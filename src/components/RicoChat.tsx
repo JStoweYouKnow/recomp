@@ -166,18 +166,20 @@ export function RicoChat({
             saveMeasurementTargets({ ...current, ...act.payload });
             changed = true;
           } else if (act.type === "log_meal") {
+            const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
             const meals = getMeals();
+            const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
             meals.push({
               id: uuidv4(),
               date: new Date().toLocaleDateString("en-CA"),
-              name: act.payload.name,
-              mealType: "snack", // default to snack for quick logs
+              name: typeof p?.name === "string" ? p.name : "Meal",
+              mealType: "snack",
               loggedAt: new Date().toISOString(),
               macros: {
-                calories: act.payload.calories,
-                protein: act.payload.protein,
-                carbs: act.payload.carbs,
-                fat: act.payload.fat,
+                calories: num(p?.calories),
+                protein: num(p?.protein),
+                carbs: num(p?.carbs),
+                fat: num(p?.fat),
               },
             });
             saveMeals(meals);
@@ -381,6 +383,34 @@ export function RicoChat({
                         const data = await res.json();
                         if (data.error) throw new Error(data.error);
                         addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
+                        if (data.actions?.length) {
+                          let changed = false;
+                          for (const act of data.actions) {
+                            if (act.type === "update_macros") {
+                              const current = getMeasurementTargets();
+                              saveMeasurementTargets({ ...current, ...act.payload });
+                              changed = true;
+                            } else if (act.type === "log_meal") {
+                              const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
+                              const meals = getMeals();
+                              const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
+                              meals.push({
+                                id: uuidv4(),
+                                date: new Date().toLocaleDateString("en-CA"),
+                                name: typeof p?.name === "string" ? p.name : "Meal",
+                                mealType: "snack",
+                                loggedAt: new Date().toISOString(),
+                                macros: { calories: num(p?.calories), protein: num(p?.protein), carbs: num(p?.carbs), fat: num(p?.fat) },
+                              });
+                              saveMeals(meals);
+                              changed = true;
+                            }
+                          }
+                          if (changed) {
+                            syncToServer();
+                            window.dispatchEvent(new Event("userDataUpdated"));
+                          }
+                        }
                       } catch (e) {
                         console.error(e);
                         addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again.", at: new Date().toISOString() });

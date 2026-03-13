@@ -64,6 +64,149 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
   });
 }
 
+function RicoOnTheGoSection() {
+  const [phoneLinked, setPhoneLinked] = useState<boolean | null>(null);
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [newToken, setNewToken] = useState<string | null>(null);
+  const [shortcutCopied, setShortcutCopied] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/user/phone")
+      .then((r) => r.json())
+      .then((d) => setPhoneLinked(d.linked === true))
+      .catch(() => {});
+  }, []);
+
+  const handleLinkPhone = async () => {
+    const raw = phoneInput.replace(/\D/g, "");
+    if (raw.length < 10) return;
+    setPhoneLoading(true);
+    try {
+      const res = await fetch("/api/user/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: raw.length === 10 ? `+1${raw}` : `+${raw}` }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setPhoneLinked(true);
+        setPhoneInput("");
+      }
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleUnlinkPhone = async () => {
+    setPhoneLoading(true);
+    try {
+      const res = await fetch("/api/user/phone", { method: "DELETE" });
+      if (res.ok) setPhoneLinked(false);
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleCreateToken = async () => {
+    setTokenLoading(true);
+    setNewToken(null);
+    try {
+      const res = await fetch("/api/user/api-token", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.token) setNewToken(data.token);
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const shortcutUrl = `${baseUrl}/api/rico/shortcut`;
+
+  return (
+    <div className="space-y-6">
+      {/* SMS */}
+      <div>
+        <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Text Reco (SMS)</h4>
+        <p className="text-xs text-[var(--muted)] mb-2">
+          Link your phone to text Reco from anywhere. You&apos;ll need a Twilio number configured by the Recomp team.
+        </p>
+        {phoneLinked ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-[var(--muted-foreground)]">Phone linked</span>
+            <button
+              type="button"
+              onClick={handleUnlinkPhone}
+              disabled={phoneLoading}
+              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)] disabled:opacity-50"
+            >
+              {phoneLoading ? "Unlinking…" : "Unlink"}
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="tel"
+              value={phoneInput}
+              onChange={(e) => setPhoneInput(e.target.value)}
+              placeholder="+1 555 123 4567"
+              className="input-base flex-1 min-w-[140px] text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleLinkPhone}
+              disabled={phoneLoading || phoneInput.replace(/\D/g, "").length < 10}
+              className="btn-secondary !py-2"
+            >
+              {phoneLoading ? "Linking…" : "Link phone"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Siri Shortcuts */}
+      <div>
+        <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Siri Shortcuts</h4>
+        <p className="text-xs text-[var(--muted)] mb-2">
+          Create a personal API token, then build a Shortcut that sends &quot;Ask Reco&quot; + your message to the endpoint below.
+        </p>
+        <div className="space-y-3">
+          {newToken ? (
+            <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-3 space-y-2">
+              <p className="text-xs text-[var(--muted)]">Copy this token now — it won&apos;t be shown again:</p>
+              <code className="block text-sm font-mono break-all bg-[var(--surface)] px-2 py-1 rounded">{newToken}</code>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(newToken);
+                  setShortcutCopied(true);
+                  setTimeout(() => setShortcutCopied(false), 2000);
+                }}
+                className="btn-secondary !py-1.5 !text-xs"
+              >
+                {shortcutCopied ? "Copied" : "Copy token"}
+              </button>
+              <button type="button" onClick={() => setNewToken(null)} className="ml-2 text-xs text-[var(--muted)] hover:text-[var(--foreground)]">
+                Done
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={handleCreateToken} disabled={tokenLoading} className="btn-secondary !py-2">
+              {tokenLoading ? "Creating…" : "Generate API token"}
+            </button>
+          )}
+          <div className="text-xs text-[var(--muted)] space-y-1">
+            <p>Endpoint: <code className="bg-[var(--surface)] px-1 rounded">{shortcutUrl}</code></p>
+            <p>Method: POST · Header: <code className="bg-[var(--surface)] px-1 rounded">Authorization: Bearer {'<token>'}</code></p>
+            <p>Body: <code className="bg-[var(--surface)] px-1 rounded">{`{ "message": "How many calories do I need?" }`}</code></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ProfileView({
   profile,
   isDemoMode = false,
@@ -1017,6 +1160,19 @@ export function ProfileView({
               </button>
             )}
           </div>
+        )}
+      </div>
+
+      {/* Rico on the go — SMS, Siri Shortcuts */}
+      <div className="card p-6 mt-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Rico on the go</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Text Reco via SMS or use Siri Shortcuts to chat without opening the app.
+        </p>
+        {isDemoMode ? (
+          <p className="text-sm text-[var(--muted-foreground)]">Complete onboarding to use Rico on the go.</p>
+        ) : (
+          <RicoOnTheGoSection />
         )}
       </div>
 

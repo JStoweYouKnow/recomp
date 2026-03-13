@@ -41,14 +41,14 @@ Domain separation and layer organization for the Recomp API.
 | **Body Scan** | body-scan/analyze, body-scan/progress-reel | services/body-scan.ts | Scan analysis, progress reel |
 | **Workouts** | workouts/recovery-adjust | services/workouts.ts | Recovery assessment |
 | **AI Agent** | agent/weekly-review | — | Multi-agent weekly review (Nova Lite tool use) |
-| **Reco** | rico | — | Chat, delegates to nova |
+| **Reco** | rico, rico/shortcut | services/rico.ts | Chat, Siri Shortcuts (token auth) |
 | **Research** | research | services/research.ts | Web grounding |
 | **Act** | act/grocery, act/nutrition, act/sync | act-service.ts, act-client.ts | Grocery, nutrition via Act SDK |
 | **Voice** | voice/parse, voice/sonic, voice/sonic/stream | — | Voice parsing, Sonic streaming |
 | **Media** | images/generate, images/after, video/generate | nova.ts (Canvas, Reel) | Image/video generation |
 | **Groups** | groups/*, challenges/* | db.ts | Groups, messages, challenges |
 | **Wearables** | wearables/* | db.ts, external APIs | Oura, Fitbit, Health |
-| **Infra** | judge/health, data/sync, push/*, calendar/* | judgeMode, db, push | Health check, sync, push, calendar |
+| **Infra** | judge/health, data/sync, push/*, calendar/*, twilio/sms, user/phone, user/api-token | judgeMode, db, push | Health check, sync, push, calendar, SMS webhook, phone linking, API tokens |
 
 ---
 

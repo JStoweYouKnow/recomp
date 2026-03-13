@@ -334,6 +334,117 @@ export async function dbSetCalendarToken(userId: string, token: string): Promise
   ]);
 }
 
+// ── Phone linking (SMS / Twilio) ──────────────────────────────────────────
+/** Normalize E.164: digits only, leading + becomes nothing for storage key. */
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return digits.startsWith("1") && digits.length === 11 ? digits : digits;
+}
+
+export async function dbGetUserIdByPhone(phone: string): Promise<string | null> {
+  const key = normalizePhone(phone);
+  if (!key || key.length < 10) return null;
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `PHONE#${key}`, SK: `PHONE#${key}` } })
+  );
+  return Item?.userId ?? null;
+}
+
+export async function dbLinkPhone(userId: string, phone: string): Promise<void> {
+  const key = normalizePhone(phone);
+  if (!key || key.length < 10) throw new Error("Invalid phone number");
+  const doc = getDocClient();
+  const e164 = key.length === 10 ? `+1${key}` : `+${key}`;
+  await Promise.all([
+    doc.send(
+      new PutCommand({
+        TableName: TABLE,
+        Item: {
+          PK: `PHONE#${key}`,
+          SK: `PHONE#${key}`,
+          userId,
+          updatedAt: new Date().toISOString(),
+        },
+      })
+    ),
+    doc.send(
+      new PutCommand({
+        TableName: TABLE,
+        Item: {
+          PK: `USER#${userId}`,
+          SK: "PHONE",
+          data: { phone: e164, updatedAt: new Date().toISOString() },
+          updatedAt: new Date().toISOString(),
+        },
+      })
+    ),
+  ]);
+}
+
+export async function dbGetUserPhone(userId: string): Promise<string | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "PHONE" } })
+  );
+  return (Item?.data as { phone?: string })?.phone ?? null;
+}
+
+export async function dbUnlinkPhone(userId: string): Promise<void> {
+  const phone = await dbGetUserPhone(userId);
+  if (!phone) return;
+  const key = normalizePhone(phone);
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `PHONE#${key}`, SK: `PHONE#${key}` } })
+  );
+  if (Item?.userId === userId) {
+    await Promise.all([
+      doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `PHONE#${key}`, SK: `PHONE#${key}` } })),
+      doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "PHONE" } })),
+    ]);
+  }
+}
+
+// ── API tokens (Siri Shortcuts, external clients) ──────────────────────────
+export async function dbGetUserIdByApiToken(token: string): Promise<string | null> {
+  if (!token || token.length < 24) return null;
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `APITOKEN#${token}`, SK: `APITOKEN#${token}` } })
+  );
+  return Item?.userId ?? null;
+}
+
+export async function dbCreateApiToken(userId: string): Promise<string> {
+  const crypto = await import("crypto");
+  const token = crypto.randomBytes(24).toString("base64url");
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `APITOKEN#${token}`,
+        SK: `APITOKEN#${token}`,
+        userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+  return token;
+}
+
+export async function dbRevokeApiToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `APITOKEN#${token}`, SK: `APITOKEN#${token}` } })
+  );
+  if (Item?.userId === userId) {
+    await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `APITOKEN#${token}`, SK: `APITOKEN#${token}` } }));
+  }
+}
+
 // ── Push subscriptions (Web Push) ─────────────────────────────────────────
 export interface PushSubscriptionRecord {
   endpoint: string;
