@@ -453,14 +453,16 @@ export function Dashboard({
         />
       </div>
 
-      {/* ── Hydration, Fasting, Duels ── */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
+      {/* ── Hydration & Fasting (same width as Biofeedback/Coach row above) ── */}
+      <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
         <HydrationWidget unitSystem={profile.unitSystem ?? "us"} />
         <FastingWidget />
+      </div>
+
+      {/* ── Duels & Research ── */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 animate-fade-in stagger-2">
         <DuelCard />
-        <div className="lg:col-span-4">
-          <ResearchCard />
-        </div>
+        <ResearchCard />
       </div>
 
       {/* ── Calendar Navigator ── */}
