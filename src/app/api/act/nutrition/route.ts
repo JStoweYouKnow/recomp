@@ -51,6 +51,30 @@ export async function POST(req: NextRequest) {
       fat: Math.round((n.fat ?? 0) * quantity * 10) / 10,
     });
 
+    // ── Common whole foods first — more accurate than Open Food Facts for rice, chicken, eggs, etc. ──
+    const known = lookupCommonFood(baseFood);
+    if (known) {
+      const nutrition = applyQuantity(known);
+      const res = NextResponse.json({
+        food,
+        nutrition,
+        source: "common-foods",
+      });
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actNutrition",
+        service: "common-foods",
+        model: "common-foods",
+        status: "ok",
+        durationMs: Date.now() - startedAt,
+        detail: "common-foods-hit",
+      });
+      return res;
+    }
+
     if (isJudgeMode()) {
       // Use common foods DB for judge mode instead of hash
       const known = lookupCommonFood(baseFood);

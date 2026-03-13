@@ -33,7 +33,8 @@ function singularize(word: string): string {
 }
 
 export function parseQuantityAndFood(input: string): { quantity: number; food: string } {
-  const trimmed = input.trim();
+  // Normalize: strip trailing commas, collapse whitespace
+  const trimmed = input.trim().replace(/,\s*/g, " ").replace(/\s+/g, " ").trim();
   if (!trimmed) return { quantity: 1, food: trimmed };
 
   const tokens = trimmed.split(/\s+/);
@@ -113,6 +114,7 @@ export const COMMON_FOODS: Record<string, { calories: number; protein: number; c
 
   // Grains & carbs
   "rice": { calories: 206, protein: 4.3, carbs: 45, fat: 0.4, servingNote: "1 cup cooked" },
+  "white rice": { calories: 206, protein: 4.3, carbs: 45, fat: 0.4, servingNote: "1 cup cooked" },
   "brown rice": { calories: 216, protein: 5, carbs: 45, fat: 1.8, servingNote: "1 cup cooked" },
   "pasta": { calories: 220, protein: 8, carbs: 43, fat: 1.3, servingNote: "1 cup cooked" },
   "oats": { calories: 154, protein: 5, carbs: 27, fat: 2.6, servingNote: "1/2 cup dry" },

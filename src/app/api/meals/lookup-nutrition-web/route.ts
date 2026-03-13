@@ -7,7 +7,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
-import { parseQuantityAndFood } from "@/lib/food-quantity-parser";
+import { parseQuantityAndFood, lookupCommonFood } from "@/lib/food-quantity-parser";
 
 /** Allow up to 60s for web grounding (default Vercel timeout is too short) */
 export const maxDuration = 60;
@@ -72,6 +72,23 @@ export async function POST(req: NextRequest) {
       carbs: Math.round((n.carbs ?? 0) * quantity * 10) / 10,
       fat: Math.round((n.fat ?? 0) * quantity * 10) / 10,
     });
+
+    // ── 0. Common whole foods first — accurate for rice, chicken, eggs, etc. ──
+    const known = lookupCommonFood(baseFood);
+    if (known) {
+      const nutrition = applyQuantity(known);
+      const res = NextResponse.json({
+        food: mealName,
+        source: "common-foods",
+        nutrition,
+        found: true,
+      });
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
 
     // ── 1. DynamoDB nutrition cache (try exact input, then base food) ──
     try {
