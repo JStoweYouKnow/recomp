@@ -19,6 +19,8 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 - **Voice + photo logging:** Nova Sonic and Nova Lite reduce friction for users who dislike manual entry. Log a meal in seconds by speaking or snapping.
 - **Multimodal embeddings:** "Similar meals" (one-tap re-log) powered by embeddings reduces repeated typing.
 - **Web grounding + Act:** USDA-backed nutrition and grocery links without separate nutrition apps or Amazon manual search.
+- **WCAG-aligned UI:** Skip navigation link, `<main>` landmark, `focus-visible` outlines on all interactive elements, `prefers-reduced-motion` media query disables animations, `forced-colors` (high contrast) support for progress bars. All form inputs have associated labels.
+- **Responsible AI:** AI-generated images carry "for inspiration only" disclaimers. Nutrition sources (USDA, Open Food Facts, estimated) are surfaced to users. All AI features degrade gracefully with informative fallbacks.
 
 ### Adoption path
 
@@ -41,6 +43,12 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 - **Serverless:** Next.js on Vercel; no always-on servers.
 - **Bedrock pay-per-use:** Plan generation, meal suggestions, voice — billed per token. No fixed model hosting.
 - **Act service:** Optional; app degrades to search links when unavailable.
+
+### Production readiness
+
+- **Structured logging:** CloudWatch-compatible JSON logs in production (human-readable in dev). Request duration, model name, token counts, and error stacks are captured per route. `withRequestLogging()` wrapper available for automatic duration + error logging.
+- **Rate limiting:** Fixed-window rate limits on all AI routes with Upstash Redis (or in-memory fallback). Rate limit headers (X-RateLimit-Limit, Remaining, Reset) returned on every response.
+- **Modular architecture:** MealsView decomposed into focused sub-components (CookingAppSync, MealList, PantrySection, MealPrepSection). Strict TypeScript with Zod validation on all API inputs. 203 test files across unit, integration, and E2E layers.
 
 ---
 

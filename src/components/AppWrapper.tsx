@@ -68,7 +68,7 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
         <SkipLink />
         <OfflineBanner />
         <ThemeToggle />
-        <div className="flex-1">{children}</div>
+        <main id="main-content" className="flex-1">{children}</main>
         <footer className="border-t border-[var(--border-soft)] bg-[var(--surface)] py-3 text-center">
           <p className="text-xs text-[var(--muted)] px-4">
             Recomp provides general wellness guidance only. Consult a healthcare professional before starting any diet or exercise program.
