@@ -428,14 +428,9 @@ export function Dashboard({
         <MetabolicModelCard />
       </div>
 
-      {/* ── Hydration, Fasting, Biofeedback, Duels ── */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
-        <HydrationWidget unitSystem={profile.unitSystem ?? "us"} />
-        <FastingWidget />
-        <BiofeedbackQuickEntry />
-        <DuelCard />
-      </div>
+      {/* ── How are you feeling & Coach check-in (paired) ── */}
       <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
+        <BiofeedbackQuickEntry />
         <CoachCheckInCard
           profile={profile}
           todayMeals={meals.filter((m) => m.date === today)}
@@ -456,7 +451,16 @@ export function Dashboard({
             return s;
           })()}
         />
-        <ResearchCard />
+      </div>
+
+      {/* ── Hydration, Fasting, Duels ── */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 animate-fade-in stagger-2">
+        <HydrationWidget unitSystem={profile.unitSystem ?? "us"} />
+        <FastingWidget />
+        <DuelCard />
+        <div className="lg:col-span-4">
+          <ResearchCard />
+        </div>
       </div>
 
       {/* ── Calendar Navigator ── */}
