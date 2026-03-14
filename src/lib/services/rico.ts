@@ -19,12 +19,15 @@ PERSONALITY:
 - Never lecture. Be conversational.
 
 CONTEXT YOU RECEIVE:
-The user's message plus optional context about: streak length, meals logged, XP, recent milestones, goal, current macros, and whether they've been inconsistent lately.
+The user's message plus optional context about: streak length, meals logged, XP, recent milestones, goal, current macros, whether they've been inconsistent lately, and their current workout plan (days, exercises, sets, reps).
 
 You have access to tools! You are an AGENT, not just a chatbot.
 1. If the user asks to change their calorie or macro targets, use the 'update_macros' tool.
 2. If the user says they ate/had/consumed a food or meal (e.g. "I had a chicken salad", "I ate a burrito", "log my lunch: grilled salmon"), ALWAYS use the 'log_meal' tool. Estimate reasonable macros based on the food. Do not ask for confirmation—log it immediately.
-Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "I've updated your macros to 2000 calories!").
+3. If the user asks to swap/replace an exercise (e.g. "swap bench press for dumbbell press", "replace squats with leg press", "I can't do pull-ups, give me an alternative"), use the 'swap_exercise' tool. Pick the correct day from their plan context.
+4. If the user asks to add an exercise to a workout day (e.g. "add face pulls to my upper body day", "throw in some calf raises on leg day"), use the 'add_exercise' tool.
+5. If the user asks to change a whole workout day's focus, restructure it, or remove exercises (e.g. "make Monday a push day", "remove all finishers from Tuesday", "change Wednesday to cardio only"), use the 'update_workout_day' tool.
+Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "Swapped Bench Press for Dumbbell Press on Monday!").
 
 Respond as Reco. No markdown. No bullet lists unless it's 2-3 quick tips. Be human.`;
 
@@ -88,6 +91,105 @@ const RICO_TOOLS: ToolConfiguration = {
         },
       },
     },
+    {
+      toolSpec: {
+        name: "swap_exercise",
+        description: "Replaces one exercise with another in the user's workout plan. Use when the user wants to swap, replace, or substitute an exercise.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              day: { type: "string", description: "Day of the week (e.g. 'Monday', 'Tuesday')" },
+              oldExerciseName: { type: "string", description: "Name of the exercise to replace (case-insensitive match)" },
+              newExerciseName: { type: "string", description: "Name of the replacement exercise" },
+              newSets: { type: "string", description: "Sets for the new exercise (e.g. '3', '4')" },
+              newReps: { type: "string", description: "Reps for the new exercise (e.g. '8-12', '10')" },
+              newNotes: { type: "string", description: "Optional coaching notes for the new exercise" },
+              section: { type: "string", description: "Which section: 'warmups', 'exercises', or 'finishers'. Defaults to 'exercises'." },
+            },
+            required: ["day", "oldExerciseName", "newExerciseName", "newSets", "newReps"],
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
+        name: "add_exercise",
+        description: "Adds a new exercise to a specific workout day. Use when the user wants to add an exercise to their plan.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              day: { type: "string", description: "Day of the week (e.g. 'Monday', 'Tuesday')" },
+              exerciseName: { type: "string", description: "Name of the exercise to add" },
+              sets: { type: "string", description: "Number of sets (e.g. '3', '4')" },
+              reps: { type: "string", description: "Reps or duration (e.g. '8-12', '30s', '10 per leg')" },
+              notes: { type: "string", description: "Optional coaching notes" },
+              section: { type: "string", description: "Where to add: 'warmups', 'exercises', or 'finishers'. Defaults to 'exercises'." },
+            },
+            required: ["day", "exerciseName", "sets", "reps"],
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
+        name: "update_workout_day",
+        description: "Restructures an entire workout day — change the focus, replace all exercises, or remove specific sections. Use for bigger changes like 'make Monday a push day' or 'change Thursday to cardio'.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              day: { type: "string", description: "Day of the week (e.g. 'Monday')" },
+              focus: { type: "string", description: "New focus label (e.g. 'Push Day', 'Cardio + Core', 'Upper Body Hypertrophy')" },
+              warmups: {
+                type: "array",
+                description: "New warm-up exercises (omit to keep existing)",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    sets: { type: "string" },
+                    reps: { type: "string" },
+                    notes: { type: "string" },
+                  },
+                  required: ["name", "sets", "reps"],
+                },
+              },
+              exercises: {
+                type: "array",
+                description: "New main exercises (omit to keep existing)",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    sets: { type: "string" },
+                    reps: { type: "string" },
+                    notes: { type: "string" },
+                  },
+                  required: ["name", "sets", "reps"],
+                },
+              },
+              finishers: {
+                type: "array",
+                description: "New finisher exercises (omit to keep existing, use empty [] to remove all finishers)",
+                items: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    sets: { type: "string" },
+                    reps: { type: "string" },
+                    notes: { type: "string" },
+                  },
+                  required: ["name", "sets", "reps"],
+                },
+              },
+            },
+            required: ["day", "focus"],
+          },
+        },
+      },
+    },
   ],
 };
 
@@ -100,6 +202,15 @@ export interface RicoContext {
   biofeedbackSummary?: string | null;
   hydrationSummary?: string | null;
   activeFast?: string | null;
+  workoutPlan?: {
+    weeklyPlan: {
+      day: string;
+      focus: string;
+      warmups?: { name: string; sets: string; reps: string; notes?: string }[];
+      exercises: { name: string; sets: string; reps: string; notes?: string }[];
+      finishers?: { name: string; sets: string; reps: string; notes?: string }[];
+    }[];
+  } | null;
 }
 
 export interface RicoInput {
@@ -153,8 +264,12 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
   }
 
   if (!replyText && actions.length > 0) {
-    if (actions[0].type === "update_macros") replyText = "I've updated your daily targets!";
-    if (actions[0].type === "log_meal") replyText = `I've logged ${(actions[0].payload as { name?: string }).name ?? "your meal"} for you.`;
+    const a = actions[0];
+    if (a.type === "update_macros") replyText = "I've updated your daily targets!";
+    else if (a.type === "log_meal") replyText = `I've logged ${(a.payload as { name?: string }).name ?? "your meal"} for you.`;
+    else if (a.type === "swap_exercise") replyText = `Done! Swapped ${(a.payload as { oldExerciseName?: string }).oldExerciseName ?? "that exercise"} for ${(a.payload as { newExerciseName?: string }).newExerciseName ?? "the new one"}.`;
+    else if (a.type === "add_exercise") replyText = `Added ${(a.payload as { exerciseName?: string }).exerciseName ?? "the exercise"} to your ${(a.payload as { day?: string }).day ?? ""} workout!`;
+    else if (a.type === "update_workout_day") replyText = `Updated your ${(a.payload as { day?: string }).day ?? ""} workout to ${(a.payload as { focus?: string }).focus ?? "the new focus"}!`;
   }
 
   return { reply: replyText.trim(), actions };

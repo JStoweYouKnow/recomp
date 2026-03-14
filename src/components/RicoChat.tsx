@@ -1,27 +1,114 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { 
-  getRicoHistory, 
-  saveRicoHistory, 
-  getCoachPersona, 
-  saveCoachPersona, 
+import {
+  getRicoHistory,
+  saveRicoHistory,
+  getCoachPersona,
+  saveCoachPersona,
   type CoachPersona,
   saveMeasurementTargets,
   getMeasurementTargets,
   saveMeals,
   getMeals,
+  getPlan,
+  savePlan,
   syncToServer
 } from "@/lib/storage";
-import { v4 as uuidv4 } from "uuid";
 import {
   startRecording,
   startStreamingRecording,
   playAudioResponse,
   isAudioSupported,
 } from "@/lib/audio-utils";
-import type { RicoMessage } from "@/lib/types";
+import type { RicoMessage, WorkoutExercise } from "@/lib/types";
 import type { AudioRecorder, StreamingRecorder } from "@/lib/audio-utils";
+
+/** Process Rico tool-call actions, mutate localStorage, return true if anything changed. */
+function processRicoActions(actions: { type: string; payload: Record<string, unknown> }[]): boolean {
+  let changed = false;
+  for (const act of actions) {
+    if (act.type === "update_macros") {
+      const current = getMeasurementTargets();
+      saveMeasurementTargets({ ...current, ...act.payload });
+      changed = true;
+    } else if (act.type === "log_meal") {
+      const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
+      const meals = getMeals();
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
+      meals.push({
+        id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        date: new Date().toLocaleDateString("en-CA"),
+        name: typeof p?.name === "string" ? p.name : "Meal",
+        mealType: "snack",
+        loggedAt: new Date().toISOString(),
+        macros: { calories: num(p?.calories), protein: num(p?.protein), carbs: num(p?.carbs), fat: num(p?.fat) },
+      });
+      saveMeals(meals);
+      changed = true;
+    } else if (act.type === "swap_exercise") {
+      const p = act.payload as { day?: string; oldExerciseName?: string; newExerciseName?: string; newSets?: string; newReps?: string; newNotes?: string; section?: string };
+      const plan = getPlan();
+      if (plan && p.day && p.oldExerciseName && p.newExerciseName) {
+        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
+        if (dayIndex >= 0) {
+          const day = plan.workoutPlan.weeklyPlan[dayIndex];
+          const section = (p.section === "warmups" || p.section === "finishers") ? p.section : "exercises";
+          const list: WorkoutExercise[] = (section === "warmups" ? day.warmups : section === "finishers" ? day.finishers : day.exercises) ?? [];
+          const oldLower = p.oldExerciseName.toLowerCase();
+          const idx = list.findIndex((ex) => ex.name.toLowerCase() === oldLower);
+          if (idx >= 0) {
+            list[idx] = { name: p.newExerciseName, sets: p.newSets ?? list[idx].sets, reps: p.newReps ?? list[idx].reps, notes: p.newNotes };
+            if (section === "warmups") day.warmups = list;
+            else if (section === "finishers") day.finishers = list;
+            else day.exercises = list;
+            plan.workoutPlan.weeklyPlan[dayIndex] = day;
+            savePlan(plan);
+            changed = true;
+          }
+        }
+      }
+    } else if (act.type === "add_exercise") {
+      const p = act.payload as { day?: string; exerciseName?: string; sets?: string; reps?: string; notes?: string; section?: string };
+      const plan = getPlan();
+      if (plan && p.day && p.exerciseName) {
+        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
+        if (dayIndex >= 0) {
+          const day = plan.workoutPlan.weeklyPlan[dayIndex];
+          const newEx: WorkoutExercise = { name: p.exerciseName, sets: p.sets ?? "3", reps: p.reps ?? "10", notes: p.notes };
+          const section = (p.section === "warmups" || p.section === "finishers") ? p.section : "exercises";
+          if (section === "warmups") day.warmups = [...(day.warmups ?? []), newEx];
+          else if (section === "finishers") day.finishers = [...(day.finishers ?? []), newEx];
+          else day.exercises = [...day.exercises, newEx];
+          plan.workoutPlan.weeklyPlan[dayIndex] = day;
+          savePlan(plan);
+          changed = true;
+        }
+      }
+    } else if (act.type === "update_workout_day") {
+      const p = act.payload as { day?: string; focus?: string; warmups?: WorkoutExercise[]; exercises?: WorkoutExercise[]; finishers?: WorkoutExercise[] };
+      const plan = getPlan();
+      if (plan && p.day && p.focus) {
+        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
+        if (dayIndex >= 0) {
+          const day = plan.workoutPlan.weeklyPlan[dayIndex];
+          day.focus = p.focus;
+          if (p.warmups !== undefined) day.warmups = p.warmups;
+          if (p.exercises !== undefined) day.exercises = p.exercises;
+          if (p.finishers !== undefined) day.finishers = p.finishers;
+          plan.workoutPlan.weeklyPlan[dayIndex] = day;
+          savePlan(plan);
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) {
+    syncToServer();
+    window.dispatchEvent(new Event("userDataUpdated"));
+  }
+  return changed;
+}
 
 export function RicoChat({
   userName,
@@ -30,7 +117,7 @@ export function RicoChat({
   onClose,
 }: {
   userName: string;
-  context: { streak?: number; mealsLogged?: number; xp?: number; goal?: string; recentMilestones?: string[]; biofeedbackSummary?: string | null; hydrationSummary?: string | null; activeFast?: string | null };
+  context: { streak?: number; mealsLogged?: number; xp?: number; goal?: string; recentMilestones?: string[]; biofeedbackSummary?: string | null; hydrationSummary?: string | null; activeFast?: string | null; workoutPlan?: { weeklyPlan: { day: string; focus: string; warmups?: { name: string; sets: string; reps: string; notes?: string }[]; exercises: { name: string; sets: string; reps: string; notes?: string }[]; finishers?: { name: string; sets: string; reps: string; notes?: string }[] }[] } | null };
   isOpen: boolean;
   onClose: () => void;
 }) {
@@ -159,37 +246,7 @@ export function RicoChat({
 
       // Execute AI Agent tool calls
       if (data.actions && Array.isArray(data.actions)) {
-        let changed = false;
-        for (const act of data.actions) {
-          if (act.type === "update_macros") {
-            const current = getMeasurementTargets();
-            saveMeasurementTargets({ ...current, ...act.payload });
-            changed = true;
-          } else if (act.type === "log_meal") {
-            const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
-            const meals = getMeals();
-            const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
-            meals.push({
-              id: uuidv4(),
-              date: new Date().toLocaleDateString("en-CA"),
-              name: typeof p?.name === "string" ? p.name : "Meal",
-              mealType: "snack",
-              loggedAt: new Date().toISOString(),
-              macros: {
-                calories: num(p?.calories),
-                protein: num(p?.protein),
-                carbs: num(p?.carbs),
-                fat: num(p?.fat),
-              },
-            });
-            saveMeals(meals);
-            changed = true;
-          }
-        }
-        if (changed) {
-          syncToServer();
-          window.dispatchEvent(new Event("userDataUpdated"));
-        }
+        processRicoActions(data.actions);
       }
     } catch (e) {
       console.error(e);
@@ -384,32 +441,7 @@ export function RicoChat({
                         if (data.error) throw new Error(data.error);
                         addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
                         if (data.actions?.length) {
-                          let changed = false;
-                          for (const act of data.actions) {
-                            if (act.type === "update_macros") {
-                              const current = getMeasurementTargets();
-                              saveMeasurementTargets({ ...current, ...act.payload });
-                              changed = true;
-                            } else if (act.type === "log_meal") {
-                              const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
-                              const meals = getMeals();
-                              const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
-                              meals.push({
-                                id: uuidv4(),
-                                date: new Date().toLocaleDateString("en-CA"),
-                                name: typeof p?.name === "string" ? p.name : "Meal",
-                                mealType: "snack",
-                                loggedAt: new Date().toISOString(),
-                                macros: { calories: num(p?.calories), protein: num(p?.protein), carbs: num(p?.carbs), fat: num(p?.fat) },
-                              });
-                              saveMeals(meals);
-                              changed = true;
-                            }
-                          }
-                          if (changed) {
-                            syncToServer();
-                            window.dispatchEvent(new Event("userDataUpdated"));
-                          }
+                          processRicoActions(data.actions);
                         }
                       } catch (e) {
                         console.error(e);

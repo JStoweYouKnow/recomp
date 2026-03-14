@@ -812,6 +812,7 @@ export default function Home() {
                 return formatHydrationAmount(total, getUnitSystem(profile));
               })(),
               activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
+              workoutPlan: plan?.workoutPlan ?? null,
             }}
             isOpen={ricoOpen}
             onClose={() => setRicoOpen(false)}
