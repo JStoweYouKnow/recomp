@@ -11,7 +11,7 @@ interface FeatureStatus {
 
 const NOVA_FEATURES: FeatureStatus[] = [
   { name: "Nova Lite", key: "planGeneration", novaModel: "Text & Vision", description: "Plan generation, meal suggestions, coaching" },
-  { name: "Nova Sonic", key: "voice", novaModel: "Speech-to-Speech", description: "Bidirectional voice coach (Reco)" },
+  { name: "Nova Sonic", key: "voice", novaModel: "Speech-to-Speech", description: "Bidirectional voice coach (The Ref)" },
   { name: "Nova Canvas", key: "canvas", novaModel: "Image Generation", description: "AI meal inspiration images" },
   { name: "Nova Reel", key: "reelVideo", novaModel: "Video Generation", description: "Motivational workout clips" },
   { name: "Nova Act", key: "actGrocery", novaModel: "Browser Agent", description: "Amazon grocery product search" },

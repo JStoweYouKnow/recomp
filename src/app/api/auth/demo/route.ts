@@ -7,7 +7,7 @@ const DEMO_USER_ID = "demo-user-001";
 
 /**
  * Sets auth cookie for pre-seeded demo user. Call when "Try pre-seeded demo" is clicked
- * so AI routes (Weekly Review, Reco, meal suggest, etc.) work even with REQUIRE_AUTH_FOR_AI=true.
+ * so AI routes (Weekly Review, The Ref, meal suggest, etc.) work even with REQUIRE_AUTH_FOR_AI=true.
  */
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-demo"), 10, 60_000);

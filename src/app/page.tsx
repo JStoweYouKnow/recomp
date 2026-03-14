@@ -362,7 +362,7 @@ export default function Home() {
   const handleUsePreseededDemo = async () => {
     const seed = buildDemoSeed();
 
-    // Set auth cookie so AI routes (Weekly Review, Reco, etc.) work when REQUIRE_AUTH_FOR_AI=true
+    // Set auth cookie so AI routes (Weekly Review, The Ref, etc.) work when REQUIRE_AUTH_FOR_AI=true
     try {
       await fetch("/api/auth/demo", { method: "POST", credentials: "include" });
     } catch {
@@ -413,7 +413,7 @@ export default function Home() {
   const handleStartJudgeTour = async () => {
     await handleUsePreseededDemo();
     setShowJudgeChecklist(true);
-    showToast("Guided judge tour started: Evidence → Meals → Weekly Review → Reco.", "info");
+    showToast("Guided judge tour started: Evidence → Meals → Weekly Review → The Ref.", "info");
   };
 
   if (restoring) {
@@ -581,7 +581,7 @@ export default function Home() {
                   <li>Dashboard: open Evidence &amp; Results and click <strong>Show metrics</strong>.</li>
                   <li>Meals: log one meal using text, voice, or photo.</li>
                   <li>Dashboard: click <strong>Generate</strong> in Weekly AI Review.</li>
-                  <li>Open Reco (floating button) and send one message.</li>
+                  <li>Open The Ref (floating button) and send one message.</li>
                 </ol>
               </div>
               <button
@@ -785,8 +785,8 @@ export default function Home() {
           <button
             onClick={() => setRicoOpen(true)}
             className="fixed bottom-20 md:bottom-6 right-6 z-20 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all duration-200 hover:bg-[var(--accent-hover)] hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-3 focus-visible:ring-offset-[var(--background)] animate-fab-breathe"
-            aria-label="Chat with Reco"
-            title="Chat with Reco"
+            aria-label="Chat with The Ref"
+            title="Chat with The Ref"
           >
             <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
           </button>

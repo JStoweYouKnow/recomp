@@ -1,12 +1,12 @@
-# Rico on the Go
+# The Ref on the Go
 
-Users can reach Reco via SMS, Siri Shortcuts, and push deep-links without opening the full app.
+Users can reach The Ref via SMS, Siri Shortcuts, and push deep-links without opening the full app.
 
 ---
 
 ## 1. SMS (Twilio)
 
-Users link their phone in **Profile → Rico on the go** and text your Twilio number to chat with Reco.
+Users link their phone in **Profile → The Ref on the go** and text your Twilio number to chat with The Ref.
 
 ### Setup
 
@@ -20,14 +20,14 @@ Users link their phone in **Profile → Rico on the go** and text your Twilio nu
 
 ### Flow
 
-- Incoming SMS → Twilio webhook → lookup user by `From` → invoke Rico → reply via Twilio
+- Incoming SMS → Twilio webhook → lookup user by `From` → invoke The Ref → reply via Twilio
 - If the number isn’t linked, the user gets instructions to link it in the app
 
 ---
 
 ## 2. Siri Shortcuts
 
-Users generate an API token in **Profile → Rico on the go** and create a Shortcut that calls the endpoint.
+Users generate an API token in **Profile → The Ref on the go** and create a Shortcut that calls the endpoint.
 
 ### Endpoint
 
@@ -41,7 +41,7 @@ Response: { "reply": "..." }
 
 ### Shortcut setup (user-facing)
 
-1. Create API token in Profile → Rico on the go.
+1. Create API token in Profile → The Ref on the go.
 2. In Shortcuts, add **Get Contents of URL**:
    - URL: `https://your-domain.com/api/rico/shortcut`
    - Method: POST
@@ -53,11 +53,11 @@ Response: { "reply": "..." }
 
 ## 3. Mobile / Push
 
-### Deep-link to Rico
+### Deep-link to The Ref
 
-Use `/?open=rico` or `/rico` (redirects to `/?open=rico`). The app opens with Rico chat focused.
+Use `/?open=rico` or `/rico` (redirects to `/?open=rico`). The app opens with The Ref chat focused.
 
-**Push notifications:** When sending a “Chat with Reco” reminder, set:
+**Push notifications:** When sending a "Chat with The Ref" reminder, set:
 
 ```ts
 import { sendPushToUser, ricoReminderPayload } from "@/lib/push";
@@ -65,8 +65,8 @@ import { sendPushToUser, ricoReminderPayload } from "@/lib/push";
 await sendPushToUser(userId, ricoReminderPayload("https://your-domain.com"));
 ```
 
-Tapping the notification opens the app with Rico chat open.
+Tapping the notification opens the app with The Ref chat open.
 
 ### PWA manifest
 
-`/manifest.json` is configured for “Add to Home Screen.” Users can add a shortcut to `/rico` for one-tap access to Reco.
+`/manifest.json` is configured for “Add to Home Screen.” Users can add a shortcut to `/rico` for one-tap access to The Ref.

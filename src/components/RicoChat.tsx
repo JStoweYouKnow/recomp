@@ -360,7 +360,7 @@ export function RicoChat({
               🧩
             </div>
             <div>
-              <h3 className="font-semibold text-[var(--foreground)]">Reco</h3>
+              <h3 className="font-semibold text-[var(--foreground)]">The Ref</h3>
               <p className="text-xs text-[var(--muted)]">
                 {voiceMode ? "Voice mode · Nova Sonic" : "Your AI fitness coach"}
               </p>
@@ -499,7 +499,7 @@ export function RicoChat({
             <div className="flex justify-start">
               <div className="rounded-2xl bg-[var(--surface-elevated)] px-4 py-2">
                 <span className="text-sm text-[var(--muted)]">
-                  {isRecording ? "Listening..." : isPlaying ? "Reco is speaking..." : "Reco is thinking..."}
+                  {isRecording ? "Listening..." : isPlaying ? "The Ref is speaking..." : "The Ref is thinking..."}
                 </span>
               </div>
             </div>
@@ -542,7 +542,7 @@ export function RicoChat({
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask Reco..."
+                placeholder="Ask The Ref..."
                 disabled={loading}
                 className="input-base flex-1 rounded-lg px-4 py-2 text-sm placeholder-[var(--muted)] focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/20 focus:shadow-[0_0_0_3px_rgba(107,124,60,0.15)] disabled:opacity-50 transition-shadow"
               />

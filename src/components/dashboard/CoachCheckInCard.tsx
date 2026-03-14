@@ -140,7 +140,7 @@ export function CoachCheckInCard({
           {message}
         </p>
       ) : (
-        <p className="text-xs text-[var(--muted)]">Get a personalized message from Reco</p>
+        <p className="text-xs text-[var(--muted)]">Get a personalized message from The Ref</p>
       )}
       <div className="flex gap-2">
         <button

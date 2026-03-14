@@ -27,7 +27,7 @@ const FEATURES = [
   { image: "/feature-workouts.jpg", title: "Smart workouts", desc: "Plans that match your equipment & schedule" },
   { image: "/feature-logging.jpg", title: "Voice & photo logging", desc: "Log meals by speaking or snapping your plate" },
   { image: "/feature-wearable.jpg", title: "Wearable sync", desc: "Oura, Fitbit, Apple Health & more" },
-  { image: "/feature-reco.jpg", title: "AI coach Reco", desc: "Guidance, tips & weekly reviews" },
+  { image: "/feature-reco.jpg", title: "AI coach The Ref", desc: "Guidance, tips & weekly reviews" },
 ];
 
 export function LandingPage({
@@ -97,7 +97,7 @@ export function LandingPage({
     setShowVoiceToggle(isAudioSupported());
   }, []);
 
-  const voiceSystemPrompt = `You are Reco, the onboarding assistant for Refactor, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight, height, gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. Users may answer in US or metric units. Convert to the output schema below (weightLbs + heightFt/heightIn). After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
+  const voiceSystemPrompt = `You are The Ref, the onboarding assistant for Refactor, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight, height, gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. Users may answer in US or metric units. Convert to the output schema below (weightLbs + heightFt/heightIn). After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
 
   const handleVoiceStart = useCallback(async () => {
     try {
@@ -407,7 +407,7 @@ export function LandingPage({
               <li>Dashboard: open Evidence card and click Show metrics.</li>
               <li>Meals: add one sample meal (text/voice/photo).</li>
               <li>Dashboard: generate Weekly AI Review.</li>
-              <li>Reco: send one message (or voice).</li>
+              <li>The Ref: send one message (or voice).</li>
             </ol>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
@@ -482,11 +482,11 @@ export function LandingPage({
           {voiceMode ? (
             <div className="card p-6 sm:p-8 animate-fade-in" style={{ animationDelay: "400ms" }}>
               <div className="text-center mb-6">
-                <p className="text-sm text-[var(--muted)]">Talk with Reco to set up your profile — no typing needed. Powered by Nova 2 Sonic.</p>
+                <p className="text-sm text-[var(--muted)]">Talk with The Ref to set up your profile — no typing needed. Powered by Nova 2 Sonic.</p>
               </div>
               <div className="space-y-3 max-h-64 overflow-y-auto mb-6">
                 {voiceMessages.length === 0 && (
-                  <p className="text-center text-sm text-[var(--muted)]">Hold the mic button, then answer Reco&apos;s questions out loud. Release when you finish speaking.</p>
+                  <p className="text-center text-sm text-[var(--muted)]">Hold the mic button, then answer The Ref&apos;s questions out loud. Release when you finish speaking.</p>
                 )}
                 {voiceMessages.map((m, i) => (
                   <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>

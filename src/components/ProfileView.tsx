@@ -64,7 +64,7 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
   });
 }
 
-function RicoOnTheGoSection() {
+function TheRefOnTheGoSection() {
   const [phoneLinked, setPhoneLinked] = useState<boolean | null>(null);
   const [phoneInput, setPhoneInput] = useState("");
   const [phoneLoading, setPhoneLoading] = useState(false);
@@ -128,9 +128,9 @@ function RicoOnTheGoSection() {
     <div className="space-y-6">
       {/* SMS */}
       <div>
-        <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Text Reco (SMS)</h4>
+        <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Text The Ref (SMS)</h4>
         <p className="text-xs text-[var(--muted)] mb-2">
-          Link your phone to text Reco from anywhere. You&apos;ll need a Twilio number configured by the Refactor team.
+          Link your phone to text The Ref from anywhere. You&apos;ll need a Twilio number configured by the Refactor team.
         </p>
         {phoneLinked ? (
           <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ function RicoOnTheGoSection() {
       <div>
         <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Siri Shortcuts</h4>
         <p className="text-xs text-[var(--muted)] mb-2">
-          Create a personal API token, then build a Shortcut that sends &quot;Ask Reco&quot; + your message to the endpoint below.
+          Create a personal API token, then build a Shortcut that sends &quot;Ask The Ref&quot; + your message to the endpoint below.
         </p>
         <div className="space-y-3">
           {newToken ? (
@@ -1163,16 +1163,16 @@ export function ProfileView({
         )}
       </div>
 
-      {/* Rico on the go — SMS, Siri Shortcuts */}
+      {/* The Ref on the go — SMS, Siri Shortcuts */}
       <div className="card p-6 mt-6">
-        <h3 className="font-semibold text-[var(--foreground)] mb-1">Rico on the go</h3>
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">The Ref on the go</h3>
         <p className="text-sm text-[var(--muted)] mb-4">
-          Text Reco via SMS or use Siri Shortcuts to chat without opening the app.
+          Text The Ref via SMS or use Siri Shortcuts to chat without opening the app.
         </p>
         {isDemoMode ? (
-          <p className="text-sm text-[var(--muted-foreground)]">Complete onboarding to use Rico on the go.</p>
+          <p className="text-sm text-[var(--muted-foreground)]">Complete onboarding to use The Ref on the go.</p>
         ) : (
-          <RicoOnTheGoSection />
+          <TheRefOnTheGoSection />
         )}
       </div>
 

@@ -15,7 +15,7 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 
 ### Accessibility
 
-- **No subscription wall:** Core features (plans, meals, Reco coach, weekly review) work without payment.
+- **No subscription wall:** Core features (plans, meals, The Ref coach, weekly review) work without payment.
 - **Voice + photo logging:** Nova Sonic and Nova Lite reduce friction for users who dislike manual entry. Log a meal in seconds by speaking or snapping.
 - **Multimodal embeddings:** "Similar meals" (one-tap re-log) powered by embeddings reduces repeated typing.
 - **Web grounding + Act:** USDA-backed nutrition and grocery links without separate nutrition apps or Amazon manual search.
@@ -61,7 +61,7 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 | 4-way meal logging | Meals → Log meal → try text, Voice log, Snap plate, receipt | POST /api/meals/analyze-photo, /api/voice/parse |
 | Nova Act grocery | Shopping list → search; check for Amazon product links | GET /api/act/status → reachable |
 | Web grounding research | Dashboard → Research card → ask nutrition question; response should cite `source: web-grounding` | POST /api/research |
-| Voice coach | Reco (🧩) → hold mic; bidirectional Nova Sonic | POST /api/rico, /api/voice/sonic/stream |
+| Voice coach | The Ref (🧩) → hold mic; bidirectional Nova Sonic | POST /api/rico, /api/voice/sonic/stream |
 | All integrations live | — | GET /api/judge/health → features all "live" |
 
 ---

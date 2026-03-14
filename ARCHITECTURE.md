@@ -17,7 +17,7 @@ flowchart TB
         Auth[Auth / Register]
         Plans[Plans Generate/Adjust]
         Meals[Meals Suggest/Photo/Receipt]
-        Rico[Rico Chat]
+        Rico[The Ref Chat]
         Agent[Weekly Review Agent]
         Act[Act Grocery/Nutrition]
         Voice[Voice Parse/Sonic]
@@ -129,7 +129,7 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 | Nova Feature | Route(s) | Purpose |
 |--------------|----------|---------|
 | Nova 2 Lite | plans/generate, meals/suggest, rico, agent/weekly-review, voice/parse, meals/analyze-*, research | Text generation, image understanding, tool use |
-| Nova 2 Sonic | voice/sonic, voice/sonic/stream | Bidirectional streaming voice (Reco + meal logging) |
+| Nova 2 Sonic | voice/sonic, voice/sonic/stream | Bidirectional streaming voice (The Ref + meal logging) |
 | Nova Canvas | images/generate, images/after | Meal inspiration; transformation preview |
 | Nova Reel | video/generate, body-scan/progress-reel | Exercise clips; body scan transformation video |
 | Nova Act | act/grocery, act/nutrition | Grocery search; USDA nutrition lookup |

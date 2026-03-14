@@ -14,7 +14,7 @@ Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 >
 > 1. Click **"Try pre-seeded demo user"** — no setup needed
 > 2. Dashboard loads instantly with 7 days of sample data
-> 3. Try: **Log a meal** (text/voice/photo) → **Reco AI coach** (tap the Reco button) → **Weekly review** (Dashboard → Generate)
+> 3. Try: **Log a meal** (text/voice/photo) → **The Ref AI coach** (tap The Ref button) → **Weekly review** (Dashboard → Generate)
 > 4. All 8 Nova features work out of the box in demo mode
 >
 > **Health check:** `GET /api/judge/health` — returns status of all integrations (Bedrock, DynamoDB, Act service, wearables)
@@ -63,8 +63,8 @@ What makes Refactor novel — both technically and as a product:
 
 | Nova capability | Feature | Verify |
 |-----------------|---------|--------|
-| Nova 2 Lite | Plan generation, meal suggestions, Rico chat, weekly review agents | Onboarding → plan; Meals → suggest; Reco; Dashboard → Generate |
-| Nova 2 Sonic | Voice coach, voice meal logging | Reco → hold mic; Meals → Log meal → Voice log |
+| Nova 2 Lite | Plan generation, meal suggestions, The Ref chat, weekly review agents | Onboarding → plan; Meals → suggest; The Ref; Dashboard → Generate |
+| Nova 2 Sonic | Voice coach, voice meal logging | The Ref → hold mic; Meals → Log meal → Voice log |
 | Nova Lite + vision | Photo meal analysis, receipt scan | Meals → Snap plate; Receipt tab |
 | Nova Canvas | Transformation preview | Dashboard → See your transformation → upload photo |
 | Nova Reel | Progress reel from body scans | Milestones → Body scan → Generate progress reel (≥2 scans) |
@@ -90,7 +90,7 @@ What makes Refactor novel — both technically and as a product:
 2. Dashboard loads with Jordan's 7-day data. Click **Show metrics** in the "Evidence & Results" card.
 3. Open Meals and add one text meal.
 4. Return to Dashboard and click **Generate** in Weekly AI Review (multi-agent demo).
-5. Open Reco (🧩) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
+5. Open The Ref (🧩) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
 
 If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback. Verify with `GET /api/judge/health`.
 
@@ -102,7 +102,7 @@ Suggested flow to assess all Nova features (~5–10 min):
 2. **Dashboard** — "Today at a Glance" (budget, macros, today's workout/diet), unified calendar with diet/workout popups and "Edit plan," transformation preview (upload photo → "after" image via Nova Canvas).
 3. **Meals / Workouts** — Use the calendar to pick a date; view or edit that day's meals or workout. On Workouts, use "Show demo" / "Hide demo" for inline exercise GIFs.
 4. **Meals — Log a meal** — Try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
-5. **Reco** — Click the 🧩 button; chat with the AI coach (text or voice via Nova Sonic).
+5. **The Ref** — Click the 🧩 button; chat with the AI coach (text or voice via Nova Sonic).
 6. **Weekly review** — Dashboard → "Generate" in the Weekly AI Review card (multi-agent orchestration).
 7. **Adjust** — Navigate to Adjust; add feedback and run plan adjustments (Nova Lite).
 8. **Wearables** — Connect Oura/Fitbit or import health data (optional).
@@ -115,7 +115,7 @@ Suggested flow to assess all Nova features (~5–10 min):
 - **Exercise demo GIFs** — Inline demos with target muscles on dashboard and Workouts tab; show/hide per exercise
 - **Calorie & macro tracking** — Daily targets and progress bars for calories, protein, carbs, and fat
 - **Meal logging (4 ways)** — Text, voice (Nova Sonic), photo analysis, and receipt scanning
-- **Reco AI Coach** — Conversational fitness coach with text + voice modes (bidirectional Nova Sonic streaming)
+- **The Ref AI Coach** — Conversational fitness coach with text + voice modes (bidirectional Nova Sonic streaming)
 - **Agentic Weekly Review** — Multi-agent autonomous analysis: meal patterns, wearable trends, web research, and synthesized recommendations
 - **Dynamic plan adjustments** — AI-powered suggestions based on progress, feedback, and wearable data
 - **Receipt scanning** — Photograph a grocery receipt, Nova extracts food items with estimated macros
@@ -130,8 +130,8 @@ Suggested flow to assess all Nova features (~5–10 min):
 ## Tech Stack
 
 - **Next.js 16** (App Router, React 19)
-- **Amazon Nova 2 Lite** — Plan generation, meal suggestions, photo analysis, Reco coach, weekly review agent
-- **Amazon Nova 2 Sonic** — Bidirectional streaming voice for Reco chat and meal logging
+- **Amazon Nova 2 Lite** — Plan generation, meal suggestions, photo analysis, The Ref coach, weekly review agent
+- **Amazon Nova 2 Sonic** — Bidirectional streaming voice for The Ref chat and meal logging
 - **Amazon Nova Canvas** — AI image generation
 - **Amazon Nova Reel** — AI video generation (requires S3)
 - **Amazon Nova Multimodal Embeddings** — Text/image similarity
@@ -311,8 +311,8 @@ Measured on Vercel Pro (us-east-1), Nova 2 Lite, typical payloads:
 | **Photo analysis** (plate → macros) | 3–6s | Image upload + Nova Lite vision |
 | **Receipt scanning** | 4–8s | Multi-item extraction |
 | **Voice parse** (transcript → macros) | 1–3s | Text-only Nova Lite call |
-| **Reco AI coach** (text) | 2–5s | Context-aware single turn |
-| **Reco voice** (Nova Sonic streaming) | <1s first token | Bidirectional streaming; latency = time-to-first-audio |
+| **The Ref AI coach** (text) | 2–5s | Context-aware single turn |
+| **The Ref voice** (Nova Sonic streaming) | <1s first token | Bidirectional streaming; latency = time-to-first-audio |
 | **Weekly review** (multi-agent) | 20–60s | 3–4 agent rounds with tool calls; wearable + web research adds time |
 | **Nova Canvas** (image generation) | 8–15s | Single image |
 | **Nova Act** (grocery search) | 30–90s | Browser automation; Railway cold start adds ~15s |
@@ -326,7 +326,7 @@ Refactor integrates the full Amazon Nova portfolio:
 
 | # | Feature | Model/Service | Where |
 |---|---------|---------------|-------|
-| 1 | **Nova 2 Sonic (Voice)** | `amazon.nova-sonic-v1:0` | Reco chat — real-time bidirectional streaming: audio chunks stream to Bedrock during recording, response text/audio streamed back. Voice meal logging in Meals tab. |
+| 1 | **Nova 2 Sonic (Voice)** | `amazon.nova-sonic-v1:0` | The Ref chat — real-time bidirectional streaming: audio chunks stream to Bedrock during recording, response text/audio streamed back. Voice meal logging in Meals tab. |
 | 2 | **Multimodal Embeddings** | `amazon.nova-2-multimodal-embeddings-v1:0` | Nova Labs — embed text for similarity/RAG |
 | 3 | **Nova 2 Lite Image Input** | `amazon.nova-2-lite-v1:0` | Snap plate in Meals → photo analysis & macro estimates. Receipt scanning → grocery item extraction. |
 | 4 | **Web Grounding** | Nova 2 Lite + `nova_grounding` | `/api/research` — search web for nutrition/fitness info. Used by weekly review agent. |
@@ -399,12 +399,12 @@ Cooking app data is parsed by Nova AI to extract meal names, macro breakdowns (c
 |-------|--------|-------------|
 | `/api/voice/parse` | POST | Parse spoken meal → structured data (Nova Lite) |
 | `/api/voice/sonic` | POST | Nova Sonic voice conversation (single turn) |
-| `/api/voice/sonic/stream` | POST | Bidirectional streaming voice (Reco + meal logging) |
+| `/api/voice/sonic/stream` | POST | Bidirectional streaming voice (The Ref + meal logging) |
 
 **AI Coach & Agents**
 | Route | Method | Description |
 |-------|--------|-------------|
-| `/api/rico` | POST | Reco AI coach text conversation |
+| `/api/rico` | POST | The Ref AI coach text conversation |
 | `/api/agent/weekly-review` | POST | Multi-agent autonomous weekly analysis |
 
 **Nova Labs**

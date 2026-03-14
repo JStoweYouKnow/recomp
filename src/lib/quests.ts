@@ -14,7 +14,7 @@ export interface DailyQuest {
 const QUEST_TEMPLATES: Omit<DailyQuest, "id" | "progress" | "completed">[] = [
   { title: "Meal Logger", description: "Log 3 meals today", xpReward: 25, type: "log_meals", target: 3 },
   { title: "Workout Warrior", description: "Complete today's workout", xpReward: 25, type: "complete_workout", target: 1 },
-  { title: "Coach Chat", description: "Ask Reco a question", xpReward: 25, type: "ask_reco", target: 1 },
+  { title: "Coach Chat", description: "Ask The Ref a question", xpReward: 25, type: "ask_reco", target: 1 },
   { title: "Stay Hydrated", description: "Log 8 glasses of water", xpReward: 25, type: "log_water", target: 8 },
   { title: "Body Check-In", description: "Log your biofeedback", xpReward: 25, type: "log_biofeedback", target: 1 },
 ];

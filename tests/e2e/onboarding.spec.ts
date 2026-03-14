@@ -99,7 +99,7 @@ test.describe("Onboarding → Dashboard → Meals flow", () => {
     await expect(page.locator("text=Today at a glance")).toBeVisible({ timeout: 5000 });
   });
 
-  test("Reco chat opens and accepts input", async ({ page }) => {
+  test("The Ref chat opens and accepts input", async ({ page }) => {
     // Seed profile
     await page.goto("/");
     await page.evaluate(() => {
@@ -127,12 +127,12 @@ test.describe("Onboarding → Dashboard → Meals flow", () => {
     });
     await page.reload();
 
-    // Open Reco chat
-    const ricoBtn = page.locator('button[aria-label="Chat with Reco"]');
+    // Open The Ref chat
+    const ricoBtn = page.locator('button[aria-label="Chat with The Ref"]');
     await expect(ricoBtn).toBeVisible({ timeout: 10000 });
     await ricoBtn.click();
 
-    // Chat panel should be visible — use specific selectors to avoid matching "Refactor" / "Reco" elsewhere
-    await expect(page.getByPlaceholder("Ask Reco...")).toBeVisible({ timeout: 5000 });
+    // Chat panel should be visible — use specific selectors to avoid matching "Refactor" / "The Ref" elsewhere
+    await expect(page.getByPlaceholder("Ask The Ref...")).toBeVisible({ timeout: 5000 });
   });
 });

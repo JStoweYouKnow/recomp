@@ -40,7 +40,7 @@ describe("RicoChat", () => {
       />
     );
     expect(screen.getByText(/Hi Alex/)).toBeInTheDocument();
-    expect(screen.getAllByPlaceholderText("Ask Reco...").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByPlaceholderText("Ask The Ref...").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: /Send/i }).length).toBeGreaterThanOrEqual(1);
   });
 

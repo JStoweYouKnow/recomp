@@ -47,7 +47,7 @@ function buildIcal(plan: FitnessPlan): string {
       wd.exercises.map((e) => `${e.name}: ${e.sets} × ${e.reps}${e.notes ? ` (${e.notes})` : ""}`)
     );
     const description = icalEscape(descriptionParts.join("\n"));
-    const summary = icalEscape(`Reco: ${wd.focus}`);
+    const summary = icalEscape(`The Ref: ${wd.focus}`);
 
     for (let w = 0; w < weeksAhead; w++) {
       const d = new Date(startDate);

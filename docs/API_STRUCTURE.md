@@ -41,7 +41,7 @@ Domain separation and layer organization for the Refactor API.
 | **Body Scan** | body-scan/analyze, body-scan/progress-reel | services/body-scan.ts | Scan analysis, progress reel |
 | **Workouts** | workouts/recovery-adjust | services/workouts.ts | Recovery assessment |
 | **AI Agent** | agent/weekly-review | — | Multi-agent weekly review (Nova Lite tool use) |
-| **Reco** | rico, rico/shortcut | services/rico.ts | Chat, Siri Shortcuts (token auth) |
+| **The Ref** | rico, rico/shortcut | services/rico.ts | Chat, Siri Shortcuts (token auth) |
 | **Research** | research | services/research.ts | Web grounding |
 | **Act** | act/grocery, act/nutrition, act/sync | act-service.ts, act-client.ts | Grocery, nutrition via Act SDK |
 | **Voice** | voice/parse, voice/sonic, voice/sonic/stream | — | Voice parsing, Sonic streaming |

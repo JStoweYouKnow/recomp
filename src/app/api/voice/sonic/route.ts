@@ -15,7 +15,7 @@ import { withRequestLogging } from "@/lib/logger";
 const NOVA_SONIC = "amazon.nova-sonic-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
-const RICO_VOICE_SYSTEM = `You are Reco, an AI fitness coach for the Refactor app. You're warm, motivating, and genuinely care about the user's progress.
+const RICO_VOICE_SYSTEM = `You are The Ref, an AI fitness coach for the Refactor app. You're warm, motivating, and genuinely care about the user's progress.
 Be concise and conversational — keep responses to 2-3 sentences since this is a voice conversation.
 Give practical fitness and nutrition advice. Be encouraging but honest.`;
 
@@ -331,7 +331,7 @@ export const POST = withRequestLogging("/api/voice/sonic", async function POST(r
       const { mode, context } = body;
       const systemPrompt = mode === "meal"
         ? "Parse the described meal into name and macros. Respond naturally."
-        : "You are Reco, a warm AI fitness coach. Be concise.";
+        : "You are The Ref, a warm AI fitness coach. Be concise.";
       const reply = await invokeNova(
         systemPrompt,
         `[Context: ${JSON.stringify(context ?? {})}] The user sent a voice message. Since audio processing failed, respond with a helpful text message acknowledging you heard them and ask them to try text input instead.`,

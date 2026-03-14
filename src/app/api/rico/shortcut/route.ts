@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const userId = await dbGetUserIdByApiToken(token);
   if (!userId) {
-    return NextResponse.json({ error: "Invalid or expired token. Generate a new one in Profile → Rico on the go." }, { status: 401 });
+    return NextResponse.json({ error: "Invalid or expired token. Generate a new one in Profile → The Ref on the go." }, { status: 401 });
   }
 
   try {
@@ -54,6 +54,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply });
   } catch (err) {
     logError("Rico shortcut failed", err, { userId: userId.slice(0, 8) });
-    return NextResponse.json({ error: "Reco is taking a breather. Try again." }, { status: 500 });
+    return NextResponse.json({ error: "The Ref is taking a breather. Try again." }, { status: 500 });
   }
 }

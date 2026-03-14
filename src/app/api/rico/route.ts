@@ -29,6 +29,6 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
     return NextResponse.json({ reply, actions });
   } catch (err) {
     logError("Rico chat failed", err, { route: "rico" });
-    return NextResponse.json({ error: "Reco is taking a breather. Try again." }, { status: 500 });
+    return NextResponse.json({ error: "The Ref is taking a breather. Try again." }, { status: 500 });
   }
 });

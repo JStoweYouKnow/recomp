@@ -76,7 +76,7 @@ export function NovaTracePanel() {
         {loading ? (
           <p className="text-xs text-[var(--muted)]">Loading trace…</p>
         ) : traces.length === 0 ? (
-          <p className="text-xs text-[var(--muted)]">No trace entries yet. Run any AI action (plan, Reco, voice, meals, Act).</p>
+          <p className="text-xs text-[var(--muted)]">No trace entries yet. Run any AI action (plan, The Ref, voice, meals, Act).</p>
         ) : (
           traces.map((entry) => (
             <div key={entry.id} className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)]/70 p-2">

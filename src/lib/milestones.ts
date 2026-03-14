@@ -53,7 +53,7 @@ const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   night_owl: { name: "Night Owl", desc: "Logged a meal between midnight and 4am", xp: 50 },
   perfectionist: { name: "Perfectionist", desc: "Hit exact calorie target (within 1%) for 7 days", xp: 200 },
   social_butterfly: { name: "Social Butterfly", desc: "Joined 3+ groups", xp: 75 },
-  chatterbox: { name: "Chatterbox", desc: "Sent 50+ messages to Reco", xp: 100 },
+  chatterbox: { name: "Chatterbox", desc: "Sent 50+ messages to The Ref", xp: 100 },
 };
 
 export function getBadgeInfo() {

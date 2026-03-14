@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       const res = new MessagingResponse();
       res.message(
-        "This number isn't linked to Refactor. Open the app, go to Profile → Rico on the go, and link your phone to text Reco."
+        "This number isn't linked to Refactor. Open the app, go to Profile → The Ref on the go, and link your phone to text The Ref."
       );
       return new NextResponse(res.toString(), {
         headers: { "Content-Type": "text/xml" },
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     logError("Twilio SMS Rico invocation failed", err, { from: from.slice(-4) });
     const res = new MessagingResponse();
-    res.message("Reco is taking a breather. Try again in a moment.");
+    res.message("The Ref is taking a breather. Try again in a moment.");
     return new NextResponse(res.toString(), {
       headers: { "Content-Type": "text/xml" },
     });

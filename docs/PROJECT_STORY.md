@@ -43,7 +43,7 @@ Refactor runs as a Next.js app on Vercel, with API routes calling Amazon Bedrock
 
 3. **Meal Logging (4 Ways)** — Text, voice (Nova Sonic), photo analysis (Nova Lite vision), and receipt scanning in one flow. Nutrition comes from Nova Act, web grounding, Open Food Facts, or estimates. Similar-meal embeddings power one-tap re-logging.
 
-4. **Reco AI Coach** — A conversational coach (Reco) with text and bidirectional voice (Nova Sonic). Users can chat or hold the mic for real-time streaming. The coach adapts to context and can deliver “wake-up calls” when check-in patterns suggest the user needs a nudge.
+4. **The Ref AI Coach** — A conversational coach (The Ref) with text and bidirectional voice (Nova Sonic). Users can chat or hold the mic for real-time streaming. The coach adapts to context and can deliver “wake-up calls” when check-in patterns suggest the user needs a nudge.
 
 5. **Weekly Review** — A multi-agent coordinator examines meals, wearables, and research needs. It selectively invokes specialist agents (meal analyst, wellness, web research) based on available data. No wearable data? Skips biometrics, runs research-only. This is genuinely agentic behavior, not a static pipeline.
 

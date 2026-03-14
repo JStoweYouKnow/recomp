@@ -24,10 +24,10 @@ export interface PushPayload {
   data?: { url?: string };
 }
 
-/** Push payload that deep-links to Rico chat when tapped. Use for "Chat with Reco" reminders. */
+/** Push payload that deep-links to The Ref chat when tapped. Use for "Chat with The Ref" reminders. */
 export function ricoReminderPayload(baseUrl: string): PushPayload {
   return {
-    title: "Reco",
+    title: "The Ref",
     body: "Your coach is here when you need support.",
     tag: "rico",
     data: { url: `${baseUrl.replace(/\/$/, "")}/?open=rico` },

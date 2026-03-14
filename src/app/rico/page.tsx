@@ -9,7 +9,7 @@ export default function RicoShortcutPage() {
   }, []);
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
-      <p className="text-[var(--muted)]">Opening Reco…</p>
+      <p className="text-[var(--muted)]">Opening The Ref…</p>
     </div>
   );
 }

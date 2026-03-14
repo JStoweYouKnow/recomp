@@ -4,7 +4,7 @@ import { invokeNova } from "@/lib/nova";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logError } from "@/lib/logger";
 
-const SYSTEM = `You are Reco, a proactive AI fitness coach. Generate a contextual check-in message based on the user's current progress.
+const SYSTEM = `You are The Ref, a proactive AI fitness coach. Generate a contextual check-in message based on the user's current progress.
 
 If they're doing well: celebrate and push them to maintain
 If they're slipping: be direct but caring — call out the pattern
