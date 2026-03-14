@@ -1277,3 +1277,253 @@ export async function dbGetUserIdByEmail(email: string): Promise<string | null> 
   const account = await dbVerifyAccount(email);
   return account?.userId ?? null;
 }
+
+// ── Community Food Database ──────────────────────────────────────────────
+// Shared food items that grow as users log meals, enabling Lose It-style search.
+// PK: FOOD#<normalized_name>  SK: FOOD  (canonical entry)
+// GSI1PK: FOODINDEX  GSI1SK: <normalized_name>  (for prefix search)
+
+export interface CommunityFoodEntry {
+  name: string;             // Display name (original casing from first logger)
+  normalizedName: string;   // Lowercase, trimmed, deduplicated spaces
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  servingNote?: string;     // e.g. "1 cup cooked", "100g"
+  source: string;           // "user" | "common-foods" | "openfoodfacts" | "usda"
+  logCount: number;         // How many times this food has been logged across all users
+  createdAt: string;
+  updatedAt: string;
+}
+
+function normalizeFoodKey(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+/** Save or update a community food entry. Increments logCount if it already exists. */
+export async function dbSaveCommunityFood(entry: Omit<CommunityFoodEntry, "normalizedName" | "logCount" | "createdAt" | "updatedAt"> & { logCount?: number }): Promise<void> {
+  const doc = getDocClient();
+  const normalizedName = normalizeFoodKey(entry.name);
+  const now = new Date().toISOString();
+
+  // Check if entry already exists to increment logCount
+  const existing = await dbGetCommunityFood(normalizedName);
+  const logCount = (existing?.logCount ?? 0) + 1;
+
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `FOOD#${normalizedName}`,
+        SK: "FOOD",
+        GSI1PK: "FOODINDEX",
+        GSI1SK: normalizedName,
+        data: {
+          name: existing?.name ?? entry.name, // Keep original display name
+          normalizedName,
+          calories: entry.calories,
+          protein: entry.protein,
+          carbs: entry.carbs,
+          fat: entry.fat,
+          servingNote: entry.servingNote,
+          source: entry.source,
+          logCount,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        } satisfies CommunityFoodEntry,
+        updatedAt: now,
+      },
+    })
+  );
+}
+
+/** Get a single community food by normalized name */
+export async function dbGetCommunityFood(normalizedName: string): Promise<CommunityFoodEntry | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `FOOD#${normalizedName}`, SK: "FOOD" } })
+  );
+  return Item?.data ? (Item.data as CommunityFoodEntry) : null;
+}
+
+/** Search community foods by prefix (e.g. "chick" matches "chicken breast", "chickpea curry").
+ *  Uses GSI1 (FOODINDEX partition) with begins_with on the normalized name.
+ *  Falls back to scan-based contains search if GSI is not yet provisioned. */
+export async function dbSearchCommunityFoods(query: string, limit = 20): Promise<CommunityFoodEntry[]> {
+  const doc = getDocClient();
+  const prefix = normalizeFoodKey(query);
+  if (!prefix) return [];
+
+  try {
+    // Try GSI-based prefix search first (fast, scalable)
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+        ExpressionAttributeValues: { ":pk": "FOODINDEX", ":prefix": prefix },
+        Limit: limit,
+      })
+    );
+    return (Items ?? []).map((i) => i.data as CommunityFoodEntry);
+  } catch {
+    // GSI may not exist yet — fall back to scanning FOOD# items with a filter
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        KeyConditionExpression: "PK = :pk AND SK = :sk",
+        ExpressionAttributeValues: { ":pk": `FOOD#${prefix}`, ":sk": "FOOD" },
+      })
+    );
+    // For contains-style matching without GSI, query a few known prefixes
+    // This is a graceful degradation — the GSI is the proper solution
+    return (Items ?? []).map((i) => i.data as CommunityFoodEntry);
+  }
+}
+
+/** Get the most popular community foods (for browse/discovery). */
+export async function dbGetPopularFoods(limit = 50): Promise<CommunityFoodEntry[]> {
+  const doc = getDocClient();
+  try {
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk",
+        ExpressionAttributeValues: { ":pk": "FOODINDEX" },
+        Limit: 200, // Fetch a batch and sort client-side by logCount
+      })
+    );
+    return (Items ?? [])
+      .map((i) => i.data as CommunityFoodEntry)
+      .sort((a, b) => b.logCount - a.logCount)
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+// ── Community Exercise Database ──────────────────────────────────────────
+// Shared exercises that grow as users generate/complete workout plans.
+// PK: EXERCISE#<normalized_name>  SK: EXERCISE  (canonical entry)
+// GSI1PK: EXERCISEINDEX  GSI1SK: <normalized_name>  (for prefix search)
+
+export interface CommunityExerciseEntry {
+  name: string;              // Display name (original casing from first logger)
+  normalizedName: string;    // Lowercase, trimmed, deduplicated spaces
+  defaultSets?: string;      // Most recently logged sets value (e.g. "3")
+  defaultReps?: string;      // Most recently logged reps value (e.g. "8-12")
+  category?: string;         // e.g. "Upper Body Strength", "Lower Body", "Conditioning"
+  notes?: string;            // Common notes/cues
+  logCount: number;          // How many times this exercise has been used across all users
+  createdAt: string;
+  updatedAt: string;
+}
+
+function normalizeExerciseKey(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+/** Save or update a community exercise entry. Increments logCount if it already exists. */
+export async function dbSaveCommunityExercise(entry: {
+  name: string;
+  sets?: string;
+  reps?: string;
+  category?: string;
+  notes?: string;
+}): Promise<void> {
+  const doc = getDocClient();
+  const normalizedName = normalizeExerciseKey(entry.name);
+  if (!normalizedName || normalizedName.length < 2) return;
+  const now = new Date().toISOString();
+
+  const existing = await dbGetCommunityExercise(normalizedName);
+  const logCount = (existing?.logCount ?? 0) + 1;
+
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `EXERCISE#${normalizedName}`,
+        SK: "EXERCISE",
+        GSI1PK: "EXERCISEINDEX",
+        GSI1SK: normalizedName,
+        data: {
+          name: existing?.name ?? entry.name,
+          normalizedName,
+          defaultSets: entry.sets ?? existing?.defaultSets,
+          defaultReps: entry.reps ?? existing?.defaultReps,
+          category: entry.category ?? existing?.category,
+          notes: entry.notes ?? existing?.notes,
+          logCount,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+        } satisfies CommunityExerciseEntry,
+        updatedAt: now,
+      },
+    })
+  );
+}
+
+/** Get a single community exercise by normalized name */
+export async function dbGetCommunityExercise(normalizedName: string): Promise<CommunityExerciseEntry | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `EXERCISE#${normalizedName}`, SK: "EXERCISE" } })
+  );
+  return Item?.data ? (Item.data as CommunityExerciseEntry) : null;
+}
+
+/** Search community exercises by prefix (e.g. "bench" matches "bench press", "bench dip").
+ *  Uses GSI1 (EXERCISEINDEX partition) with begins_with on the normalized name. */
+export async function dbSearchCommunityExercises(query: string, limit = 20): Promise<CommunityExerciseEntry[]> {
+  const doc = getDocClient();
+  const prefix = normalizeExerciseKey(query);
+  if (!prefix) return [];
+
+  try {
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk AND begins_with(GSI1SK, :prefix)",
+        ExpressionAttributeValues: { ":pk": "EXERCISEINDEX", ":prefix": prefix },
+        Limit: limit,
+      })
+    );
+    return (Items ?? []).map((i) => i.data as CommunityExerciseEntry);
+  } catch {
+    // GSI fallback — direct key lookup
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        KeyConditionExpression: "PK = :pk AND SK = :sk",
+        ExpressionAttributeValues: { ":pk": `EXERCISE#${prefix}`, ":sk": "EXERCISE" },
+      })
+    );
+    return (Items ?? []).map((i) => i.data as CommunityExerciseEntry);
+  }
+}
+
+/** Get the most popular community exercises (for browse/discovery). */
+export async function dbGetPopularExercises(limit = 50): Promise<CommunityExerciseEntry[]> {
+  const doc = getDocClient();
+  try {
+    const { Items } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        IndexName: "GSI1",
+        KeyConditionExpression: "GSI1PK = :pk",
+        ExpressionAttributeValues: { ":pk": "EXERCISEINDEX" },
+        Limit: 200,
+      })
+    );
+    return (Items ?? [])
+      .map((i) => i.data as CommunityExerciseEntry)
+      .sort((a, b) => b.logCount - a.logCount)
+      .slice(0, limit);
+  } catch {
+    return [];
+  }
+}

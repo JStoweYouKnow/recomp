@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { invokeNovaWithExtendedThinking } from "@/lib/nova";
-import { logError, logInfo } from "@/lib/logger";
+import { logError, logInfo, withRequestLogging } from "@/lib/logger";
 import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
 import { calculateMacros } from "@/lib/macro-calculator";
 import { v4 as uuidv4 } from "uuid";
@@ -39,10 +39,181 @@ Diet must be tailored to the user's goal:
 - build_muscle: Higher protein (1.6–2.2g/kg), calorie surplus, carbs around training. Specific: oatmeal + eggs, chicken rice bowls, salmon/steak with potatoes, protein shakes, cottage cheese. Spread protein across 4–5 meals.
 - improve_endurance: Carbohydrate-focused for fuel. Oatmeal, pasta, rice, bananas, energy bars. Moderate protein; carbs before and after long sessions. Include electrolytes for long workouts.`;
 
-function parseJsonResponse(text: string): unknown {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("No JSON found in response");
-  return JSON.parse(match[0]);
+/** Extract outermost JSON object from LLM output (handles markdown, extra text) */
+function extractJsonObject(text: string): string {
+  // Strip markdown code blocks
+  let s = text.replace(/^[\s\S]*?```(?:json)?\s*\n?/i, "").replace(/\n?```[\s\S]*$/i, "").trim();
+  const start = s.indexOf("{");
+  if (start < 0) throw new Error("No JSON object found");
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let quote = "";
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === quote) inString = false;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      inString = true;
+      quote = c;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  throw new Error("Unbalanced braces in JSON");
+}
+
+/** Remove trailing commas before } or ] (common LLM mistake) */
+function removeTrailingCommas(json: string): string {
+  return json.replace(/,(\s*[}\]])/g, "$1");
+}
+
+/** Repair common LLM JSON malformations (conservative - avoid corrupting valid JSON) */
+function repairLlmJson(json: string): string {
+  return removeTrailingCommas(json);
+}
+
+/** Attempt to close truncated JSON by balancing braces/brackets */
+function closeTruncatedJson(json: string): string {
+  let depth = { brace: 0, bracket: 0 };
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "{") depth.brace++;
+    else if (c === "}") depth.brace--;
+    else if (c === "[") depth.bracket++;
+    else if (c === "]") depth.bracket--;
+  }
+  // If we ended inside a string, close it
+  let suffix = "";
+  if (inString) suffix += '"';
+  // Close remaining open brackets/braces
+  for (let i = 0; i < depth.bracket; i++) suffix += "]";
+  for (let i = 0; i < depth.brace; i++) suffix += "}";
+  return json + suffix;
+}
+
+/** Parse JSON with tolerance for common LLM malformations */
+function parsePlanJsonTolerant(raw: string): {
+  dailyTargets: Macros;
+  dietDays: { day: string; meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[] }[];
+  workoutDays: {
+    day: string;
+    focus: string;
+    warmups?: { name: string; sets: string; reps: string; notes?: string }[];
+    exercises: { name: string; sets: string; reps: string; notes?: string }[];
+    finishers?: { name: string; sets: string; reps: string; notes?: string }[];
+  }[];
+  dietTips: string[];
+  workoutTips: string[];
+} {
+  const extracted = extractJsonObject(raw);
+  const repaired = repairLlmJson(extracted);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(repaired);
+  } catch {
+    // Second attempt: try closing truncated JSON
+    try {
+      const closed = closeTruncatedJson(repaired);
+      parsed = JSON.parse(closed);
+    } catch {
+      throw new Error("JSON parse failed after repair attempts");
+    }
+  }
+
+  // Validate and coerce with Zod
+  const MacrosSchema = z.object({
+    calories: z.coerce.number().min(0).max(10000),
+    protein: z.coerce.number().min(0).max(500),
+    carbs: z.coerce.number().min(0).max(1000),
+    fat: z.coerce.number().min(0).max(500),
+  });
+  const MealSchema = z.object({
+    mealType: z.string().min(1).default("Meal"),
+    description: z.string().default(""),
+    calories: z.coerce.number().min(0).max(2000),
+    protein: z.coerce.number().min(0).max(200),
+    carbs: z.coerce.number().min(0).max(300),
+    fat: z.coerce.number().min(0).max(100),
+  });
+  const ExerciseSchema = z.object({
+    name: z.string().min(1).default("Exercise"),
+    sets: z.union([z.string(), z.number()]).transform(String),
+    reps: z.union([z.string(), z.number()]).transform(String),
+    notes: z.union([z.string(), z.undefined()]).optional(),
+  });
+  const WorkoutDaySchema = z.object({
+    day: z.string().min(1),
+    focus: z.string().default("Workout"),
+    warmups: z.array(ExerciseSchema).optional().default([]),
+    exercises: z.array(ExerciseSchema).min(1),
+    finishers: z.array(ExerciseSchema).optional().default([]),
+  });
+  const DietDaySchema = z.object({
+    day: z.string().min(1),
+    meals: z.array(MealSchema),
+  });
+  const PlanSchema = z.object({
+    dailyTargets: MacrosSchema,
+    dietDays: z.array(DietDaySchema),
+    workoutDays: z.array(WorkoutDaySchema),
+    dietTips: z.array(z.string()).default([]),
+    workoutTips: z.array(z.string()).default([]),
+  });
+
+  // Normalize snake_case keys from LLM to camelCase
+  const normalized = normalizePlanKeys(parsed);
+
+  const result = PlanSchema.safeParse(normalized);
+  if (!result.success) {
+    throw new Error(`Plan validation failed: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+/** Map snake_case keys to camelCase for schema compatibility */
+function normalizePlanKeys(obj: unknown): unknown {
+  if (obj === null || typeof obj !== "object") return obj;
+  const keyMap: Record<string, string> = {
+    daily_targets: "dailyTargets",
+    diet_days: "dietDays",
+    workout_days: "workoutDays",
+    diet_tips: "dietTips",
+    workout_tips: "workoutTips",
+    meal_type: "mealType",
+  };
+  const map = (o: unknown): unknown => {
+    if (Array.isArray(o)) return o.map(map);
+    if (o === null || typeof o !== "object") return o;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) {
+      const newKey = keyMap[k] ?? k;
+      out[newKey] = map(v);
+    }
+    return out;
+  };
+  return map(obj);
 }
 
 type MealOpt = string | string[];
@@ -299,7 +470,7 @@ const PlanRequestSchema = z.object({
   createdAt: z.string().optional(),
 });
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/plans/generate", async function POST(req: NextRequest) {
   try {
     const userId = await getUserId();
     if (!userId) {
@@ -356,7 +527,7 @@ export async function POST(req: NextRequest) {
     const daysPerWeek = profile.workoutDaysPerWeek ?? 4;
     const timeframe = profile.workoutTimeframe ?? "flexible";
 
-    const userMessage = `Create a personalized diet and workout plan for this person. Respond with a SINGLE valid JSON object (no markdown, no \`\`\`).
+    const userMessage = `Create a personalized diet and workout plan for this person.
 
 Profile:
 - Name: ${profile.name}
@@ -381,7 +552,10 @@ CRITICAL - Every workout day MUST include:
 - "exercises": main workout exercises.
 - "finishers": optional array of 1-3 finisher exercises (e.g. "Plank", "Farmer's Carry", "Jump Rope"). Can be empty [] if none. Use specific, real exercise names.
 
-Respond with this exact JSON structure:
+OUTPUT FORMAT (your entire reply must be valid JSON):
+- Reply with ONLY the JSON object. No explanation, no markdown, no code blocks.
+- Use double quotes for all strings and keys. No single quotes.
+- No trailing commas before } or ].
 {
   "dailyTargets": {"calories": number, "protein": number, "carbs": number, "fat": number},
   "dietDays": [
@@ -401,7 +575,7 @@ Respond with this exact JSON structure:
         SYSTEM_PROMPT,
         userMessage,
         "medium",
-        { maxTokens: 8192 }
+        { maxTokens: 8192, temperature: 0.3 }
       ),
       new Promise<typeof timeoutToken>((resolve) => {
         setTimeout(() => resolve(timeoutToken), PLAN_TIMEOUT_MS);
@@ -434,7 +608,7 @@ Respond with this exact JSON structure:
     };
 
     try {
-      parsed = parseJsonResponse(raw) as typeof parsed;
+      parsed = parsePlanJsonTolerant(raw);
     } catch (parseErr) {
       logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
       const fallbackPlan = buildStarterPlan(profile, userId);
@@ -487,4 +661,4 @@ Respond with this exact JSON structure:
       { status: 500 }
     );
   }
-}
+});

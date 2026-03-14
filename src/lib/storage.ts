@@ -571,6 +571,8 @@ function doSync(): void {
   const activityLog = getActivityLog();
   const workoutProgress = getWorkoutProgress();
 
+  const recentExerciseNames = getRecentExerciseNames();
+
   fetch("/api/data/sync", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -579,7 +581,7 @@ function doSync(): void {
       wearableConnections, wearableData,
       hydration, fastingSessions, biofeedback, pantry,
       bodyScans, supplements, bloodWork,
-      activityLog, workoutProgress,
+      activityLog, workoutProgress, recentExerciseNames,
     }),
   }).catch(() => { });
 }

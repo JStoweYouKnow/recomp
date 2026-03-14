@@ -35,6 +35,8 @@ import {
   dbSaveBodyScan,
   dbSaveSupplements,
   dbSaveBloodWork,
+  dbSaveCommunityFood,
+  dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork } from "@/lib/types";
@@ -73,15 +75,51 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork } = parsed.data;
+    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
-    if (plan) promises.push(dbSavePlan(userId, plan as FitnessPlan));
+    if (plan) {
+      promises.push(dbSavePlan(userId, plan as FitnessPlan));
+      // Auto-populate community exercise database from plan exercises (fire-and-forget)
+      const fp = plan as FitnessPlan;
+      if (fp.workoutPlan?.weeklyPlan) {
+        for (const day of fp.workoutPlan.weeklyPlan) {
+          const allExercises = [
+            ...(day.warmups ?? []),
+            ...(day.exercises ?? []),
+            ...(day.finishers ?? []),
+          ];
+          for (const ex of allExercises) {
+            if (ex.name && ex.name.length >= 2) {
+              dbSaveCommunityExercise({
+                name: ex.name,
+                sets: ex.sets,
+                reps: ex.reps,
+                category: day.focus,
+                notes: ex.notes,
+              }).catch(() => {}); // Never block sync on community write failure
+            }
+          }
+        }
+      }
+    }
 
     if (meals && meals.length > 0) {
       for (const meal of meals) {
-        promises.push(dbSaveMeal(userId, meal as MealEntry));
+        const m = meal as MealEntry;
+        promises.push(dbSaveMeal(userId, m));
+        // Auto-populate community food database (fire-and-forget, non-blocking)
+        if (m.name && m.macros && m.macros.calories > 0) {
+          dbSaveCommunityFood({
+            name: m.name,
+            calories: m.macros.calories,
+            protein: m.macros.protein,
+            carbs: m.macros.carbs,
+            fat: m.macros.fat,
+            source: "user",
+          }).catch(() => {}); // Never block sync on community write failure
+        }
       }
     }
 
@@ -119,6 +157,15 @@ export async function POST(req: NextRequest) {
 
     if (workoutProgress) {
       promises.push(dbSaveWorkoutProgress(userId, workoutProgress as Record<string, string>));
+    }
+
+    // Auto-populate community exercise DB from user-submitted exercise names (fire-and-forget)
+    if (recentExerciseNames && recentExerciseNames.length > 0) {
+      for (const name of recentExerciseNames) {
+        if (name && name.trim().length >= 2) {
+          dbSaveCommunityExercise({ name: name.trim() }).catch(() => {});
+        }
+      }
     }
 
     if (hydration && hydration.length > 0) {

@@ -199,6 +199,7 @@ export const syncBodySchema = z.object({
   bloodWork: z.array(bloodWorkSchema).max(100).optional(),
   activityLog: z.array(activityLogEntrySchema).max(5000).optional(),
   workoutProgress: workoutProgressMapSchema.optional(),
+  recentExerciseNames: z.array(z.string().max(200)).max(100).optional(),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;
