@@ -99,6 +99,7 @@ export function MealsView({
   const [pro, setPro] = useState("");
   const [carb, setCarb] = useState("");
   const [fat, setFat] = useState("");
+  const [portions, setPortions] = useState(1);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<{ name: string; description?: string; calories?: number; protein?: number; carbs?: number; fat?: number; url?: string }[]>([]);
   const [voiceLoading, setVoiceLoading] = useState(false);
@@ -259,6 +260,7 @@ export function MealsView({
     setPro(String(s.protein ?? ""));
     setCarb(String(s.carbs ?? ""));
     setFat(String(s.fat ?? ""));
+    setPortions(1);
   };
 
   const handleVoiceLog = () => {
@@ -287,6 +289,7 @@ export function MealsView({
           setPro(String(d.protein ?? ""));
           setCarb(String(d.carbs ?? ""));
           setFat(String(d.fat ?? ""));
+          setPortions(1);
         } catch {
           setName(t);
         }
@@ -314,6 +317,7 @@ export function MealsView({
       setPro(String(d.protein ?? ""));
       setCarb(String(d.carbs ?? ""));
       setFat(String(d.fat ?? ""));
+      setPortions(1);
     } catch {
       setName("Meal from photo");
     }
@@ -392,6 +396,7 @@ export function MealsView({
         setPro(String(localCached.protein));
         setCarb(String(localCached.carbs));
         setFat(String(localCached.fat));
+        setPortions(1);
         const rawCachedSource = String(localCached.source ?? "").toLowerCase();
         const cachedSource = rawCachedSource.includes("openfoodfacts")
           ? "openfoodfacts"
@@ -468,6 +473,7 @@ export function MealsView({
         setPro(String(n.protein ?? ""));
         setCarb(String(n.carbs ?? ""));
         setFat(String(n.fat ?? ""));
+        setPortions(1);
         const isEstimated = data.demoMode || data.note?.toLowerCase().includes("estimated");
         const rawSource = String(data.source ?? "").toLowerCase();
         const source = isEstimated
@@ -531,6 +537,7 @@ export function MealsView({
         setPro(String(data.nutrition.protein ?? ""));
         setCarb(String(data.nutrition.carbs ?? ""));
         setFat(String(data.nutrition.fat ?? ""));
+        setPortions(1);
       }
       if (data.imageUrl) setRecipeImageUrl(data.imageUrl);
       setRecipeServings(data.servings > 1 ? data.servings : null);
@@ -541,9 +548,27 @@ export function MealsView({
     }
   };
 
+  const handlePortionsChange = (newPortions: number) => {
+    const n = Math.max(0.25, Math.min(100, newPortions));
+    if (n === portions) return;
+    const ratio = n / portions;
+    const hasMacros = cal || pro || carb || fat;
+    if (hasMacros && ratio !== 1) {
+      const scale = (v: string) => {
+        const x = parseFloat(v) || 0;
+        return String(Math.round(x * ratio * 10) / 10);
+      };
+      setCal(scale(cal));
+      setPro(scale(pro));
+      setCarb(scale(carb));
+      setFat(scale(fat));
+    }
+    setPortions(n);
+  };
+
   const handleAdd = () => {
     setNutritionSource(null);
-    const c = parseInt(cal) || 0, p = parseInt(pro) || 0, cb = parseInt(carb) || 0, f = parseInt(fat) || 0;
+    const c = Math.round(parseFloat(cal) || 0), p = Math.round(parseFloat(pro) || 0), cb = Math.round(parseFloat(carb) || 0), f = Math.round(parseFloat(fat) || 0);
     const meal: MealEntry = {
       id: uuidv4(),
       date: activeDate,
@@ -561,6 +586,7 @@ export function MealsView({
     setPro("");
     setCarb("");
     setFat("");
+    setPortions(1);
     setInspirationImage(null);
     setRecipeUrl("");
     setRecipeImageUrl(null);
@@ -598,6 +624,7 @@ export function MealsView({
     setPro(String(item.estimatedMacros.protein ?? ""));
     setCarb(String(item.estimatedMacros.carbs ?? ""));
     setFat(String(item.estimatedMacros.fat ?? ""));
+    setPortions(1);
     setMenuItems([]);
   };
 
@@ -801,6 +828,7 @@ export function MealsView({
                       setPro(String(t.macros.protein ?? ""));
                       setCarb(String(t.macros.carbs ?? ""));
                       setFat(String(t.macros.fat ?? ""));
+                      setPortions(1);
                     }}
                     className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-3 py-2 text-xs text-[var(--foreground)] hover:bg-[var(--surface)] hover:border-[var(--accent)]/40 transition-colors"
                   >
@@ -987,6 +1015,7 @@ export function MealsView({
                     setPro(String(match.macros.protein ?? ""));
                     setCarb(String(match.macros.carbs ?? ""));
                     setFat(String(match.macros.fat ?? ""));
+                    setPortions(1);
                   }
                 }}
                 list="recent-meals-list"
@@ -1015,6 +1044,7 @@ export function MealsView({
                                 setPro(String(m.macros.protein ?? ""));
                                 setCarb(String(m.macros.carbs ?? ""));
                                 setFat(String(m.macros.fat ?? ""));
+                                setPortions(1);
                               }
                             }}
                             className="text-[var(--accent)] hover:underline mr-1"
@@ -1043,6 +1073,29 @@ export function MealsView({
                 <option value="dinner">Dinner</option>
                 <option value="snack">Snack</option>
               </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="label !mb-0">Portions</label>
+              <input
+                type="number"
+                min={0.25}
+                step={0.25}
+                placeholder="1"
+                value={portions === 1 ? "" : portions}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "") {
+                    handlePortionsChange(1);
+                    return;
+                  }
+                  const n = parseFloat(v);
+                  if (!Number.isNaN(n)) handlePortionsChange(n);
+                }}
+                onBlur={(e) => {
+                  if (e.target.value === "") handlePortionsChange(1);
+                }}
+                className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label className="label !mb-0">Calories</label>
@@ -1077,7 +1130,7 @@ export function MealsView({
             <button onClick={handleAdd} className="btn-primary rounded-lg px-4 py-2">
               Save
             </button>
-            <button onClick={() => { setShowAdd(false); setRecipeUrl(""); setRecipeImageUrl(null); setRecipeServings(null); }} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
+            <button onClick={() => { setShowAdd(false); setPortions(1); setRecipeUrl(""); setRecipeImageUrl(null); setRecipeServings(null); }} className="rounded-lg border border-[var(--border)] px-4 py-2 text-[var(--muted)] hover:bg-[var(--surface-elevated)]">
               Cancel
             </button>
           </div>
