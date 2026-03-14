@@ -23,7 +23,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Recomp error boundary:", error, errorInfo);
+    console.error("Refactor error boundary:", error, errorInfo);
   }
 
   render() {

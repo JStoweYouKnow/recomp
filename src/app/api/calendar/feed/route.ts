@@ -27,9 +27,9 @@ function buildIcal(plan: FitnessPlan): string {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Recomp//Workout Plan//EN",
+    "PRODID:-//Refactor//Workout Plan//EN",
     "CALSCALE:GREGORIAN",
-    "X-WR-CALNAME:Recomp Workouts",
+    "X-WR-CALNAME:Refactor Workouts",
   ];
 
   const now = new Date();
@@ -64,7 +64,7 @@ function buildIcal(plan: FitnessPlan): string {
 
       lines.push(
         "BEGIN:VEVENT",
-        `UID:recomp-${plan.id}-${wd.day}-${w}-${y}${m}${day}@recomp`,
+        `UID:refactor-${plan.id}-${wd.day}-${w}-${y}${m}${day}@refactor`,
         `DTSTAMP:${now.toISOString().replace(/[-:]/g, "").slice(0, 15)}Z`,
         `DTSTART:${y}${m}${day}T${String(defaultHour).padStart(2, "0")}0000`,
         `DTEND:${y}${m}${day}T${String(endHour).padStart(2, "0")}${String(endMin).padStart(2, "0")}00`,
@@ -95,8 +95,8 @@ export async function GET(req: NextRequest) {
     const lines = [
       "BEGIN:VCALENDAR",
       "VERSION:2.0",
-      "PRODID:-//Recomp//Workout Plan//EN",
-      "X-WR-CALNAME:Recomp Workouts",
+      "PRODID:-//Refactor//Workout Plan//EN",
+      "X-WR-CALNAME:Refactor Workouts",
       "END:VCALENDAR",
     ];
     return new NextResponse(lines.join("\r\n"), {
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(ical, {
     headers: {
       "Content-Type": "text/calendar; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="recomp-workouts.ics"',
+      "Content-Disposition": 'attachment; filename="refactor-workouts.ics"',
       "Cache-Control": "private, max-age=300",
     },
   });

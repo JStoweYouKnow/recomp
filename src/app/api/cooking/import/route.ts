@@ -7,6 +7,7 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+import { withRequestLogging } from "@/lib/logger";
 
 /**
  * Cooking App Data Import
@@ -46,7 +47,7 @@ Rules:
 - If macros are missing, estimate based on ingredients
 - Respond with ONLY a JSON array, no other text`;
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/cooking/import", async function POST(req: NextRequest) {
   try {
     const rl = await fixedWindowRateLimit(
       getClientKey(getRequestIp(req), "cooking-import"),
@@ -174,4 +175,4 @@ ${truncated}`;
       { status: 500 }
     );
   }
-}
+});

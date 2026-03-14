@@ -35,7 +35,7 @@ def _is_origin_allowed(origin: str) -> bool:
     if origin in ALLOWED_ORIGINS:
         return True
     # Allow any Vercel deployment: *.vercel.app, *-recomp-*.vercel.app
-    if origin.startswith("https://") and ".vercel.app" in origin and "recomp" in origin:
+    if origin.startswith("https://") and ".vercel.app" in origin and ("recomp" in origin or "refactor" in origin):
         return True
     if origin.startswith("http://localhost:") or origin.startswith("http://127.0.0.1:"):
         return True
@@ -134,7 +134,7 @@ def run_script(script_path: Path, input_json: dict, timeout: int = 120) -> dict:
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"ok": True, "service": "recomp-act"})
+    return jsonify({"ok": True, "service": "refactor-act"})
 
 
 # Fallback nutrition when script fails (timeout, crash, missing deps) — avoid 500 so UI can still show something

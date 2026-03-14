@@ -1,6 +1,6 @@
-/* Recomp service worker – push notifications */
+/* Refactor service worker – push notifications */
 self.addEventListener("push", (event) => {
-  let payload = { title: "Recomp", body: "" };
+  let payload = { title: "Refactor", body: "" };
   if (event.data) {
     try {
       payload = event.data.json();
@@ -9,14 +9,14 @@ self.addEventListener("push", (event) => {
     }
   }
   const options = {
-    body: payload.body || "You have an update from Recomp.",
+    body: payload.body || "You have an update from Refactor.",
     icon: "/icon.svg",
     badge: "/icon.svg",
-    tag: payload.tag || "recomp-default",
+    tag: payload.tag || "refactor-default",
     data: payload.data || { url: "/" },
     renotify: true,
   };
-  event.waitUntil(self.registration.showNotification(payload.title || "Recomp", options));
+  event.waitUntil(self.registration.showNotification(payload.title || "Refactor", options));
 });
 
 self.addEventListener("notificationclick", (event) => {

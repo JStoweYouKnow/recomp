@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     if (!userId) {
       const res = new MessagingResponse();
       res.message(
-        "This number isn't linked to Recomp. Open the app, go to Profile → Rico on the go, and link your phone to text Reco."
+        "This number isn't linked to Refactor. Open the app, go to Profile → Rico on the go, and link your phone to text Reco."
       );
       return new NextResponse(res.toString(), {
         headers: { "Content-Type": "text/xml" },

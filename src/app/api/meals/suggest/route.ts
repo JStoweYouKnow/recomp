@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logError, withRequestLogging } from "@/lib/logger";
 import { getCuratedSuggestions, suggestMealsFromNova } from "@/lib/services/meals";
 import { internalError } from "@/lib/api-response";
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/meals/suggest", async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "meals-suggest"), 15, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
   if (requireAuthForAI()) {
@@ -42,4 +42,4 @@ export async function POST(req: NextRequest) {
     logError("Meal suggest failed", err, { route: "meals/suggest" });
     return internalError("Suggestion failed", err);
   }
-}
+});

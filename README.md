@@ -1,4 +1,4 @@
-# Recomp
+# Refactor
 
 **A multi-agent, multimodal AI system built on the full Amazon Nova portfolio** — 8 Nova features (Lite, Sonic, Canvas, Reel, Act, Embeddings, Web Grounding, Extended Thinking) orchestrated into a cohesive body recomposition app. Dynamic agent routing, bidirectional voice streaming, browser automation, and tool-use agentic loops demonstrate Nova's capabilities as a full-stack AI platform.
 
@@ -25,7 +25,7 @@ Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
 
 ## Why This Architecture Matters
 
-Most Nova integrations use one or two models for text generation. Recomp demonstrates how the **entire Nova portfolio** can be composed into a single cohesive experience:
+Most Nova integrations use one or two models for text generation. Refactor demonstrates how the **entire Nova portfolio** can be composed into a single cohesive experience:
 
 - **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
 - **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
@@ -39,7 +39,7 @@ The result: a production-grade app that treats Nova not as a text generator, but
 
 **Evidence & methodology:** The pre-seeded demo (Jordan) uses a 7-day synthetic dataset to demonstrate measurable outcomes: 87% macro adherence, 7/10 AI weekly score, 21 meals logged, 7-day streak. Judges can verify by clicking "Try pre-seeded demo" and "Show metrics" in the Evidence card. This illustrates the app's end-to-end impact without requiring weeks of real usage.
 
-**Community:** Recomp removes cost and complexity barriers—no subscription wall, no trainer required. Voice + photo logging (Nova Sonic, Lite) lets users log meals in seconds vs. manual entry. Multimodal embeddings power "similar meals" so repeat logging is one tap. Web-grounding and Act deliver USDA-backed nutrition without separate apps.
+**Community:** Refactor removes cost and complexity barriers—no subscription wall, no trainer required. Voice + photo logging (Nova Sonic, Lite) lets users log meals in seconds vs. manual entry. Multimodal embeddings power "similar meals" so repeat logging is one tap. Web-grounding and Act deliver USDA-backed nutrition without separate apps.
 
 **Enterprise:** Wearable integration (Oura, Fitbit, Apple Health) surfaces sleep, activity, and readiness in one place. Single API for corporate wellness dashboards; no per-user licensing from third-party nutrition APIs. DynamoDB sync supports multi-device and team deployments.
 
@@ -49,7 +49,7 @@ The result: a production-grade app that treats Nova not as a text generator, but
 
 ## Innovation Highlights
 
-What makes Recomp novel — both technically and as a product:
+What makes Refactor novel — both technically and as a product:
 
 - **Dynamic agent routing** — The weekly review coordinator examines available data (meals, wearables) and selectively invokes specialist agents. No wearable data? Skip the biometrics agent, run research-only. No meals logged? Skip meal analysis. This is genuinely adaptive agentic behavior.
 - **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
@@ -158,7 +158,7 @@ Create a `.env.local` file:
 
 ```
 AWS_REGION=us-east-1
-DYNAMODB_TABLE_NAME=RecompTable
+DYNAMODB_TABLE_NAME=RefactorTable
 
 # Optional — Web grounding (research / nutrition lookup)
 BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID=us.amazon.nova-2-lite-v1:0
@@ -193,11 +193,11 @@ You can also use a full inference profile ARN.
 
 ### DynamoDB Table (optional)
 
-1. Create IAM user with DynamoDB permissions (`dynamodb:*` on `RecompTable`).
+1. Create IAM user with DynamoDB permissions (`dynamodb:*` on `RefactorTable`).
 2. Run: `export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 && npm run dynamo:create-table`
-3. Add `DYNAMODB_TABLE_NAME=RecompTable` to Vercel env.
+3. Add `DYNAMODB_TABLE_NAME=RefactorTable` to Vercel env.
 
-**Schema:** Single-table design. PK/SK patterns: `USER#{userId}#PROFILE`, `USER#{userId}#MEAL#{date}#{id}`, `USER#{userId}#PLAN`, etc. See [ARCHITECTURE.md](./ARCHITECTURE.md).
+**Schema:** Single-table design. PK/SK patterns: `USER#{userId}#PROFILE`, `USER#{userId}#MEAL#{date}#{id}`, etc. GSI1 (GSI1PK, GSI1SK) for alternative access patterns. See [ARCHITECTURE.md](./ARCHITECTURE.md). To add GSI1 to an existing table: `npx tsx scripts/add-gsi1.ts`.
 
 ### Nova Act (optional)
 
@@ -322,7 +322,7 @@ Measured on Vercel Pro (us-east-1), Nova 2 Lite, typical payloads:
 
 ## Amazon Nova Integration — All 8 Features
 
-Recomp integrates the full Amazon Nova portfolio:
+Refactor integrates the full Amazon Nova portfolio:
 
 | # | Feature | Model/Service | Where |
 |---|---------|---------------|-------|
@@ -480,7 +480,7 @@ src/
 
 ## Hackathon Category
 
-**Freestyle** (recommended) — Recomp integrates all 8 Nova features in one cohesive app. Breadth of integration is the differentiator.
+**Freestyle** (recommended) — Refactor integrates all 8 Nova features in one cohesive app. Breadth of integration is the differentiator.
 
 **Agentic AI** (alternative) — The weekly review uses a multi-agent orchestration pattern where a coordinator delegates to specialist agents (meal analyst, wellness, synthesizer), each using Nova tool-use to autonomously gather and analyze data.
 

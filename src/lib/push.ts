@@ -6,7 +6,7 @@ const vapidPublic = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
 
 if (vapidPublic && vapidPrivate) {
-  webpush.setVapidDetails("mailto:support@recomp.app", vapidPublic, vapidPrivate);
+  webpush.setVapidDetails("mailto:support@refactor.app", vapidPublic, vapidPrivate);
 }
 
 export function isPushConfigured(): boolean {
@@ -47,7 +47,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
     const body = JSON.stringify({
       title: payload.title,
       body: payload.body ?? "",
-      tag: payload.tag ?? "recomp",
+      tag: payload.tag ?? "refactor",
       data: payload.data ?? {},
     });
 

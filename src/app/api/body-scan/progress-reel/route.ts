@@ -35,7 +35,7 @@ async function getPresignedVideoUrl(s3FolderUri: string, expiresIn = 3600): Prom
 }
 
 const S3_BUCKET = normalizeBucket(process.env.NOVA_REEL_S3_BUCKET);
-const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "recomp-journey-recap").replace(/^\/|\/$/g, "");
+const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "refactor-journey-recap").replace(/^\/|\/$/g, "");
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "journey-recap"), 2, 3600_000);

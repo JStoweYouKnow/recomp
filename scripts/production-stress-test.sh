@@ -214,7 +214,7 @@ fi
 T=$((T + 1))
 
 log_test $T "POST /api/meals/suggest (meal suggestions)"
-do_post "$BASE_URL/api/meals/suggest" '{"mealType": "lunch", "targets": {"calories": 2400, "protein": 165}, "restrictions": []}'
+do_post "$BASE_URL/api/meals/suggest" '{"mealType": "lunch", "remainingCalories": 500, "remainingProtein": 40, "restrictions": [], "goal": "maintain"}'
 if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | jq -e '.suggestions | length > 0' >/dev/null 2>&1; then
   COUNT=$(echo "$BODY" | jq '.suggestions | length')
   record_pass "meals/suggest" "$TIME_MS" "suggestions=$COUNT"
@@ -237,6 +237,39 @@ if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | jq -e '.suggestions' >/dev/null 2>
   record_pass "meals/smart-suggest" "$TIME_MS" "suggestions=$COUNT"
 else
   record_fail "meals/smart-suggest" "$TIME_MS" "HTTP $HTTP_CODE — $(echo "$BODY" | jq -r '.error // "?"')"
+fi
+T=$((T + 1))
+
+log_test $T "POST /api/act/grocery (grocery search)"
+do_post_long "$BASE_URL/api/act/grocery" '{"items": ["whey protein"], "store": "fresh"}' 120
+if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | jq -e '.results' >/dev/null 2>&1; then
+  COUNT=$(echo "$BODY" | jq '.results | length')
+  record_pass "act/grocery" "$TIME_MS" "results=$COUNT"
+else
+  record_warn "act/grocery" "$TIME_MS" "HTTP $HTTP_CODE — Act service may be unavailable"
+fi
+T=$((T + 1))
+
+log_test $T "POST /api/act/nutrition (nutrition lookup)"
+do_post_long "$BASE_URL/api/act/nutrition" '{"food": "1 cup white rice"}' 30
+if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | jq -e '.nutrition.calories' >/dev/null 2>&1; then
+  CAL=$(echo "$BODY" | jq '.nutrition.calories')
+  SRC=$(echo "$BODY" | jq -r '.source // "?"')
+  record_pass "act/nutrition" "$TIME_MS" "cal=$CAL source=$SRC"
+else
+  record_warn "act/nutrition" "$TIME_MS" "HTTP $HTTP_CODE — $(echo "$BODY" | jq -r '.error // .nutrition // "?"')"
+fi
+T=$((T + 1))
+
+log_test $T "POST /api/meals/lookup-nutrition-web (web fallback)"
+do_post_long "$BASE_URL/api/meals/lookup-nutrition-web" '{"food": "chicken breast 100g"}' 65
+if [ "$HTTP_CODE" = "200" ] && echo "$BODY" | jq -e '.nutrition' >/dev/null 2>&1; then
+  CAL=$(echo "$BODY" | jq '.nutrition.calories // 0')
+  record_pass "meals/lookup-nutrition-web" "$TIME_MS" "cal=$CAL"
+elif [ "$HTTP_CODE" = "422" ]; then
+  record_warn "meals/lookup-nutrition-web" "$TIME_MS" "422 — extraction failed (may need auth)"
+else
+  record_warn "meals/lookup-nutrition-web" "$TIME_MS" "HTTP $HTTP_CODE"
 fi
 T=$((T + 1))
 

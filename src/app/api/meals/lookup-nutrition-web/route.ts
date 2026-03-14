@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withRequestLogging } from "@/lib/logger";
 import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
 import {
   fixedWindowRateLimit,
@@ -35,7 +36,7 @@ function parseJsonResponse(text: string): { calories?: number; protein?: number;
 }
 
 /** Web-grounded nutrition lookup: cache → Nova web grounding (same flow as before Open Food Facts) */
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/meals/lookup-nutrition-web", async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "meals-lookup-web"),
     20,
@@ -161,11 +162,11 @@ export async function POST(req: NextRequest) {
     res.headers.set("X-RateLimit-Remaining", headers.remaining);
     res.headers.set("X-RateLimit-Reset", headers.reset);
     return res;
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("Meals lookup-nutrition-web error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Web nutrition lookup failed" },
       { status: 500 }
     );
   }
-}
+});

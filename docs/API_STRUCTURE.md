@@ -1,6 +1,6 @@
 # API Structure
 
-Domain separation and layer organization for the Recomp API.
+Domain separation and layer organization for the Refactor API.
 
 ---
 

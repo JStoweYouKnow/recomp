@@ -271,7 +271,7 @@ export async function invokeNovaWithExtendedThinking(
   systemPrompt: string,
   userMessage: string,
   effort: "low" | "medium" | "high" = "high",
-  options?: { maxTokens?: number }
+  options?: { maxTokens?: number; temperature?: number }
 ): Promise<string> {
   const startedAt = Date.now();
   const client = getClient();
@@ -293,7 +293,7 @@ export async function invokeNovaWithExtendedThinking(
   // Bedrock/Nova rejects temperature/topP/maxTokens when reasoning effort is high.
   if (effort !== "high") {
     input.inferenceConfig = {
-      temperature: 0.6,
+      temperature: options?.temperature ?? 0.6,
       maxTokens: options?.maxTokens ?? 8192,
       topP: 0.9,
     };

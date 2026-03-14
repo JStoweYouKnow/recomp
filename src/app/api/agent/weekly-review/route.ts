@@ -5,6 +5,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import { getUserId } from "@/lib/auth";
 import { requireAuthForAI } from "@/lib/judgeMode";
+import { withRequestLogging } from "@/lib/logger";
 
 /** Multi-agent review with web grounding needs extended timeout */
 export const maxDuration = 60;
@@ -404,7 +405,7 @@ async function runAgent(
 // POST handler — multi-agent orchestration
 // ---------------------------------------------------------------------------
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/agent/weekly-review", async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(
     getClientKey(getRequestIp(req), "weekly-review"),
     5,
@@ -671,4 +672,4 @@ Now synthesize these into a single structured JSON review. Respond with valid JS
       { status: 500 }
     );
   }
-}
+});

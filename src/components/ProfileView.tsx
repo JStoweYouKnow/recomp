@@ -130,7 +130,7 @@ function RicoOnTheGoSection() {
       <div>
         <h4 className="text-sm font-medium text-[var(--foreground)] mb-2">Text Reco (SMS)</h4>
         <p className="text-xs text-[var(--muted)] mb-2">
-          Link your phone to text Reco from anywhere. You&apos;ll need a Twilio number configured by the Recomp team.
+          Link your phone to text Reco from anywhere. You&apos;ll need a Twilio number configured by the Refactor team.
         </p>
         {phoneLinked ? (
           <div className="flex items-center gap-2">
@@ -735,7 +735,7 @@ export function ProfileView({
       <div className="card p-6 mt-6">
         <h3 className="font-semibold text-[var(--foreground)] mb-1">Calendar sync</h3>
         <p className="text-sm text-[var(--muted)] mb-4">
-          Subscribe to your Recomp workout plan so it appears in your calendar (Apple Calendar, Google Calendar, Outlook).
+          Subscribe to your Refactor workout plan so it appears in your calendar (Apple Calendar, Google Calendar, Outlook).
         </p>
         {isDemoMode ? (
           <p className="text-sm text-[var(--muted-foreground)]">
@@ -1122,7 +1122,7 @@ export function ProfileView({
       <div className="card p-6 mt-6">
         <h3 className="font-semibold text-[var(--foreground)] mb-1">Push notifications</h3>
         <p className="text-sm text-[var(--muted)] mb-4">
-          Get reminders and updates from Recomp (e.g. weekly review ready, tips) in your browser.
+          Get reminders and updates from Refactor (e.g. weekly review ready, tips) in your browser.
         </p>
         {isDemoMode ? (
           <p className="text-sm text-[var(--muted-foreground)]">

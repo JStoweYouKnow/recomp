@@ -53,15 +53,15 @@ type Props = { params: Promise<{ username: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { username } = await params;
   const userId = await dbGetUserIdByUsername(username);
-  if (!userId) return { title: "User not found | Recomp" };
+  if (!userId) return { title: "User not found | Refactor" };
   const profile = await dbGetProfile(userId);
   const name = profile?.name ?? username;
   return {
-    title: `${name} | Recomp`,
-    description: `${name}'s fitness journey on Recomp`,
+    title: `${name} | Refactor`,
+    description: `${name}'s fitness journey on Refactor`,
     openGraph: {
-      title: `${name} on Recomp`,
-      description: `Check out ${name}'s fitness journey, badges, and progress on Recomp.`,
+      title: `${name} on Refactor`,
+      description: `Check out ${name}'s fitness journey, badges, and progress on Refactor.`,
     },
   };
 }
@@ -76,7 +76,7 @@ export default async function PublicProfilePage({ params }: Props) {
         <div className="text-center space-y-4 p-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">User not found</h1>
           <p className="text-[var(--muted)]">No profile exists for @{username}</p>
-          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</Link>
+          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Refactor</Link>
         </div>
       </div>
     );
@@ -94,7 +94,7 @@ export default async function PublicProfilePage({ params }: Props) {
       <div className="min-h-screen flex items-center justify-center bg-[var(--background)]">
         <div className="text-center space-y-4 p-8">
           <h1 className="text-2xl font-bold text-[var(--foreground)]">Profile unavailable</h1>
-          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Recomp</Link>
+          <Link href="/" className="btn-primary inline-block !py-2.5 !px-6">Join Refactor</Link>
         </div>
       </div>
     );
@@ -230,7 +230,7 @@ export default async function PublicProfilePage({ params }: Props) {
             href="/"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[var(--accent)] text-white font-medium hover:opacity-90 transition"
           >
-            Start your own journey on Recomp
+            Start your own journey on Refactor
           </Link>
         </div>
       </div>

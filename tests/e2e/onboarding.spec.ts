@@ -11,11 +11,15 @@ test.describe("Onboarding → Dashboard → Meals flow", () => {
   test("landing page renders with onboarding form", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("text=Your AI-powered")).toBeVisible();
-    await expect(page.locator("text=Create my plan")).toBeVisible();
+    await expect(page.locator("text=Create your personalized plan")).toBeVisible();
+    await expect(page.getByRole("button", { name: /Get Started/i })).toBeVisible();
   });
 
   test("onboarding form accepts input and submits", async ({ page }) => {
     await page.goto("/");
+
+    // Click Get Started to reveal the signup form
+    await page.getByRole("button", { name: /Get Started/i }).click();
 
     // Fill basic info
     await page.fill('input[placeholder="Your name"]', "Test User");
@@ -32,8 +36,8 @@ test.describe("Onboarding → Dashboard → Meals flow", () => {
     const submitBtn = page.locator("text=Create my plan");
     await submitBtn.click();
 
-    // Should show loading state
-    await expect(page.locator("text=Generating your plan with Amazon Nova")).toBeVisible({ timeout: 5000 });
+    // Should switch to Dashboard and show plan-loading state (view changes immediately on submit)
+    await expect(page.locator("text=Creating your plan")).toBeVisible({ timeout: 5000 });
   });
 
   test("navigation tabs render after onboarding", async ({ page }) => {
@@ -128,8 +132,7 @@ test.describe("Onboarding → Dashboard → Meals flow", () => {
     await expect(ricoBtn).toBeVisible({ timeout: 10000 });
     await ricoBtn.click();
 
-    // Chat panel should be visible
-    await expect(page.locator("text=Reco")).toBeVisible();
-    await expect(page.locator('input[placeholder="Ask Reco..."]')).toBeVisible();
+    // Chat panel should be visible — use specific selectors to avoid matching "Refactor" / "Reco" elsewhere
+    await expect(page.getByPlaceholder("Ask Reco...")).toBeVisible({ timeout: 5000 });
   });
 });

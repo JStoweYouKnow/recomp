@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     concept: "Nova Act UI Automation",
-    message: `Nova Act automates browser-based workflows. Recomp uses it for grocery shopping and nutrition lookup.`,
+    message: `Nova Act automates browser-based workflows. Refactor uses it for grocery shopping and nutrition lookup.`,
     capabilities: [
       {
         name: "Shopping list → Amazon",

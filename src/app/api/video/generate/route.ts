@@ -18,7 +18,7 @@ function normalizeBucket(raw: string | undefined): string | undefined {
 }
 
 const S3_BUCKET = normalizeBucket(process.env.NOVA_REEL_S3_BUCKET);
-const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "recomp-videos").replace(/^\/|\/$/g, "");
+const S3_PREFIX = (process.env.NOVA_REEL_S3_PREFIX ?? "refactor-videos").replace(/^\/|\/$/g, "");
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
 /** Parse s3://bucket/key into { bucket, key } */

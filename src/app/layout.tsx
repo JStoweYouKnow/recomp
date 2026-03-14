@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Recomp | AI-Powered Diet & Workout Plans",
+  title: "Refactor | AI-Powered Diet & Workout Plans",
   description: "Personalized fitness and nutrition plans powered by Amazon Nova AI. Track calories, macros, and meals with dynamic plan adjustments.",
   manifest: "/manifest.json",
 };

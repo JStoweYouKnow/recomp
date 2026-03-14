@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
-import { logInfo, logError } from "@/lib/logger";
+import { logInfo, logError, withRequestLogging } from "@/lib/logger";
 import { invokeRico } from "@/lib/services/rico";
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/rico", async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
@@ -31,4 +31,4 @@ export async function POST(req: NextRequest) {
     logError("Rico chat failed", err, { route: "rico" });
     return NextResponse.json({ error: "Reco is taking a breather. Try again." }, { status: 500 });
   }
-}
+});

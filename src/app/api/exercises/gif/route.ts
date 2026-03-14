@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(`${EXERCISEDB_MEDIA}/${id}.gif`, {
       next: { revalidate: 86400 },
-      headers: { "User-Agent": "Recomp/1.0" },
+      headers: { "User-Agent": "Refactor/1.0" },
     });
     if (res.ok) {
       const blob = await res.blob();
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
       try {
         const fallback = await fetch(`${GITHUB_RAW}/${fallbackId}.gif`, {
           next: { revalidate: 86400 },
-          headers: { "User-Agent": "Recomp/1.0" },
+          headers: { "User-Agent": "Refactor/1.0" },
         });
         if (fallback.ok) {
           const blob = await fallback.blob();

@@ -104,7 +104,7 @@ export async function DELETE(req: NextRequest) {
 function getConnectionInstructions(provider: string): string {
   switch (provider) {
     case "cronometer":
-      return "Export your daily nutrition summary as JSON from Cronometer Settings > Export Data, then use the Import button in Recomp, or configure a webhook using the secret above.";
+      return "Export your daily nutrition summary as JSON from Cronometer Settings > Export Data, then use the Import button in Refactor, or configure a webhook using the secret above.";
     case "myfitnesspal":
       return "Use the MyFitnessPal CSV export (Settings > Diary Settings > Export) or connect via our webhook. Paste your webhook secret into the MyFitnessPal integration settings.";
     case "yummly":
@@ -112,16 +112,16 @@ function getConnectionInstructions(provider: string): string {
     case "whisk":
       return "In Whisk, go to Settings > Connected Apps and add a new webhook with the URL and secret above.";
     case "mealime":
-      return "Mealime supports manual export. Export your weekly plan as JSON, then use the Import button in Recomp.";
+      return "Mealime supports manual export. Export your weekly plan as JSON, then use the Import button in Refactor.";
     case "paprika":
       return "In Paprika, export recipes or meal plans as HTML or text. Use our Import feature to upload them.";
     case "loseit":
-      return "LoseIt allows CSV diary exports. Download from Account > Export Data, then import in Recomp.";
+      return "LoseIt allows CSV diary exports. Download from Account > Export Data, then import in Refactor.";
     case "recipekeeper":
-      return "Recipe Keeper doesn't support webhooks. Use the Import tab: export recipes (or copy recipe text) from Recipe Keeper, then paste or upload in Recomp. Nova AI will parse ingredients and nutrition.";
+      return "Recipe Keeper doesn't support webhooks. Use the Import tab: export recipes (or copy recipe text) from Recipe Keeper, then paste or upload in Refactor. Nova AI will parse ingredients and nutrition.";
     case "nytcooking":
-      return "NYT Cooking doesn't support webhooks. Use the Import tab: copy a recipe from the NYT Cooking app or site, then paste into Recomp. Nova AI will parse it into a meal with macros.";
+      return "NYT Cooking doesn't support webhooks. Use the Import tab: copy a recipe from the NYT Cooking app or site, then paste into Refactor. Nova AI will parse it into a meal with macros.";
     default:
-      return "Use the webhook URL and secret above to send meal data to Recomp. See our API documentation for the payload format.";
+      return "Use the webhook URL and secret above to send meal data to Refactor. See our API documentation for the payload format.";
   }
 }

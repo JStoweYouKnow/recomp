@@ -1,6 +1,6 @@
 {
-  "name": "Recomp",
-  "short_name": "Recomp",
+  "name": "Refactor",
+  "short_name": "Refactor",
   "description": "AI-powered diet & workout plans",
   "start_url": "/",
   "display": "standalone",

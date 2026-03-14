@@ -16,11 +16,11 @@ export function WeeklyReviewCard({
 
   const handleShare = async () => {
     if (!weeklyReview) return;
-    const text = `Weekly AI Review \n\n${weeklyReview.summary}\n\nMeal Analysis: ${weeklyReview.mealAnalysis || 'N/A'}\nWearable Insights: ${weeklyReview.wearableInsights || 'N/A'}\nRecommendations:\n${(weeklyReview.recommendations || []).map(r => `- ${r}`).join('\n')}\n\nGenerated via Recomp AI`;
+    const text = `Weekly AI Review \n\n${weeklyReview.summary}\n\nMeal Analysis: ${weeklyReview.mealAnalysis || 'N/A'}\nWearable Insights: ${weeklyReview.wearableInsights || 'N/A'}\nRecommendations:\n${(weeklyReview.recommendations || []).map(r => `- ${r}`).join('\n')}\n\nGenerated via Refactor AI`;
     
     if (navigator.share) {
       try {
-        await navigator.share({ title: "My Recomp AI Review", text });
+        await navigator.share({ title: "My Refactor AI Review", text });
       } catch (e) {
         /* user cancelled or share failed */
       }

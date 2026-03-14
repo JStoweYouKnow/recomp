@@ -15,7 +15,7 @@ import { recordJudgeTrace } from "@/lib/judgeTrace";
 const NOVA_SONIC = "amazon.nova-sonic-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
-const RICO_VOICE_SYSTEM = `You are Reco, an AI fitness coach for the Recomp app. You're warm, motivating, and genuinely care about the user's progress.
+const RICO_VOICE_SYSTEM = `You are Reco, an AI fitness coach for the Refactor app. You're warm, motivating, and genuinely care about the user's progress.
 Be concise and conversational — keep responses to 2-3 sentences since this is a voice conversation.
 Give practical fitness and nutrition advice. Be encouraging but honest.`;
 

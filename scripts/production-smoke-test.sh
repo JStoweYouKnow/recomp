@@ -49,7 +49,7 @@ echo ""
 echo "3. POST /api/meals/suggest"
 SUGGEST=$(curl -s -X POST "$BASE_URL/api/meals/suggest" \
   -H "Content-Type: application/json" \
-  -d '{"mealType":"lunch","targets":{"calories":2000,"protein":150},"restrictions":[]}')
+  -d '{"mealType":"lunch","remainingCalories":500,"remainingProtein":40,"restrictions":[],"goal":"maintain"}')
 if echo "$SUGGEST" | jq -e '.suggestions | length > 0' >/dev/null 2>&1; then
   COUNT=$(echo "$SUGGEST" | jq '.suggestions | length')
   echo "   ✓ suggestions: $COUNT"

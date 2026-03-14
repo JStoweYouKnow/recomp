@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const res = await fetch(trimmed, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; RecompRecipeBot/1.0; +https://github.com/recomp)",
+          "Mozilla/5.0 (compatible; RefactorRecipeBot/1.0; +https://github.com/JStoweYouKnow/recomp)",
       },
       signal: controller.signal,
     });

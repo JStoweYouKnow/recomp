@@ -1,4 +1,4 @@
-# Recomp Architecture
+# Refactor Architecture
 
 System design, data flow, and integration patterns for judges and contributors.
 
@@ -141,7 +141,9 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 
 ## DynamoDB Schema (single-table)
 
-**Table:** `DYNAMODB_TABLE_NAME` (default: `RecompTable`). No sort key required for simple Get; use `begins_with(SK, :prefix)` for queries.
+**Table:** `DYNAMODB_TABLE_NAME` (default: `RefactorTable`). No sort key required for simple Get; use `begins_with(SK, :prefix)` for queries.
+
+**GSI1:** Partition key `GSI1PK` (String), sort key `GSI1SK` (String). Projection: ALL. Use for queries keyed by GSI1 attributes (e.g. user lookups by username, groups by goal type). Add to existing tables: `npx tsx scripts/add-gsi1.ts`.
 
 ### User-scoped entities
 
@@ -187,7 +189,7 @@ Local-first: `localStorage` is the primary cache; `syncToServer` pushes to Dynam
 
 ## Nova Act Integration (UI Automation)
 
-Recomp uses **Nova Act SDK** for grocery search and nutrition lookup. Act runs browser automation (Chromium) and cannot execute inside Vercel serverless. Two deployment paths:
+Refactor uses **Nova Act SDK** for grocery search and nutrition lookup. Act runs browser automation (Chromium) and cannot execute inside Vercel serverless. Two deployment paths:
 
 ### Production (recommended): Act microservice
 

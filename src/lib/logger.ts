@@ -68,11 +68,11 @@ export function logDebug(message: string, context?: LogContext): void {
  * Wrap an async API handler to automatically log request duration and errors.
  * Usage: export const POST = withRequestLogging("/api/meals/suggest", handler);
  */
-export function withRequestLogging<T>(
+export function withRequestLogging<T, R extends Request = Request>(
   route: string,
-  handler: (req: Request) => Promise<T>,
-): (req: Request) => Promise<T> {
-  return async (req: Request) => {
+  handler: (req: R) => Promise<T>,
+): (req: R) => Promise<T> {
+  return async (req: R) => {
     const start = Date.now();
     try {
       const result = await handler(req);

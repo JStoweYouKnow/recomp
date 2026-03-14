@@ -71,7 +71,7 @@ export function AppWrapper({ children }: { children: React.ReactNode }) {
         <main id="main-content" className="flex-1">{children}</main>
         <footer className="border-t border-[var(--border-soft)] bg-[var(--surface)] py-3 text-center">
           <p className="text-xs text-[var(--muted)] px-4">
-            Recomp provides general wellness guidance only. Consult a healthcare professional before starting any diet or exercise program.
+            Refactor provides general wellness guidance only. Consult a healthcare professional before starting any diet or exercise program.
           </p>
         </footer>
       </div>

@@ -10,11 +10,12 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { z } from "zod";
+import { withRequestLogging } from "@/lib/logger";
 
 const NOVA_SONIC = "amazon.nova-sonic-v1:0";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
-const RICO_VOICE_SYSTEM = `You are Reco, an AI fitness coach for the Recomp app. You're warm, motivating, and genuinely care about the user's progress.
+const RICO_VOICE_SYSTEM = `You are Reco, an AI fitness coach for the Refactor app. You're warm, motivating, and genuinely care about the user's progress.
 Be concise and conversational — keep responses to 2-3 sentences since this is a voice conversation.
 Give practical fitness and nutrition advice. Be encouraging but honest.`;
 
@@ -50,7 +51,7 @@ const VoiceJsonSchema = z.object({
   stream: z.boolean().optional(),
 });
 
-export async function POST(req: NextRequest) {
+export const POST = withRequestLogging("/api/voice/sonic", async function POST(req: NextRequest) {
   try {
     const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "voice-sonic"), 30, 60_000);
     if (!rl.ok) {
@@ -349,4 +350,4 @@ export async function POST(req: NextRequest) {
       );
     }
   }
-}
+});

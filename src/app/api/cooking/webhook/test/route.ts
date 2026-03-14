@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     meals: [
       {
         provider: "custom",
-        name: "Recomp webhook test meal",
+        name: "Refactor webhook test meal",
         mealType: "snack" as const,
         macros: { calories: 0, protein: 0, carbs: 0, fat: 0 },
       },

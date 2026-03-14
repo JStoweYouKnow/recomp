@@ -36,7 +36,7 @@ import type {
   ActivityLogEntry,
 } from "./types";
 
-const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RecompTable";
+const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RefactorTable";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
 function getDocClient() {

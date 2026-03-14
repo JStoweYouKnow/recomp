@@ -1,6 +1,6 @@
 # Judge Notes — Novel Aspects
 
-Quick reference for judges: what makes Recomp novel beyond typical fitness apps.
+Quick reference for judges: what makes Refactor novel beyond typical fitness apps.
 
 ---
 
@@ -8,7 +8,7 @@ Quick reference for judges: what makes Recomp novel beyond typical fitness apps.
 
 **What:** The weekly review coordinator inspects available data and selectively invokes specialist agents. No wearable data? Skips biometrics agent, runs research-only. No meals logged? Skips meal analysis.
 
-**Why it matters:** Most multi-agent systems run a fixed pipeline. Recomp's coordinator uses tool-call rounds to adapt — genuinely agentic behavior rather than a static workflow.
+**Why it matters:** Most multi-agent systems run a fixed pipeline. Refactor's coordinator uses tool-call rounds to adapt — genuinely agentic behavior rather than a static workflow.
 
 **Where:** `src/app/api/agent/weekly-review/route.ts` — coordinator uses Nova Lite tool use to delegate to meal/wellness agents.
 

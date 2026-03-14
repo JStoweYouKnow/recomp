@@ -60,7 +60,7 @@ export async function searchOpenFoodFacts(query: string): Promise<NutritionResul
 
   const url = `${BASE}/api/v2/search?text=${q}&page_size=10`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "Recomp/1.0 (nutrition app)" },
+    headers: { "User-Agent": "Refactor/1.0 (nutrition app)" },
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) return null;
@@ -84,7 +84,7 @@ export async function getProductByBarcode(barcode: string): Promise<NutritionRes
 
   const url = `${BASE}/api/v2/product/${clean}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "Recomp/1.0 (nutrition app)" },
+    headers: { "User-Agent": "Refactor/1.0 (nutrition app)" },
     signal: AbortSignal.timeout(5000),
   });
   if (!res.ok) return null;

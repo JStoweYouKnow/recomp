@@ -15,6 +15,7 @@ import { BiofeedbackQuickEntry } from "./dashboard/BiofeedbackQuickEntry";
 import { MetabolicModelCard } from "./dashboard/MetabolicModelCard";
 import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
+import { NovaStatusCard } from "./dashboard/NovaStatusCard";
 import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
 import { DuelCard } from "./dashboard/DuelCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
@@ -649,9 +650,10 @@ export function Dashboard({
         />
       </div>
 
-      {/* ── Evidence & Results ── */}
-      <div className="animate-fade-in stagger-3">
+      {/* ── Evidence & Nova Status ── */}
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 animate-fade-in stagger-3">
         <EvidenceResultsCard />
+        <NovaStatusCard />
       </div>
 
       {/* ── Wearable data ── */}

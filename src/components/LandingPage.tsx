@@ -97,7 +97,7 @@ export function LandingPage({
     setShowVoiceToggle(isAudioSupported());
   }, []);
 
-  const voiceSystemPrompt = `You are Reco, the onboarding assistant for Recomp, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight, height, gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. Users may answer in US or metric units. Convert to the output schema below (weightLbs + heightFt/heightIn). After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
+  const voiceSystemPrompt = `You are Reco, the onboarding assistant for Refactor, an AI fitness app. You're having a friendly voice conversation to gather the user's profile info. Ask one question at a time. You need: name, age, weight, height, gender, fitness level (beginner/intermediate/advanced), goal (lose weight/maintain/build muscle/improve endurance), activity level (sedentary/light/moderate/active/very active), where they work out (home/gym/outside), and any dietary restrictions. Users may answer in US or metric units. Convert to the output schema below (weightLbs + heightFt/heightIn). After gathering all info, respond with EXACTLY this JSON format on its own line: ONBOARD_DATA:{"name":"...","age":30,"weightLbs":154,"heightFt":5,"heightIn":7,"gender":"male","fitnessLevel":"intermediate","goal":"build_muscle","activityLevel":"moderate","workoutLocation":"gym","restrictions":""}. Start by greeting them and asking their name.`;
 
   const handleVoiceStart = useCallback(async () => {
     try {
@@ -340,7 +340,7 @@ export function LandingPage({
         <div className="mx-auto max-w-4xl px-5 py-4 flex items-center justify-between">
           <div className="flex items-baseline gap-2">
             <span className="text-xl" aria-hidden="true">🧩</span>
-            <span className="brand-title !text-lg text-[var(--accent)] leading-none">Recomp</span>
+            <span className="brand-title !text-lg text-[var(--accent)] leading-none">Refactor</span>
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)]/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">
             <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />

@@ -11,7 +11,7 @@ export async function POST() {
     const token = await dbCreateApiToken(userId);
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_APP_URL ?? "https://recomp.app";
+      : process.env.NEXT_PUBLIC_APP_URL ?? "https://refactor.app";
     return NextResponse.json({
       token,
       usage: `Authorization: Bearer ${token}`,

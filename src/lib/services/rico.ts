@@ -8,7 +8,7 @@ import { getTodayLocal } from "../date-utils";
 
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
-const RICO_SYSTEM = `You are Reco, an AI fitness coach for the Recomp app. You're warm, motivating, and genuinely care about the user's progress.
+const RICO_SYSTEM = `You are Reco, an AI fitness coach for the Refactor app. You're warm, motivating, and genuinely care about the user's progress.
 
 PERSONALITY:
 - Supportive and encouraging – celebrate wins, big or small

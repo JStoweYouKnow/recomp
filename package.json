@@ -1,5 +1,5 @@
 {
-  "name": "recomp",
+  "name": "refactor",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,9 +10,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:production": "./scripts/production-smoke-test.sh",
+    "test:qc": "./scripts/production-stress-test.sh",
     "exercise:fallback-map": "node scripts/generate-exercise-fallback-map.mjs",
     "exercise:troubleshoot": "node scripts/troubleshoot-exercises.mjs",
-    "dynamo:create-table": "npx tsx scripts/create-table.ts"
+    "dynamo:create-table": "npx tsx scripts/create-table.ts",
+    "dynamo:add-gsi1": "npx tsx scripts/add-gsi1.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.987.0",
@@ -38,6 +40,7 @@
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/react": "^19",

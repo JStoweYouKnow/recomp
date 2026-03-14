@@ -83,7 +83,7 @@ export function WeeklyRecapCard({ meals, milestones, xp, streak, targets }: Week
 
       ctx.font = "14px system-ui";
       ctx.fillStyle = "rgba(250,248,245,0.7)";
-      ctx.fillText("Recomp \u2022 Body Recomposition", 40, 80);
+      ctx.fillText("Refactor \u2022 Body Recomposition", 40, 80);
 
       // Stats grid
       const stats = [
@@ -124,7 +124,7 @@ export function WeeklyRecapCard({ meals, milestones, xp, streak, targets }: Week
       // Footer
       ctx.fillStyle = "rgba(250,248,245,0.4)";
       ctx.font = "11px system-ui";
-      ctx.fillText("recomp.fit", 40, 385);
+      ctx.fillText("refactor.fit", 40, 385);
 
       const blob = await new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, "image/png")
@@ -132,16 +132,16 @@ export function WeeklyRecapCard({ meals, milestones, xp, streak, targets }: Week
       if (!blob) return;
 
       if (navigator.share) {
-        const file = new File([blob], "recomp-weekly-recap.png", { type: "image/png" });
+        const file = new File([blob], "refactor-weekly-recap.png", { type: "image/png" });
         await navigator.share({
-          title: "My Recomp Weekly Recap",
+          title: "My Refactor Weekly Recap",
           files: [file],
         }).catch(() => {});
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = "recomp-weekly-recap.png";
+        a.download = "refactor-weekly-recap.png";
         a.click();
         URL.revokeObjectURL(url);
       }

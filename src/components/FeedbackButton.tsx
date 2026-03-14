@@ -51,7 +51,7 @@ export function FeedbackButton() {
             className="card max-w-md w-full p-6 space-y-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-semibold text-[var(--foreground)]">How&apos;s Recomp working for you?</h3>
+            <h3 className="font-semibold text-[var(--foreground)]">How&apos;s Refactor working for you?</h3>
             <p className="text-sm text-[var(--muted)]">Your feedback helps us improve. Family testers welcome!</p>
             <div>
               <label className="label text-xs">Rating (optional)</label>
