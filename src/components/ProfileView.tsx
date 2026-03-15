@@ -212,11 +212,13 @@ export function ProfileView({
   isDemoMode = false,
   onProfileUpdate,
   onWearableDataFetched,
+  onRegistered,
 }: {
   profile: UserProfile;
   isDemoMode?: boolean;
   onProfileUpdate: (p: UserProfile) => void;
   onWearableDataFetched?: (data: { date: string; provider: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }[]) => void;
+  onRegistered?: () => void;
 }) {
   const { ft, inch } = cmToFeetInches(profile.height);
   const [name, setName] = useState(profile.name);
@@ -256,6 +258,10 @@ export function ProfileView({
   const [profileLinkCopied, setProfileLinkCopied] = useState(false);
   const usernameCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Register & sync (demo mode)
+  const [registerStatus, setRegisterStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [registerErrorMessage, setRegisterErrorMessage] = useState("");
 
   // Claim Account State
   const [claimEmail, setClaimEmail] = useState(profile.email || "");
@@ -313,6 +319,27 @@ export function ProfileView({
     } catch (err) {
       setClaimStatus("error");
       setClaimErrorMessage(err instanceof Error ? err.message : "Login failed");
+    }
+  };
+
+  const handleRegisterAndSync = async () => {
+    setRegisterStatus("loading");
+    setRegisterErrorMessage("");
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Registration failed");
+      onRegistered?.();
+      flushSync();
+      setRegisterStatus("success");
+      setTimeout(() => setRegisterStatus("idle"), 3000);
+    } catch (err) {
+      setRegisterStatus("error");
+      setRegisterErrorMessage(err instanceof Error ? err.message : "Registration failed");
     }
   };
 
@@ -488,6 +515,30 @@ export function ProfileView({
     <div className="animate-fade-in">
       <h2 className="section-title !text-xl mb-1">Profile</h2>
       <p className="section-subtitle mb-6">Update your details anytime. Changes apply to your plan and recommendations.</p>
+
+      {isDemoMode && (
+        <div className="card p-6 mb-6 border-l-4 border-l-[var(--accent)] bg-[var(--surface-elevated)]/50">
+          <h3 className="font-semibold text-[var(--foreground)] mb-1">Register &amp; sync to cloud</h3>
+          <p className="text-sm text-[var(--muted)] mb-4">
+            Your data is currently stored only in this browser. Register to back it up to the cloud and sync across devices.
+          </p>
+          {registerStatus === "error" && (
+            <p className="text-sm text-[var(--accent-terracotta)] mb-4" role="alert">{registerErrorMessage}</p>
+          )}
+          {registerStatus === "success" && (
+            <p className="text-sm text-green-600 dark:text-green-400 mb-4">Your data has been synced to the cloud.</p>
+          )}
+          <button
+            type="button"
+            onClick={handleRegisterAndSync}
+            disabled={registerStatus === "loading" || registerStatus === "success"}
+            className="btn-primary !py-2.5"
+          >
+            {registerStatus === "loading" ? "Registering…" : registerStatus === "success" ? "Synced" : "Register & sync"}
+          </button>
+        </div>
+      )}
+
       <div className="card p-6">
         <form onSubmit={(e) => { e.preventDefault(); handleSave(); }} className="space-y-5" noValidate>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">

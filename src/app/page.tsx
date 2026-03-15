@@ -754,6 +754,7 @@ export default function Home() {
                 setProfile(updated);
                 syncToServer();
               }}
+              onRegistered={() => setIsDemoMode(false)}
               onWearableDataFetched={(data) => {
                 const existing = getWearableData();
                 const merged = [...existing];
