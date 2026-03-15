@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
-import type { FitnessPlan, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
+import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
+import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
@@ -72,6 +73,12 @@ export function WorkoutPlannerView({
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [musicSuggestions, setMusicSuggestions] = useState<Record<number, MusicSuggestion[]>>({});
   const [musicLoading, setMusicLoading] = useState<Record<number, boolean>>({});
+
+  const [workoutImportUrl, setWorkoutImportUrl] = useState("");
+  const [workoutImportLoading, setWorkoutImportLoading] = useState(false);
+  const [importedWorkout, setImportedWorkout] = useState<WorkoutDay | null>(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const { showToast } = useToast();
 
   const [exerciseGifs, setExerciseGifs] = useState<Record<string, ExerciseGif | "loading" | "none">>(() => {
     const cached = getGifCache();
@@ -191,12 +198,14 @@ export function WorkoutPlannerView({
         return [...warmups, ...main, ...finishers];
       })
     );
-    // Keep valid legacy keys and all week-scoped keys. Remove invalid legacy keys.
+    // Keep: valid legacy keys, week-scoped keys, or any entry completed on or before today
+    // (editing the plan must not retroactively remove completed workouts)
     const cleaned = Object.fromEntries(
-      Object.entries(progress).filter(([k]) => {
+      Object.entries(progress).filter(([k, ts]) => {
         const parts = k.split(":");
         const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
-        return isWeekScoped || validLegacyKeys.has(k);
+        const completedOnOrBeforeToday = ts && ts.slice(0, 10) <= today;
+        return isWeekScoped || validLegacyKeys.has(k) || completedOnOrBeforeToday;
       })
     );
     if (Object.keys(cleaned).length !== Object.keys(progress).length) {
@@ -377,6 +386,58 @@ export function WorkoutPlannerView({
     syncToServer();
   };
 
+  const handleWorkoutUrlImport = useCallback(async () => {
+    const url = workoutImportUrl.trim();
+    if (!url) return;
+    setWorkoutImportLoading(true);
+    setImportedWorkout(null);
+    try {
+      const res = await fetch("/api/workouts/parse-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.workout) {
+        setImportedWorkout(data.workout);
+        setShowImportPanel(true);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from web`);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not parse workout URL", "error");
+    } finally {
+      setWorkoutImportLoading(false);
+    }
+  }, [workoutImportUrl, showToast]);
+
+  const addImportedWorkout = useCallback(
+    (targetDayIndex: number | null) => {
+      if (!plan || !importedWorkout) return;
+      const next = [...weeklyPlan];
+      if (targetDayIndex === null) {
+        next.push(importedWorkout);
+        setExpandedDay(next.length - 1);
+        setEditingDay(next.length - 1);
+      } else {
+        const target = next[targetDayIndex];
+        next[targetDayIndex] = {
+          ...target,
+          exercises: [...(target.exercises ?? []), ...importedWorkout.exercises],
+        };
+      }
+      const names = extractExerciseNames(next);
+      if (names.length > 0) saveRecentExerciseNames(names);
+      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+      onPlanSaved?.();
+      setImportedWorkout(null);
+      setWorkoutImportUrl("");
+      setShowImportPanel(false);
+      showToast("Workout added to plan");
+    },
+    [plan, weeklyPlan, importedWorkout, onUpdatePlan, onPlanSaved, showToast]
+  );
+
   /** Get today's or most recent wearable for recovery assessment */
   const getWearableForRecovery = useCallback((): { sleepScore?: number; readinessScore?: number; heartRateResting?: number } | null => {
     if (!wearableData?.length) return null;
@@ -474,7 +535,7 @@ export function WorkoutPlannerView({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
-          <p className="section-subtitle">Tap a day to expand. Mark exercises done as you go; use Show demo for form cues.</p>
+          <p className="section-subtitle">Tap a day to expand. Import workouts from the web, or mark exercises done as you go.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -489,6 +550,19 @@ export function WorkoutPlannerView({
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             Calendar
+          </button>
+          <button
+            onClick={() => setShowImportPanel((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${showImportPanel
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+            aria-pressed={showImportPanel}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Import from web
           </button>
           <button
             onClick={() => {
@@ -510,6 +584,66 @@ export function WorkoutPlannerView({
           </button>
         </div>
       </div>
+
+      {/* Import from web */}
+      {showImportPanel && (
+        <div className="card p-4 animate-slide-up border border-[var(--accent)]/30">
+          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout from URL</h3>
+          <p className="text-sm text-[var(--muted)] mb-3">
+            Paste a link to a workout page (fitness blog, YouTube description, program, etc.). We&apos;ll extract the exercises.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <input
+              type="url"
+              placeholder="https://example.com/workout/chest-day"
+              value={workoutImportUrl}
+              onChange={(e) => setWorkoutImportUrl(e.target.value)}
+              className="input-base rounded-lg px-4 py-2 text-sm flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleWorkoutUrlImport}
+              disabled={workoutImportLoading || !workoutImportUrl.trim()}
+              className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
+            >
+              {workoutImportLoading ? "Fetching…" : "Import"}
+            </button>
+          </div>
+          {importedWorkout && (
+            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                {importedWorkout.day} — {importedWorkout.focus} ({importedWorkout.exercises.length} exercises)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => addImportedWorkout(null)}
+                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+                >
+                  Add as new day
+                </button>
+                {weeklyPlan.map((day, idx) => (
+                  <button
+                    key={`${day.day}-${idx}`}
+                    type="button"
+                    onClick={() => addImportedWorkout(idx)}
+                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--surface-elevated)]"
+                  >
+                    Add to {day.day}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setImportedWorkout(null); setWorkoutImportUrl(""); }}
+                className="text-xs text-[var(--muted)] hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Calendar */}
       {calendarOpen && (
@@ -778,7 +912,7 @@ export function WorkoutPlannerView({
                               const restTime = parseRest(exercise.notes);
                               return (
                                 <div
-                                  key={`warmup-${exIndex}`}
+                                  key={`warmup-${dayIndex}-${exIndex}`}
                                   className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
                                     }`}
                                 >
@@ -836,7 +970,7 @@ export function WorkoutPlannerView({
 
                             return (
                               <div
-                                key={`${exercise.name}-${exIndex}`}
+                                key={`main-${dayIndex}-${exIndex}`}
                                 className={`rounded-lg border p-3 transition-colors ${isDone
                                     ? "border-[var(--accent)]/30 bg-[var(--accent)]/5"
                                     : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
@@ -1029,7 +1163,7 @@ export function WorkoutPlannerView({
                               const completedAt = effectiveProgress[exerciseKey(day, exercise, "finisher")];
                               const restTime = parseRest(exercise.notes);
                               return (
-                                <div key={`finisher-${exIndex}`} className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"}`}>
+                                <div key={`finisher-${dayIndex}-${exIndex}`} className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"}`}>
                                   {isEditing ? (
                                     <>
                                       <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
