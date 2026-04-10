@@ -8,7 +8,6 @@ import {
 } from "@/lib/audio-utils";
 import type { StreamingRecorder } from "@/lib/audio-utils";
 import type { UserProfile, WorkoutLocation, WorkoutEquipment } from "@/lib/types";
-import { NovaTracePanel } from "@/components/judge/NovaTracePanel";
 
 const EQUIPMENT_OPTIONS: { value: WorkoutEquipment; label: string }[] = [
   { value: "bodyweight", label: "Bodyweight" },
@@ -35,14 +34,12 @@ export function LandingPage({
   onLoginSuccess,
   loading,
   onUsePreseededDemo,
-  onStartJudgeTour,
   onResetDemoData,
 }: {
   onSubmit: (d: Partial<UserProfile> & { password?: string }) => void;
   onLoginSuccess: (userId: string) => void;
   loading: boolean;
   onUsePreseededDemo: () => void;
-  onStartJudgeTour: () => void;
   onResetDemoData: () => void;
 }) {
   const poundsToKg = (lbs: number): number => lbs * 0.45359237;
@@ -339,13 +336,9 @@ export function LandingPage({
       <header className="border-b border-[var(--border-soft)] bg-[var(--background)]/90 backdrop-blur-md sticky top-0 z-20" role="banner">
         <div className="mx-auto max-w-4xl px-5 py-4 flex items-center justify-between">
           <div className="flex items-baseline gap-2">
-            <span className="text-xl" aria-hidden="true">🧩</span>
             <span className="brand-title !text-lg text-[var(--accent)] leading-none">Refactor</span>
+            <span className="text-sm text-[var(--muted)] hidden sm:inline">body recomposition</span>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)]/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" aria-hidden />
-            Amazon Nova AI Hackathon
-          </span>
         </div>
       </header>
 
@@ -396,27 +389,10 @@ export function LandingPage({
 
       <section className="px-5 pb-20">
         <div className="mx-auto max-w-lg">
-          <NovaTracePanel />
-
-          {/* Judges / evaluators: one-click instant demo — prominent above form */}
-          <div className="mb-8 p-4 rounded-xl border-2 border-[var(--accent)]/30 bg-[var(--accent)]/5 animate-fade-in" style={{ animationDelay: "320ms" }}>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">For judges & evaluators</p>
-            <p className="mt-1 text-sm text-[var(--foreground)]">One-click instant demo — no signup. Loads 7-day sample data with auth cookie for AI routes.</p>
-            <ol className="mt-3 space-y-1 text-xs text-[var(--muted)] list-decimal list-inside">
-              <li>Start guided judge tour (auto-seeds demo account).</li>
-              <li>Dashboard: open Evidence card and click Show metrics.</li>
-              <li>Meals: add one sample meal (text/voice/photo).</li>
-              <li>Dashboard: generate Weekly AI Review.</li>
-              <li>The Ref: send one message (or voice).</li>
-            </ol>
+          <div className="mb-8 p-4 rounded-xl border border-[var(--border-soft)] bg-[var(--surface-elevated)]/50 animate-fade-in" style={{ animationDelay: "320ms" }}>
+            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Try without signing up</p>
+            <p className="mt-1 text-sm text-[var(--foreground)]">Load sample data in your browser to explore the app.</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={onStartJudgeTour}
-                className="inline-flex items-center gap-2 rounded-lg border border-[var(--accent)] bg-white px-4 py-2.5 text-sm font-semibold text-[var(--accent)] hover:bg-[var(--accent)]/5 transition-colors"
-              >
-                Start guided judge tour
-              </button>
               <button
                 type="button"
                 onClick={onUsePreseededDemo}
@@ -428,7 +404,7 @@ export function LandingPage({
               <button
                 type="button"
                 onClick={onResetDemoData}
-                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] hover:underline"
+                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] hover:underline self-center"
               >
                 Reset local demo data
               </button>
@@ -783,7 +759,7 @@ export function LandingPage({
                   />
                 </div>
                 <button type="submit" disabled={loading} className="btn-primary w-full !py-4 !text-base font-semibold shadow-[var(--shadow-medium)] hover:shadow-[var(--shadow-strong)] transition-shadow">
-                  {loading ? "Generating your plan with Amazon Nova…" : "Create my plan"}
+                  {loading ? "Generating your plan…" : "Create my plan"}
                 </button>
               </form>
             </div>
@@ -792,7 +768,7 @@ export function LandingPage({
       </section>
 
       <footer className="py-8 text-center border-t border-[var(--border-soft)]">
-        <p className="text-xs text-[var(--muted)]">Built for the Amazon Nova AI Hackathon · Powered by Nova 2 Lite, Sonic, Canvas &amp; more</p>
+        <p className="text-xs text-[var(--muted)]">Refactor — personalized fitness and nutrition</p>
       </footer>
     </div>
   );

@@ -31,8 +31,6 @@ import { playBadgeEarned, playLevelUp } from "@/lib/sounds";
 import { xpToLevel } from "@/lib/milestones";
 import { formatHydrationAmount, getUnitSystem } from "@/lib/units";
 import { v4 as uuidv4 } from "uuid";
-import { NovaTracePanel } from "@/components/judge/NovaTracePanel";
-
 export default function Home() {
   const { showToast } = useToast();
   const { trigger: triggerConfetti, ConfettiOverlay } = useConfetti();
@@ -106,8 +104,6 @@ export default function Home() {
   const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});
   const [isDemoMode, setIsDemoMode] = useState(false);
   const [planLoadingMessage, setPlanLoadingMessage] = useState("Generating your plan… (may take up to 60s)");
-  const [showJudgeChecklist, setShowJudgeChecklist] = useState(false);
-
   const [wearableData, setWearableData] = useState<WearableDaySummary[]>(() => getWearableData());
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [showGroupCreate, setShowGroupCreate] = useState(false);
@@ -407,13 +403,6 @@ export default function Home() {
     setRicoOpen(false);
     setView("onboard");
     setIsDemoMode(false);
-    setShowJudgeChecklist(false);
-  };
-
-  const handleStartJudgeTour = async () => {
-    await handleUsePreseededDemo();
-    setShowJudgeChecklist(true);
-    showToast("Guided judge tour started: Evidence → Meals → Weekly Review → The Ref.", "info");
   };
 
   if (restoring) {
@@ -440,7 +429,6 @@ export default function Home() {
         }}
         loading={loading}
         onUsePreseededDemo={handleUsePreseededDemo}
-        onStartJudgeTour={handleStartJudgeTour}
         onResetDemoData={handleResetDemoData}
       />
     );
@@ -462,7 +450,6 @@ export default function Home() {
             <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Refactor</span>
             <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
           </button>
-          <span className="hidden md:inline-flex items-center rounded-full border border-[var(--border-soft)] bg-[var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[var(--muted)]">Amazon Nova AI</span>
 
           <nav ref={navContainerRef} className="nav-morphing flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
             {pillStyle && (
@@ -571,29 +558,6 @@ export default function Home() {
       </nav>
 
       <main id="main-content" className="relative z-10 mx-auto max-w-5xl px-5 py-8 pb-24 md:pb-8" role="main">
-        <NovaTracePanel />
-        {showJudgeChecklist && (
-          <section className="card p-4 mb-4 border border-[var(--accent)]/30 bg-[var(--accent)]/[0.04]">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">Guided judge checklist</p>
-                <ol className="mt-2 text-sm text-[var(--foreground)] list-decimal list-inside space-y-1">
-                  <li>Dashboard: open Evidence &amp; Results and click <strong>Show metrics</strong>.</li>
-                  <li>Meals: log one meal using text, voice, or photo.</li>
-                  <li>Dashboard: click <strong>Generate</strong> in Weekly AI Review.</li>
-                  <li>Open The Ref (floating button) and send one message.</li>
-                </ol>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowJudgeChecklist(false)}
-                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                Dismiss
-              </button>
-            </div>
-          </section>
-        )}
         {view === "dashboard" && (
           <div key="dashboard" className={getSlideClass("dashboard")}>
             <Dashboard

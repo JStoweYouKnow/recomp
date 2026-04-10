@@ -8,8 +8,31 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 
 - **Demo data:** Pre-seeded "Jordan" user (7-day synthetic dataset) demonstrates measurable outcomes without weeks of real usage. Click "Try pre-seeded demo" → "Show metrics" in the Evidence card.
 - **Metrics:** Macro adherence %, weekly AI score, meal count, streak — all derivable from stored meals and plan targets.
+- **Evidence mix:** This document combines deterministic seeded demo metrics with a 21-day founder self-trial to show both judge reliability and repeated real-world usage.
 
 ---
+
+## 21-Day Pilot Validation
+
+- **Founder dogfooding:** Refactor was used in a real 21-day self-trial from 2026-02-24 to 2026-03-16, not only as a seeded demo.
+- **Retention signal:** Meals were logged on all 21 days, with 194 total meals recorded during the period.
+- **Core workflow usage:** The user completed workouts on 6 days, synced wearable data on 6 days, and sent 17 messages to The Ref.
+- **How to frame it:** This is an `n=1` pilot, not a clinical study or population-level outcome claim. It supports assertions about usability, consistency, and repeated real-world use.
+- **Why it matters:** Many hackathon projects prove a feature once. Refactor sustained daily usage across three weeks, which is a stronger signal that the product is genuinely useful in practice.
+
+| Metric | 21-Day Result |
+|---|---:|
+| Days analyzed | 21 |
+| Days with meals logged | 21 |
+| Total meals logged | 194 |
+| Workout days completed | 6 |
+| Days with wearable data present | 6 |
+| Messages sent to The Ref | 17 |
+| Replies from The Ref | 17 |
+| Calories logged | 44,138 |
+| Protein logged (g) | 2,834 |
+| Carbs logged (g) | 4,288 |
+| Fat logged (g) | 1,716 |
 
 ## Community Impact
 
@@ -61,7 +84,7 @@ Evidence for enterprise and community impact claims. Judges: see this document a
 | 4-way meal logging | Meals → Log meal → try text, Voice log, Snap plate, receipt | POST /api/meals/analyze-photo, /api/voice/parse |
 | Nova Act grocery | Shopping list → search; check for Amazon product links | GET /api/act/status → reachable |
 | Web grounding research | Dashboard → Research card → ask nutrition question; response should cite `source: web-grounding` | POST /api/research |
-| Voice coach | The Ref (🧩) → hold mic; bidirectional Nova Sonic | POST /api/rico, /api/voice/sonic/stream |
+| Voice coach | The Ref (👨‍⚖️) → hold mic; bidirectional Nova Sonic | POST /api/rico, /api/voice/sonic/stream |
 | All integrations live | — | GET /api/judge/health → features all "live" |
 
 ---

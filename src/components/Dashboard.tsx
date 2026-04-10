@@ -8,14 +8,12 @@ import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 
 import { ShoppingList } from "./dashboard/ShoppingList";
-import { EvidenceResultsCard } from "./dashboard/EvidenceResultsCard";
 import { HydrationWidget } from "./dashboard/HydrationWidget";
 import { FastingWidget } from "./dashboard/FastingWidget";
 import { BiofeedbackQuickEntry } from "./dashboard/BiofeedbackQuickEntry";
 import { MetabolicModelCard } from "./dashboard/MetabolicModelCard";
 import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
-import { NovaStatusCard } from "./dashboard/NovaStatusCard";
 import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
 import { DuelCard } from "./dashboard/DuelCard";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
@@ -648,12 +646,6 @@ export function Dashboard({
           reviewLoading={reviewLoading}
           onGenerate={handleWeeklyReview}
         />
-      </div>
-
-      {/* ── Evidence & Nova Status ── */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 animate-fade-in stagger-3">
-        <EvidenceResultsCard />
-        <NovaStatusCard />
       </div>
 
       {/* ── Wearable data ── */}

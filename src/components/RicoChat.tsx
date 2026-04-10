@@ -357,7 +357,7 @@ export function RicoChat({
         <div className="flex items-center justify-between border-b border-[var(--border-soft)] px-4 py-3 -mt-1">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]/20 text-xl">
-              🧩
+              👨‍⚖️
             </div>
             <div>
               <h3 className="font-semibold text-[var(--foreground)]">The Ref</h3>

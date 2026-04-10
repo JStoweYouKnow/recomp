@@ -39,11 +39,17 @@ import type {
 const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RefactorTable";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
-function getDocClient() {
-  const client = new DynamoDBClient({ region: REGION });
-  return DynamoDBDocumentClient.from(client, {
-    marshallOptions: { removeUndefinedValues: true },
-  });
+/** One client per warm serverless instance. Creating a new client per request exhausts FDs (EMFILE) under parallel sync writes. */
+let docClientSingleton: DynamoDBDocumentClient | undefined;
+
+function getDocClient(): DynamoDBDocumentClient {
+  if (!docClientSingleton) {
+    const client = new DynamoDBClient({ region: REGION });
+    docClientSingleton = DynamoDBDocumentClient.from(client, {
+      marshallOptions: { removeUndefinedValues: true },
+    });
+  }
+  return docClientSingleton;
 }
 
 // ── Profile ──────────────────────────────────────────────

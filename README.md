@@ -90,7 +90,7 @@ What makes Refactor novel — both technically and as a product:
 2. Dashboard loads with Jordan's 7-day data. Click **Show metrics** in the "Evidence & Results" card.
 3. Open Meals and add one text meal.
 4. Return to Dashboard and click **Generate** in Weekly AI Review (multi-agent demo).
-5. Open The Ref (🧩) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
+5. Open The Ref (👨‍⚖️) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
 
 If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback. Verify with `GET /api/judge/health`.
 
@@ -102,7 +102,7 @@ Suggested flow to assess all Nova features (~5–10 min):
 2. **Dashboard** — "Today at a Glance" (budget, macros, today's workout/diet), unified calendar with diet/workout popups and "Edit plan," transformation preview (upload photo → "after" image via Nova Canvas).
 3. **Meals / Workouts** — Use the calendar to pick a date; view or edit that day's meals or workout. On Workouts, use "Show demo" / "Hide demo" for inline exercise GIFs.
 4. **Meals — Log a meal** — Try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
-5. **The Ref** — Click the 🧩 button; chat with the AI coach (text or voice via Nova Sonic).
+5. **The Ref** — Click the 👨‍⚖️ button; chat with the AI coach (text or voice via Nova Sonic).
 6. **Weekly review** — Dashboard → "Generate" in the Weekly AI Review card (multi-agent orchestration).
 7. **Adjust** — Navigate to Adjust; add feedback and run plan adjustments (Nova Lite).
 8. **Wearables** — Connect Oura/Fitbit or import health data (optional).
