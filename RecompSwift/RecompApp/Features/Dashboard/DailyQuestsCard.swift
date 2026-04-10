@@ -23,7 +23,7 @@ struct DailyQuestsCard: View {
                             .foregroundStyle(quests[i].1 ? .secondary : .primary)
                     }
                     .onTapGesture {
-                        withAnimation { quests[i].1.toggle() }
+                        withAnimation { quests[i] = (quests[i].0, !quests[i].1) }
                     }
                 }
             }

@@ -2,13 +2,13 @@ import Foundation
 import SwiftData
 
 @Model
-final class CoachMessage: @unchecked Sendable {
+public final class CoachMessage: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var role: CoachMessageRole
-    var content: String
-    var timestamp: Date
+    public var role: CoachMessageRole
+    public var content: String
+    public var timestamp: Date
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         role: CoachMessageRole,
         content: String,
@@ -21,11 +21,11 @@ final class CoachMessage: @unchecked Sendable {
     }
 }
 
-struct CoachSchedule: Codable, Sendable {
-    var checkInTimes: [String]
-    var lastCheckIn: String?
-    var confrontations: [Confrontation]
-    var weeklyReviewDay: Int
+public struct CoachSchedule: Codable, Sendable {
+    public var checkInTimes: [String]
+    public var lastCheckIn: String?
+    public var confrontations: [Confrontation]
+    public var weeklyReviewDay: Int
 
     struct Confrontation: Codable, Identifiable, Sendable {
         var id: String

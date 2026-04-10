@@ -1,19 +1,20 @@
 import Foundation
 import SwiftData
+import Observation
 
 @MainActor
 @Observable
-final class MealService {
+public final class MealService {
     private(set) var isLoading = false
     private(set) var suggestions: [SuggestedMeal] = []
 
     private let api: APIClient
 
-    init(api: APIClient = .shared) {
+    public init(api: APIClient = .shared) {
         self.api = api
     }
 
-    func fetchSuggestions(profile: UserProfileDTO, date: String) async throws {
+    public func fetchSuggestions(profile: UserProfileDTO, date: String) async throws {
         isLoading = true
         defer { isLoading = false }
 
@@ -23,7 +24,7 @@ final class MealService {
         suggestions = response.suggestions
     }
 
-    func analyzePhoto(imageData: Data) async throws -> [SuggestedMeal] {
+    public func analyzePhoto(imageData: Data) async throws -> [SuggestedMeal] {
         isLoading = true
         defer { isLoading = false }
 
@@ -34,7 +35,7 @@ final class MealService {
         return response.meals
     }
 
-    func analyzeReceipt(imageData: Data) async throws -> [SuggestedMeal] {
+    public func analyzeReceipt(imageData: Data) async throws -> [SuggestedMeal] {
         isLoading = true
         defer { isLoading = false }
 
@@ -45,7 +46,7 @@ final class MealService {
         return response.meals
     }
 
-    func analyzeMenu(imageData: Data) async throws -> [SuggestedMeal] {
+    public func analyzeMenu(imageData: Data) async throws -> [SuggestedMeal] {
         isLoading = true
         defer { isLoading = false }
 
@@ -56,31 +57,31 @@ final class MealService {
         return response.meals
     }
 
-    func lookupNutrition(query: String) async throws -> NutritionLookupResponse {
+    public func lookupNutrition(query: String) async throws -> NutritionLookupResponse {
         isLoading = true
         defer { isLoading = false }
 
         return try await api.request(MealAPI.lookupNutritionWeb(query: query))
     }
 
-    func parseRecipeUrl(_ url: String) async throws -> RecipeParseResponse {
+    public func parseRecipeUrl(_ url: String) async throws -> RecipeParseResponse {
         isLoading = true
         defer { isLoading = false }
 
         return try await api.request(MealAPI.parseRecipeUrl(url: url))
     }
 
-    func saveMeal(_ meal: MealEntry, context: ModelContext) {
+    public func saveMeal(_ meal: MealEntry, context: ModelContext) {
         context.insert(meal)
         try? context.save()
     }
 
-    func deleteMeal(_ meal: MealEntry, context: ModelContext) {
+    public func deleteMeal(_ meal: MealEntry, context: ModelContext) {
         context.delete(meal)
         try? context.save()
     }
 
-    func mealsForDate(_ date: String, context: ModelContext) -> [MealEntry] {
+    public func mealsForDate(_ date: String, context: ModelContext) -> [MealEntry] {
         let descriptor = FetchDescriptor<MealEntry>(
             predicate: #Predicate { $0.date == date },
             sortBy: [SortDescriptor(\.loggedAt)]
@@ -88,7 +89,7 @@ final class MealService {
         return (try? context.fetch(descriptor)) ?? []
     }
 
-    func todaysMacros(context: ModelContext) -> Macros {
+    public func todaysMacros(context: ModelContext) -> Macros {
         let today = DateHelpers.todayString()
         let meals = mealsForDate(today, context: context)
         return meals.reduce(.zero) { $0.adding($1.macros) }

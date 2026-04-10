@@ -35,14 +35,16 @@ struct ResearchView: View {
                                 Text("Sources")
                                     .font(.headline)
                                 ForEach(sources) { source in
-                                    Link(destination: URL(string: source.url)!) {
-                                        HStack {
-                                            Text(source.title)
-                                                .font(.subheadline)
-                                                .foregroundStyle(.blue)
-                                            Spacer()
-                                            Image(systemName: "arrow.up.right.square")
-                                                .font(.caption)
+                                    if let url = URL(string: source.url) {
+                                        Link(destination: url) {
+                                            HStack {
+                                                Text(source.title)
+                                                    .font(.subheadline)
+                                                    .foregroundStyle(.blue)
+                                                Spacer()
+                                                Image(systemName: "arrow.up.right.square")
+                                                    .font(.caption)
+                                            }
                                         }
                                     }
                                 }

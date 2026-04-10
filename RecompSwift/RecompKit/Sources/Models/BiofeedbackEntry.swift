@@ -2,18 +2,18 @@ import Foundation
 import SwiftData
 
 @Model
-final class BiofeedbackEntry: @unchecked Sendable {
+public final class BiofeedbackEntry: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var time: String
-    var energy: Int
-    var mood: Int
-    var hunger: Int
-    var stress: Int
-    var soreness: Int
-    var notes: String?
+    public var date: String
+    public var time: String
+    public var energy: Int
+    public var mood: Int
+    public var hunger: Int
+    public var stress: Int
+    public var soreness: Int
+    public var notes: String?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         date: String,
         time: String,
@@ -36,14 +36,14 @@ final class BiofeedbackEntry: @unchecked Sendable {
     }
 }
 
-struct BiofeedbackInsight: Codable, Sendable {
+public struct BiofeedbackInsight: Codable, Sendable {
     struct Correlation: Codable, Sendable {
         var factor: String
         var observation: String
         var strength: ConfidenceLevel
     }
 
-    var correlations: [Correlation]
-    var recommendations: [String]
-    var generatedAt: String
+    public var correlations: [Correlation]
+    public var recommendations: [String]
+    public var generatedAt: String
 }

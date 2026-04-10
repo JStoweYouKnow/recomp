@@ -3,8 +3,12 @@ import SwiftData
 
 struct HydrationWidget: View {
     @Environment(\.modelContext) private var context
-    @Query(filter: #Predicate<HydrationEntry> { $0.date == DateHelpers.todayString() })
-    private var todaysEntries: [HydrationEntry]
+    @Query(sort: \HydrationEntry.time) private var allEntries: [HydrationEntry]
+
+    private var todaysEntries: [HydrationEntry] {
+        let today = DateHelpers.todayString()
+        return allEntries.filter { $0.date == today }
+    }
 
     private var totalMl: Int {
         todaysEntries.reduce(0) { $0 + $1.amountMl }

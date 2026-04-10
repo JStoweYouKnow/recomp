@@ -22,15 +22,15 @@ public enum APIError: Error, LocalizedError {
     }
 }
 
-actor APIClient {
-    static let shared = APIClient()
+public actor APIClient {
+    public static let shared = APIClient()
 
     private let session: URLSession
     private let baseURL: URL
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    init(baseURL: URL? = nil) {
+    public init(baseURL: URL? = nil) {
         let config = URLSessionConfiguration.default
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
@@ -57,27 +57,27 @@ actor APIClient {
 
     // MARK: - Core Request Methods
 
-    func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
+    public func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
         let request = try buildRequest(for: endpoint)
         let (data, response) = try await perform(request)
         try validateResponse(response)
         return try decode(data)
     }
 
-    func requestVoid(_ endpoint: APIEndpoint) async throws {
+    public func requestVoid(_ endpoint: APIEndpoint) async throws {
         let request = try buildRequest(for: endpoint)
         let (_, response) = try await perform(request)
         try validateResponse(response)
     }
 
-    func requestRaw(_ endpoint: APIEndpoint) async throws -> Data {
+    public func requestRaw(_ endpoint: APIEndpoint) async throws -> Data {
         let request = try buildRequest(for: endpoint)
         let (data, response) = try await perform(request)
         try validateResponse(response)
         return data
     }
 
-    func upload<T: Decodable>(
+    public func upload<T: Decodable>(
         _ endpoint: APIEndpoint,
         imageData: Data,
         fieldName: String = "image",
@@ -102,13 +102,17 @@ actor APIClient {
         return try decode(data)
     }
 
-    func stream(_ endpoint: APIEndpoint) -> AsyncThrowingStream<Data, Error> {
+    public func stream(_ endpoint: APIEndpoint) -> AsyncThrowingStream<Data, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
                     let request = try buildRequest(for: endpoint)
                     let (bytes, response) = try await session.bytes(for: request)
-                    try validateResponse(response as! HTTPURLResponse)
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        continuation.finish(throwing: APIError.invalidResponse(0))
+                        return
+                    }
+                    try validateResponse(httpResponse)
 
                     for try await line in bytes.lines {
                         guard !line.isEmpty else { continue }

@@ -1,29 +1,29 @@
 import Foundation
 import SwiftData
 
-struct MetabolicDataPoint: Codable, Sendable {
-    var date: String
-    var weightKg: Double
-    var totalIntake: Double
-    var totalExpenditure: Double
+public struct MetabolicDataPoint: Codable, Sendable {
+    public var date: String
+    public var weightKg: Double
+    public var totalIntake: Double
+    public var totalExpenditure: Double
 }
 
-struct MetabolicHistoryEntry: Codable, Sendable {
-    var date: String
-    var tdee: Double
-    var confidence: Double
+public struct MetabolicHistoryEntry: Codable, Sendable {
+    public var date: String
+    public var tdee: Double
+    public var confidence: Double
 }
 
 @Model
-final class MetabolicModel: @unchecked Sendable {
+public final class MetabolicModel: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var estimatedTDEE: Double
-    var confidence: Double
-    var dataPoints: [MetabolicDataPoint]
-    var lastUpdated: Date
-    var history: [MetabolicHistoryEntry]
+    public var estimatedTDEE: Double
+    public var confidence: Double
+    public var dataPoints: [MetabolicDataPoint]
+    public var lastUpdated: Date
+    public var history: [MetabolicHistoryEntry]
 
-    init(
+    public init(
         id: String = "metabolic",
         estimatedTDEE: Double = 2000,
         confidence: Double = 0,

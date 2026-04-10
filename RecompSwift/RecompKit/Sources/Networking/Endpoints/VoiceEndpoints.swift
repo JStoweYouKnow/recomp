@@ -1,11 +1,11 @@
 import Foundation
 
-enum VoiceAPI: APIEndpoint {
+public enum VoiceAPI: APIEndpoint {
     case parse(text: String)
     case sonicStream
     case onboardingExtract(text: String)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .parse: return "/api/voice/parse"
         case .sonicStream: return "/api/voice/sonic/stream"
@@ -13,9 +13,9 @@ enum VoiceAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod { .POST }
+    public var method: HTTPMethod { .POST }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .parse(let text):
             return AnyEncodable(["text": text])
@@ -27,7 +27,7 @@ enum VoiceAPI: APIEndpoint {
     }
 }
 
-struct VoiceParseResponse: Decodable {
+public struct VoiceParseResponse: Decodable {
     let meals: [SuggestedMeal]?
     let text: String?
 }

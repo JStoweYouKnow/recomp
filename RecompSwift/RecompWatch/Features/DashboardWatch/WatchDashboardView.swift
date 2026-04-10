@@ -2,8 +2,6 @@ import SwiftUI
 import SwiftData
 
 struct WatchDashboardView: View {
-    @Environment(\.modelContext) private var context
-
     @State private var caloriesConsumed = 0
     @State private var calorieTarget = 2000
     @State private var protein: Double = 0

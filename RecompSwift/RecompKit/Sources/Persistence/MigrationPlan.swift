@@ -1,17 +1,17 @@
 import Foundation
 import SwiftData
 
-enum RecompMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] {
+public enum RecompMigrationPlan: SchemaMigrationPlan {
+    public static var schemas: [any VersionedSchema.Type] {
         [RecompSchemaV1.self]
     }
 
-    static var stages: [MigrationStage] {
+    public static var stages: [MigrationStage] {
         []
     }
 }
 
-enum RecompSchemaV1: VersionedSchema {
-    static var versionIdentifier = Schema.Version(1, 0, 0)
-    static var models: [any PersistentModel.Type] { RecompSchema.models }
+public enum RecompSchemaV1: VersionedSchema {
+    public static var versionIdentifier = Schema.Version(1, 0, 0)
+    public static var models: [any PersistentModel.Type] { RecompSchema.models }
 }

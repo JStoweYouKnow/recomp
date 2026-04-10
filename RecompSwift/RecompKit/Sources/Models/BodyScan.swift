@@ -1,23 +1,23 @@
 import Foundation
 import SwiftData
 
-struct BodyScanPhotos: Codable, Sendable {
-    var front: String?
-    var side: String?
-    var back: String?
+public struct BodyScanPhotos: Codable, Sendable {
+    public var front: String?
+    public var side: String?
+    public var back: String?
 }
 
 @Model
-final class BodyScan: @unchecked Sendable {
+public final class BodyScan: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var photos: BodyScanPhotos
-    var analysis: String?
-    var bodyFatEstimate: Double?
-    var muscleAssessment: String?
-    var notes: String?
+    public var date: String
+    public var photos: BodyScanPhotos
+    public var analysis: String?
+    public var bodyFatEstimate: Double?
+    public var muscleAssessment: String?
+    public var notes: String?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         date: String,
         photos: BodyScanPhotos = BodyScanPhotos(),

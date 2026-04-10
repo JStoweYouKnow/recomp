@@ -2,12 +2,12 @@ import Foundation
 import SwiftData
 
 @Model
-final class SocialSettings: @unchecked Sendable {
+public final class SocialSettings: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var visibility: ProfileVisibility
-    var username: String?
+    public var visibility: ProfileVisibility
+    public var username: String?
 
-    init(
+    public init(
         id: String = "social",
         visibility: ProfileVisibility = .badgesOnly,
         username: String? = nil
@@ -18,20 +18,20 @@ final class SocialSettings: @unchecked Sendable {
     }
 }
 
-struct PublicProfile: Codable, Sendable {
-    var username: String
-    var name: String
-    var avatarDataUrl: String?
-    var goal: FitnessGoal
-    var visibility: ProfileVisibility
-    var badges: [MilestoneDTO]
-    var xp: Int
-    var xpLevel: Int
-    var streakLength: Int?
-    var weeksActive: Int?
-    var macroHitRate: Double?
-    var recentMeals: [RecentMealDTO]?
-    var workoutCompletionRate: Double?
+public struct PublicProfile: Codable, Sendable {
+    public var username: String
+    public var name: String
+    public var avatarDataUrl: String?
+    public var goal: FitnessGoal
+    public var visibility: ProfileVisibility
+    public var badges: [MilestoneDTO]
+    public var xp: Int
+    public var xpLevel: Int
+    public var streakLength: Int?
+    public var weeksActive: Int?
+    public var macroHitRate: Double?
+    public var recentMeals: [RecentMealDTO]?
+    public var workoutCompletionRate: Double?
 
     struct MilestoneDTO: Codable, Sendable {
         var id: String
@@ -46,15 +46,15 @@ struct PublicProfile: Codable, Sendable {
     }
 }
 
-struct WeeklyReview: Codable, Identifiable, Sendable {
-    var id: String
-    var createdAt: String
-    var summary: String
-    var mealAnalysis: String
-    var wearableInsights: String
-    var recommendations: [String]
-    var reasoning: String
-    var agentSteps: [AgentStep]
+public struct WeeklyReview: Codable, Identifiable, Sendable {
+    public var id: String
+    public var createdAt: String
+    public var summary: String
+    public var mealAnalysis: String
+    public var wearableInsights: String
+    public var recommendations: [String]
+    public var reasoning: String
+    public var agentSteps: [AgentStep]
 
     struct AgentStep: Codable, Sendable {
         var tool: String
@@ -62,12 +62,12 @@ struct WeeklyReview: Codable, Identifiable, Sendable {
     }
 }
 
-struct RecoveryAssessment: Codable, Sendable {
-    var score: Double
-    var level: RecoveryLevel
-    var factors: [Factor]
-    var recommendation: String
-    var modifiedWorkout: ModifiedWorkout?
+public struct RecoveryAssessment: Codable, Sendable {
+    public var score: Double
+    public var level: RecoveryLevel
+    public var factors: [Factor]
+    public var recommendation: String
+    public var modifiedWorkout: ModifiedWorkout?
 
     struct Factor: Codable, Sendable {
         var name: String
@@ -89,14 +89,14 @@ struct RecoveryAssessment: Codable, Sendable {
 }
 
 @Model
-final class PantryItem: @unchecked Sendable {
+public final class PantryItem: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var name: String
-    var category: PantryCategory
-    var addedAt: Date
-    var expiresAt: Date?
+    public var name: String
+    public var category: PantryCategory
+    public var addedAt: Date
+    public var expiresAt: Date?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         name: String,
         category: PantryCategory,
@@ -111,15 +111,15 @@ final class PantryItem: @unchecked Sendable {
     }
 }
 
-struct MealPrepRecipe: Codable, Identifiable, Sendable {
-    var id: String { name }
-    var name: String
-    var servings: Int
-    var macrosPerServing: Macros
-    var ingredients: [Ingredient]
-    var instructions: [String]
-    var prepTime: Int
-    var cookTime: Int
+public struct MealPrepRecipe: Codable, Identifiable, Sendable {
+    public var id: String { name }
+    public var name: String
+    public var servings: Int
+    public var macrosPerServing: Macros
+    public var ingredients: [Ingredient]
+    public var instructions: [String]
+    public var prepTime: Int
+    public var cookTime: Int
 
     struct Ingredient: Codable, Sendable {
         var name: String
@@ -129,14 +129,14 @@ struct MealPrepRecipe: Codable, Identifiable, Sendable {
 }
 
 @Model
-final class MealPrepPlan: @unchecked Sendable {
+public final class MealPrepPlan: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var weekStart: String
-    var recipes: [MealPrepRecipe]
-    var groceryList: [GroceryItem]
-    var batchInstructions: [String]
-    var estimatedPrepTime: Int
-    var createdAt: Date
+    public var weekStart: String
+    public var recipes: [MealPrepRecipe]
+    public var groceryList: [GroceryItem]
+    public var batchInstructions: [String]
+    public var estimatedPrepTime: Int
+    public var createdAt: Date
 
     struct GroceryItem: Codable, Sendable {
         var item: String
@@ -145,7 +145,7 @@ final class MealPrepPlan: @unchecked Sendable {
         var checked: Bool
     }
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         weekStart: String,
         recipes: [MealPrepRecipe] = [],
@@ -164,23 +164,23 @@ final class MealPrepPlan: @unchecked Sendable {
     }
 }
 
-struct CookingAppConnection: Codable, Sendable {
-    var provider: CookingAppProvider
-    var label: String?
-    var connectedAt: String
+public struct CookingAppConnection: Codable, Sendable {
+    public var provider: CookingAppProvider
+    public var label: String?
+    public var connectedAt: String
 }
 
-struct MusicPreference: Codable, Sendable {
-    var provider: MusicProvider
-    var workoutPlaylists: [String: String]
+public struct MusicPreference: Codable, Sendable {
+    public var provider: MusicProvider
+    public var workoutPlaylists: [String: String]
 }
 
-struct PlaylistSuggestion: Codable, Identifiable, Sendable {
-    var id: String { deepLink }
-    var name: String
-    var description: String
-    var provider: MusicProvider
-    var deepLink: String
-    var bpm: String
-    var mood: String
+public struct PlaylistSuggestion: Codable, Identifiable, Sendable {
+    public var id: String { deepLink }
+    public var name: String
+    public var description: String
+    public var provider: MusicProvider
+    public var deepLink: String
+    public var bpm: String
+    public var mood: String
 }

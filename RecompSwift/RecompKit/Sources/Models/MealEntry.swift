@@ -2,18 +2,18 @@ import Foundation
 import SwiftData
 
 @Model
-final class MealEntry: @unchecked Sendable {
+public final class MealEntry: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var mealType: MealType
-    var name: String
-    var macros: Macros
-    var notes: String?
-    var imageUrl: String?
-    var loggedAt: Date
-    var synced: Bool
+    public var date: String
+    public var mealType: MealType
+    public var name: String
+    public var macros: Macros
+    public var notes: String?
+    public var imageUrl: String?
+    public var loggedAt: Date
+    public var synced: Bool
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         date: String,
         mealType: MealType,

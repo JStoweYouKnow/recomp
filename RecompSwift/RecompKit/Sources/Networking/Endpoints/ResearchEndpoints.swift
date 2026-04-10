@@ -1,12 +1,12 @@
 import Foundation
 
-enum ResearchAPI: APIEndpoint {
+public enum ResearchAPI: APIEndpoint {
     case search(query: String)
 
-    var path: String { "/api/research" }
-    var method: HTTPMethod { .GET }
+    public var path: String { "/api/research" }
+    public var method: HTTPMethod { .GET }
 
-    var queryItems: [URLQueryItem]? {
+    public var queryItems: [URLQueryItem]? {
         switch self {
         case .search(let query):
             return [URLQueryItem(name: "q", value: query)]
@@ -14,13 +14,13 @@ enum ResearchAPI: APIEndpoint {
     }
 }
 
-struct ResearchResponse: Decodable {
+public struct ResearchResponse: Decodable {
     let answer: String
     let sources: [ResearchSource]?
 }
 
-struct ResearchSource: Decodable, Identifiable {
-    var id: String { url }
+public struct ResearchSource: Decodable, Identifiable {
+    public var id: String { url }
     let title: String
     let url: String
 }

@@ -1,13 +1,13 @@
 import Foundation
 import SwiftData
 
-struct BloodWorkMarker: Codable, Identifiable, Sendable {
-    var id: String { name }
-    var name: String
-    var value: Double
-    var unit: String
-    var normalRange: NormalRange
-    var status: BloodWorkStatus
+public struct BloodWorkMarker: Codable, Identifiable, Sendable {
+    public var id: String { name }
+    public var name: String
+    public var value: Double
+    public var unit: String
+    public var normalRange: NormalRange
+    public var status: BloodWorkStatus
 
     struct NormalRange: Codable, Sendable {
         var low: Double
@@ -16,13 +16,13 @@ struct BloodWorkMarker: Codable, Identifiable, Sendable {
 }
 
 @Model
-final class BloodWork: @unchecked Sendable {
+public final class BloodWork: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var markers: [BloodWorkMarker]
-    var notes: String?
+    public var date: String
+    public var markers: [BloodWorkMarker]
+    public var notes: String?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         date: String,
         markers: [BloodWorkMarker] = [],

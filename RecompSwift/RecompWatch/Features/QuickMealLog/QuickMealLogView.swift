@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 
+// Uses MealEntry, Macros, MealType, DateHelpers from RecompKit
+
 struct QuickMealLogView: View {
     @Environment(\.modelContext) private var context
     @State private var showDictation = false

@@ -2,14 +2,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class HydrationEntry: @unchecked Sendable {
+public final class HydrationEntry: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var time: String
-    var amountMl: Int
-    var source: HydrationSource
+    public var date: String
+    public var time: String
+    public var amountMl: Int
+    public var source: HydrationSource
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         date: String,
         time: String,
@@ -23,5 +23,5 @@ final class HydrationEntry: @unchecked Sendable {
         self.source = source
     }
 
-    var amountOz: Double { Double(amountMl) / 29.5735 }
+    public var amountOz: Double { Double(amountMl) / 29.5735 }
 }

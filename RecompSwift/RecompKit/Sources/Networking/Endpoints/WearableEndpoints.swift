@@ -1,6 +1,6 @@
 import Foundation
 
-enum WearableAPI: APIEndpoint {
+public enum WearableAPI: APIEndpoint {
     case ouraConnect(token: String)
     case ouraData
     case ouraDisconnect
@@ -11,7 +11,7 @@ enum WearableAPI: APIEndpoint {
     case healthImport(data: Data)
     case scaleEntry(payload: ScaleEntryPayload)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .ouraConnect: return "/api/wearables/oura/connect"
         case .ouraData: return "/api/wearables/oura/data"
@@ -25,24 +25,25 @@ enum WearableAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .ouraData, .fitbitAuth, .fitbitData: return .GET
         default: return .POST
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .ouraConnect(let token): return AnyEncodable(["token": token])
         case .appleHealthSync(let data): return AnyEncodable(data)
+        case .healthImport: return nil
         case .scaleEntry(let payload): return AnyEncodable(payload)
         default: return nil
         }
     }
 }
 
-struct HealthSyncPayload: Encodable {
+public struct HealthSyncPayload: Encodable {
     let steps: Int?
     let activeCalories: Double?
     let weight: Double?
@@ -53,7 +54,7 @@ struct HealthSyncPayload: Encodable {
     let date: String
 }
 
-struct ScaleEntryPayload: Encodable {
+public struct ScaleEntryPayload: Encodable {
     let date: String
     let weight: Double?
     let bodyFatPercent: Double?

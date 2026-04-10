@@ -1,19 +1,20 @@
 import Foundation
 import SwiftData
+import Observation
 
 @MainActor
 @Observable
-final class PlanService {
+public final class PlanService {
     private(set) var isGenerating = false
     private(set) var isAdjusting = false
 
     private let api: APIClient
 
-    init(api: APIClient = .shared) {
+    public init(api: APIClient = .shared) {
         self.api = api
     }
 
-    func generatePlan(profile: UserProfileDTO, context: ModelContext) async throws -> FitnessPlan {
+    public func generatePlan(profile: UserProfileDTO, context: ModelContext) async throws -> FitnessPlan {
         isGenerating = true
         defer { isGenerating = false }
 
@@ -24,7 +25,7 @@ final class PlanService {
         return plan
     }
 
-    func adjustPlan(feedback: String, currentPlan: FitnessPlanDTO?) async throws -> AdjustSuggestion {
+    public func adjustPlan(feedback: String, currentPlan: FitnessPlanDTO?) async throws -> AdjustSuggestion {
         isAdjusting = true
         defer { isAdjusting = false }
 
@@ -34,14 +35,14 @@ final class PlanService {
         return response.suggestion
     }
 
-    func currentPlan(context: ModelContext) -> FitnessPlan? {
+    public func currentPlan(context: ModelContext) -> FitnessPlan? {
         let descriptor = FetchDescriptor<FitnessPlan>(
             sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
         )
         return try? context.fetch(descriptor).first
     }
 
-    func todaysWorkout(context: ModelContext) -> WorkoutDay? {
+    public func todaysWorkout(context: ModelContext) -> WorkoutDay? {
         guard let plan = currentPlan(context: context) else { return nil }
         let dayIndex = Calendar.current.component(.weekday, from: .now) - 1
         let weeklyPlan = plan.workoutPlan.weeklyPlan

@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-enum RecompSchema {
-    static var models: [any PersistentModel.Type] {
+public enum RecompSchema {
+    public static var models: [any PersistentModel.Type] {
         [
             UserProfile.self,
             MealEntry.self,
@@ -30,7 +30,7 @@ enum RecompSchema {
     }
 
     @MainActor
-    static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
+    public static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {
         let schema = Schema(models)
         let config = ModelConfiguration(
             "Recomp",

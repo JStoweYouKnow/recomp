@@ -86,7 +86,7 @@ extension AppCoordinator.Tab {
         case .meals: MealsView()
         case .workouts: WorkoutsView()
         case .adjust: AdjustView()
-        case .progress: ProgressView()
+        case .progress: MyProgressView()
         case .groups: GroupsView()
         case .profile: ProfileView()
         }

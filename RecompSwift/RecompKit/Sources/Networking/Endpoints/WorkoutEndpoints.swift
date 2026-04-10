@@ -1,11 +1,11 @@
 import Foundation
 
-enum WorkoutAPI: APIEndpoint {
+public enum WorkoutAPI: APIEndpoint {
     case exerciseSearch(name: String)
     case exerciseGif(id: String)
     case recoveryAdjust(payload: RecoveryPayload)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .exerciseSearch: return "/api/exercises/search"
         case .exerciseGif: return "/api/exercises/gif"
@@ -13,14 +13,14 @@ enum WorkoutAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .exerciseSearch, .exerciseGif: return .GET
         case .recoveryAdjust: return .POST
         }
     }
 
-    var queryItems: [URLQueryItem]? {
+    public var queryItems: [URLQueryItem]? {
         switch self {
         case .exerciseSearch(let name):
             return [URLQueryItem(name: "name", value: name)]
@@ -31,7 +31,7 @@ enum WorkoutAPI: APIEndpoint {
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .recoveryAdjust(let payload):
             return AnyEncodable(payload)
@@ -41,11 +41,11 @@ enum WorkoutAPI: APIEndpoint {
     }
 }
 
-struct RecoveryPayload: Encodable {
+public struct RecoveryPayload: Encodable {
     let biofeedback: [String: Int]
     let wearableData: [String: Any]?
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(biofeedback, forKey: .biofeedback)
     }
@@ -55,7 +55,7 @@ struct RecoveryPayload: Encodable {
     }
 }
 
-struct ExerciseSearchResult: Decodable, Identifiable {
+public struct ExerciseSearchResult: Decodable, Identifiable {
     let id: String
     let name: String
     let bodyPart: String?

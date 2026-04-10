@@ -2,20 +2,20 @@ import Foundation
 import SwiftData
 
 @Model
-final class Group: @unchecked Sendable {
+public final class Group: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var name: String
-    var descriptionText: String
-    var goalType: GroupGoalType
-    var goalDescription: String?
-    var accessMode: GroupAccessMode
-    var trackingMode: GroupTrackingMode
-    var inviteCode: String?
-    var creatorId: String
-    var memberCount: Int
-    var createdAt: Date
+    public var name: String
+    public var descriptionText: String
+    public var goalType: GroupGoalType
+    public var goalDescription: String?
+    public var accessMode: GroupAccessMode
+    public var trackingMode: GroupTrackingMode
+    public var inviteCode: String?
+    public var creatorId: String
+    public var memberCount: Int
+    public var createdAt: Date
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         name: String,
         descriptionText: String,
@@ -43,14 +43,14 @@ final class Group: @unchecked Sendable {
 }
 
 @Model
-final class GroupMembership: @unchecked Sendable {
+public final class GroupMembership: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var groupId: String
-    var groupName: String
-    var role: GroupRole
-    var joinedAt: Date
+    public var groupId: String
+    public var groupName: String
+    public var role: GroupRole
+    public var joinedAt: Date
 
-    init(groupId: String, groupName: String, role: GroupRole, joinedAt: Date = .now) {
+    public init(groupId: String, groupName: String, role: GroupRole, joinedAt: Date = .now) {
         self.id = groupId
         self.groupId = groupId
         self.groupName = groupName
@@ -60,17 +60,17 @@ final class GroupMembership: @unchecked Sendable {
 }
 
 @Model
-final class GroupMessage: @unchecked Sendable {
+public final class GroupMessage: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var groupId: String
-    var authorId: String
-    var authorName: String
-    var authorAvatarUrl: String?
-    var text: String
-    var createdAt: Date
-    var pinnedAt: Date?
+    public var groupId: String
+    public var authorId: String
+    public var authorName: String
+    public var authorAvatarUrl: String?
+    public var text: String
+    public var createdAt: Date
+    public var pinnedAt: Date?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         groupId: String,
         authorId: String,
@@ -91,16 +91,16 @@ final class GroupMessage: @unchecked Sendable {
     }
 }
 
-struct GroupMemberProgress: Codable, Identifiable, Sendable {
-    var userId: String
-    var name: String
-    var avatarDataUrl: String?
-    var xp: Int
-    var xpLevel: Int
-    var streakLength: Int
-    var weeksActive: Int
-    var macroHitRate: Double
-    var updatedAt: String
+public struct GroupMemberProgress: Codable, Identifiable, Sendable {
+    public var userId: String
+    public var name: String
+    public var avatarDataUrl: String?
+    public var xp: Int
+    public var xpLevel: Int
+    public var streakLength: Int
+    public var weeksActive: Int
+    public var macroHitRate: Double
+    public var updatedAt: String
 
-    var id: String { userId }
+    public var id: String { userId }
 }

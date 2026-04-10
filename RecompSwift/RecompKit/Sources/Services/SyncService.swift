@@ -1,21 +1,21 @@
 import Foundation
 import SwiftData
 
-actor SyncService {
+public actor SyncService {
     private let api: APIClient
     private var syncTask: Task<Void, Never>?
     private var isDirty = false
 
-    init(api: APIClient = .shared) {
+    public init(api: APIClient = .shared) {
         self.api = api
     }
 
-    func markDirty() {
+    public func markDirty() {
         isDirty = true
         scheduleSync()
     }
 
-    func scheduleSync() {
+    public func scheduleSync() {
         syncTask?.cancel()
         syncTask = Task {
             try? await Task.sleep(for: .milliseconds(800))
@@ -24,7 +24,7 @@ actor SyncService {
         }
     }
 
-    func syncNow() async {
+    public func syncNow() async {
         isDirty = false
         let payload = SyncPayload(profile: nil, meals: nil, plan: nil, milestones: nil)
 
@@ -35,7 +35,7 @@ actor SyncService {
         }
     }
 
-    func fetchFromServer() async throws -> Data {
+    public func fetchFromServer() async throws -> Data {
         try await api.requestRaw(MiscAPI.dataFetch)
     }
 }

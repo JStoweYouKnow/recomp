@@ -1,17 +1,17 @@
 import Foundation
 
-struct VoiceStreamResponse: Decodable {
+public struct VoiceStreamResponse: Decodable {
     let type: String?
     let text: String?
     let audio: String?
     let done: Bool?
 }
 
-actor StreamingClient {
+public actor StreamingClient {
     private let session: URLSession
     private let decoder = JSONDecoder()
 
-    init() {
+    public init() {
         let config = URLSessionConfiguration.default
         config.httpCookieAcceptPolicy = .always
         config.httpShouldSetCookies = true
@@ -19,7 +19,7 @@ actor StreamingClient {
         self.session = URLSession(configuration: config)
     }
 
-    func streamNDJSON<T: Decodable>(
+    public func streamNDJSON<T: Decodable>(
         url: URL,
         body: Data?,
         as type: T.Type
@@ -60,7 +60,7 @@ actor StreamingClient {
         }
     }
 
-    func uploadAudioStream(
+    public func uploadAudioStream(
         url: URL,
         audioData: Data,
         contentType: String = "audio/wav"

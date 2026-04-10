@@ -1,20 +1,21 @@
 import Foundation
 import SwiftData
+import Observation
 
 @MainActor
 @Observable
-final class AuthService {
+public final class AuthService {
     private(set) var currentUser: UserProfile?
     private(set) var isAuthenticated = false
     private(set) var isLoading = false
 
     private let api: APIClient
 
-    init(api: APIClient = .shared) {
+    public init(api: APIClient = .shared) {
         self.api = api
     }
 
-    func checkSession() async {
+    public func checkSession() async {
         isLoading = true
         defer { isLoading = false }
 
@@ -33,7 +34,7 @@ final class AuthService {
         }
     }
 
-    func register(_ payload: SignUpPayload) async throws {
+    public func register(_ payload: SignUpPayload) async throws {
         isLoading = true
         defer { isLoading = false }
 
@@ -47,7 +48,7 @@ final class AuthService {
         }
     }
 
-    func login(email: String, password: String) async throws {
+    public func login(email: String, password: String) async throws {
         isLoading = true
         defer { isLoading = false }
 
@@ -61,7 +62,7 @@ final class AuthService {
         }
     }
 
-    func loadDemo() async throws {
+    public func loadDemo() async throws {
         isLoading = true
         defer { isLoading = false }
 
@@ -72,11 +73,11 @@ final class AuthService {
         }
     }
 
-    func claimAccount(email: String, password: String) async throws {
+    public func claimAccount(email: String, password: String) async throws {
         try await api.requestVoid(AuthAPI.claim(email: email, password: password))
     }
 
-    func logout() {
+    public func logout() {
         currentUser = nil
         isAuthenticated = false
         try? KeychainService.delete()

@@ -3,17 +3,17 @@ import Foundation
 #if canImport(UIKit)
 import UIKit
 
-enum ImageResizer {
-    static let maxDimension: CGFloat = 2048
-    static let maxFileSize: Int = 4 * 1024 * 1024
-    static let avatarSize: CGFloat = 160
+public enum ImageResizer {
+    public static let maxDimension: CGFloat = 2048
+    public static let maxFileSize: Int = 4 * 1024 * 1024
+    public static let avatarSize: CGFloat = 160
 
-    static func resizeForAPI(_ image: UIImage) -> Data? {
+    public static func resizeForAPI(_ image: UIImage) -> Data? {
         let resized = resize(image, maxDimension: maxDimension)
         return compress(resized, maxSize: maxFileSize)
     }
 
-    static func resizeForAvatar(_ image: UIImage) -> Data? {
+    public static func resizeForAvatar(_ image: UIImage) -> Data? {
         let resized = resize(image, maxDimension: avatarSize)
         return compress(resized, maxSize: 100_000)
     }

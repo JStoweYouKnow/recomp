@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import WatchKit
 
 struct WatchHydrationView: View {
     @Environment(\.modelContext) private var context

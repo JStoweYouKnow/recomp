@@ -2,13 +2,13 @@ import Foundation
 import SwiftData
 
 @Model
-final class WearableConnection: @unchecked Sendable {
+public final class WearableConnection: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var provider: WearableProvider
-    var connectedAt: Date
-    var label: String?
+    public var provider: WearableProvider
+    public var connectedAt: Date
+    public var label: String?
 
-    init(provider: WearableProvider, connectedAt: Date = .now, label: String? = nil) {
+    public init(provider: WearableProvider, connectedAt: Date = .now, label: String? = nil) {
         self.id = provider.rawValue
         self.provider = provider
         self.connectedAt = connectedAt
@@ -17,26 +17,26 @@ final class WearableConnection: @unchecked Sendable {
 }
 
 @Model
-final class WearableDaySummary: @unchecked Sendable {
+public final class WearableDaySummary: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var provider: WearableProvider
-    var steps: Int?
-    var caloriesBurned: Double?
-    var activeMinutes: Int?
-    var sleepScore: Int?
-    var sleepDuration: Int?
-    var readinessScore: Int?
-    var heartRateAvg: Int?
-    var heartRateResting: Int?
-    var weight: Double?
-    var bodyFatPercent: Double?
-    var muscleMass: Double?
-    var bmi: Double?
-    var bmr: Double?
-    var metabolicAge: Int?
+    public var date: String
+    public var provider: WearableProvider
+    public var steps: Int?
+    public var caloriesBurned: Double?
+    public var activeMinutes: Int?
+    public var sleepScore: Int?
+    public var sleepDuration: Int?
+    public var readinessScore: Int?
+    public var heartRateAvg: Int?
+    public var heartRateResting: Int?
+    public var weight: Double?
+    public var bodyFatPercent: Double?
+    public var muscleMass: Double?
+    public var bmi: Double?
+    public var bmr: Double?
+    public var metabolicAge: Int?
 
-    init(
+    public init(
         date: String,
         provider: WearableProvider,
         steps: Int? = nil,
@@ -66,8 +66,8 @@ final class WearableDaySummary: @unchecked Sendable {
     }
 }
 
-struct MeasurementTargets: Codable, Sendable {
-    var targetWeightLbs: Double?
-    var targetBodyFatPercent: Double?
-    var targetMuscleMassLbs: Double?
+public struct MeasurementTargets: Codable, Sendable {
+    public var targetWeightLbs: Double?
+    public var targetBodyFatPercent: Double?
+    public var targetMuscleMassLbs: Double?
 }

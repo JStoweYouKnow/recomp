@@ -2,29 +2,29 @@ import Foundation
 import SwiftData
 
 @Model
-final class UserProfile: @unchecked Sendable {
+public final class UserProfile: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var name: String
-    var email: String?
-    var avatarDataUrl: String?
-    var age: Int
-    var weight: Double
-    var height: Double
-    var gender: Gender
-    var fitnessLevel: FitnessLevel
-    var goal: FitnessGoal
-    var dietaryRestrictions: [String]
-    var injuriesOrLimitations: [String]
-    var dailyActivityLevel: ActivityLevel
-    var unitSystem: MeasurementSystem
-    var workoutLocation: WorkoutLocation?
-    var workoutEquipment: [WorkoutEquipment]
-    var workoutDaysPerWeek: Int
-    var workoutTimeframe: WorkoutTimeframe?
-    var createdAt: Date
-    var lastSyncedAt: Date?
+    public var name: String
+    public var email: String?
+    public var avatarDataUrl: String?
+    public var age: Int
+    public var weight: Double
+    public var height: Double
+    public var gender: Gender
+    public var fitnessLevel: FitnessLevel
+    public var goal: FitnessGoal
+    public var dietaryRestrictions: [String]
+    public var injuriesOrLimitations: [String]
+    public var dailyActivityLevel: ActivityLevel
+    public var unitSystem: MeasurementSystem
+    public var workoutLocation: WorkoutLocation?
+    public var workoutEquipment: [WorkoutEquipment]
+    public var workoutDaysPerWeek: Int
+    public var workoutTimeframe: WorkoutTimeframe?
+    public var createdAt: Date
+    public var lastSyncedAt: Date?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         name: String,
         email: String? = nil,
@@ -69,10 +69,10 @@ final class UserProfile: @unchecked Sendable {
     }
 }
 
-struct SignUpPayload: Codable, Sendable {
+public struct SignUpPayload: Codable, Sendable {
     let name: String
-    var email: String?
-    var password: String?
+    public var email: String?
+    public var password: String?
     let age: Int
     let weight: Double
     let height: Double
@@ -82,9 +82,9 @@ struct SignUpPayload: Codable, Sendable {
     let dietaryRestrictions: [String]
     let injuriesOrLimitations: [String]
     let dailyActivityLevel: String
-    var unitSystem: String?
-    var workoutLocation: String?
-    var workoutEquipment: [String]?
-    var workoutDaysPerWeek: Int?
-    var workoutTimeframe: String?
+    public var unitSystem: String?
+    public var workoutLocation: String?
+    public var workoutEquipment: [String]?
+    public var workoutDaysPerWeek: Int?
+    public var workoutTimeframe: String?
 }

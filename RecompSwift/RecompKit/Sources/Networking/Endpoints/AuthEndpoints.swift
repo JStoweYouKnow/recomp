@@ -1,13 +1,13 @@
 import Foundation
 
-enum AuthAPI: APIEndpoint {
+public enum AuthAPI: APIEndpoint {
     case register(SignUpPayload)
     case login(email: String, password: String)
     case me
     case demo
     case claim(email: String, password: String)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .register: return "/api/auth/register"
         case .login: return "/api/auth/login"
@@ -17,14 +17,14 @@ enum AuthAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .me: return .GET
         default: return .POST
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .register(let payload):
             return AnyEncodable(payload)
@@ -43,30 +43,30 @@ private struct LoginPayload: Encodable {
     let password: String
 }
 
-struct AuthResponse: Decodable {
+public struct AuthResponse: Decodable {
     let authenticated: Bool
     let profile: UserProfileDTO?
     let userId: String?
 }
 
-struct UserProfileDTO: Codable, Sendable {
-    var id: String
-    var name: String
-    var email: String?
-    var avatarDataUrl: String?
-    var age: Int
-    var weight: Double
-    var height: Double
-    var gender: String
-    var fitnessLevel: String
-    var goal: String
-    var dietaryRestrictions: [String]?
-    var injuriesOrLimitations: [String]?
-    var dailyActivityLevel: String?
-    var unitSystem: String?
-    var workoutLocation: String?
-    var workoutEquipment: [String]?
-    var workoutDaysPerWeek: Int?
-    var workoutTimeframe: String?
-    var createdAt: String?
+public struct UserProfileDTO: Codable, Sendable {
+    public var id: String
+    public var name: String
+    public var email: String?
+    public var avatarDataUrl: String?
+    public var age: Int
+    public var weight: Double
+    public var height: Double
+    public var gender: String
+    public var fitnessLevel: String
+    public var goal: String
+    public var dietaryRestrictions: [String]?
+    public var injuriesOrLimitations: [String]?
+    public var dailyActivityLevel: String?
+    public var unitSystem: String?
+    public var workoutLocation: String?
+    public var workoutEquipment: [String]?
+    public var workoutDaysPerWeek: Int?
+    public var workoutTimeframe: String?
+    public var createdAt: String?
 }

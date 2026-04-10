@@ -1,26 +1,27 @@
 import Foundation
 import SwiftData
+import Observation
 
 @MainActor
 @Observable
-final class CoachService {
+public final class CoachService {
     private(set) var messages: [CoachMessage] = []
     private(set) var isResponding = false
 
     private let api: APIClient
 
-    init(api: APIClient = .shared) {
+    public init(api: APIClient = .shared) {
         self.api = api
     }
 
-    func loadHistory(context: ModelContext) {
+    public func loadHistory(context: ModelContext) {
         let descriptor = FetchDescriptor<CoachMessage>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
         messages = (try? context.fetch(descriptor)) ?? []
     }
 
-    func sendMessage(_ text: String, context: ModelContext) async throws {
+    public func sendMessage(_ text: String, context: ModelContext) async throws {
         let userMessage = CoachMessage(role: .user, content: text)
         context.insert(userMessage)
         messages.append(userMessage)
@@ -47,7 +48,7 @@ final class CoachService {
         try? context.save()
     }
 
-    func clearHistory(context: ModelContext) {
+    public func clearHistory(context: ModelContext) {
         for message in messages {
             context.delete(message)
         }

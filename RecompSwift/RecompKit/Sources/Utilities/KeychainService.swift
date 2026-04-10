@@ -1,11 +1,11 @@
 import Foundation
 import Security
 
-struct KeychainService {
+public struct KeychainService {
     private static let service = "com.recomp.ios"
     private static let userIdKey = "recomp_user_id"
 
-    static func save(userId: String) throws {
+    public static func save(userId: String) throws {
         let data = Data(userId.utf8)
 
         let query: [String: Any] = [
@@ -31,7 +31,7 @@ struct KeychainService {
         }
     }
 
-    static func loadUserId() throws -> String? {
+    public static func loadUserId() throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -57,7 +57,7 @@ struct KeychainService {
         }
     }
 
-    static func delete() throws {
+    public static func delete() throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -71,12 +71,12 @@ struct KeychainService {
     }
 }
 
-enum KeychainError: Error, LocalizedError {
+public enum KeychainError: Error, LocalizedError {
     case unableToSave(OSStatus)
     case unableToLoad(OSStatus)
     case unableToDelete(OSStatus)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .unableToSave(let s): return "Keychain save failed: \(s)"
         case .unableToLoad(let s): return "Keychain load failed: \(s)"

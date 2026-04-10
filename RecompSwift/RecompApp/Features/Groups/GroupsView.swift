@@ -4,7 +4,7 @@ struct GroupsView: View {
     @State private var groupService = GroupService()
     @State private var selectedTab = 0
     @State private var showCreate = false
-    @State private var selectedGroupId: String?
+    @State private var selectedGroupId: IdentifiedString?
 
     var body: some View {
         NavigationStack {
@@ -35,8 +35,8 @@ struct GroupsView: View {
             .sheet(isPresented: $showCreate) {
                 CreateGroupSheet(groupService: groupService)
             }
-            .sheet(item: $selectedGroupId) { id in
-                GroupDetailView(groupId: id, groupService: groupService)
+            .sheet(item: $selectedGroupId) { item in
+                GroupDetailView(groupId: item.value, groupService: groupService)
             }
             .task {
                 try? await groupService.fetchMyGroups()
@@ -56,7 +56,7 @@ struct GroupsView: View {
             } else {
                 List(groupService.myGroups, id: \.groupId) { membership in
                     Button {
-                        selectedGroupId = membership.groupId
+                        selectedGroupId = IdentifiedString(value: membership.groupId)
                     } label: {
                         HStack {
                             VStack(alignment: .leading) {
@@ -128,8 +128,9 @@ struct GroupsView: View {
     }
 }
 
-extension String: @retroactive Identifiable {
-    public var id: String { self }
+struct IdentifiedString: Identifiable {
+    let id = UUID()
+    let value: String
 }
 
 struct CreateGroupSheet: View {

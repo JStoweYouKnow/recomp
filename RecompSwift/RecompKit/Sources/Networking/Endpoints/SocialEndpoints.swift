@@ -1,12 +1,12 @@
 import Foundation
 
-enum SocialAPI: APIEndpoint {
+public enum SocialAPI: APIEndpoint {
     case getSettings
     case updateSettings(visibility: String, username: String?)
     case checkUsername(username: String)
     case publicProfile(usernameOrId: String)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .getSettings, .updateSettings: return "/api/social/settings"
         case .checkUsername: return "/api/social/username/check"
@@ -14,14 +14,14 @@ enum SocialAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .getSettings, .checkUsername, .publicProfile: return .GET
         case .updateSettings: return .PUT
         }
     }
 
-    var queryItems: [URLQueryItem]? {
+    public var queryItems: [URLQueryItem]? {
         switch self {
         case .checkUsername(let username):
             return [URLQueryItem(name: "username", value: username)]
@@ -30,7 +30,7 @@ enum SocialAPI: APIEndpoint {
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .updateSettings(let visibility, let username):
             return AnyEncodable(SocialUpdatePayload(visibility: visibility, username: username))
@@ -40,11 +40,11 @@ enum SocialAPI: APIEndpoint {
     }
 }
 
-struct SocialUpdatePayload: Encodable {
+public struct SocialUpdatePayload: Encodable {
     let visibility: String
     let username: String?
 }
 
-struct UsernameCheckResponse: Decodable {
+public struct UsernameCheckResponse: Decodable {
     let available: Bool
 }

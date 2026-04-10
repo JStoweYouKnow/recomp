@@ -1,16 +1,16 @@
 import Foundation
 import SwiftData
 
-actor SyncEngine {
+public actor SyncEngine {
     private let syncService: SyncService
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: Duration = .milliseconds(800)
 
-    init(syncService: SyncService = SyncService()) {
+    public init(syncService: SyncService = SyncService()) {
         self.syncService = syncService
     }
 
-    func scheduleSync() {
+    public func scheduleSync() {
         debounceTask?.cancel()
         debounceTask = Task {
             try? await Task.sleep(for: debounceInterval)
@@ -19,7 +19,7 @@ actor SyncEngine {
         }
     }
 
-    func syncNow() async {
+    public func syncNow() async {
         debounceTask?.cancel()
         await performSync()
     }
@@ -28,7 +28,7 @@ actor SyncEngine {
         await syncService.syncNow()
     }
 
-    func fetchLatest() async throws -> Data {
+    public func fetchLatest() async throws -> Data {
         try await syncService.fetchFromServer()
     }
 }

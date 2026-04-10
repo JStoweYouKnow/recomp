@@ -105,13 +105,19 @@ struct InlineComplication: View {
     }
 }
 
-@main
-struct RecompWidgetBundle: WidgetBundle {
-    var body: some Widget {
-        CalorieRingWidget()
-        MacroBarWidget()
-    }
-}
+// NOTE: When creating the Xcode project, place this file in a separate
+// Widget Extension target with its own @main entry point:
+//
+// @main
+// struct RecompWidgetBundle: WidgetBundle {
+//     var body: some Widget {
+//         CalorieRingWidget()
+//         MacroBarWidget()
+//     }
+// }
+//
+// Do NOT include this file in the main Watch app target to avoid
+// duplicate @main entry points.
 
 struct CalorieRingWidget: Widget {
     let kind = "CalorieRing"

@@ -2,16 +2,16 @@ import Foundation
 import SwiftData
 
 @Model
-final class FitnessPlan: @unchecked Sendable {
+public final class FitnessPlan: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var userId: String
-    var createdAt: Date
-    var dietPlan: DietPlan
-    var workoutPlan: WorkoutPlan
-    var reasoning: String?
-    var synced: Bool
+    public var userId: String
+    public var createdAt: Date
+    public var dietPlan: DietPlan
+    public var workoutPlan: WorkoutPlan
+    public var reasoning: String?
+    public var synced: Bool
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         userId: String,
         createdAt: Date = .now,
@@ -30,13 +30,13 @@ final class FitnessPlan: @unchecked Sendable {
     }
 }
 
-struct DietPlan: Codable, Sendable {
-    var dailyTargets: Macros
-    var weeklyPlan: [DietDay]
-    var tips: [String]
+public struct DietPlan: Codable, Sendable {
+    public var dailyTargets: Macros
+    public var weeklyPlan: [DietDay]
+    public var tips: [String]
 }
 
-struct WorkoutPlan: Codable, Sendable {
-    var weeklyPlan: [WorkoutDay]
-    var tips: [String]
+public struct WorkoutPlan: Codable, Sendable {
+    public var weeklyPlan: [WorkoutDay]
+    public var tips: [String]
 }

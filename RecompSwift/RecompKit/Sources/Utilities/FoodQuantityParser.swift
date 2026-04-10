@@ -1,13 +1,13 @@
 import Foundation
 
-struct ParsedFood: Sendable {
+public struct ParsedFood: Sendable {
     let name: String
     let quantity: Double?
     let unit: String?
 }
 
-enum FoodQuantityParser {
-    static func parse(_ input: String) -> ParsedFood {
+public enum FoodQuantityParser {
+    public static func parse(_ input: String) -> ParsedFood {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let pattern = #"^(\d+\.?\d*)\s*(oz|g|ml|cup|cups|tbsp|tsp|slice|slices|piece|pieces|serving|servings)?\s*(?:of\s+)?(.+)$"#

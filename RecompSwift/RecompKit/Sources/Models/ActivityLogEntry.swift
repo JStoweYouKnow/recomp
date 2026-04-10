@@ -2,17 +2,34 @@ import Foundation
 import SwiftData
 
 @Model
-final class ActivityLogEntry: @unchecked Sendable {
+public final class ActivityLogEntry: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var date: String
-    var entryType: String
-    var label: String
-    var category: ActivityCategory
-    var durationMinutes: Int
-    var calorieAdjustment: Int
-    var loggedAt: Date
+    public var date: String
+    public var entryType: String
+    public var label: String
+    public var categoryRawValue: String
+    public var durationMinutes: Int
+    public var calorieAdjustment: Int
+    public var loggedAt: Date
 
-    init(
+    public var category: ActivityCategory {
+        get {
+            if let at = ActivityType(rawValue: categoryRawValue) {
+                return .activity(at)
+            } else if let st = SedentaryType(rawValue: categoryRawValue) {
+                return .sedentary(st)
+            }
+            return .activity(.other)
+        }
+        set {
+            switch newValue {
+            case .activity(let t): categoryRawValue = t.rawValue
+            case .sedentary(let t): categoryRawValue = t.rawValue
+            }
+        }
+    }
+
+    public init(
         id: String = UUID().uuidString,
         date: String,
         entryType: String,
@@ -26,7 +43,10 @@ final class ActivityLogEntry: @unchecked Sendable {
         self.date = date
         self.entryType = entryType
         self.label = label
-        self.category = category
+        switch category {
+        case .activity(let t): self.categoryRawValue = t.rawValue
+        case .sedentary(let t): self.categoryRawValue = t.rawValue
+        }
         self.durationMinutes = durationMinutes
         self.calorieAdjustment = calorieAdjustment
         self.loggedAt = loggedAt

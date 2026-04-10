@@ -1,12 +1,12 @@
 import Foundation
 
-enum ActAPI: APIEndpoint {
+public enum ActAPI: APIEndpoint {
     case grocery(items: [String])
     case nutrition(food: String)
     case status
     case sync
 
-    var path: String {
+    public var path: String {
         switch self {
         case .grocery: return "/api/act/grocery"
         case .nutrition: return "/api/act/nutrition"
@@ -15,14 +15,14 @@ enum ActAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .status: return .GET
         default: return .POST
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .grocery(let items): return AnyEncodable(["items": items])
         case .nutrition(let food): return AnyEncodable(["food": food])
@@ -31,20 +31,20 @@ enum ActAPI: APIEndpoint {
     }
 }
 
-struct GrocerySearchResult: Decodable, Identifiable {
-    var id: String { title }
+public struct GrocerySearchResult: Decodable, Identifiable {
+    public var id: String { title }
     let title: String
     let price: String?
     let url: String
     let imageUrl: String?
 }
 
-struct GroceryResponse: Decodable {
+public struct GroceryResponse: Decodable {
     let results: [GrocerySearchResult]?
     let fallbackUrl: String?
 }
 
-struct NutritionResponse: Decodable {
+public struct NutritionResponse: Decodable {
     let food: String
     let macros: Macros?
     let source: String?

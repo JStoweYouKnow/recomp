@@ -2,14 +2,14 @@ import Foundation
 import SwiftData
 
 @Model
-final class FastingSession: @unchecked Sendable {
+public final class FastingSession: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var startTime: Date
-    var endTime: Date?
-    var targetHours: Int
-    var fastingProtocol: FastingProtocol
+    public var startTime: Date
+    public var endTime: Date?
+    public var targetHours: Int
+    public var fastingProtocol: FastingProtocol
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         startTime: Date = .now,
         endTime: Date? = nil,
@@ -23,18 +23,18 @@ final class FastingSession: @unchecked Sendable {
         self.fastingProtocol = fastingProtocol
     }
 
-    var isActive: Bool { endTime == nil }
+    public var isActive: Bool { endTime == nil }
 
-    var elapsedHours: Double {
+    public var elapsedHours: Double {
         let end = endTime ?? .now
         return end.timeIntervalSince(startTime) / 3600
     }
 
-    var progress: Double {
+    public var progress: Double {
         min(elapsedHours / Double(targetHours), 1.0)
     }
 
-    var currentPhase: FastingPhase {
+    public var currentPhase: FastingPhase {
         let hours = elapsedHours
         if hours < 4 { return .fed }
         if hours < 12 { return .earlyFasting }

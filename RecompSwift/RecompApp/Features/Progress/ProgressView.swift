@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct ProgressView: View {
+struct MyProgressView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Milestone.earnedAt) private var milestones: [Milestone]
     @State private var selectedTab = 0

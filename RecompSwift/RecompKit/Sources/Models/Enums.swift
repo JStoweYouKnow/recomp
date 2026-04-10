@@ -2,40 +2,40 @@ import Foundation
 
 // MARK: - User Profile Enums
 
-enum Gender: String, Codable, CaseIterable, Identifiable {
+public enum Gender: String, Codable, CaseIterable, Identifiable {
     case male, female, other
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum FitnessLevel: String, Codable, CaseIterable, Identifiable {
+public enum FitnessLevel: String, Codable, CaseIterable, Identifiable {
     case beginner, intermediate, advanced, athlete
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum FitnessGoal: String, Codable, CaseIterable, Identifiable {
+public enum FitnessGoal: String, Codable, CaseIterable, Identifiable {
     case loseWeight = "lose_weight"
     case maintain
     case buildMuscle = "build_muscle"
     case improveEndurance = "improve_endurance"
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum ActivityLevel: String, Codable, CaseIterable, Identifiable {
+public enum ActivityLevel: String, Codable, CaseIterable, Identifiable {
     case sedentary, light, moderate, active
     case veryActive = "very_active"
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum MeasurementSystem: String, Codable, CaseIterable {
+public enum MeasurementSystem: String, Codable, CaseIterable {
     case us, metric
 }
 
-enum WorkoutLocation: String, Codable, CaseIterable, Identifiable {
+public enum WorkoutLocation: String, Codable, CaseIterable, Identifiable {
     case home, gym, outside
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum WorkoutEquipment: String, Codable, CaseIterable, Identifiable {
+public enum WorkoutEquipment: String, Codable, CaseIterable, Identifiable {
     case bodyweight
     case freeWeights = "free_weights"
     case barbells
@@ -45,30 +45,30 @@ enum WorkoutEquipment: String, Codable, CaseIterable, Identifiable {
     case cardioMachines = "cardio_machines"
     case pullUpBar = "pull_up_bar"
     case cableMachine = "cable_machine"
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum WorkoutTimeframe: String, Codable, CaseIterable {
+public enum WorkoutTimeframe: String, Codable, CaseIterable {
     case morning, afternoon, evening, flexible
 }
 
 // MARK: - Meal Enums
 
-enum MealType: String, Codable, CaseIterable, Identifiable {
+public enum MealType: String, Codable, CaseIterable, Identifiable {
     case breakfast, lunch, dinner, snack
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
 // MARK: - Wearable Enums
 
-enum WearableProvider: String, Codable, CaseIterable, Identifiable {
+public enum WearableProvider: String, Codable, CaseIterable, Identifiable {
     case oura, fitbit, apple, garmin, android, scale
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
 // MARK: - Milestone Enums
 
-enum MilestoneType: String, Codable, CaseIterable, Identifiable {
+public enum MilestoneType: String, Codable, CaseIterable, Identifiable {
     case firstMeal = "first_meal"
     case mealStreak3 = "meal_streak_3"
     case mealStreak7 = "meal_streak_7"
@@ -96,30 +96,30 @@ enum MilestoneType: String, Codable, CaseIterable, Identifiable {
     case musicConnected = "music_connected"
     case supplementTracker = "supplement_tracker"
     case bloodWorkUploaded = "blood_work_uploaded"
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
 // MARK: - Activity Enums
 
-enum ActivityType: String, Codable, CaseIterable {
+public enum ActivityType: String, Codable, CaseIterable {
     case workout, walking, running, cycling, swimming
     case hiit, yoga, sports
     case manualLabor = "manual_labor"
     case other
 }
 
-enum SedentaryType: String, Codable, CaseIterable {
+public enum SedentaryType: String, Codable, CaseIterable {
     case deskWork = "desk_work"
     case gaming
     case watchingTV = "watching_tv"
     case nap, travel, other
 }
 
-enum ActivityCategory: Codable {
+public enum ActivityCategory: Codable {
     case activity(ActivityType)
     case sedentary(SedentaryType)
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
         if let at = ActivityType(rawValue: value) {
@@ -131,7 +131,7 @@ enum ActivityCategory: Codable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
         case .activity(let t): try container.encode(t.rawValue)
@@ -142,46 +142,46 @@ enum ActivityCategory: Codable {
 
 // MARK: - Social & Groups
 
-enum ProfileVisibility: String, Codable, CaseIterable, Identifiable {
+public enum ProfileVisibility: String, Codable, CaseIterable, Identifiable {
     case badgesOnly = "badges_only"
     case badgesStats = "badges_stats"
     case fullTransparency = "full_transparency"
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum GroupAccessMode: String, Codable, CaseIterable {
+public enum GroupAccessMode: String, Codable, CaseIterable {
     case open
     case inviteOnly = "invite_only"
 }
 
-enum GroupTrackingMode: String, Codable, CaseIterable {
+public enum GroupTrackingMode: String, Codable, CaseIterable {
     case aggregate, leaderboard, both
 }
 
-enum GroupGoalType: String, Codable, CaseIterable, Identifiable {
+public enum GroupGoalType: String, Codable, CaseIterable, Identifiable {
     case loseWeight = "lose_weight"
     case buildMuscle = "build_muscle"
     case consistency
     case macroTargets = "macro_targets"
     case custom
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum GroupRole: String, Codable {
+public enum GroupRole: String, Codable {
     case owner, member
 }
 
 // MARK: - Cooking App
 
-enum CookingAppProvider: String, Codable, CaseIterable, Identifiable {
+public enum CookingAppProvider: String, Codable, CaseIterable, Identifiable {
     case whisk, mealime, yummly, paprika, cronometer
     case myfitnesspal, loseit, recipekeeper, nytcooking, custom
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
 // MARK: - Hydration
 
-enum HydrationSource: String, Codable, CaseIterable {
+public enum HydrationSource: String, Codable, CaseIterable {
     case water, coffee, tea
     case sportsDrink = "sports_drink"
     case other
@@ -189,16 +189,16 @@ enum HydrationSource: String, Codable, CaseIterable {
 
 // MARK: - Fasting
 
-enum FastingProtocol: String, Codable, CaseIterable, Identifiable {
+public enum FastingProtocol: String, Codable, CaseIterable, Identifiable {
     case sixteenEight = "16:8"
     case eighteenSix = "18:6"
     case twentyFour = "20:4"
     case omad = "OMAD"
     case custom
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum FastingPhase: String, Codable {
+public enum FastingPhase: String, Codable {
     case fed
     case earlyFasting = "early_fasting"
     case fatBurning = "fat_burning"
@@ -208,7 +208,7 @@ enum FastingPhase: String, Codable {
 
 // MARK: - Challenge
 
-enum ChallengeMetric: String, Codable, CaseIterable {
+public enum ChallengeMetric: String, Codable, CaseIterable {
     case mealStreak = "meal_streak"
     case macroAccuracy = "macro_accuracy"
     case workoutCompletion = "workout_completion"
@@ -216,38 +216,38 @@ enum ChallengeMetric: String, Codable, CaseIterable {
     case xpGained = "xp_gained"
 }
 
-enum ChallengeStatus: String, Codable {
+public enum ChallengeStatus: String, Codable {
     case pending, active, completed, cancelled
 }
 
-enum ChallengeType: String, Codable {
+public enum ChallengeType: String, Codable {
     case solo, group, duel
 }
 
 // MARK: - Music
 
-enum MusicProvider: String, Codable, CaseIterable {
+public enum MusicProvider: String, Codable, CaseIterable {
     case spotify
     case appleMusic = "apple_music"
 }
 
 // MARK: - Pantry
 
-enum PantryCategory: String, Codable, CaseIterable, Identifiable {
+public enum PantryCategory: String, Codable, CaseIterable, Identifiable {
     case protein, carb, fat, produce, dairy, spice, other
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
 // MARK: - Supplements
 
-enum SupplementFrequency: String, Codable, CaseIterable {
+public enum SupplementFrequency: String, Codable, CaseIterable {
     case daily
     case twiceDaily = "twice_daily"
     case weekly
     case asNeeded = "as_needed"
 }
 
-enum SupplementTiming: String, Codable, CaseIterable {
+public enum SupplementTiming: String, Codable, CaseIterable {
     case morning, afternoon, evening
     case withMeals = "with_meals"
     case beforeBed = "before_bed"
@@ -255,33 +255,33 @@ enum SupplementTiming: String, Codable, CaseIterable {
 
 // MARK: - Blood Work
 
-enum BloodWorkStatus: String, Codable {
+public enum BloodWorkStatus: String, Codable {
     case low, normal, high
 }
 
 // MARK: - Recovery
 
-enum RecoveryLevel: String, Codable {
+public enum RecoveryLevel: String, Codable {
     case low, moderate, high, optimal
 }
 
-enum ImpactType: String, Codable {
+public enum ImpactType: String, Codable {
     case positive, negative, neutral
 }
 
 // MARK: - Coach
 
-enum CoachPersona: String, Codable, CaseIterable, Identifiable {
+public enum CoachPersona: String, Codable, CaseIterable, Identifiable {
     case `default`, motivator, scientist, toughLove, chillFriend
-    var id: String { rawValue }
+    public var id: String { rawValue }
 }
 
-enum CoachMessageRole: String, Codable {
+public enum CoachMessageRole: String, Codable {
     case user, assistant
 }
 
 // MARK: - Confidence
 
-enum ConfidenceLevel: String, Codable {
+public enum ConfidenceLevel: String, Codable {
     case high, medium, low
 }

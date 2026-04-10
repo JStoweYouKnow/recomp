@@ -2,15 +2,15 @@ import Foundation
 import SwiftData
 
 @Model
-final class Supplement: @unchecked Sendable {
+public final class Supplement: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var name: String
-    var dosage: String
-    var frequency: SupplementFrequency
-    var timing: SupplementTiming
-    var takenToday: Bool
+    public var name: String
+    public var dosage: String
+    public var frequency: SupplementFrequency
+    public var timing: SupplementTiming
+    public var takenToday: Bool
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         name: String,
         dosage: String,

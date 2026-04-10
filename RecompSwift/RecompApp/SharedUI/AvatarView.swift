@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct AvatarView: View {
     let dataUrl: String?

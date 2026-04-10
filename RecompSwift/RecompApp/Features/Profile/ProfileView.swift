@@ -4,7 +4,6 @@ import SwiftData
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
     @Environment(\.modelContext) private var context
-    @State private var selectedSection = 0
 
     var body: some View {
         NavigationStack {

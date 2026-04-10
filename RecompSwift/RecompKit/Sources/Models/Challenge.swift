@@ -1,32 +1,32 @@
 import Foundation
 import SwiftData
 
-struct ChallengeParticipant: Codable, Identifiable, Hashable, Sendable {
-    var userId: String
-    var name: String
-    var progress: Double
-    var score: Double
+public struct ChallengeParticipant: Codable, Identifiable, Hashable, Sendable {
+    public var userId: String
+    public var name: String
+    public var progress: Double
+    public var score: Double
 
-    var id: String { userId }
+    public var id: String { userId }
 }
 
 @Model
-final class Challenge: @unchecked Sendable {
+public final class Challenge: @unchecked Sendable {
     @Attribute(.unique) var id: String
-    var type: ChallengeType
-    var title: String
-    var descriptionText: String
-    var metric: ChallengeMetric
-    var target: Double
-    var startDate: String
-    var endDate: String
-    var stakes: String?
-    var participants: [ChallengeParticipant]
-    var status: ChallengeStatus
-    var createdBy: String
-    var groupId: String?
+    public var type: ChallengeType
+    public var title: String
+    public var descriptionText: String
+    public var metric: ChallengeMetric
+    public var target: Double
+    public var startDate: String
+    public var endDate: String
+    public var stakes: String?
+    public var participants: [ChallengeParticipant]
+    public var status: ChallengeStatus
+    public var createdBy: String
+    public var groupId: String?
 
-    init(
+    public init(
         id: String = UUID().uuidString,
         type: ChallengeType,
         title: String,

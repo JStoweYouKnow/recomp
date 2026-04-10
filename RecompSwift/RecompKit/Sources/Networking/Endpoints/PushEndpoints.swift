@@ -1,11 +1,11 @@
 import Foundation
 
-enum PushAPI: APIEndpoint {
+public enum PushAPI: APIEndpoint {
     case subscribeExpo(token: String)
     case unsubscribeExpo(token: String)
     case status
 
-    var path: String {
+    public var path: String {
         switch self {
         case .subscribeExpo: return "/api/push/subscribe-expo"
         case .unsubscribeExpo: return "/api/push/unsubscribe-expo"
@@ -13,14 +13,14 @@ enum PushAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .status: return .GET
         default: return .POST
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .subscribeExpo(let token): return AnyEncodable(["token": token])
         case .unsubscribeExpo(let token): return AnyEncodable(["token": token])
@@ -29,7 +29,7 @@ enum PushAPI: APIEndpoint {
     }
 }
 
-enum MiscAPI: APIEndpoint {
+public enum MiscAPI: APIEndpoint {
     case dataSync(payload: SyncPayload)
     case dataFetch
     case weeklyReview(payload: WeeklyReviewPayload)
@@ -50,7 +50,7 @@ enum MiscAPI: APIEndpoint {
     case cookingImport
     case feedbackSubmit(rating: Int?, text: String)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .dataSync, .dataFetch: return "/api/data/sync"
         case .weeklyReview: return "/api/agent/weekly-review"
@@ -73,14 +73,14 @@ enum MiscAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod {
+    public var method: HTTPMethod {
         switch self {
         case .dataFetch, .calendarFeed: return .GET
         default: return .POST
         }
     }
 
-    var queryItems: [URLQueryItem]? {
+    public var queryItems: [URLQueryItem]? {
         switch self {
         case .calendarFeed(let token):
             return [URLQueryItem(name: "token", value: token)]
@@ -89,7 +89,7 @@ enum MiscAPI: APIEndpoint {
         }
     }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .dataSync(let payload): return AnyEncodable(payload)
         case .weeklyReview(let payload): return AnyEncodable(payload)
@@ -110,36 +110,36 @@ enum MiscAPI: APIEndpoint {
     }
 }
 
-struct SyncPayload: Encodable, Sendable {
+public struct SyncPayload: Encodable, Sendable {
     let profile: UserProfileDTO?
     let meals: [[String: String]]?
     let plan: FitnessPlanDTO?
     let milestones: [[String: String]]?
 }
 
-struct WeeklyReviewPayload: Encodable {
+public struct WeeklyReviewPayload: Encodable {
     let meals: [[String: String]]
     let wearableData: [[String: String]]?
     let profile: UserProfileDTO
 }
 
-struct MetabolicUpdatePayload: Encodable {
+public struct MetabolicUpdatePayload: Encodable {
     let weightKg: Double
     let totalIntake: Double
     let date: String
 }
 
-struct MusicSuggestPayload: Encodable {
+public struct MusicSuggestPayload: Encodable {
     let mood: String?
     let genre: String?
 }
 
-struct FeedbackPayload: Encodable {
+public struct FeedbackPayload: Encodable {
     let rating: Int?
     let text: String
 }
 
-struct ImageGenerateResponse: Decodable {
+public struct ImageGenerateResponse: Decodable {
     let imageUrl: String?
     let imageBase64: String?
 }

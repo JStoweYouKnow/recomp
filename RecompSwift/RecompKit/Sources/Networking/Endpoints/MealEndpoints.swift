@@ -1,6 +1,6 @@
 import Foundation
 
-enum MealAPI: APIEndpoint {
+public enum MealAPI: APIEndpoint {
     case suggest(profile: UserProfileDTO, date: String)
     case analyzePhoto
     case analyzeReceipt
@@ -10,7 +10,7 @@ enum MealAPI: APIEndpoint {
     case smartSuggest(payload: SmartSuggestPayload)
     case generatePlan(payload: MealPlanPayload)
 
-    var path: String {
+    public var path: String {
         switch self {
         case .suggest: return "/api/meals/suggest"
         case .analyzePhoto: return "/api/meals/analyze-photo"
@@ -23,9 +23,9 @@ enum MealAPI: APIEndpoint {
         }
     }
 
-    var method: HTTPMethod { .POST }
+    public var method: HTTPMethod { .POST }
 
-    var body: (any Encodable)? {
+    public var body: (any Encodable)? {
         switch self {
         case .suggest(let profile, let date):
             return AnyEncodable(MealSuggestPayload(profile: profile, date: date))
@@ -43,47 +43,47 @@ enum MealAPI: APIEndpoint {
     }
 }
 
-struct MealSuggestPayload: Encodable {
+public struct MealSuggestPayload: Encodable {
     let profile: UserProfileDTO
     let date: String
 }
 
-struct SmartSuggestPayload: Encodable {
+public struct SmartSuggestPayload: Encodable {
     let profile: UserProfileDTO
     let recentMeals: [String]
     let pantryItems: [String]?
     let date: String
 }
 
-struct MealPlanPayload: Encodable {
+public struct MealPlanPayload: Encodable {
     let profile: UserProfileDTO
     let preferences: [String: String]?
 }
 
-struct MealSuggestionResponse: Decodable {
+public struct MealSuggestionResponse: Decodable {
     let suggestions: [SuggestedMeal]
 }
 
-struct SuggestedMeal: Decodable, Identifiable {
-    var id: String { name }
+public struct SuggestedMeal: Decodable, Identifiable {
+    public var id: String { name }
     let name: String
     let description: String?
     let macros: Macros
     let mealType: String?
 }
 
-struct PhotoAnalysisResponse: Decodable {
+public struct PhotoAnalysisResponse: Decodable {
     let meals: [SuggestedMeal]
 }
 
-struct NutritionLookupResponse: Decodable {
+public struct NutritionLookupResponse: Decodable {
     let name: String
     let macros: Macros
     let confidence: String?
     let source: String?
 }
 
-struct RecipeParseResponse: Decodable {
+public struct RecipeParseResponse: Decodable {
     let name: String
     let servings: Int?
     let macros: Macros

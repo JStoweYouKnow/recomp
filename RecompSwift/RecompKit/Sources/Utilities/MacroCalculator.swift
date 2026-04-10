@@ -1,7 +1,7 @@
 import Foundation
 
-enum MacroCalculator {
-    static func bmr(weight: Double, height: Double, age: Int, gender: Gender) -> Double {
+public enum MacroCalculator {
+    public static func bmr(weight: Double, height: Double, age: Int, gender: Gender) -> Double {
         switch gender {
         case .male:
             return 10 * weight + 6.25 * height - 5 * Double(age) + 5
@@ -12,11 +12,11 @@ enum MacroCalculator {
         }
     }
 
-    static func tdee(bmr: Double, activityLevel: ActivityLevel) -> Double {
+    public static func tdee(bmr: Double, activityLevel: ActivityLevel) -> Double {
         bmr * activityLevel.multiplier
     }
 
-    static func targetCalories(tdee: Double, goal: FitnessGoal) -> Int {
+    public static func targetCalories(tdee: Double, goal: FitnessGoal) -> Int {
         switch goal {
         case .loseWeight: return Int(tdee * 0.80)
         case .maintain: return Int(tdee)
@@ -25,7 +25,7 @@ enum MacroCalculator {
         }
     }
 
-    static func defaultMacros(calories: Int, goal: FitnessGoal, weightKg: Double) -> Macros {
+    public static func defaultMacros(calories: Int, goal: FitnessGoal, weightKg: Double) -> Macros {
         let protein: Double
         let fatPercent: Double
 
@@ -55,7 +55,7 @@ enum MacroCalculator {
         )
     }
 
-    static func xpLevel(for xp: Int) -> Int {
+    public static func xpLevel(for xp: Int) -> Int {
         let thresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500]
         for (level, threshold) in thresholds.enumerated().reversed() {
             if xp >= threshold { return level }
@@ -63,7 +63,7 @@ enum MacroCalculator {
         return 0
     }
 
-    static func xpToNextLevel(currentXP: Int) -> (current: Int, needed: Int) {
+    public static func xpToNextLevel(currentXP: Int) -> (current: Int, needed: Int) {
         let thresholds = [0, 100, 300, 600, 1000, 1500, 2100, 2800, 3600, 4500, 5500]
         let level = xpLevel(for: currentXP)
         let currentThreshold = thresholds[min(level, thresholds.count - 1)]
@@ -73,7 +73,7 @@ enum MacroCalculator {
 }
 
 extension ActivityLevel {
-    var multiplier: Double {
+    public var multiplier: Double {
         switch self {
         case .sedentary: return 1.2
         case .light: return 1.375
