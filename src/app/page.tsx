@@ -660,13 +660,15 @@ export default function Home() {
                 syncToServer();
               }}
               onEditMeal={(m) => {
-                const next = meals.map((x) => (x.id === m.id ? m : x));
+                const next = meals.map((x) =>
+                  x.date === m.date && x.id === m.id ? m : x
+                );
                 setMeals(next);
                 saveMeals(next);
                 syncToServer();
               }}
-              onDeleteMeal={(id) => {
-                const next = meals.filter((x) => x.id !== id);
+              onDeleteMeal={(date, id) => {
+                const next = meals.filter((x) => !(x.date === date && x.id === id));
                 setMeals(next);
                 saveMeals(next);
                 syncToServer();

@@ -40,7 +40,7 @@ export function MealsView({
   goal?: string;
   onAddMeal: (m: MealEntry) => void;
   onEditMeal: (m: MealEntry) => void;
-  onDeleteMeal: (id: string) => void;
+  onDeleteMeal: (date: string, id: string) => void;
 }) {
   const today = getTodayLocal();
   const [calendarOpen, setCalendarOpen] = useState(false);

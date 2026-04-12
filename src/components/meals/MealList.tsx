@@ -21,7 +21,7 @@ export function MealList({
   displayMeals: MealEntry[];
   mealsByCategory: { category: MealEntry["mealType"]; meals: MealEntry[] }[];
   onEditMeal: (m: MealEntry) => void;
-  onDeleteMeal: (id: string) => void;
+  onDeleteMeal: (date: string, id: string) => void;
   onShowAdd: () => void;
   onVoiceLog: () => void;
   onPhotoLog: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -181,7 +181,7 @@ export function MealList({
                         </div>
                         <div className="flex gap-0.5 flex-shrink-0">
                           <button onClick={() => setEditDraft({ ...m })} className="btn-ghost btn-compact text-label text-[var(--muted)] hover:text-[var(--accent)]">Edit</button>
-                          <button onClick={() => onDeleteMeal(m.id)} className="btn-ghost btn-compact text-label text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Del</button>
+                          <button onClick={() => onDeleteMeal(m.date, m.id)} className="btn-ghost btn-compact text-label text-[var(--muted)] hover:text-[var(--accent-terracotta)]">Del</button>
                         </div>
                       </div>
                     )}

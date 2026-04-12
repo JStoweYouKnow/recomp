@@ -80,7 +80,7 @@ describe("MealList", () => {
     );
     const delButtons = screen.getAllByText("Del");
     await user.click(delButtons[0]);
-    expect(props.onDeleteMeal).toHaveBeenCalledWith("m1");
+    expect(props.onDeleteMeal).toHaveBeenCalledWith("2026-03-13", "m1");
   });
 
   it("shows inline edit form when Edit is clicked", async () => {
