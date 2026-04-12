@@ -275,7 +275,7 @@ export default function Home() {
   );
   const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
 
-  const handleOnboard = async (data: Partial<UserProfile>) => {
+  const handleOnboard = async (data: Partial<UserProfile> & { password?: string }) => {
     const newProfile: UserProfile = {
       id: uuidv4(),
       name: data.name || "User",
@@ -318,7 +318,7 @@ export default function Home() {
       const regRes = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newProfile),
+        body: JSON.stringify({ ...newProfile, password: data.password }),
       }).catch(() => null);
       if (regRes?.ok) setIsDemoMode(false);
 
