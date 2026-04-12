@@ -828,6 +828,7 @@ export function ProfileView({
               <p className="text-sm text-[var(--muted)]">
                 Your account is secured with email <strong className="text-[var(--foreground)]">{profile.email}</strong>.
               </p>
+              <p className="text-xs text-[var(--muted)] font-mono">User ID: {profile.id}</p>
               <div className="flex flex-wrap gap-3">
                 <SyncNowButton onSyncFromServer={onSyncFromServer} />
                 <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
