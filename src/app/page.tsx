@@ -111,6 +111,10 @@ export default function Home() {
 
   useEffect(() => {
     const p = getProfile();
+
+    // If we have a local profile, render immediately from localStorage so the
+    // UI is instant, then always re-fetch from the server in the background so
+    // data stays consistent across browsers and devices.
     if (p) {
       setProfile(p);
       setPlan(getPlan());
@@ -120,49 +124,50 @@ export default function Home() {
       setXp(getXP());
       setView("dashboard");
       setRestoring(false);
-    } else {
-      // Attempt to restore from cloud
-      fetch("/api/data/sync")
-        .then((res) => {
-          if (!res.ok) throw new Error("No data");
-          return res.json();
-        })
-        .then((data) => {
-          if (data.profile) {
-            saveProfile(data.profile);
-            setProfile(data.profile);
-            if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
-            if (data.meals) { saveMeals(data.meals); setMeals(data.meals); }
-            if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
-            if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
-            if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
-            if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
-            if (data.activityLog) saveActivityLog(data.activityLog);
-            if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
-            if (data.hydration) saveHydration(data.hydration);
-            if (data.fastingSessions) saveFastingSessions(data.fastingSessions);
-            if (data.biofeedback) saveBiofeedback(data.biofeedback);
-            if (data.pantry) savePantry(data.pantry);
-            if (data.bodyScans) saveBodyScans(data.bodyScans);
-            if (data.supplements) saveSupplements(data.supplements);
-            if (data.bloodWork) saveBloodWork(data.bloodWork);
-            if (data.meta) {
-              if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
-              if (data.meta.hasAdjusted) setHasAdjustedPlan();
-              if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
-            }
-            setView("dashboard");
-          } else {
-            setView("onboard");
-          }
-        })
-        .catch(() => {
-          setView("onboard");
-        })
-        .finally(() => {
-          setRestoring(false);
-        });
     }
+
+    // Always fetch the server snapshot — not just when localStorage is empty.
+    // This ensures a second browser or device always converges to server state.
+    fetch("/api/data/sync")
+      .then((res) => {
+        if (!res.ok) throw new Error("No data");
+        return res.json();
+      })
+      .then((data) => {
+        if (data.profile) {
+          saveProfile(data.profile);
+          setProfile(data.profile);
+          if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
+          if (data.meals) { saveMeals(data.meals); setMeals(data.meals); }
+          if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
+          if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
+          if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
+          if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
+          if (data.activityLog) saveActivityLog(data.activityLog);
+          if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
+          if (data.hydration) saveHydration(data.hydration);
+          if (data.fastingSessions) saveFastingSessions(data.fastingSessions);
+          if (data.biofeedback) saveBiofeedback(data.biofeedback);
+          if (data.pantry) savePantry(data.pantry);
+          if (data.bodyScans) saveBodyScans(data.bodyScans);
+          if (data.supplements) saveSupplements(data.supplements);
+          if (data.bloodWork) saveBloodWork(data.bloodWork);
+          if (data.meta) {
+            if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
+            if (data.meta.hasAdjusted) setHasAdjustedPlan();
+            if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
+          }
+          if (!p) setView("dashboard");
+        } else {
+          if (!p) setView("onboard");
+        }
+      })
+      .catch(() => {
+        if (!p) setView("onboard");
+      })
+      .finally(() => {
+        if (!p) setRestoring(false);
+      });
   }, []);
 
   useEffect(() => {
