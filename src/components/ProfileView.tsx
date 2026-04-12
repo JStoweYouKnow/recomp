@@ -65,32 +65,40 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
 }
 
 function SyncNowButton({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
-  const [pushStatus, setPushStatus] = useState<"idle" | "busy" | "done">("idle");
-  const [pullStatus, setPullStatus] = useState<"idle" | "busy" | "done">("idle");
+  const [pushStatus, setPushStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [pullStatus, setPullStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
 
-  const handlePush = () => {
+  const handlePush = async () => {
     setPushStatus("busy");
-    flushSync();
-    setTimeout(() => setPushStatus("done"), 800);
-    setTimeout(() => setPushStatus("idle"), 2800);
+    try {
+      await flushSync();
+      setPushStatus("done");
+    } catch {
+      setPushStatus("error");
+    }
+    setTimeout(() => setPushStatus("idle"), 3000);
   };
 
   const handlePull = async () => {
     if (!onSyncFromServer) return;
     setPullStatus("busy");
-    await onSyncFromServer().catch(() => {});
-    setPullStatus("done");
-    setTimeout(() => setPullStatus("idle"), 2800);
+    try {
+      const ok = await onSyncFromServer();
+      setPullStatus(ok ? "done" : "error");
+    } catch {
+      setPullStatus("error");
+    }
+    setTimeout(() => setPullStatus("idle"), 3000);
   };
 
   return (
     <>
       <button type="button" onClick={handlePush} disabled={pushStatus === "busy"} className="btn-primary !py-2">
-        {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : "Save to server"}
+        {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : pushStatus === "error" ? "Save failed" : "Save to server"}
       </button>
       {onSyncFromServer && (
         <button type="button" onClick={handlePull} disabled={pullStatus === "busy"} className="btn-secondary !py-2">
-          {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : "Load from server"}
+          {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : pullStatus === "error" ? "Load failed" : "Load from server"}
         </button>
       )}
     </>
