@@ -589,8 +589,12 @@ function doSync(): Promise<void> {
       metabolicModel: metabolicModel ?? undefined,
       measurementTargets: measurementTargets ?? undefined,
     }),
-  }).then((res) => {
-    if (!res.ok) throw new Error(`sync-failed:${res.status}`);
+  }).then(async (res) => {
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const detail = body?.details ? JSON.stringify(body.details).slice(0, 300) : (body?.error ?? "");
+      throw new Error(`${res.status}: ${detail}`);
+    }
   });
 }
 
