@@ -555,6 +555,7 @@ let _syncTimeout: ReturnType<typeof setTimeout> | null = null;
 const SYNC_DEBOUNCE_MS = 800;
 
 function doSync(): Promise<void> {
+  const profile = getProfile();
   const plan = getPlan();
   const meals = getMeals();
   const milestones = getMilestones();
@@ -581,6 +582,7 @@ function doSync(): Promise<void> {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      profile: profile ?? undefined,
       plan, meals, milestones, xp, hasAdjusted, ricoHistory,
       wearableConnections, wearableData,
       hydration, fastingSessions, biofeedback, pantry,

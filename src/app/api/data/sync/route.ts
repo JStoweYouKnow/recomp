@@ -4,6 +4,7 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 import { isJudgeMode } from "@/lib/judgeMode";
 import {
   dbGetProfile,
+  dbSaveProfile,
   dbGetPlan,
   dbGetMeals,
   dbGetMilestones,
@@ -79,9 +80,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
+
+    // Always persist the profile so GET /api/data/sync can find it on any device.
+    // Use the server's authenticated userId — never trust the client's profile.id.
+    if (profile) {
+      promises.push(dbSaveProfile(userId, { ...(profile as unknown as Parameters<typeof dbSaveProfile>[1]), id: userId }));
+    }
 
     if (metabolicModel) {
       promises.push(dbSaveMetabolicModel(userId, metabolicModel as MetabolicModel));

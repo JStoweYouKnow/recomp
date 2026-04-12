@@ -483,7 +483,9 @@ export default function Home() {
       <LandingPage
         onSubmit={handleOnboard}
         onLoginSuccess={() => {
-          // Cookie is set, reload the page to trigger the data restoration flow
+          // Cookie is now set to the authenticated userId. Clear local state so
+          // the GET /api/data/sync result is the sole source of truth on reload.
+          localStorage.clear();
           window.location.reload();
         }}
         loading={loading}

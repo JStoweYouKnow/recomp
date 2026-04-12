@@ -206,7 +206,20 @@ const measurementTargetsSchema = z.object({
   targetMuscleMassLbs: z.number().optional(),
 }).passthrough();
 
+// Loose profile schema — passthrough so unknown fields don't break validation
+const profileSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(80),
+  email: z.string().email().optional(),
+  age: z.number().int().min(10).max(120).optional(),
+  weight: z.number().min(20).max(500).optional(),
+  height: z.number().min(80).max(260).optional(),
+  goal: z.string().max(50).optional(),
+  createdAt: z.string().max(50).optional(),
+}).passthrough();
+
 export const syncBodySchema = z.object({
+  profile: profileSchema.optional().nullable(),
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
   milestones: z.array(milestoneSchema).max(500).optional(),
