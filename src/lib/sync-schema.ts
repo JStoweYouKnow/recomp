@@ -182,7 +182,7 @@ const activityLogEntrySchema = z.object({
 const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
 const metabolicDataPointSchema = z.object({
-  date: z.string().max(20),
+  date: z.string().max(50),
   weightKg: z.number(),
   totalIntake: z.number(),
   totalExpenditure: z.number(),
@@ -194,7 +194,7 @@ const metabolicModelSchema = z.object({
   dataPoints: z.array(metabolicDataPointSchema).max(5000),
   lastUpdated: z.string().max(50),
   history: z.array(z.object({
-    date: z.string().max(20),
+    date: z.string().max(50),
     tdee: z.number(),
     confidence: z.number(),
   })).max(5000),
