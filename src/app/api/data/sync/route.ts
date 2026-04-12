@@ -24,6 +24,7 @@ import {
   dbSaveMetabolicModel,
   dbSavePlan,
   dbSaveMeal,
+  dbDeleteMeal,
   dbSaveMilestones,
   dbSaveMeta,
   dbSaveWearableData,
@@ -112,22 +113,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (meals && meals.length > 0) {
-      const uniqueMeals = dedupeMealsByDateAndId(meals as MealEntry[]);
-      for (const m of uniqueMeals) {
-        promises.push(dbSaveMeal(userId, m));
-        // Auto-populate community food database (fire-and-forget, non-blocking)
-        if (m.name && m.macros && m.macros.calories > 0) {
-          dbSaveCommunityFood({
-            name: m.name,
-            calories: m.macros.calories,
-            protein: m.macros.protein,
-            carbs: m.macros.carbs,
-            fat: m.macros.fat,
-            source: "user",
-          }).catch(() => {}); // Never block sync on community write failure
-        }
-      }
+    // Full meal list sync: upsert incoming rows and **delete** DynamoDB meals that
+    // are no longer in the client payload. Otherwise removed/deduped meals reappear
+    // on the next GET after reload.
+    if (Array.isArray(meals)) {
+      promises.push(
+        (async () => {
+          const uniqueIncoming = dedupeMealsByDateAndId(meals as MealEntry[]);
+          const existing = await dbGetMeals(userId);
+          const incomingKeys = new Set(
+            uniqueIncoming.filter((m) => m?.id && typeof m.date === "string").map((m) => `${m.date}\t${m.id}`)
+          );
+          await Promise.all(
+            existing
+              .filter((ex) => ex?.id && typeof ex.date === "string")
+              .filter((ex) => !incomingKeys.has(`${ex.date}\t${ex.id}`))
+              .map((ex) => dbDeleteMeal(userId, ex))
+          );
+          for (const m of uniqueIncoming) {
+            await dbSaveMeal(userId, m);
+            if (m.name && m.macros && m.macros.calories > 0) {
+              dbSaveCommunityFood({
+                name: m.name,
+                calories: m.macros.calories,
+                protein: m.macros.protein,
+                carbs: m.macros.carbs,
+                fat: m.macros.fat,
+                source: "user",
+              }).catch(() => {});
+            }
+          }
+        })()
+      );
     }
 
     if (milestones && milestones.length > 0) {
