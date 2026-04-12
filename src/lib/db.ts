@@ -95,6 +95,7 @@ export async function dbSavePlan(userId: string, plan: FitnessPlan): Promise<voi
 export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
   const doc = getDocClient();
   const all: MealEntry[] = [];
+  const seenSk = new Set<string>();
   let ExclusiveStartKey: Record<string, unknown> | undefined;
   do {
     const { Items, LastEvaluatedKey } = await doc.send(
@@ -106,7 +107,11 @@ export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
       })
     );
     for (const row of Items ?? []) {
-      all.push(row.data as MealEntry);
+      const sk = (row as { SK?: string }).SK;
+      if (!sk || !sk.startsWith("MEAL#") || seenSk.has(sk)) continue;
+      seenSk.add(sk);
+      const data = (row as { data?: MealEntry }).data;
+      if (data) all.push(data);
     }
     ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (ExclusiveStartKey);

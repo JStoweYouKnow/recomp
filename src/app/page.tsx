@@ -13,6 +13,7 @@ import {
 } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
+import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
 import { buildDemoSeed } from "@/lib/demoSeed";
 import { MilestonesView } from "@/components/MilestonesView";
@@ -153,7 +154,11 @@ export default function Home() {
           saveProfile(data.profile);
           setProfile(data.profile);
           if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
-          if (data.meals) { saveMeals(data.meals); setMeals(data.meals); }
+          if (data.meals) {
+            const mealsClean = dedupeMealsByDateAndId(data.meals);
+            saveMeals(mealsClean);
+            setMeals(mealsClean);
+          }
           if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
           if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
           if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }

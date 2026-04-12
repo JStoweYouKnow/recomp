@@ -1,5 +1,6 @@
 import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork } from "./types";
 import { getTodayLocal } from "./date-utils";
+import { dedupeMealsByDateAndId } from "./meals-dedupe";
 
 const STORAGE_KEYS = {
   profile: "recomp_profile",
@@ -82,12 +83,13 @@ export function saveMeasurementTargets(targets: MeasurementTargets): void {
 export function getMeals(): MealEntry[] {
   if (typeof window === "undefined") return [];
   const parsed = safeParse<MealEntry[]>(localStorage.getItem(STORAGE_KEYS.meals), []);
-  return Array.isArray(parsed) ? parsed : [];
+  const raw = Array.isArray(parsed) ? parsed : [];
+  return dedupeMealsByDateAndId(raw);
 }
 
 export function saveMeals(meals: MealEntry[]): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.meals, JSON.stringify(meals));
+  localStorage.setItem(STORAGE_KEYS.meals, JSON.stringify(dedupeMealsByDateAndId(meals)));
 }
 
 export function getPlan(): FitnessPlan | null {

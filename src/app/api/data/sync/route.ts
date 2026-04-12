@@ -41,6 +41,7 @@ import {
   dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
+import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -112,8 +113,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (meals && meals.length > 0) {
-      for (const meal of meals) {
-        const m = meal as MealEntry;
+      const uniqueMeals = dedupeMealsByDateAndId(meals as MealEntry[]);
+      for (const m of uniqueMeals) {
         promises.push(dbSaveMeal(userId, m));
         // Auto-populate community food database (fire-and-forget, non-blocking)
         if (m.name && m.macros && m.macros.calories > 0) {
@@ -270,10 +271,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No profile found" }, { status: 404 });
     }
 
+    const mealsDeduped = meals.length > 0 ? dedupeMealsByDateAndId(meals) : [];
     const payload = {
       profile,
       plan,
-      meals: meals.length > 0 ? meals : undefined,
+      meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
       milestones: milestones.length > 0 ? milestones : undefined,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableData.length > 0 ? wearableData : undefined,
