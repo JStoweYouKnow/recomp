@@ -181,6 +181,31 @@ const activityLogEntrySchema = z.object({
 
 const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
+const metabolicDataPointSchema = z.object({
+  date: z.string().max(20),
+  weightKg: z.number(),
+  totalIntake: z.number(),
+  totalExpenditure: z.number(),
+});
+
+const metabolicModelSchema = z.object({
+  estimatedTDEE: z.number(),
+  confidence: z.number(),
+  dataPoints: z.array(metabolicDataPointSchema).max(5000),
+  lastUpdated: z.string().max(50),
+  history: z.array(z.object({
+    date: z.string().max(20),
+    tdee: z.number(),
+    confidence: z.number(),
+  })).max(5000),
+}).passthrough();
+
+const measurementTargetsSchema = z.object({
+  targetWeightLbs: z.number().optional(),
+  targetBodyFatPercent: z.number().optional(),
+  targetMuscleMassLbs: z.number().optional(),
+}).passthrough();
+
 export const syncBodySchema = z.object({
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
@@ -200,6 +225,8 @@ export const syncBodySchema = z.object({
   activityLog: z.array(activityLogEntrySchema).max(5000).optional(),
   workoutProgress: workoutProgressMapSchema.optional(),
   recentExerciseNames: z.array(z.string().max(200)).max(100).optional(),
+  metabolicModel: metabolicModelSchema.optional().nullable(),
+  measurementTargets: measurementTargetsSchema.optional().nullable(),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;

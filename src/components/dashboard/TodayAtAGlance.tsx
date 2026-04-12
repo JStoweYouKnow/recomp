@@ -30,6 +30,7 @@ export function TodayAtAGlance({
   activityLog,
   onAddActivity,
   onRemoveActivity,
+  onNavigateToMeals,
 }: {
   plan: FitnessPlan | null;
   meals: MealEntry[];
@@ -49,6 +50,8 @@ export function TodayAtAGlance({
   activityLog: ActivityLogEntry[];
   onAddActivity: (entry: ActivityLogEntry) => void;
   onRemoveActivity: (id: string) => void;
+  /** When set, “open Meals” in cross-device hints jumps to the Meals tab */
+  onNavigateToMeals?: () => void;
 }) {
   const pct = (n: number, t: number) => (t > 0 ? Math.min(100, Math.round((n / t) * 100)) : 0);
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -56,6 +59,12 @@ export function TodayAtAGlance({
   const [todayDietExpanded, setTodayDietExpanded] = useState(false);
 
   const todayActivities = activityLog.filter((e) => e.date === today);
+  const hasMealsToday = meals.some((m) => m.date === today);
+  const totalsEmpty =
+    todaysTotals.calories === 0 &&
+    todaysTotals.protein === 0 &&
+    todaysTotals.carbs === 0 &&
+    todaysTotals.fat === 0;
 
   return (
     <div className="card card-accent-border p-6">
@@ -126,6 +135,32 @@ export function TodayAtAGlance({
               );
             })}
           </div>
+          {totalsEmpty && meals.length > 0 && !hasMealsToday && (
+            <p className="text-caption text-[var(--muted)] rounded-lg bg-[var(--background)]/80 border border-[var(--border-soft)] px-3 py-2.5 leading-relaxed">
+              Totals use meals dated <span className="font-medium text-[var(--foreground)]">{today}</span> (this device’s local calendar). You have entries on other dates — often after logging on another device in a different time zone.{" "}
+              {onNavigateToMeals ? (
+                <button type="button" className="text-[var(--accent)] font-medium underline underline-offset-2" onClick={onNavigateToMeals}>
+                  Open Meals
+                </button>
+              ) : (
+                "Open the Meals tab."
+              )}{" "}
+              to pick that day and see them.
+            </p>
+          )}
+          {totalsEmpty && meals.length === 0 && (
+            <p className="text-caption text-[var(--muted)] rounded-lg bg-[var(--background)]/80 border border-[var(--border-soft)] px-3 py-2.5 leading-relaxed">
+              No meals stored in this browser yet for <span className="font-medium text-[var(--foreground)]">{today}</span>. Log from{" "}
+              {onNavigateToMeals ? (
+                <button type="button" className="text-[var(--accent)] font-medium underline underline-offset-2" onClick={onNavigateToMeals}>
+                  Meals
+                </button>
+              ) : (
+                "Meals"
+              )}
+              , or go to <span className="font-medium text-[var(--foreground)]">Profile</span> and sign in with the same account you use on your computer so history syncs from the server.
+            </p>
+          )}
           <div className="flex items-center justify-between pt-1">
             <button onClick={() => setShowActivityForm(!showActivityForm)} className="btn-secondary text-xs min-h-[32px]">
               {showActivityForm ? "Close" : "+ Log activity"}

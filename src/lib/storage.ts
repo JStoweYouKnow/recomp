@@ -570,11 +570,14 @@ function doSync(): void {
   const bloodWork = getBloodWork();
   const activityLog = getActivityLog();
   const workoutProgress = getWorkoutProgress();
+  const metabolicModel = getMetabolicModel();
+  const measurementTargets = getMeasurementTargets();
 
   const recentExerciseNames = getRecentExerciseNames();
 
   fetch("/api/data/sync", {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       plan, meals, milestones, xp, hasAdjusted, ricoHistory,
@@ -582,6 +585,8 @@ function doSync(): void {
       hydration, fastingSessions, biofeedback, pantry,
       bodyScans, supplements, bloodWork,
       activityLog, workoutProgress, recentExerciseNames,
+      metabolicModel: metabolicModel ?? undefined,
+      measurementTargets: measurementTargets ?? undefined,
     }),
   }).catch(() => { });
 }

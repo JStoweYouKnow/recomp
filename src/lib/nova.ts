@@ -19,6 +19,12 @@ const NOVA_LITE = NOVA_LITE_MODEL_ID;
 /** Web Grounding requires US CRIS profile per AWS docs. Override with BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID if needed. */
 const NOVA_WEB_GROUNDING_MODEL =
   process.env.BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID ?? "us.amazon.nova-2-lite-v1:0";
+/** Claude 3.5 Haiku via Bedrock — strong built-in nutrition knowledge, used as LLM fallback */
+const CLAUDE_HAIKU_MODEL =
+  process.env.BEDROCK_CLAUDE_HAIKU_MODEL_ID ?? "anthropic.claude-3-5-haiku-20241022-v1:0";
+/** Llama 3 70B via Bedrock — final LLM fallback before Nova Lite */
+const LLAMA_MODEL =
+  process.env.BEDROCK_LLAMA_MODEL_ID ?? "meta.llama3-70b-instruct-v1:0";
 const NOVA_CANVAS = process.env.BEDROCK_NOVA_CANVAS_MODEL_ID ?? "amazon.nova-canvas-v1:0";
 const NOVA_REEL = process.env.BEDROCK_NOVA_REEL_MODEL_ID ?? "amazon.nova-reel-v1:1";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
@@ -233,13 +239,64 @@ export async function invokeNovaWithWebGrounding(
   }
 }
 
-/** Web grounding with automatic fallback to standard Nova inference */
+/** Claude 3.5 Haiku via Bedrock Converse — strong built-in nutrition & food knowledge */
+async function invokeClaudeHaiku(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<string> {
+  const client = getClient();
+  const response = await client.send(
+    new ConverseCommand({
+      modelId: CLAUDE_HAIKU_MODEL,
+      messages: [{ role: "user" as const, content: [{ text: userMessage }] }],
+      system: [{ text: systemPrompt }],
+      inferenceConfig: {
+        temperature: options?.temperature ?? 0.3,
+        maxTokens: options?.maxTokens ?? 512,
+      },
+    })
+  );
+  const content = response.output?.message?.content ?? [];
+  const textBlock = content.find((c: { text?: string }) => "text" in c);
+  return (textBlock as { text: string })?.text ?? "";
+}
+
+/** Llama 3 70B via Bedrock Converse */
+async function invokeLlama(
+  systemPrompt: string,
+  userMessage: string,
+  options?: { temperature?: number; maxTokens?: number }
+): Promise<string> {
+  const client = getClient();
+  const response = await client.send(
+    new ConverseCommand({
+      modelId: LLAMA_MODEL,
+      messages: [{ role: "user" as const, content: [{ text: userMessage }] }],
+      system: [{ text: systemPrompt }],
+      inferenceConfig: {
+        temperature: options?.temperature ?? 0.3,
+        maxTokens: options?.maxTokens ?? 512,
+      },
+    })
+  );
+  const content = response.output?.message?.content ?? [];
+  const textBlock = content.find((c: { text?: string }) => "text" in c);
+  return (textBlock as { text: string })?.text ?? "";
+}
+
+type NutritionLookupSource = "web-grounding" | "claude-haiku" | "llama" | "nova-lite";
+
+/** Web grounding with automatic fallback chain:
+ *  Nova web grounding → Claude 3.5 Haiku → Llama 3 70B → Nova Lite */
 export async function invokeNovaWithWebGroundingOrFallback(
   systemPrompt: string,
   userMessage: string,
   options?: { temperature?: number; maxTokens?: number }
-): Promise<{ text: string; source: "web-grounding" | "nova-lite" }> {
+): Promise<{ text: string; source: NutritionLookupSource }> {
   const startedAt = Date.now();
+
+  // 1. Nova web grounding (has live web access)
   try {
     const text = await invokeNovaWithWebGrounding(systemPrompt, userMessage, options);
     traceNovaCall({
@@ -252,18 +309,52 @@ export async function invokeNovaWithWebGroundingOrFallback(
     });
     return { text, source: "web-grounding" };
   } catch (err) {
-    console.warn("Web grounding unavailable, falling back to Nova Lite:", err instanceof Error ? err.message : err);
-    const text = await invokeNova(systemPrompt, userMessage, options);
+    console.warn("Web grounding unavailable, trying Claude Haiku:", err instanceof Error ? err.message : err);
+  }
+
+  // 2. Claude 3.5 Haiku — excellent built-in nutrition knowledge
+  try {
+    const text = await invokeClaudeHaiku(systemPrompt, userMessage, options);
     traceNovaCall({
       action: "invokeNovaWithWebGroundingOrFallback",
       service: "bedrock-converse",
-      model: NOVA_LITE,
+      model: CLAUDE_HAIKU_MODEL,
       startedAt,
       status: "fallback",
-      detail: "source=nova-lite",
+      detail: "source=claude-haiku",
     });
-    return { text, source: "nova-lite" };
+    return { text, source: "claude-haiku" };
+  } catch (err) {
+    console.warn("Claude Haiku unavailable, trying Llama:", err instanceof Error ? err.message : err);
   }
+
+  // 3. Llama 3 70B
+  try {
+    const text = await invokeLlama(systemPrompt, userMessage, options);
+    traceNovaCall({
+      action: "invokeNovaWithWebGroundingOrFallback",
+      service: "bedrock-converse",
+      model: LLAMA_MODEL,
+      startedAt,
+      status: "fallback",
+      detail: "source=llama",
+    });
+    return { text, source: "llama" };
+  } catch (err) {
+    console.warn("Llama unavailable, falling back to Nova Lite:", err instanceof Error ? err.message : err);
+  }
+
+  // 4. Nova Lite — last resort
+  const text = await invokeNova(systemPrompt, userMessage, options);
+  traceNovaCall({
+    action: "invokeNovaWithWebGroundingOrFallback",
+    service: "bedrock-converse",
+    model: NOVA_LITE,
+    startedAt,
+    status: "fallback",
+    detail: "source=nova-lite",
+  });
+  return { text, source: "nova-lite" };
 }
 
 /** Nova 2 Lite with extended thinking for complex reasoning */

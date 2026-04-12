@@ -34,6 +34,7 @@ import type {
   Supplement,
   BloodWork,
   ActivityLogEntry,
+  MeasurementTargets,
 } from "./types";
 
 const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RefactorTable";
@@ -93,14 +94,23 @@ export async function dbSavePlan(userId: string, plan: FitnessPlan): Promise<voi
 // ── Meals ────────────────────────────────────────────────
 export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
   const doc = getDocClient();
-  const { Items } = await doc.send(
-    new QueryCommand({
-      TableName: TABLE,
-      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
-      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
-    })
-  );
-  return (Items ?? []).map((i) => i.data as MealEntry).sort((a, b) => (a.loggedAt || "").localeCompare(b.loggedAt || ""));
+  const all: MealEntry[] = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const { Items, LastEvaluatedKey } = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+        ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
+        ExclusiveStartKey,
+      })
+    );
+    for (const row of Items ?? []) {
+      all.push(row.data as MealEntry);
+    }
+    ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ExclusiveStartKey);
+  return all.sort((a, b) => (a.loggedAt || "").localeCompare(b.loggedAt || ""));
 }
 
 export async function dbSaveMeal(userId: string, meal: MealEntry): Promise<void> {
@@ -218,6 +228,8 @@ export interface UserMeta {
   hasAdjusted: boolean;
   ricoHistory: RicoMessage[];
   calendarFeedToken?: string;
+  /** Body-composition targets (Milestones); synced via /api/data/sync */
+  measurementTargets?: MeasurementTargets | null;
 }
 
 export async function dbGetMeta(userId: string): Promise<UserMeta> {

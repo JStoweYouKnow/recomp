@@ -5,10 +5,11 @@ import {
   getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
   getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
   getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
-  syncToServer, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
+  syncToServer, flushSync, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
   getBiofeedback, getHydration, getActiveFastingSession,
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
+  saveMetabolicModel, saveMeasurementTargets,
 } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
@@ -128,9 +129,23 @@ export default function Home() {
 
     // Always fetch the server snapshot — not just when localStorage is empty.
     // This ensures a second browser or device always converges to server state.
-    fetch("/api/data/sync")
-      .then((res) => {
-        if (!res.ok) throw new Error("No data");
+    fetch("/api/data/sync", { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) {
+          // 401: no session cookie on this browser — localStorage is device-only
+          // until the user signs in here (common when comparing phone vs desktop).
+          if (res.status === 401 && p && typeof window !== "undefined") {
+            const k = "recomp_sync_login_hint_shown";
+            if (!sessionStorage.getItem(k)) {
+              sessionStorage.setItem(k, "1");
+              showToast(
+                "Sign in on this browser to load your account. Until then, data here stays on this device only.",
+                "info",
+              );
+            }
+          }
+          throw new Error("No data");
+        }
         return res.json();
       })
       .then((data) => {
@@ -156,8 +171,18 @@ export default function Home() {
             if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
             if (data.meta.hasAdjusted) setHasAdjustedPlan();
             if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
+            if (data.meta.measurementTargets != null) {
+              saveMeasurementTargets(data.meta.measurementTargets);
+            }
+          }
+          if (data.metabolicModel) {
+            saveMetabolicModel(data.metabolicModel);
           }
           if (!p) setView("dashboard");
+          // Push merged localStorage to DynamoDB so data that only existed in this
+          // browser (e.g. many meals logged before a successful POST) becomes
+          // visible on other devices after their next GET /api/data/sync.
+          syncToServer();
         } else {
           if (!p) setView("onboard");
         }
@@ -168,6 +193,18 @@ export default function Home() {
       .finally(() => {
         if (!p) setRestoring(false);
       });
+  }, []);
+
+  useEffect(() => {
+    const persist = () => {
+      if (document.visibilityState === "hidden") flushSync();
+    };
+    document.addEventListener("visibilitychange", persist);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      document.removeEventListener("visibilitychange", persist);
+      window.removeEventListener("pagehide", persist);
+    };
   }, []);
 
   useEffect(() => {

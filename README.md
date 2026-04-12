@@ -179,6 +179,9 @@ JUDGE_MODE=false
 # Optional — require auth for AI routes (rico, weekly review, meals/suggest, research, images, video, embeddings)
 # Set to true in production to prevent anonymous abuse of Bedrock. Default false for hackathon demo compatibility.
 REQUIRE_AUTH_FOR_AI=false
+
+# Optional — session cookie Domain= so www and apex share login (see README "Cross-device data")
+# AUTH_COOKIE_DOMAIN=.yourdomain.com
 ```
 
 Configure AWS credentials (e.g. `~/.aws/credentials` or environment variables).
@@ -232,6 +235,27 @@ Generate domain in Railway → Settings → Networking. Add `ACT_SERVICE_URL` (a
 | **DynamoDB sync** | Optional | App works with localStorage only; table needed for cross-device sync |
 | **Judge reliability mode** | Yes | Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations and use `/api/judge/health` to verify status |
 | **Web grounding** | IAM + US CRIS profile | Requires `bedrock:InvokeTool` on `arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding`; uses `us.amazon.nova-2-lite-v1:0` by default. Falls back to Nova Lite if unavailable. |
+
+### Cross-device data (mobile browser vs desktop)
+
+Data stays in **this browser’s `localStorage`** until the app can load your account from the server. The server copy is tied to the **`recomp_uid` httpOnly cookie** (set when you register, log in, or use the demo button).
+
+**Single deployment (e.g. `refactor-one.vercel.app` on both phone and laptop):** You do **not** need `AUTH_COOKIE_DOMAIN`—that hostname is already one origin. Phone Safari and desktop Chrome still have **separate** `localStorage` and cookies until you **sign in (or use the demo button) on each device**; the app then loads the same DynamoDB snapshot. If `DYNAMODB_TABLE_NAME` is unset on that Vercel project, there is no server copy to share—each browser only keeps its own local data.
+
+If phone and computer show different dashboards:
+
+1. **Sign in on both** — Each browser needs its own session cookie; local progress before sign-in does not magically appear on the other device.
+2. **Use one canonical URL** — `https://app.example.com` and `https://www.app.example.com` are different sites (different cookies and localStorage). Pick one hostname in DNS / Vercel and redirect the other.
+3. **Optional: shared cookie across subdomains** — If you intentionally serve both `example.com` and `www.example.com`, set **`AUTH_COOKIE_DOMAIN=.example.com`** (leading dot is fine) in Vercel env so the session cookie is sent on both. Only set this when you control the whole zone; leave unset for single-host deployments.
+4. **Safari / Private mode** — ITP or private browsing can isolate storage; sign in again if sync looks empty.
+
+Sync calls use `credentials: "include"` so cookies are always sent on same-origin requests.
+
+**“Today at a glance” is zero on one device but not the other:** Each meal is stored with a **calendar date** (`YYYY-MM-DD`) from the device where it was logged. The dashboard only sums meals whose date equals **this browser’s local “today”**. If your phone is already on the next calendar day (or behind) relative to where you logged, totals for “today” on the phone can be zero while the other device still shows intake — open **Meals** and select the date that has your entries.
+
+**Desktop shows meals but phone does not (same account):** Meals must exist in **DynamoDB**, not only in one browser’s `localStorage`. After loading, the app **uploads merged local data** following a successful server fetch, and **flushes sync when you leave the tab** so pending writes are less likely to be lost. Open the app once on the device that has the full meal log (while signed in) so it can backfill the server, then refresh on the other device.
+
+**Macro targets & workouts:** Daily macro targets and the exercise list live in the same **`plan`** item as your generated week. **Completed sets** use **`workoutProgress`**. Both are part of `/api/data/sync`. **Adaptive TDEE** (`METABOLIC_MODEL`) and **Milestones measurement targets** (weight / body fat / muscle goals, stored on `META`) are now included in that sync as well; they were previously easy to leave only in `localStorage`.
 
 **Web grounding IAM:** Add this statement to your IAM policy (replace `526015377909` with your AWS account ID):
 

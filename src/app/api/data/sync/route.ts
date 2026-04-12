@@ -20,6 +20,8 @@ import {
   dbGetBodyScans,
   dbGetSupplements,
   dbGetBloodWork,
+  dbGetMetabolicModel,
+  dbSaveMetabolicModel,
   dbSavePlan,
   dbSaveMeal,
   dbSaveMilestones,
@@ -39,7 +41,7 @@ import {
   dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
@@ -75,9 +77,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames } = parsed.data;
+    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
+
+    if (metabolicModel) {
+      promises.push(dbSaveMetabolicModel(userId, metabolicModel as MetabolicModel));
+    }
 
     if (plan) {
       promises.push(dbSavePlan(userId, plan as FitnessPlan));
@@ -127,7 +133,7 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveMilestones(userId, milestones as Milestone[]));
     }
 
-    if (xp !== undefined || hasAdjusted !== undefined || ricoHistory) {
+    if (xp !== undefined || hasAdjusted !== undefined || ricoHistory || measurementTargets !== undefined) {
       promises.push(
         (async () => {
           const existing = await dbGetMeta(userId);
@@ -136,6 +142,10 @@ export async function POST(req: NextRequest) {
             xp: xp ?? existing.xp,
             hasAdjusted: hasAdjusted ?? existing.hasAdjusted,
             ricoHistory: ricoHistory?.slice(-50) ?? existing.ricoHistory ?? [],
+            measurementTargets:
+              measurementTargets !== undefined
+                ? (measurementTargets as MeasurementTargets | null)
+                : existing.measurementTargets,
           });
         })()
       );
@@ -234,6 +244,7 @@ export async function GET(req: NextRequest) {
       bodyScans,
       supplements,
       bloodWork,
+      metabolicModel,
     ] = await Promise.all([
       dbGetProfile(userId),
       dbGetPlan(userId),
@@ -252,6 +263,7 @@ export async function GET(req: NextRequest) {
       dbGetBodyScans(userId).catch(() => []),
       dbGetSupplements(userId).catch(() => []),
       dbGetBloodWork(userId).catch(() => []),
+      dbGetMetabolicModel(userId).catch(() => null),
     ]);
 
     if (!profile) {
@@ -279,7 +291,9 @@ export async function GET(req: NextRequest) {
         xp: meta.xp,
         hasAdjusted: meta.hasAdjusted,
         ricoHistory: meta.ricoHistory,
+        measurementTargets: meta.measurementTargets ?? undefined,
       },
+      metabolicModel: metabolicModel ?? undefined,
     };
 
     return NextResponse.json(payload);

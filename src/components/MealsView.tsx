@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache, getPantry, getActiveFastingSession, getSavedRestaurantMeals, saveSavedRestaurantMeals, syncToServer } from "@/lib/storage";
+import { rankMealQuickPicks } from "@/lib/meal-quick-picks";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
@@ -134,6 +135,34 @@ export function MealsView({
 
   const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
   const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
+  const remainingCarbs = Math.max(0, targets.carbs - displayTotals.carbs);
+  const remainingFat = Math.max(0, targets.fat - displayTotals.fat);
+
+  const rankedQuickPicks = useMemo(
+    () =>
+      rankMealQuickPicks(
+        meals,
+        getRecentMealTemplates(),
+        targets,
+        displayTotals,
+        {
+          calories: remainingCal,
+          protein: remainingPro,
+          carbs: remainingCarbs,
+          fat: remainingFat,
+        },
+        12,
+      ),
+    [
+      meals,
+      targets,
+      displayTotals,
+      remainingCal,
+      remainingPro,
+      remainingCarbs,
+      remainingFat,
+    ],
+  );
 
   /** Nova Embeddings: find past meals similar to current input (cosine similarity). */
   useEffect(() => {
@@ -814,11 +843,12 @@ export function MealsView({
         <div className="card p-4 sm:p-5 animate-slide-up max-w-2xl">
           <h3 className="section-title !text-base mb-1">Add meal</h3>
           <p className="text-sm text-[var(--muted)] mb-3">Enter a name, or use the buttons below to fill in quickly.</p>
-          {getRecentMealTemplates().length > 0 && (
+          {rankedQuickPicks.length > 0 && (
             <div className="mb-3">
-              <p className="text-xs font-medium text-[var(--muted)] mb-2">Recent meals &amp; recipes</p>
+              <p className="text-xs font-medium text-[var(--muted)] mb-2">Quick picks</p>
+              <p className="text-[10px] text-[var(--muted)] mb-2">Frequent logs that fit what&apos;s left today</p>
               <div className="flex flex-wrap gap-2">
-                {getRecentMealTemplates().slice(0, 12).map((t) => (
+                {rankedQuickPicks.map((t) => (
                   <button
                     key={`${t.name}-${t.lastUsed}`}
                     type="button"
@@ -1009,7 +1039,8 @@ export function MealsView({
                 onChange={(e) => {
                   const val = e.target.value;
                   setName(val);
-                  const match = getRecentMealTemplates().find((t) => t.name.toLowerCase() === val.trim().toLowerCase());
+                  const match = rankedQuickPicks.find((t) => t.name.toLowerCase() === val.trim().toLowerCase())
+                    ?? getRecentMealTemplates().find((t) => t.name.toLowerCase() === val.trim().toLowerCase());
                   if (match) {
                     setCal(String(match.macros.calories ?? ""));
                     setPro(String(match.macros.protein ?? ""));
@@ -1022,7 +1053,7 @@ export function MealsView({
                 className="input-base rounded-lg px-4 py-2 text-[var(--foreground)]"
               />
               <datalist id="recent-meals-list">
-                {getRecentMealTemplates().map((t) => (
+                {rankedQuickPicks.map((t) => (
                   <option key={`${t.name}-${t.lastUsed}`} value={t.name} />
                 ))}
               </datalist>

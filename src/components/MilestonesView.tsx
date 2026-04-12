@@ -199,6 +199,7 @@ export function MilestonesView({
   const saveTargets = (next: MeasurementTargets) => {
     setTargets(next);
     saveMeasurementTargets(next);
+    syncToServer();
   };
 
   const handleSaveTargets = () => {

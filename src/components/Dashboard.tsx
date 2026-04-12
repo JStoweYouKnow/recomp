@@ -415,6 +415,7 @@ export function Dashboard({
           activityLog={activityLog}
           onAddActivity={addActivityEntry}
           onRemoveActivity={removeActivityEntry}
+          onNavigateToMeals={onNavigateToMeals}
         />
       </div>
 
