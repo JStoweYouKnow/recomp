@@ -46,7 +46,7 @@ import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {
