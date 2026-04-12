@@ -554,7 +554,7 @@ export function saveBloodWork(entries: BloodWork[]): void {
 let _syncTimeout: ReturnType<typeof setTimeout> | null = null;
 const SYNC_DEBOUNCE_MS = 800;
 
-function doSync(): void {
+function doSync(): Promise<void> {
   const plan = getPlan();
   const meals = getMeals();
   const milestones = getMilestones();
@@ -574,10 +574,9 @@ function doSync(): void {
   const workoutProgress = getWorkoutProgress();
   const metabolicModel = getMetabolicModel();
   const measurementTargets = getMeasurementTargets();
-
   const recentExerciseNames = getRecentExerciseNames();
 
-  fetch("/api/data/sync", {
+  return fetch("/api/data/sync", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -590,7 +589,9 @@ function doSync(): void {
       metabolicModel: metabolicModel ?? undefined,
       measurementTargets: measurementTargets ?? undefined,
     }),
-  }).catch(() => { });
+  }).then((res) => {
+    if (!res.ok) throw new Error(`sync-failed:${res.status}`);
+  });
 }
 
 /** Persist current localStorage state to DynamoDB (fire-and-forget). Debounced so rapid changes result in a single sync. */
@@ -599,18 +600,18 @@ export function syncToServer(): void {
   if (_syncTimeout) clearTimeout(_syncTimeout);
   _syncTimeout = setTimeout(() => {
     _syncTimeout = null;
-    doSync();
+    doSync().catch(() => { });
   }, SYNC_DEBOUNCE_MS);
 }
 
-/** Flush any pending sync immediately (e.g. before page unload). Call from beforeunload/visibilitychange. */
-export function flushSync(): void {
-  if (typeof window === "undefined") return;
+/** Flush current localStorage state to DynamoDB immediately. Returns a Promise that resolves when the server has acknowledged. */
+export function flushSync(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
   if (_syncTimeout) {
     clearTimeout(_syncTimeout);
     _syncTimeout = null;
   }
-  doSync();
+  return doSync();
 }
 
 // ── Client-side nutrition cache ─────────────────────────────────────────
