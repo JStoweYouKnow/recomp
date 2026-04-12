@@ -154,14 +154,14 @@ export default function Home() {
           saveProfile(data.profile);
           setProfile(data.profile);
           if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
-          if (data.meals) {
+          if (Array.isArray(data.meals)) {
             const mealsClean = dedupeMealsByDateAndId(data.meals);
             saveMeals(mealsClean);
             setMeals(mealsClean);
           }
           if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
           if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
-          if (data.milestones) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
+          if (Array.isArray(data.milestones)) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
           if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
           if (data.activityLog) saveActivityLog(data.activityLog);
           if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);

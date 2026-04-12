@@ -275,8 +275,9 @@ export async function GET(req: NextRequest) {
     const payload = {
       profile,
       plan,
-      meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
-      milestones: milestones.length > 0 ? milestones : undefined,
+      // Always send an array so clients replace local state (including clearing all meals).
+      meals: mealsDeduped,
+      milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableData.length > 0 ? wearableData : undefined,
       weeklyReview: weeklyReview ?? undefined,
