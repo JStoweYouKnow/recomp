@@ -144,6 +144,12 @@ public actor APIClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
+        // Native clients often do not send the httpOnly session cookie reliably; the API
+        // accepts the same user id via header (see recomp `getUserId` + `X-Refactor-User-Id`).
+        if let uid = try? KeychainService.loadUserId(), !uid.isEmpty {
+            request.setValue(uid, forHTTPHeaderField: "X-Refactor-User-Id")
+        }
+
         return request
     }
 

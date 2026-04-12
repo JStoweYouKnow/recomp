@@ -70,6 +70,9 @@ public final class AuthService {
         defer { isLoading = false }
 
         let response: AuthResponse = try await api.request(AuthAPI.demo)
+        if let userId = response.userId {
+            try? KeychainService.save(userId: userId)
+        }
         if let dto = response.profile {
             currentUser = mapProfile(dto)
             isAuthenticated = true
