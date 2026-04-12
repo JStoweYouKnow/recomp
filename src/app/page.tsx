@@ -111,6 +111,49 @@ export default function Home() {
   const [showGroupCreate, setShowGroupCreate] = useState(false);
   const [restoring, setRestoring] = useState(true);
 
+  const applyServerData = useCallback((data: Record<string, unknown>) => {
+    if (!data.profile) return false;
+    saveProfile(data.profile as UserProfile);
+    setProfile(data.profile as UserProfile);
+    if (data.plan) { savePlan(data.plan as FitnessPlan); setPlan(data.plan as FitnessPlan); }
+    if (Array.isArray(data.meals)) {
+      const mealsClean = dedupeMealsByDateAndId(data.meals as MealEntry[]);
+      saveMeals(mealsClean);
+      setMeals(mealsClean);
+    }
+    if (data.wearableData) { saveWearableData(data.wearableData as WearableDaySummary[]); setWearableData(data.wearableData as WearableDaySummary[]); }
+    if (data.wearableConnections) saveWearableConnections(data.wearableConnections as Parameters<typeof saveWearableConnections>[0]);
+    if (Array.isArray(data.milestones)) { saveMilestones(data.milestones as Parameters<typeof saveMilestones>[0]); setMilestonesState(data.milestones as Parameters<typeof setMilestonesState>[0]); }
+    if (data.weeklyReview) saveWeeklyReview(data.weeklyReview as Parameters<typeof saveWeeklyReview>[0]);
+    if (data.activityLog) saveActivityLog(data.activityLog as Parameters<typeof saveActivityLog>[0]);
+    if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress as Parameters<typeof saveWorkoutProgress>[0]);
+    if (data.hydration) saveHydration(data.hydration as Parameters<typeof saveHydration>[0]);
+    if (data.fastingSessions) saveFastingSessions(data.fastingSessions as Parameters<typeof saveFastingSessions>[0]);
+    if (data.biofeedback) saveBiofeedback(data.biofeedback as Parameters<typeof saveBiofeedback>[0]);
+    if (data.pantry) savePantry(data.pantry as Parameters<typeof savePantry>[0]);
+    if (data.bodyScans) saveBodyScans(data.bodyScans as Parameters<typeof saveBodyScans>[0]);
+    if (data.supplements) saveSupplements(data.supplements as Parameters<typeof saveSupplements>[0]);
+    if (data.bloodWork) saveBloodWork(data.bloodWork as Parameters<typeof saveBloodWork>[0]);
+    if (data.meta) {
+      const meta = data.meta as Record<string, unknown>;
+      if (meta.xp != null) { saveXP(meta.xp as number); setXp(meta.xp as number); }
+      if (meta.hasAdjusted) setHasAdjustedPlan();
+      if (meta.ricoHistory) saveRicoHistory(meta.ricoHistory as Parameters<typeof saveRicoHistory>[0]);
+      if (meta.measurementTargets != null) saveMeasurementTargets(meta.measurementTargets as Parameters<typeof saveMeasurementTargets>[0]);
+    }
+    if (data.metabolicModel) saveMetabolicModel(data.metabolicModel as Parameters<typeof saveMetabolicModel>[0]);
+    return true;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pullFromServer = useCallback((): Promise<boolean> => {
+    return fetch("/api/data/sync", { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error("sync-failed");
+        return res.json();
+      })
+      .then((data) => applyServerData(data));
+  }, [applyServerData]);
+
   useEffect(() => {
     const p = getProfile();
 
@@ -150,39 +193,8 @@ export default function Home() {
         return res.json();
       })
       .then((data) => {
-        if (data.profile) {
-          saveProfile(data.profile);
-          setProfile(data.profile);
-          if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
-          if (Array.isArray(data.meals)) {
-            const mealsClean = dedupeMealsByDateAndId(data.meals);
-            saveMeals(mealsClean);
-            setMeals(mealsClean);
-          }
-          if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
-          if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
-          if (Array.isArray(data.milestones)) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
-          if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
-          if (data.activityLog) saveActivityLog(data.activityLog);
-          if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
-          if (data.hydration) saveHydration(data.hydration);
-          if (data.fastingSessions) saveFastingSessions(data.fastingSessions);
-          if (data.biofeedback) saveBiofeedback(data.biofeedback);
-          if (data.pantry) savePantry(data.pantry);
-          if (data.bodyScans) saveBodyScans(data.bodyScans);
-          if (data.supplements) saveSupplements(data.supplements);
-          if (data.bloodWork) saveBloodWork(data.bloodWork);
-          if (data.meta) {
-            if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
-            if (data.meta.hasAdjusted) setHasAdjustedPlan();
-            if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
-            if (data.meta.measurementTargets != null) {
-              saveMeasurementTargets(data.meta.measurementTargets);
-            }
-          }
-          if (data.metabolicModel) {
-            saveMetabolicModel(data.metabolicModel);
-          }
+        const applied = applyServerData(data);
+        if (applied) {
           if (!p) setView("dashboard");
           // Push merged localStorage to DynamoDB so data that only existed in this
           // browser (e.g. many meals logged before a successful POST) becomes
@@ -762,6 +774,7 @@ export default function Home() {
             <ProfileView
               profile={profile}
               isDemoMode={isDemoMode}
+              onSyncFromServer={pullFromServer}
               onProfileUpdate={(updated) => {
                 saveProfile(updated);
                 setProfile(updated);
