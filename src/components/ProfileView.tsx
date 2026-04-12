@@ -64,6 +64,21 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
   });
 }
 
+function SyncNowButton() {
+  const [status, setStatus] = useState<"idle" | "syncing" | "done">("idle");
+  const handleSync = () => {
+    setStatus("syncing");
+    flushSync();
+    setTimeout(() => setStatus("done"), 800);
+    setTimeout(() => setStatus("idle"), 2800);
+  };
+  return (
+    <button type="button" onClick={handleSync} disabled={status === "syncing"} className="btn-primary !py-2">
+      {status === "syncing" ? "Syncing…" : status === "done" ? "Synced!" : "Sync data to server"}
+    </button>
+  );
+}
+
 function TheRefOnTheGoSection() {
   const [phoneLinked, setPhoneLinked] = useState<boolean | null>(null);
   const [phoneInput, setPhoneInput] = useState("");
@@ -774,9 +789,12 @@ export function ProfileView({
               <p className="text-sm text-[var(--muted)]">
                 Your account is secured with email <strong className="text-[var(--foreground)]">{profile.email}</strong>.
               </p>
-              <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
-                Sign out
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <SyncNowButton />
+                <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
+                  Sign out
+                </button>
+              </div>
             </div>
           )}
         </div>
