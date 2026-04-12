@@ -64,18 +64,36 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
   });
 }
 
-function SyncNowButton() {
-  const [status, setStatus] = useState<"idle" | "syncing" | "done">("idle");
-  const handleSync = () => {
-    setStatus("syncing");
+function SyncNowButton({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
+  const [pushStatus, setPushStatus] = useState<"idle" | "busy" | "done">("idle");
+  const [pullStatus, setPullStatus] = useState<"idle" | "busy" | "done">("idle");
+
+  const handlePush = () => {
+    setPushStatus("busy");
     flushSync();
-    setTimeout(() => setStatus("done"), 800);
-    setTimeout(() => setStatus("idle"), 2800);
+    setTimeout(() => setPushStatus("done"), 800);
+    setTimeout(() => setPushStatus("idle"), 2800);
   };
+
+  const handlePull = async () => {
+    if (!onSyncFromServer) return;
+    setPullStatus("busy");
+    await onSyncFromServer().catch(() => {});
+    setPullStatus("done");
+    setTimeout(() => setPullStatus("idle"), 2800);
+  };
+
   return (
-    <button type="button" onClick={handleSync} disabled={status === "syncing"} className="btn-primary !py-2">
-      {status === "syncing" ? "Syncing…" : status === "done" ? "Synced!" : "Sync data to server"}
-    </button>
+    <>
+      <button type="button" onClick={handlePush} disabled={pushStatus === "busy"} className="btn-primary !py-2">
+        {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : "Save to server"}
+      </button>
+      {onSyncFromServer && (
+        <button type="button" onClick={handlePull} disabled={pullStatus === "busy"} className="btn-secondary !py-2">
+          {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : "Load from server"}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -228,12 +246,14 @@ export function ProfileView({
   onProfileUpdate,
   onWearableDataFetched,
   onRegistered,
+  onSyncFromServer,
 }: {
   profile: UserProfile;
   isDemoMode?: boolean;
   onProfileUpdate: (p: UserProfile) => void;
   onWearableDataFetched?: (data: { date: string; provider: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }[]) => void;
   onRegistered?: () => void;
+  onSyncFromServer?: () => Promise<boolean>;
 }) {
   const { ft, inch } = cmToFeetInches(profile.height);
   const [name, setName] = useState(profile.name);
@@ -790,7 +810,7 @@ export function ProfileView({
                 Your account is secured with email <strong className="text-[var(--foreground)]">{profile.email}</strong>.
               </p>
               <div className="flex flex-wrap gap-3">
-                <SyncNowButton />
+                <SyncNowButton onSyncFromServer={onSyncFromServer} />
                 <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
                   Sign out
                 </button>
