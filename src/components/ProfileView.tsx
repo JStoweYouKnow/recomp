@@ -116,6 +116,68 @@ function SyncNowButton({ onSyncFromServer }: { onSyncFromServer?: () => Promise<
   );
 }
 
+function MergeAccountData({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [fromId, setFromId] = useState("");
+  const [status, setStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [result, setResult] = useState("");
+
+  const handleMerge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus("busy");
+    setResult("");
+    try {
+      const res = await fetch("/api/data/merge", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromUserId: fromId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Merge failed");
+      const counts = Object.entries(data.merged as Record<string, number>)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(", ");
+      setResult(counts ? `Merged: ${counts}` : "Nothing new found in that account.");
+      setStatus("done");
+      if (onSyncFromServer) await onSyncFromServer().catch(() => {});
+    } catch (err) {
+      setStatus("error");
+      setResult(err instanceof Error ? err.message : "Merge failed");
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-[var(--muted)] underline underline-offset-2 mt-1 hover:text-[var(--foreground)] transition-colors">
+        Recover data from a previous account
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)]/40 space-y-3">
+      <p className="text-xs text-[var(--muted)]">Enter the User ID of your previous anonymous account to merge its data into this account.</p>
+      <form onSubmit={handleMerge} className="flex gap-2 items-start flex-wrap">
+        <input
+          type="text"
+          value={fromId}
+          onChange={(e) => setFromId(e.target.value)}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          className="input-base flex-1 min-w-0 text-xs font-mono"
+          required
+        />
+        <button type="submit" disabled={status === "busy" || !fromId.trim()} className="btn-primary !py-2 !text-xs whitespace-nowrap">
+          {status === "busy" ? "Merging…" : "Merge"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="btn-outline !py-2 !text-xs">Cancel</button>
+      </form>
+      {result && <p className={`text-xs ${status === "error" ? "text-[var(--accent)]" : "text-green-500"}`}>{result}</p>}
+    </div>
+  );
+}
+
 function TheRefOnTheGoSection() {
   const [phoneLinked, setPhoneLinked] = useState<boolean | null>(null);
   const [phoneInput, setPhoneInput] = useState("");
@@ -845,6 +907,7 @@ export function ProfileView({
                   Sign out
                 </button>
               </div>
+              <MergeAccountData onSyncFromServer={onSyncFromServer} />
             </div>
           )}
         </div>
