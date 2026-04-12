@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     await Promise.all(merged.map((m) => dbSaveMeal(userId, m)));
     summary.meals = newMeals.length;
 
-    // ── Plan (only copy if target has none) ──
+    // ── Plan (copy if target has none; replace if old plan was created later) ──
     const [toPlan, fromPlan] = await Promise.all([dbGetPlan(userId), dbGetPlan(fromUserId)]);
-    if (!toPlan && fromPlan) {
+    if (fromPlan && (!toPlan || (fromPlan.createdAt ?? "") > (toPlan.createdAt ?? ""))) {
       await dbSavePlan(userId, fromPlan);
       summary.plan = 1;
     }
@@ -136,9 +136,10 @@ export async function POST(req: NextRequest) {
 
     // ── Workout progress (merge keys — keep target's values where both exist) ──
     const [toWP, fromWP] = await Promise.all([dbGetWorkoutProgress(userId).catch(() => ({})), dbGetWorkoutProgress(fromUserId).catch(() => ({}))]);
+    const newWPKeys = Object.keys(fromWP).filter((k) => !(k in toWP));
     const mergedWP = { ...fromWP, ...toWP }; // target wins on conflict
     await dbSaveWorkoutProgress(userId, mergedWP);
-    summary.workoutProgress = Object.keys(mergedWP).length;
+    summary.workoutProgress = newWPKeys.length;
 
     return NextResponse.json({ ok: true, merged: summary });
   } catch (err) {
