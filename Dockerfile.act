@@ -1,0 +1,14 @@
+# Nova Act service - build from workspace root (Richard Rider)
+# Use: railway up from this directory, with RAILWAY_DOCKERFILE_PATH=Dockerfile.act
+FROM mcr.microsoft.com/playwright/python:v1.56.0-noble
+
+WORKDIR /app
+COPY recomp/act-service/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY recomp/act-service/app.py app.py
+COPY recomp/scripts/ scripts/
+
+ENV PORT=5000
+EXPOSE 5000
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 1 --timeout 600 app:app"]

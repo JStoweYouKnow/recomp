@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Recomp",
+    "slug": "recomp-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "scheme": "recomp",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#faf8f5"
+    },
+    "plugins": [
+      "expo-speech-recognition",
+      "expo-notifications",
+      "expo-local-authentication",
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "recomp",
+          "project": "recomp-mobile"
+        }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.recomp.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Recomp uses Face ID to protect your health data."
+      }
+    },
+    "android": {
+      "package": "com.recomp.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#faf8f5"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "recomp" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
