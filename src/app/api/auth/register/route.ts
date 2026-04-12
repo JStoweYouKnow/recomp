@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
     logInfo("User registered", { route: "auth/register", userId, profileSaved });
     const res = NextResponse.json({
       ok: true,
+      authenticated: true,
       userId,
       profile: normalized,
       profileSaved,

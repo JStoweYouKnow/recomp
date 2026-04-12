@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     }
     const profile = await dbGetProfile(userId);
     logInfo("Auth check: authenticated", { route: "auth/me", userId });
-    return NextResponse.json({ authenticated: true, profile });
+    return NextResponse.json({ authenticated: true, userId, profile });
   } catch (err) {
     logError("Auth/me failed", err, { route: "auth/me" });
     return NextResponse.json({ authenticated: false, profile: null });

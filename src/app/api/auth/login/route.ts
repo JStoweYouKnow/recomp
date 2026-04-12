@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbVerifyAccount } from "@/lib/db";
+import { dbVerifyAccount, dbGetProfile } from "@/lib/db";
 import { buildSetCookieHeader } from "@/lib/auth";
 import { logInfo, logError } from "@/lib/logger";
 import { z } from "zod";
@@ -41,8 +41,14 @@ export async function POST(req: NextRequest) {
 
         logInfo("USER_LOGGED_IN", { route: "auth/login", userId: account.userId });
 
+        const profile = await dbGetProfile(account.userId);
         const cookieHeader = buildSetCookieHeader(account.userId);
-        const response = NextResponse.json({ success: true, userId: account.userId });
+        const response = NextResponse.json({
+          success: true,
+          authenticated: true,
+          userId: account.userId,
+          profile,
+        });
         response.headers.set("Set-Cookie", cookieHeader);
 
         return response;

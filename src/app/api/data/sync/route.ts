@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, mode: "dynamo-unconfigured", persisted: false });
     }
 
-    const userId = await getUserId();
+    const userId = await getUserId(req.headers);
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
     const contentType = req.headers.get("content-type") ?? "";
@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unavailable" }, { status: 503 });
     }
 
-    const userId = await getUserId();
+    const userId = await getUserId(req.headers);
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
     const [

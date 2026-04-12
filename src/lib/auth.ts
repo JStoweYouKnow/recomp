@@ -20,7 +20,7 @@ export function getAuthCookieDomain(): string | undefined {
  */
 export async function getUserId(headers?: Headers): Promise<string | null> {
   if (headers) {
-    const id = headers.get(USER_ID_HEADER);
+    const id = headers.get(USER_ID_HEADER)?.trim();
     if (id) return id;
   }
   const store = await cookies();
