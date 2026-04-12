@@ -67,41 +67,52 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
 function SyncNowButton({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
   const [pushStatus, setPushStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [pullStatus, setPullStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [pushError, setPushError] = useState("");
+  const [pullError, setPullError] = useState("");
 
   const handlePush = async () => {
     setPushStatus("busy");
+    setPushError("");
     try {
       await flushSync();
       setPushStatus("done");
-    } catch {
+    } catch (err) {
       setPushStatus("error");
+      setPushError(err instanceof Error ? err.message : String(err));
     }
-    setTimeout(() => setPushStatus("idle"), 3000);
+    setTimeout(() => setPushStatus("idle"), 5000);
   };
 
   const handlePull = async () => {
     if (!onSyncFromServer) return;
     setPullStatus("busy");
+    setPullError("");
     try {
       const ok = await onSyncFromServer();
       setPullStatus(ok ? "done" : "error");
-    } catch {
+      if (!ok) setPullError("no profile returned");
+    } catch (err) {
       setPullStatus("error");
+      setPullError(err instanceof Error ? err.message : String(err));
     }
-    setTimeout(() => setPullStatus("idle"), 3000);
+    setTimeout(() => setPullStatus("idle"), 5000);
   };
 
   return (
-    <>
-      <button type="button" onClick={handlePush} disabled={pushStatus === "busy"} className="btn-primary !py-2">
-        {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : pushStatus === "error" ? "Save failed" : "Save to server"}
-      </button>
-      {onSyncFromServer && (
-        <button type="button" onClick={handlePull} disabled={pullStatus === "busy"} className="btn-secondary !py-2">
-          {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : pullStatus === "error" ? "Load failed" : "Load from server"}
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={handlePush} disabled={pushStatus === "busy"} className="btn-primary !py-2">
+          {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : pushStatus === "error" ? "Save failed" : "Save to server"}
         </button>
-      )}
-    </>
+        {onSyncFromServer && (
+          <button type="button" onClick={handlePull} disabled={pullStatus === "busy"} className="btn-secondary !py-2">
+            {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : pullStatus === "error" ? "Load failed" : "Load from server"}
+          </button>
+        )}
+      </div>
+      {pushError && <p className="text-xs text-[var(--accent)]">Save error: {pushError}</p>}
+      {pullError && <p className="text-xs text-[var(--accent)]">Load error: {pullError}</p>}
+    </div>
   );
 }
 
