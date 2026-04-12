@@ -6,6 +6,7 @@ import RefactorKit
 
 struct QuickMealLogView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var showDictation = false
     @State private var loggedMessage: String?
 
@@ -71,6 +72,8 @@ struct QuickMealLogView: View {
             macros: macros
         )
         context.insert(meal)
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
         loggedMessage = "\(name) logged!"
 
         Task {

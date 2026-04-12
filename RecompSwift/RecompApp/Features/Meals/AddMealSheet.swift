@@ -6,6 +6,7 @@ import RefactorKit
 struct AddMealSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
 
     let date: String
@@ -245,6 +246,7 @@ struct AddMealSheet: View {
         )
         context.insert(meal)
         try? context.save()
+        Task { await syncEngine?.markDirty() }
         dismiss()
     }
 }

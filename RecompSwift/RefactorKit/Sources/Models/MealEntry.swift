@@ -3,7 +3,9 @@ import SwiftData
 
 @Model
 public final class MealEntry: @unchecked Sendable {
-    @Attribute(.unique) public var id: String
+    /// Row identity for sync (matches server `MEAL#date#id`); `id` alone is not unique across dates.
+    @Attribute(.unique) public var syncKey: String
+    public var id: String
     public var date: String
     public var mealType: MealType
     public var name: String
@@ -24,6 +26,7 @@ public final class MealEntry: @unchecked Sendable {
         loggedAt: Date = .now,
         synced: Bool = false
     ) {
+        self.syncKey = "\(date)#\(id)"
         self.id = id
         self.date = date
         self.mealType = mealType

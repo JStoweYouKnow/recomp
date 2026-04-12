@@ -43,7 +43,7 @@ public enum RefactorSchema {
         let config: ModelConfiguration
         if let groupId = appGroupIdentifier {
             config = ModelConfiguration(
-                "Refactor",
+                "Refactor-v2",
                 schema: schema,
                 isStoredInMemoryOnly: inMemory,
                 allowsSave: true,
@@ -51,7 +51,7 @@ public enum RefactorSchema {
             )
         } else {
             config = ModelConfiguration(
-                "Refactor",
+                "Refactor-v2",
                 schema: schema,
                 isStoredInMemoryOnly: inMemory,
                 allowsSave: true

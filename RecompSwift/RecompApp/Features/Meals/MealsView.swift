@@ -4,6 +4,7 @@ import RefactorKit
 
 struct MealsView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
     @State private var selectedDate = Date.now
     @State private var showAddMeal = false
@@ -99,13 +100,15 @@ struct MealsView: View {
                 }
             } else {
                 List {
-                    ForEach(mealsForDate, id: \.id) { meal in
+                    ForEach(mealsForDate, id: \.syncKey) { meal in
                         MealRow(meal: meal)
                     }
                     .onDelete { indices in
                         for index in indices {
                             context.delete(mealsForDate[index])
                         }
+                        try? context.save()
+                        Task { await syncEngine?.markDirty() }
                     }
                 }
                 .listStyle(.plain)

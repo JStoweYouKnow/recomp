@@ -74,14 +74,26 @@ public actor SyncService: ModelActor {
         if let dto = response.profile { upsertProfile(dto) }
         if let dto = response.plan    { upsertPlan(dto) }
 
-        for dto in response.meals ?? [] {
-            if let meal = MealEntry(dto: dto, iso8601: iso8601) {
-                modelContext.insert(meal) // @Attribute(.unique) on id → upsert on conflict
+        // Full replace so deletes and web-only edits converge (insert-only left orphans forever).
+        if let mealDTOs = response.meals {
+            for m in (try? modelContext.fetch(FetchDescriptor<MealEntry>())) ?? [] {
+                modelContext.delete(m)
+            }
+            for dto in mealDTOs {
+                if let meal = MealEntry(dto: dto, iso8601: iso8601) {
+                    modelContext.insert(meal)
+                }
             }
         }
-        for dto in response.milestones ?? [] {
-            if let milestone = Milestone(dto: dto, iso8601: iso8601) {
-                modelContext.insert(milestone)
+
+        if let milestoneDTOs = response.milestones {
+            for x in (try? modelContext.fetch(FetchDescriptor<Milestone>())) ?? [] {
+                modelContext.delete(x)
+            }
+            for dto in milestoneDTOs {
+                if let milestone = Milestone(dto: dto, iso8601: iso8601) {
+                    modelContext.insert(milestone)
+                }
             }
         }
 

@@ -29,6 +29,11 @@ public actor SyncEngine {
         try await syncService.fetchAndApply()
     }
 
+    /// Call after local SwiftData mutations (meals, plan, milestones) so they upload to the server.
+    public func markDirty() async {
+        await syncService.markDirty()
+    }
+
     private func performSync() async {
         await syncService.syncNow()
     }
