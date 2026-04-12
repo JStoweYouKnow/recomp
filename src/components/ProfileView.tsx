@@ -317,6 +317,15 @@ export function ProfileView({
   const [registerStatus, setRegisterStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [registerErrorMessage, setRegisterErrorMessage] = useState("");
 
+  // Server-verified credentials state (profile.email in localStorage is not enough)
+  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setHasCredentials(d.hasCredentials === true))
+      .catch(() => setHasCredentials(false));
+  }, []);
+
   // Claim Account State
   const [claimEmail, setClaimEmail] = useState(profile.email || "");
   const [claimPassword, setClaimPassword] = useState("");
@@ -344,6 +353,7 @@ export function ProfileView({
       if (!res.ok) throw new Error(data.error || "Failed to claim account");
 
       setClaimStatus("success");
+      setHasCredentials(true);
       onProfileUpdate({ ...profile, email: claimEmail });
       // Force immediate sync so DynamoDB has the full profile before user switches devices
       flushSync();
@@ -791,7 +801,7 @@ export function ProfileView({
       {!isDemoMode && (
         <div className="card p-6 mt-6 border border-[var(--active)] border-l-4 border-l-[var(--accent)] bg-[var(--surface-elevated)]/30">
           <h3 className="font-semibold text-[var(--foreground)] mb-1">Account & Security</h3>
-          {!profile.email ? (
+          {hasCredentials !== true ? (
             <>
               <p className="text-sm text-[var(--muted)] mb-4">
                 You are currently using an anonymous &quot;guest&quot; account. Add an email and password to securely access your data from any device.
