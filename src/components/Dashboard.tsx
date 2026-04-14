@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer, getChallenges } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
-import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart, isTimestampInWeek, mondayWeeksElapsed } from "@/lib/date-utils";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 
@@ -194,12 +194,35 @@ export function Dashboard({
     const dow = d.getDay();
     const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
     const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
-    for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
-      const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
-      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
+    const wp = plan.workoutPlan.weeklyPlan;
+    const anchor = plan.workoutPlan.programWeek1Start;
+
+    const weekdayMatches = (planDay: string) =>
+      planDay === dayName ||
+      planDay === shortName ||
+      planDay.startsWith(dayName) ||
+      planDay.startsWith(shortName);
+
+    if (anchor && wp.length > 7) {
+      const weekStart = getWeekStart(date);
+      const programWeek = mondayWeeksElapsed(anchor, weekStart) + 1;
+      if (programWeek >= 1) {
+        for (let i = 0; i < wp.length; i++) {
+          const planDay = wp[i].day.toLowerCase().trim();
+          if (!weekdayMatches(planDay)) continue;
+          const wm = planDay.match(/week\s*(\d+)/);
+          if (wm && parseInt(wm[1], 10) === programWeek) return i;
+        }
+      }
+      return null;
+    }
+
+    for (let i = 0; i < wp.length; i++) {
+      const planDay = wp[i].day.toLowerCase().trim();
+      if (weekdayMatches(planDay)) return i;
     }
     const mondayBased = dow === 0 ? 6 : dow - 1;
-    return mondayBased < plan.workoutPlan.weeklyPlan.length ? mondayBased : null;
+    return mondayBased < wp.length ? mondayBased : null;
   }, [plan]);
 
   // Progress for the viewing week only — so Diet/Workout cards refresh when changing weeks
