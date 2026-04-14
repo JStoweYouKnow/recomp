@@ -88,8 +88,10 @@ const fitnessPlanSchema = z.object({
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   workoutPlan: z.object({
-    weeklyPlan: z.array(workoutDaySchema).max(14).optional(),
+    /** Multi-week PDF programs (e.g. 12 weeks × 3 days) exceed a single calendar week. */
+    weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
+    programWeek1Start: z.string().max(12).optional(),
   }).passthrough(),
   reasoning: z.string().max(5000).optional(),
 }).passthrough();

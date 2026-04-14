@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
+import {
+  flushSync,
+  getWorkoutProgress,
+  saveWorkoutProgress,
+  getRecentExerciseNames,
+  saveRecentExerciseNames,
+  getMusicPreference,
+  syncToServer,
+} from "@/lib/storage";
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
@@ -552,6 +560,8 @@ export function WorkoutPlannerView({
         programWeek1Start: next.length > 7 ? week1Start : undefined,
       }),
     });
+    // Large plans were rejected by sync Zod (weeklyPlan max 14); flush immediately so Dynamo/other devices get the full plan before the next GET overwrites local state.
+    void flushSync().catch(() => {});
     onPlanSaved?.();
     setImportedProgram(null);
     setImportedProgramTitle(null);
