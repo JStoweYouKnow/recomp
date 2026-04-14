@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
 import { invokeNova } from "@/lib/nova";
-import { parseModelOutputToWorkout, WORKOUT_JSON_SYSTEM } from "@/lib/workout-import-llm";
+import { parseClearMuscleStyleProgram } from "@/lib/clear-muscle-pdf-parse";
+import {
+  parseModelOutputToProgram,
+  parseModelOutputToWorkout,
+  WORKOUT_JSON_SYSTEM,
+  WORKOUT_PROGRAM_JSON_SYSTEM,
+} from "@/lib/workout-import-llm";
 import {
   fixedWindowRateLimit,
   getClientKey,
@@ -13,7 +19,7 @@ export const maxDuration = 120;
 export const runtime = "nodejs";
 
 const MAX_BYTES = 8 * 1024 * 1024;
-const MAX_TEXT_CHARS = 24_000;
+const MAX_TEXT_CHARS = 200_000;
 
 export async function POST(req: NextRequest) {
   try {
@@ -77,7 +83,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawText = (extracted.text ?? "").replace(/\s+/g, " ").trim();
+    const rawText = (extracted.text ?? "")
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     if (rawText.length < 80) {
       return NextResponse.json(
         {
@@ -90,8 +100,51 @@ export async function POST(req: NextRequest) {
     }
 
     const excerpt = rawText.slice(0, MAX_TEXT_CHARS);
+    const safeName = file.name.replace(/"/g, "'");
+
+    const clearMuscle = parseClearMuscleStyleProgram(rawText);
+    if (clearMuscle && clearMuscle.days.length > 0) {
+      const headers = getRateLimitHeaderValues(rl);
+      const res = NextResponse.json({
+        days: clearMuscle.days,
+        programTitle: clearMuscle.programTitle,
+        workout: clearMuscle.days[0],
+        source: "pdf+clear-muscle-parse",
+        dayCount: clearMuscle.days.length,
+      });
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
+
+    const programUserMessage =
+      `Extract the complete workout program (every week and every training session) from this PDF text.\n` +
+      `File name: "${safeName}".\n\nPDF TEXT:\n${excerpt}`;
+
+    const rawProgram = await invokeNova(WORKOUT_PROGRAM_JSON_SYSTEM, programUserMessage, {
+      temperature: 0.15,
+      maxTokens: 16_384,
+    });
+
+    const programParsed = parseModelOutputToProgram(rawProgram);
+    if (programParsed.ok && programParsed.days.length > 0) {
+      const headers = getRateLimitHeaderValues(rl);
+      const res = NextResponse.json({
+        days: programParsed.days,
+        programTitle: programParsed.programTitle,
+        workout: programParsed.days[0],
+        source: "pdf+nova-lite-program",
+        dayCount: programParsed.days.length,
+      });
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      return res;
+    }
+
     const userMessage =
-      `Extract the main workout from the following text (from a PDF named "${file.name.replace(/"/g, "'")}"). ` +
+      `Extract the main workout from the following text (from a PDF named "${safeName}"). ` +
       `Return ONLY a JSON object with day, focus, and exercises as specified.\n\nPDF TEXT:\n${excerpt}`;
 
     const raw = await invokeNova(WORKOUT_JSON_SYSTEM, userMessage, {
