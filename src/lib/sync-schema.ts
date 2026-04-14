@@ -88,8 +88,10 @@ const fitnessPlanSchema = z.object({
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   workoutPlan: z.object({
-    weeklyPlan: z.array(workoutDaySchema).max(14).optional(),
+    /** Multi-week PDF programs (e.g. 12 weeks × 3 days) exceed a single calendar week. */
+    weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
+    programWeek1Start: z.string().max(12).optional(),
   }).passthrough(),
   reasoning: z.string().max(5000).optional(),
 }).passthrough();
@@ -182,7 +184,7 @@ const activityLogEntrySchema = z.object({
 const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
 const metabolicDataPointSchema = z.object({
-  date: z.string().max(20),
+  date: z.string().max(50),
   weightKg: z.number(),
   totalIntake: z.number(),
   totalExpenditure: z.number(),
@@ -194,7 +196,7 @@ const metabolicModelSchema = z.object({
   dataPoints: z.array(metabolicDataPointSchema).max(5000),
   lastUpdated: z.string().max(50),
   history: z.array(z.object({
-    date: z.string().max(20),
+    date: z.string().max(50),
     tdee: z.number(),
     confidence: z.number(),
   })).max(5000),
@@ -206,7 +208,20 @@ const measurementTargetsSchema = z.object({
   targetMuscleMassLbs: z.number().optional(),
 }).passthrough();
 
+// Loose profile schema — passthrough so unknown fields don't break validation
+const profileSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(80),
+  email: z.string().email().optional(),
+  age: z.number().int().min(10).max(120).optional(),
+  weight: z.number().min(20).max(500).optional(),
+  height: z.number().min(80).max(260).optional(),
+  goal: z.string().max(50).optional(),
+  createdAt: z.string().max(50).optional(),
+}).passthrough();
+
 export const syncBodySchema = z.object({
+  profile: profileSchema.optional().nullable(),
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
   milestones: z.array(milestoneSchema).max(500).optional(),

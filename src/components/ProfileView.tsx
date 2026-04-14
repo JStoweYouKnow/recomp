@@ -64,18 +64,117 @@ async function resizeImageToDataUrl(file: File, maxSize: number = AVATAR_SIZE): 
   });
 }
 
-function SyncNowButton() {
-  const [status, setStatus] = useState<"idle" | "syncing" | "done">("idle");
-  const handleSync = () => {
-    setStatus("syncing");
-    flushSync();
-    setTimeout(() => setStatus("done"), 800);
-    setTimeout(() => setStatus("idle"), 2800);
+function SyncNowButton({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
+  const [pushStatus, setPushStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [pullStatus, setPullStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [pushError, setPushError] = useState("");
+  const [pullError, setPullError] = useState("");
+
+  const handlePush = async () => {
+    setPushStatus("busy");
+    setPushError("");
+    try {
+      await flushSync();
+      setPushStatus("done");
+    } catch (err) {
+      setPushStatus("error");
+      setPushError(err instanceof Error ? err.message : String(err));
+    }
+    setTimeout(() => setPushStatus("idle"), 5000);
   };
+
+  const handlePull = async () => {
+    if (!onSyncFromServer) return;
+    setPullStatus("busy");
+    setPullError("");
+    try {
+      const ok = await onSyncFromServer();
+      setPullStatus(ok ? "done" : "error");
+      if (!ok) setPullError("no profile returned");
+    } catch (err) {
+      setPullStatus("error");
+      setPullError(err instanceof Error ? err.message : String(err));
+    }
+    setTimeout(() => setPullStatus("idle"), 5000);
+  };
+
   return (
-    <button type="button" onClick={handleSync} disabled={status === "syncing"} className="btn-primary !py-2">
-      {status === "syncing" ? "Syncing…" : status === "done" ? "Synced!" : "Sync data to server"}
-    </button>
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-3">
+        <button type="button" onClick={handlePush} disabled={pushStatus === "busy"} className="btn-primary !py-2">
+          {pushStatus === "busy" ? "Saving…" : pushStatus === "done" ? "Saved!" : pushStatus === "error" ? "Save failed" : "Save to server"}
+        </button>
+        {onSyncFromServer && (
+          <button type="button" onClick={handlePull} disabled={pullStatus === "busy"} className="btn-secondary !py-2">
+            {pullStatus === "busy" ? "Loading…" : pullStatus === "done" ? "Loaded!" : pullStatus === "error" ? "Load failed" : "Load from server"}
+          </button>
+        )}
+      </div>
+      {pushError && <p className="text-xs text-[var(--accent)]">Save error: {pushError}</p>}
+      {pullError && <p className="text-xs text-[var(--accent)]">Load error: {pullError}</p>}
+    </div>
+  );
+}
+
+function MergeAccountData({ onSyncFromServer }: { onSyncFromServer?: () => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  const [fromId, setFromId] = useState("");
+  const [status, setStatus] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [result, setResult] = useState("");
+
+  const handleMerge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatus("busy");
+    setResult("");
+    try {
+      const res = await fetch("/api/data/merge", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromUserId: fromId.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Merge failed");
+      const counts = Object.entries(data.merged as Record<string, number>)
+        .filter(([, v]) => v > 0)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(", ");
+      setResult(counts ? `Merged: ${counts}` : "Nothing new found in that account.");
+      setStatus("done");
+      if (onSyncFromServer) await onSyncFromServer().catch(() => {});
+    } catch (err) {
+      setStatus("error");
+      setResult(err instanceof Error ? err.message : "Merge failed");
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-xs text-[var(--muted)] underline underline-offset-2 mt-1 hover:text-[var(--foreground)] transition-colors">
+        Recover data from a previous account
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-3 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)]/40 space-y-3">
+      <p className="text-xs text-[var(--muted)]">Enter the User ID of your previous anonymous account to merge its data into this account.</p>
+      <form onSubmit={handleMerge} className="flex gap-2 items-start flex-wrap">
+        <input
+          type="text"
+          value={fromId}
+          onChange={(e) => setFromId(e.target.value)}
+          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+          className="input-base flex-1 min-w-0 text-xs font-mono"
+          required
+        />
+        <button type="submit" disabled={status === "busy" || !fromId.trim()} className="btn-primary !py-2 !text-xs whitespace-nowrap">
+          {status === "busy" ? "Merging…" : "Merge"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="btn-outline !py-2 !text-xs">Cancel</button>
+      </form>
+      {result && <p className={`text-xs ${status === "error" ? "text-[var(--accent)]" : "text-green-500"}`}>{result}</p>}
+    </div>
   );
 }
 
@@ -228,12 +327,14 @@ export function ProfileView({
   onProfileUpdate,
   onWearableDataFetched,
   onRegistered,
+  onSyncFromServer,
 }: {
   profile: UserProfile;
   isDemoMode?: boolean;
   onProfileUpdate: (p: UserProfile) => void;
   onWearableDataFetched?: (data: { date: string; provider: string; weight?: number; bodyFatPercent?: number; muscleMass?: number }[]) => void;
   onRegistered?: () => void;
+  onSyncFromServer?: () => Promise<boolean>;
 }) {
   const { ft, inch } = cmToFeetInches(profile.height);
   const [name, setName] = useState(profile.name);
@@ -278,6 +379,15 @@ export function ProfileView({
   const [registerStatus, setRegisterStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [registerErrorMessage, setRegisterErrorMessage] = useState("");
 
+  // Server-verified credentials state (profile.email in localStorage is not enough)
+  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setHasCredentials(d.hasCredentials === true))
+      .catch(() => setHasCredentials(false));
+  }, []);
+
   // Claim Account State
   const [claimEmail, setClaimEmail] = useState(profile.email || "");
   const [claimPassword, setClaimPassword] = useState("");
@@ -305,6 +415,7 @@ export function ProfileView({
       if (!res.ok) throw new Error(data.error || "Failed to claim account");
 
       setClaimStatus("success");
+      setHasCredentials(true);
       onProfileUpdate({ ...profile, email: claimEmail });
       // Force immediate sync so DynamoDB has the full profile before user switches devices
       flushSync();
@@ -752,7 +863,7 @@ export function ProfileView({
       {!isDemoMode && (
         <div className="card p-6 mt-6 border border-[var(--active)] border-l-4 border-l-[var(--accent)] bg-[var(--surface-elevated)]/30">
           <h3 className="font-semibold text-[var(--foreground)] mb-1">Account & Security</h3>
-          {!profile.email ? (
+          {hasCredentials !== true ? (
             <>
               <p className="text-sm text-[var(--muted)] mb-4">
                 You are currently using an anonymous &quot;guest&quot; account. Add an email and password to securely access your data from any device.
@@ -789,12 +900,14 @@ export function ProfileView({
               <p className="text-sm text-[var(--muted)]">
                 Your account is secured with email <strong className="text-[var(--foreground)]">{profile.email}</strong>.
               </p>
+              <p className="text-xs text-[var(--muted)] font-mono">User ID: {profile.id}</p>
               <div className="flex flex-wrap gap-3">
-                <SyncNowButton />
+                <SyncNowButton onSyncFromServer={onSyncFromServer} />
                 <button type="button" onClick={handleLogout} className="btn-outline border-[var(--border)] text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:border-[var(--accent-terracotta)] !py-2 transition-colors">
                   Sign out
                 </button>
               </div>
+              <MergeAccountData onSyncFromServer={onSyncFromServer} />
             </div>
           )}
         </div>

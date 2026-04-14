@@ -1,68 +1,97 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbCreateAccount, dbGetProfile, dbSaveProfile } from "@/lib/db";
-import { getUserId } from "@/lib/auth";
-import { logInfo, logError } from "@/lib/logger";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
+import { buildSetCookieHeader, getUserId } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth-password";
+import {
+  dbCreateAccount,
+  dbGetProfile,
+  dbSaveAuthAccount,
+  dbSaveProfile,
+  dbVerifyAccount,
+} from "@/lib/db";
+import { isJudgeMode } from "@/lib/judgeMode";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
-
-const ClaimSchema = z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-});
+import type { UserProfile } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-    try {
-        const ip = getRequestIp(req);
-        const rlKey = getClientKey(ip, "claim");
-        const { ok, remaining, resetAt } = await fixedWindowRateLimit(rlKey, 5, 60000);
-        if (!ok) {
-            logInfo("RATE_LIMIT_EXCEEDED", { route: "auth/claim", ip });
-            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-        }
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-claim"), 20, 60_000);
+  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-        const userId = await getUserId(req.headers);
-        if (!userId) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        }
+  if (isJudgeMode()) {
+    await req.json().catch(() => ({}));
+    return NextResponse.json({ error: "Claim disabled in judge mode" }, { status: 503 });
+  }
 
-        const body = await req.json();
-        const parsed = ClaimSchema.safeParse(body);
-        if (!parsed.success) {
-            return NextResponse.json({ error: "Invalid input", details: parsed.error.format() }, { status: 400 });
-        }
+  if (!process.env.DYNAMODB_TABLE_NAME) {
+    return NextResponse.json({ error: "Claim unavailable" }, { status: 503 });
+  }
 
-        const { email, password } = parsed.data;
-        const passwordHash = await bcrypt.hash(password, 10);
-
-        const accountCreated = await dbCreateAccount({
-            userId,
-            email,
-            passwordHash,
-            createdAt: new Date().toISOString()
-        });
-
-        if (!accountCreated) {
-            return NextResponse.json({ error: "Email already in use" }, { status: 409 });
-        }
-
-        // Try to update the profile with the email
-        try {
-            const profile = await dbGetProfile(userId);
-            if (profile) {
-                profile.email = email;
-                await dbSaveProfile(userId, profile);
-            }
-        } catch (e) {
-            logError("Failed to update profile", e, { route: "auth/claim" });
-            // it's fine if this fails, the account is still claimed for login purposes
-        }
-
-        logInfo("USER_CLAIMED_ACCOUNT", { route: "auth/claim", userId });
-
-        return NextResponse.json({ success: true, userId });
-    } catch (error) {
-        logError("Failed to claim account", error, { route: "auth/claim" });
-        return NextResponse.json({ error: "Failed to claim account" }, { status: 500 });
+  try {
+    const userId = await getUserId(req.headers);
+    if (!userId) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+
+    const body = (await req.json()) as { email?: string; password?: string };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || password.length < 8) {
+      return NextResponse.json({ error: "Valid email and password (min 8) required" }, { status: 400 });
+    }
+
+    const existing = await dbVerifyAccount(email);
+    if (existing && existing.userId !== userId) {
+      return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+    }
+
+    const passwordHash = await hashPassword(password);
+    const now = new Date().toISOString();
+
+    if (existing && existing.userId === userId) {
+      await dbSaveAuthAccount({ ...existing, passwordHash });
+    } else {
+      const created = await dbCreateAccount({
+        userId,
+        email,
+        passwordHash,
+        createdAt: now,
+      });
+      if (!created) {
+        return NextResponse.json({ error: "Email already registered" }, { status: 409 });
+      }
+    }
+
+    let profile = await dbGetProfile(userId);
+    if (!profile) {
+      profile = {
+        id: userId,
+        name: "Athlete",
+        email,
+        age: 30,
+        weight: 70,
+        height: 170,
+        gender: "other",
+        fitnessLevel: "beginner",
+        goal: "maintain",
+        dietaryRestrictions: [],
+        injuriesOrLimitations: [],
+        dailyActivityLevel: "moderate",
+        unitSystem: "us",
+        workoutLocation: "gym",
+        workoutEquipment: ["free_weights", "machines"],
+        workoutDaysPerWeek: 4,
+        workoutTimeframe: "flexible",
+        createdAt: now,
+      } satisfies UserProfile;
+    } else {
+      profile = { ...profile, email };
+    }
+    await dbSaveProfile(userId, profile);
+
+    const res = NextResponse.json({ ok: true, userId, email });
+    res.headers.append("Set-Cookie", buildSetCookieHeader(userId));
+    return res;
+  } catch (err) {
+    console.error("auth/claim", err);
+    return NextResponse.json({ error: "Claim failed" }, { status: 500 });
+  }
 }
