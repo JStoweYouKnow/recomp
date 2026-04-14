@@ -26,6 +26,13 @@ export function getWeekStart(dateStr: string): string {
   return toLocalDateString(d);
 }
 
+/** Whole weeks between two Monday week-start dates (inclusive of start week = 0). */
+export function mondayWeeksElapsed(anchorWeekStartMonday: string, otherWeekStartMonday: string): number {
+  const a = new Date(anchorWeekStartMonday + "T12:00:00").getTime();
+  const b = new Date(otherWeekStartMonday + "T12:00:00").getTime();
+  return Math.round((b - a) / (7 * 24 * 60 * 60 * 1000));
+}
+
 /** Check if an ISO timestamp falls within the week containing weekStartDate (YYYY-MM-DD, a Monday). */
 export function isTimestampInWeek(isoTimestamp: string, weekStartDate: string): boolean {
   const ts = isoTimestamp.slice(0, 10);
