@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
@@ -76,6 +76,8 @@ export function WorkoutPlannerView({
 
   const [workoutImportUrl, setWorkoutImportUrl] = useState("");
   const [workoutImportLoading, setWorkoutImportLoading] = useState(false);
+  const workoutPdfInputRef = useRef<HTMLInputElement>(null);
+  const [workoutPdfFile, setWorkoutPdfFile] = useState<File | null>(null);
   const [importedWorkout, setImportedWorkout] = useState<WorkoutDay | null>(null);
   const [showImportPanel, setShowImportPanel] = useState(false);
   const { showToast } = useToast();
@@ -397,12 +399,19 @@ export function WorkoutPlannerView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        workout?: WorkoutDay;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Import failed (${res.status})`);
+      }
       if (data.error) throw new Error(data.error);
       if (data.workout) {
         setImportedWorkout(data.workout);
         setShowImportPanel(true);
-        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from web`);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from URL`);
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Could not parse workout URL", "error");
@@ -410,6 +419,40 @@ export function WorkoutPlannerView({
       setWorkoutImportLoading(false);
     }
   }, [workoutImportUrl, showToast]);
+
+  const handleWorkoutPdfImport = useCallback(async () => {
+    const file = workoutPdfFile;
+    if (!file) return;
+    setWorkoutImportLoading(true);
+    setImportedWorkout(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/workouts/parse-pdf", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        workout?: WorkoutDay;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Import failed (${res.status})`);
+      }
+      if (data.workout) {
+        setImportedWorkout(data.workout);
+        setShowImportPanel(true);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from PDF`);
+        setWorkoutPdfFile(null);
+        if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not parse workout PDF", "error");
+    } finally {
+      setWorkoutImportLoading(false);
+    }
+  }, [workoutPdfFile, showToast]);
 
   const addImportedWorkout = useCallback(
     (targetDayIndex: number | null) => {
@@ -432,6 +475,8 @@ export function WorkoutPlannerView({
       onPlanSaved?.();
       setImportedWorkout(null);
       setWorkoutImportUrl("");
+      setWorkoutPdfFile(null);
+      if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
       setShowImportPanel(false);
       showToast("Workout added to plan");
     },
@@ -535,7 +580,7 @@ export function WorkoutPlannerView({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
-          <p className="section-subtitle">Tap a day to expand. Import workouts from the web, or mark exercises done as you go.</p>
+          <p className="section-subtitle">Tap a day to expand. Import workouts from a URL or PDF, or mark exercises done as you go.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -562,7 +607,7 @@ export function WorkoutPlannerView({
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
-            Import from web
+            Import workout
           </button>
           <button
             onClick={() => {
@@ -585,14 +630,16 @@ export function WorkoutPlannerView({
         </div>
       </div>
 
-      {/* Import from web */}
+      {/* Import from URL or PDF */}
       {showImportPanel && (
         <div className="card p-4 animate-slide-up border border-[var(--accent)]/30">
-          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout from URL</h3>
+          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout</h3>
           <p className="text-sm text-[var(--muted)] mb-3">
-            Paste a link to a workout page (fitness blog, YouTube description, program, etc.). We&apos;ll extract the exercises.
+            Paste a workout page URL, or upload a <strong className="text-[var(--foreground)]">text-based PDF</strong> (e.g. a program sheet). We extract one main
+            workout block using AI; scanned image PDFs are not supported yet.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <p className="text-xs font-medium text-[var(--foreground)] mb-1.5">From URL</p>
+          <div className="flex flex-col sm:flex-row gap-2 mb-5">
             <input
               type="url"
               placeholder="https://example.com/workout/chest-day"
@@ -606,8 +653,40 @@ export function WorkoutPlannerView({
               disabled={workoutImportLoading || !workoutImportUrl.trim()}
               className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
             >
-              {workoutImportLoading ? "Fetching…" : "Import"}
+              {workoutImportLoading ? "Working…" : "Import from URL"}
             </button>
+          </div>
+          <div className="border-t border-[var(--border-soft)] pt-4">
+            <p className="text-xs font-medium text-[var(--foreground)] mb-1.5">From PDF</p>
+            <p className="text-xs text-[var(--muted)] mb-2">Max 8 MB. Encrypted or image-only PDFs may fail.</p>
+            <input
+              ref={workoutPdfInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => setWorkoutPdfFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <button
+                type="button"
+                onClick={() => workoutPdfInputRef.current?.click()}
+                disabled={workoutImportLoading}
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-sm hover:bg-[var(--background)] disabled:opacity-50 shrink-0"
+              >
+                Choose PDF…
+              </button>
+              <span className="text-xs text-[var(--muted)] truncate min-w-0 flex-1" title={workoutPdfFile?.name}>
+                {workoutPdfFile ? workoutPdfFile.name : "No file selected"}
+              </span>
+              <button
+                type="button"
+                onClick={handleWorkoutPdfImport}
+                disabled={workoutImportLoading || !workoutPdfFile}
+                className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
+              >
+                {workoutImportLoading ? "Working…" : "Extract from PDF"}
+              </button>
+            </div>
           </div>
           {importedWorkout && (
             <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
@@ -635,7 +714,12 @@ export function WorkoutPlannerView({
               </div>
               <button
                 type="button"
-                onClick={() => { setImportedWorkout(null); setWorkoutImportUrl(""); }}
+                onClick={() => {
+                  setImportedWorkout(null);
+                  setWorkoutImportUrl("");
+                  setWorkoutPdfFile(null);
+                  if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+                }}
                 className="text-xs text-[var(--muted)] hover:underline"
               >
                 Cancel

@@ -3,6 +3,8 @@
     "src/app/api/act/grocery/route.ts": { "maxDuration": 300 },
     "src/app/api/act/nutrition/route.ts": { "maxDuration": 300 },
     "src/app/api/plans/generate/route.ts": { "maxDuration": 60 },
-    "src/app/api/agent/weekly-review/route.ts": { "maxDuration": 60 }
+    "src/app/api/agent/weekly-review/route.ts": { "maxDuration": 60 },
+    "src/app/api/workouts/parse-pdf/route.ts": { "maxDuration": 120 },
+    "src/app/api/workouts/parse-url/route.ts": { "maxDuration": 120 }
   }
 }
