@@ -264,6 +264,24 @@ export function WorkoutPlannerView({
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
 
+  /** Program week index (1-based) for the calendar week being viewed — used to scope completion totals. */
+  const viewingProgramWeek = useMemo(() => {
+    const anchor = plan?.workoutPlan.programWeek1Start;
+    if (!anchor || weeklyPlan.length <= 7) return null;
+    const n = mondayWeeksElapsed(anchor, viewingWeekStart) + 1;
+    return n >= 1 ? n : null;
+  }, [plan?.workoutPlan.programWeek1Start, weeklyPlan.length, viewingWeekStart]);
+
+  /** Multi-week PDF plans: only count exercises for sessions in the viewed program week. */
+  const weeklyPlanForCompletion = useMemo(() => {
+    if (viewingProgramWeek == null) return weeklyPlan;
+    const scoped = weeklyPlan.filter((d) => {
+      const m = d.day.match(/Week\s+(\d+)/i);
+      return m && parseInt(m[1], 10) === viewingProgramWeek;
+    });
+    return scoped.length > 0 ? scoped : weeklyPlan;
+  }, [weeklyPlan, viewingProgramWeek]);
+
   /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
   const toLegacyLookupKey = useCallback((key: string): string | null => {
     const parts = key.split(":");
@@ -296,7 +314,7 @@ export function WorkoutPlannerView({
     return filtered;
   }, [progress, viewingWeekStart, isViewingFutureDate, toLegacyLookupKey]);
 
-  const totalExercises = weeklyPlan.reduce(
+  const totalExercises = weeklyPlanForCompletion.reduce(
     (sum, day) =>
       sum +
       (day.warmups?.length ?? 0) +
@@ -304,7 +322,7 @@ export function WorkoutPlannerView({
       (day.finishers?.length ?? 0),
     0
   );
-  const completedExercises = weeklyPlan.reduce((sum, day) => {
+  const completedExercises = weeklyPlanForCompletion.reduce((sum, day) => {
     const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
     const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
     const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
