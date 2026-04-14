@@ -282,6 +282,45 @@ export function WorkoutPlannerView({
     return scoped.length > 0 ? scoped : weeklyPlan;
   }, [weeklyPlan, viewingProgramWeek]);
 
+  /** Which plan rows to render: calendar picks one day; multi-week plans show only the current program week when calendar is closed. */
+  const workoutDisplayEntries = useMemo(() => {
+    const wp = weeklyPlan;
+    if (!plan) return [] as { day: WorkoutDay; planIndex: number }[];
+
+    if (calendarOpen) {
+      const m = matchDayToDate(selectedDate);
+      if (m === null) return [];
+      const day = wp[m];
+      return day ? [{ day, planIndex: m }] : [];
+    }
+
+    const anchor = plan.workoutPlan.programWeek1Start;
+    if (anchor && wp.length > 7) {
+      const pw = viewingProgramWeek ?? 1;
+      const filtered = wp
+        .map((day, planIndex) => ({ day, planIndex }))
+        .filter(({ day: d }) => {
+          const wm = d.day.match(/Week\s+(\d+)/i);
+          return wm !== null && parseInt(wm[1], 10) === pw;
+        });
+      return filtered.length > 0 ? filtered : wp.map((day, planIndex) => ({ day, planIndex }));
+    }
+
+    return wp.map((day, planIndex) => ({ day, planIndex }));
+  }, [plan, weeklyPlan, calendarOpen, selectedDate, matchDayToDate, viewingProgramWeek]);
+
+  useEffect(() => {
+    if (calendarOpen || !plan) return;
+    const anchor = plan.workoutPlan.programWeek1Start;
+    if (!anchor || weeklyPlan.length <= 7) return;
+    const visible = new Set(workoutDisplayEntries.map((e) => e.planIndex));
+    if (expandedDay !== null && !visible.has(expandedDay)) setExpandedDay(null);
+    if (editingDay !== null && !visible.has(editingDay)) {
+      setEditingWeekCopy(null);
+      setEditingDay(null);
+    }
+  }, [calendarOpen, plan, weeklyPlan.length, workoutDisplayEntries, expandedDay, editingDay]);
+
   /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
   const toLegacyLookupKey = useCallback((key: string): string | null => {
     const parts = key.split(":");
@@ -689,6 +728,12 @@ export function WorkoutPlannerView({
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
           <p className="section-subtitle">Tap a day to expand. Import workouts from a URL or PDF, or mark exercises done as you go.</p>
+          {plan.workoutPlan.programWeek1Start && weeklyPlan.length > 7 && !calendarOpen && (
+            <p className="text-xs text-[var(--muted)] mt-1 max-w-xl">
+              Showing <span className="font-medium text-[var(--foreground)]">program week {viewingProgramWeek ?? 1}</span> for this calendar week.
+              Use <span className="font-medium text-[var(--foreground)]">Calendar</span> to pick another date.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -918,11 +963,8 @@ export function WorkoutPlannerView({
       </div>
 
       <div className="space-y-3">
-        {weeklyPlan.map((day, dayIndex) => {
-          // When calendar is open, only show the matched day
-          const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
-          if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
-          if (calendarOpen && matchedIdx === null) return null;
+        {workoutDisplayEntries.map(({ day, planIndex }) => {
+          const dayIndex = planIndex;
 
           const total =
             (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);
