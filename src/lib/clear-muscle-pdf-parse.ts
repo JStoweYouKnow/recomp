@@ -1,14 +1,19 @@
 import type { WorkoutDay, WorkoutExercise } from "@/lib/types";
 
+/** "Monday: Hypertrophy" or "Monday" alone (phase 3 PDF). */
 const DAY_HEADER =
-  /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*:\s*(.*)$/i;
+  /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:\s*:\s*(.*))?$/i;
 
 const CLEAR_MUSCLE_WEEKDAYS = new Set(["Monday", "Wednesday", "Friday"]);
-const WEEK_HEADER = /^Week\s+(\d+)\s*$/i;
+
+/** "Week 11" */
+const WEEK_SINGLE = /^Week\s+(\d+)\s*$/i;
+/** "Weeks 9 & 10" / "Week 9-10" */
+const WEEK_COMBINED = /^Weeks?\s+(\d+)\s*(?:&|and|,|\/|\s*-\s*)\s*(\d+)\s*$/i;
+
 const SKIP_LINE =
   /^(ExerciseSetsRepsRest|Superset|MUSCLEANDSTRENGTH|THE TOOLS|THE 12-WEEK|PHASE\s+\d|Main Goal:|Training Level:|Program Duration:|Days Per Week:|Time Per Workout:|Equipment:|Author:|Link to Workout|Paired with|workouts\/|StoreWorkouts)/i;
 
-/** Glued table row: Name + sets + reps + "60 Secs" or Name + sets + reps + "3 Mins" (power/strength). */
 function parseExerciseGlued(full: string): WorkoutExercise | null {
   const line = full.replace(/\s+/g, " ").trim();
   if (!line || line.length < 4) return null;
@@ -17,14 +22,37 @@ function parseExerciseGlued(full: string): WorkoutExercise | null {
   if (mins) {
     const name = mins[1].trim();
     if (name.length < 2) return null;
-    const sets = mins[2];
-    const reps = mins[3];
-    const rm = mins[4];
     return {
       name,
-      sets,
-      reps,
-      notes: `${rm} min rest`,
+      sets: mins[2],
+      reps: mins[3],
+      notes: `${mins[4]} min rest`,
+    };
+  }
+
+  /** e.g. Squats33 - 5240 Secs → sets 3, reps 3–5, 240s rest; Deadlifts13 - 5240 → 1, 3–5, 240s */
+  const hyphen = line.match(/^(.+?)(\d)(\d)\s*-\s*(\d)\s*(\d{3})\s*Secs\s*$/i);
+  if (hyphen) {
+    const name = hyphen[1].trim();
+    if (name.length < 2) return null;
+    return {
+      name,
+      sets: hyphen[2],
+      reps: `${hyphen[3]}-${hyphen[4]}`,
+      notes: `${hyphen[5]}s rest`,
+    };
+  }
+
+  /** e.g. Squats55180 Secs → 5×5, 180s rest */
+  const secs553 = line.match(/^(.+?)(\d)(\d)(\d{3})\s*Secs\s*$/i);
+  if (secs553) {
+    const name = secs553[1].trim();
+    if (name.length < 2) return null;
+    return {
+      name,
+      sets: secs553[2],
+      reps: secs553[3],
+      notes: `${secs553[4]}s rest`,
     };
   }
 
@@ -32,14 +60,11 @@ function parseExerciseGlued(full: string): WorkoutExercise | null {
   if (secs) {
     const name = secs[1].trim();
     if (name.length < 2) return null;
-    const sets = secs[2];
-    const reps = secs[3];
-    const rest = secs[4];
     return {
       name,
-      sets,
-      reps,
-      notes: `${rest}s rest`,
+      sets: secs[2],
+      reps: secs[3],
+      notes: `${secs[4]}s rest`,
     };
   }
 
@@ -55,10 +80,15 @@ function isFooterOrNoise(line: string): boolean {
   return false;
 }
 
+function flushWeeks(weekTargets: number[] | null, currentWeek: number | null): number[] {
+  if (weekTargets?.length) return weekTargets;
+  if (currentWeek != null) return [currentWeek];
+  return [];
+}
+
 /**
  * Deterministic parse for Muscle & Strength "Clear Muscle" style PDFs:
- * Week N → Monday/Wednesday/Friday blocks with glued "Name31260 Secs" / "553 Mins" rows.
- * Returns null if the text does not look like this format.
+ * Week N / Weeks N & M → Monday/Wednesday/Friday blocks; glued exercise rows.
  */
 export function parseClearMuscleStyleProgram(text: string): {
   programTitle?: string;
@@ -66,21 +96,28 @@ export function parseClearMuscleStyleProgram(text: string): {
 } | null {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   let currentWeek: number | null = null;
+  /** When set (e.g. [9, 10]), each flush writes the same session to every listed program week. */
+  let weekTargets: number[] | null = null;
   let currentDay: string | null = null;
   let currentFocus = "";
   let pendingName = "";
 
-  /** One entry per "Monday — Week N" etc.; later duplicate blocks in the PDF replace earlier. */
   const sessions = new Map<string, WorkoutDay>();
   let exercises: WorkoutExercise[] = [];
 
   const flushSession = () => {
-    if (currentWeek !== null && currentDay && exercises.length > 0) {
-      const key = `${currentDay} — Week ${currentWeek}`;
+    const weeks = flushWeeks(weekTargets, currentWeek);
+    if (!currentDay || weeks.length === 0 || exercises.length === 0) {
+      exercises = [];
+      return;
+    }
+    const snapshot = exercises.map((e) => ({ ...e }));
+    for (const w of weeks) {
+      const key = `${currentDay} — Week ${w}`;
       sessions.set(key, {
         day: key,
         focus: currentFocus.trim() || `${currentDay} session`,
-        exercises: [...exercises],
+        exercises: [...snapshot],
       });
     }
     exercises = [];
@@ -97,9 +134,23 @@ export function parseClearMuscleStyleProgram(text: string): {
     const line = rawLine.trimEnd();
     const trimmed = line.trim();
 
-    const wm = trimmed.match(WEEK_HEADER);
+    const wCombined = trimmed.match(WEEK_COMBINED);
+    if (wCombined) {
+      flushSession();
+      const a = parseInt(wCombined[1], 10);
+      const b = parseInt(wCombined[2], 10);
+      weekTargets = [a, b];
+      currentWeek = a;
+      currentDay = null;
+      currentFocus = "";
+      pendingName = "";
+      continue;
+    }
+
+    const wm = trimmed.match(WEEK_SINGLE);
     if (wm) {
       flushSession();
+      weekTargets = null;
       currentWeek = parseInt(wm[1], 10);
       currentDay = null;
       currentFocus = "";
@@ -121,7 +172,8 @@ export function parseClearMuscleStyleProgram(text: string): {
       continue;
     }
 
-    if (currentWeek === null || !currentDay) continue;
+    if (currentWeek === null && !weekTargets?.length) continue;
+    if (!currentDay) continue;
     if (isFooterOrNoise(trimmed)) {
       pendingName = "";
       continue;
@@ -129,8 +181,11 @@ export function parseClearMuscleStyleProgram(text: string): {
 
     if (/^superset$/i.test(trimmed)) continue;
 
-    const looksLikeExerciseTail = /\d{1,2}\d{1,3}\d{2,4}\s*Secs\s*$/i.test(trimmed) ||
-      /\d\d\d\s*Mins\s*$/i.test(trimmed);
+    const looksLikeExerciseTail =
+      /\d\s*-\s*\d.*Secs/i.test(trimmed) ||
+      /\d{4,6}\s*Secs/i.test(trimmed) ||
+      /\d{1,2}\d{1,3}\d{2,4}\s*Secs/i.test(trimmed) ||
+      /\d\d\d\s*Mins/i.test(trimmed);
 
     if (looksLikeExerciseTail) {
       tryParseExerciseLine(trimmed);
