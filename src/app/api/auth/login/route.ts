@@ -1,59 +1,74 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbVerifyAccount, dbGetProfile } from "@/lib/db";
 import { buildSetCookieHeader } from "@/lib/auth";
-import { logInfo, logError } from "@/lib/logger";
-import { z } from "zod";
-import bcrypt from "bcryptjs";
+import { verifyPassword } from "@/lib/auth-password";
+import { dbGetProfile, dbSaveProfile, dbVerifyAccount } from "@/lib/db";
+import { isJudgeMode } from "@/lib/judgeMode";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
-
-const LoginSchema = z.object({
-    email: z.string().email(),
-    password: z.string().min(8),
-});
+import type { UserProfile } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-    try {
-        const ip = getRequestIp(req);
-        const rlKey = getClientKey(ip, "login");
-        const { ok, remaining, resetAt } = await fixedWindowRateLimit(rlKey, 10, 60000);
-        if (!ok) {
-            logInfo("RATE_LIMIT_EXCEEDED", { route: "auth/login", ip });
-            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-        }
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-login"), 30, 60_000);
+  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-        const body = await req.json();
-        const parsed = LoginSchema.safeParse(body);
-        if (!parsed.success) {
-            return NextResponse.json({ error: "Invalid input", details: parsed.error.format() }, { status: 400 });
-        }
+  if (isJudgeMode()) {
+    await req.json().catch(() => ({}));
+    return NextResponse.json({ error: "Authentication disabled in judge mode" }, { status: 503 });
+  }
 
-        const { email, password } = parsed.data;
+  if (!process.env.DYNAMODB_TABLE_NAME) {
+    return NextResponse.json({ error: "Authentication unavailable" }, { status: 503 });
+  }
 
-        const account = await dbVerifyAccount(email);
-        if (!account) {
-            return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
-        }
-
-        const passwordMatch = await bcrypt.compare(password, account.passwordHash);
-        if (!passwordMatch) {
-            return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
-        }
-
-        logInfo("USER_LOGGED_IN", { route: "auth/login", userId: account.userId });
-
-        const profile = await dbGetProfile(account.userId);
-        const cookieHeader = buildSetCookieHeader(account.userId);
-        const response = NextResponse.json({
-          success: true,
-          authenticated: true,
-          userId: account.userId,
-          profile,
-        });
-        response.headers.set("Set-Cookie", cookieHeader);
-
-        return response;
-    } catch (error) {
-        logError("Failed to login", error, { route: "auth/login" });
-        return NextResponse.json({ error: "Failed to login" }, { status: 500 });
+  try {
+    const body = (await req.json()) as { email?: string; password?: string };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    if (!email || !password) {
+      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
     }
+
+    const account = await dbVerifyAccount(email);
+    if (!account || !(await verifyPassword(password, account.passwordHash))) {
+      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
+    }
+
+    let profile = await dbGetProfile(account.userId);
+    if (!profile) {
+      profile = {
+        id: account.userId,
+        name: "Athlete",
+        email: account.email,
+        age: 30,
+        weight: 70,
+        height: 170,
+        gender: "other",
+        fitnessLevel: "intermediate",
+        goal: "maintain",
+        dietaryRestrictions: [],
+        injuriesOrLimitations: [],
+        dailyActivityLevel: "moderate",
+        unitSystem: "us",
+        workoutLocation: "gym",
+        workoutEquipment: ["free_weights"],
+        workoutDaysPerWeek: 4,
+        workoutTimeframe: "flexible",
+        createdAt: new Date().toISOString(),
+      } satisfies UserProfile;
+      await dbSaveProfile(account.userId, profile);
+    } else if (!profile.email) {
+      profile = { ...profile, email: account.email };
+      await dbSaveProfile(account.userId, profile);
+    }
+
+    const res = NextResponse.json({
+      authenticated: true,
+      userId: account.userId,
+      profile,
+    });
+    res.headers.append("Set-Cookie", buildSetCookieHeader(account.userId));
+    return res;
+  } catch (err) {
+    console.error("auth/login", err);
+    return NextResponse.json({ error: "Login failed" }, { status: 500 });
+  }
 }
