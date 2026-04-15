@@ -108,8 +108,14 @@ public final class WorkoutService {
             persistToDefaults()
             return
         }
-        // Rebuild local set ticks from authoritative server map (row keys, not fragile plan indices).
-        progressByDay.removeAll()
+        // Only clear calendar-day buckets that the server has authoritative entries for.
+        // This preserves partial set completions on days with no server data (e.g. today's
+        // in-progress sets that aren't yet fully done), while still syncing past completed days.
+        var serverDates = Set<String>()
+        for (_, iso) in map { serverDates.insert(String(iso.prefix(10))) }
+        for date in serverDates { progressByDay[date] = nil }
+
+        // Rebuild server-known dates from the authoritative map.
         for (key, iso) in map {
             guard let parsed = WorkoutWebProgress.parseKey(key, planId: plan.id),
                   let loc = WorkoutWebProgress.locateSlot(parsed: parsed, in: plan) else { continue }
