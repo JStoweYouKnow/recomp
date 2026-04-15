@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Expo / React Native app (built with EAS, not Next.js)
+    "recomp-mobile/**",
+    "RecompSwift/**",
+    "act-service/**",
   ]),
 ]);
 
