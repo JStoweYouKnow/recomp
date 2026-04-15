@@ -1,7 +1,9 @@
-# Railway config for act-service (when deploying from workspace root)
+# Railway config for act-service
+# Deploy from project root: railway up (or connect repo in Railway dashboard)
+
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.act"
+dockerfilePath = "act-service/Dockerfile"
 
 [deploy]
 healthcheckPath = "/health"

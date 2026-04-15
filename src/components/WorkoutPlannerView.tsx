@@ -1,0 +1,1224 @@
+"use client";
+
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
+import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
+import { useToast } from "./Toast";
+import { CalendarView } from "./CalendarView";
+import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { ExerciseDemoGif } from "./ExerciseDemoGif";
+
+/* ── Exercise GIF cache (shared key with Dashboard) ── */
+const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
+interface ExerciseGif {
+  gifUrl: string;
+  name: string;
+  targetMuscles?: string[];
+  instructions?: string[];
+}
+function getGifCache(): Record<string, ExerciseGif> {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(EX_CACHE_KEY) ?? "{}"); } catch { return {}; }
+}
+function setGifCache(cache: Record<string, ExerciseGif>) {
+  try { localStorage.setItem(EX_CACHE_KEY, JSON.stringify(cache)); } catch { /* quota */ }
+}
+
+/** Map a calendar day-of-week (0=Sun..6=Sat) to common day name prefixes */
+const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function extractExerciseNames(weeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"]): string[] {
+  const names: string[] = [];
+  for (const day of weeklyPlan) {
+    for (const ex of day.warmups ?? []) if (ex.name?.trim()) names.push(ex.name.trim());
+    for (const ex of day.exercises) if (ex.name?.trim()) names.push(ex.name.trim());
+    for (const ex of day.finishers ?? []) if (ex.name?.trim()) names.push(ex.name.trim());
+  }
+  return names;
+}
+
+interface MusicSuggestion {
+  name: string;
+  description?: string;
+  provider: string;
+  deepLink: string;
+  bpm?: string;
+  mood?: string;
+}
+
+export function WorkoutPlannerView({
+  plan,
+  wearableData = [],
+  onUpdatePlan,
+  onPlanSaved,
+}: {
+  plan: FitnessPlan | null;
+  wearableData?: WearableDaySummary[];
+  onUpdatePlan: (plan: FitnessPlan) => void;
+  /** Called when edits are committed (Done editing, Move, Delete, Add day). Use for sync. */
+  onPlanSaved?: () => void;
+}) {
+  const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
+  const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  const [editingDay, setEditingDay] = useState<number | null>(null);
+  /** Local draft while editing — avoids parent updates on every keystroke for responsive typing */
+  const [editingWeekCopy, setEditingWeekCopy] = useState<FitnessPlan["workoutPlan"]["weeklyPlan"] | null>(null);
+  const today = getTodayLocal();
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(today);
+
+  const [expandedExerciseDemos, setExpandedExerciseDemos] = useState<Set<string>>(() => new Set());
+  const [recoveryAssessment, setRecoveryAssessment] = useState<RecoveryAssessment | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [musicSuggestions, setMusicSuggestions] = useState<Record<number, MusicSuggestion[]>>({});
+  const [musicLoading, setMusicLoading] = useState<Record<number, boolean>>({});
+
+  const [workoutImportUrl, setWorkoutImportUrl] = useState("");
+  const [workoutImportLoading, setWorkoutImportLoading] = useState(false);
+  const [importedWorkout, setImportedWorkout] = useState<WorkoutDay | null>(null);
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const { showToast } = useToast();
+
+  const [exerciseGifs, setExerciseGifs] = useState<Record<string, ExerciseGif | "loading" | "none">>(() => {
+    const cached = getGifCache();
+    const init: Record<string, ExerciseGif | "loading" | "none"> = {};
+    for (const [k, v] of Object.entries(cached)) init[k] = v;
+    return init;
+  });
+  const fetchExerciseGif = useCallback(async (exerciseName: string) => {
+    const key = exerciseName.toLowerCase().trim();
+    if (exerciseGifs[key] && exerciseGifs[key] !== "none") return;
+    setExerciseGifs((prev) => ({ ...prev, [key]: "loading" }));
+    try {
+      const res = await fetch(`/api/exercises/search?name=${encodeURIComponent(key)}`);
+      if (!res.ok) {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+        return;
+      }
+      const data = await res.json();
+      if (data.gifUrl) {
+        const gif: ExerciseGif = { gifUrl: data.gifUrl, name: data.name, targetMuscles: data.targetMuscles, instructions: data.instructions };
+        setExerciseGifs((prev) => {
+          const next = { ...prev, [key]: gif };
+          const cache = getGifCache();
+          cache[key] = gif;
+          setGifCache(cache);
+          return next;
+        });
+      } else {
+        setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+      }
+    } catch {
+      setExerciseGifs((prev) => ({ ...prev, [key]: "none" }));
+    }
+  }, [exerciseGifs]);
+
+  /**
+   * Try to match a calendar date to a workout day index.
+   * Strategy: match day name ("Monday" → "Monday" / "Mon"), or "Day N" → Nth weekday from Monday.
+   */
+  const matchDayToDate = useCallback(
+    (date: string): number | null => {
+      if (!plan) return null;
+      const d = new Date(date + "T12:00:00");
+      const dow = d.getDay(); // 0=Sun
+      const dayName = WEEKDAY_NAMES[dow].toLowerCase();
+      const shortName = SHORT_WEEKDAY[dow].toLowerCase();
+
+      for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
+        const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
+        if (
+          planDay === dayName ||
+          planDay === shortName ||
+          planDay.startsWith(dayName) ||
+          planDay.startsWith(shortName)
+        ) {
+          return i;
+        }
+      }
+
+      // Fallback: "Day 1" → Monday=0, "Day 2" → Tuesday=1, etc.
+      const mondayBased = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
+      if (mondayBased < plan.workoutPlan.weeklyPlan.length) {
+        return mondayBased;
+      }
+      return null;
+    },
+    [plan]
+  );
+
+  // When viewing a future date, don't show exercises as completed (can't have done them yet)
+  const isViewingFutureDate = calendarOpen && selectedDate > today;
+
+  // Dates that have completed exercises (for dot indicators) — exclude future dates
+  const completedDates = useMemo(() => {
+    const dates = new Set<string>();
+    for (const ts of Object.values(progress)) {
+      if (ts) {
+        const d = ts.slice(0, 10);
+        if (d <= today) dates.add(d);
+      }
+    }
+    return dates;
+  }, [progress, today]);
+
+  // Auto-expand the matched day when a calendar date is selected
+  useEffect(() => {
+    if (!calendarOpen) return;
+    const match = matchDayToDate(selectedDate);
+    if (match !== null) {
+      setExpandedDay(match);
+    }
+  }, [calendarOpen, selectedDate, matchDayToDate]);
+
+  type ExSection = "warmup" | "main" | "finisher";
+  /** Key for progress lookup. Include weekStart to scope completions to a specific week. */
+  const exerciseKey = (
+    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+    exercise: WorkoutExercise,
+    section: ExSection = "main",
+    weekStart?: string
+  ) => {
+    if (!plan) return "";
+    const base =
+      section === "main"
+        ? `${plan.id}:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`
+        : `${plan.id}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}`;
+    return weekStart ? `${plan.id}:${weekStart}:${day.day}:${section}:${exercise.name}:${exercise.sets}:${exercise.reps}:${exercise.notes ?? ""}` : base;
+  };
+
+  useEffect(() => {
+    if (!plan) return;
+    const validLegacyKeys = new Set(
+      (editingWeekCopy ?? plan.workoutPlan.weeklyPlan).flatMap((day) => {
+        const warmups = (day.warmups ?? []).map((ex) => exerciseKey(day, ex, "warmup"));
+        const main = day.exercises.map((ex) => exerciseKey(day, ex, "main"));
+        const finishers = (day.finishers ?? []).map((ex) => exerciseKey(day, ex, "finisher"));
+        return [...warmups, ...main, ...finishers];
+      })
+    );
+    // Keep: valid legacy keys, week-scoped keys, or any entry completed on or before today
+    // (editing the plan must not retroactively remove completed workouts)
+    const cleaned = Object.fromEntries(
+      Object.entries(progress).filter(([k, ts]) => {
+        const parts = k.split(":");
+        const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+        const completedOnOrBeforeToday = ts && ts.slice(0, 10) <= today;
+        return isWeekScoped || validLegacyKeys.has(k) || completedOnOrBeforeToday;
+      })
+    );
+    if (Object.keys(cleaned).length !== Object.keys(progress).length) {
+      setProgress(cleaned);
+      saveWorkoutProgress(cleaned);
+      syncToServer();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plan]);
+
+  // Compute before hooks so hooks run unconditionally (rules of hooks)
+  const weeklyPlan = plan ? (editingWeekCopy ?? plan.workoutPlan.weeklyPlan) : [];
+  const viewingDate = calendarOpen ? selectedDate : today;
+  const viewingWeekStart = getWeekStart(viewingDate);
+
+  /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
+  const toLegacyLookupKey = useCallback((key: string): string | null => {
+    const parts = key.split(":");
+    const hasWeek = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+    if (hasWeek && parts.length >= 7) {
+      const [planId, , day, section, exercise, sets, reps, ...noteParts] = parts;
+      const notes = noteParts.join(":") ?? "";
+      if (section === "main") return `${planId}:${day}:${exercise}:${sets}:${reps}:${notes}`;
+      return `${planId}:${day}:${section}:${exercise}:${sets}:${reps}:${notes}`;
+    }
+    if (!hasWeek && parts.length >= 5) return key;
+    return null;
+  }, []);
+
+  // Progress for viewing week — keyed by legacy format for lookup
+  const progressThisWeek = useMemo(() => {
+    if (isViewingFutureDate) return {};
+    const filtered: Record<string, string> = {};
+    for (const [k, ts] of Object.entries(progress)) {
+      const parts = k.split(":");
+      const isWeekScoped = parts[1] && /^\d{4}-\d{2}-\d{2}$/.test(parts[1]);
+      const legacyKey = toLegacyLookupKey(k);
+      if (!legacyKey) continue;
+      if (isWeekScoped && parts[1] === viewingWeekStart) {
+        filtered[legacyKey] = ts;
+      } else if (!isWeekScoped && ts && isTimestampInWeek(ts, viewingWeekStart)) {
+        filtered[legacyKey] = ts;
+      }
+    }
+    return filtered;
+  }, [progress, viewingWeekStart, isViewingFutureDate, toLegacyLookupKey]);
+
+  const totalExercises = weeklyPlan.reduce(
+    (sum, day) =>
+      sum +
+      (day.warmups?.length ?? 0) +
+      day.exercises.length +
+      (day.finishers?.length ?? 0),
+    0
+  );
+  const completedExercises = weeklyPlan.reduce((sum, day) => {
+    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
+    const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
+    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
+    return sum + warmupDone + mainDone + finisherDone;
+  }, 0);
+  const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
+
+  const commitEdit = useCallback(() => {
+    if (!plan || !editingWeekCopy) return;
+    const names = extractExerciseNames(editingWeekCopy);
+    if (names.length > 0) saveRecentExerciseNames(names);
+    onUpdatePlan({
+      ...plan,
+      workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
+    });
+    onPlanSaved?.();
+    setEditingWeekCopy(null);
+  }, [editingWeekCopy, plan, onUpdatePlan, onPlanSaved]);
+
+  const updateWeeklyPlan = (nextWeeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"], triggerSync = false) => {
+    if (!plan) return;
+    if (triggerSync) {
+      const names = extractExerciseNames(nextWeeklyPlan);
+      if (names.length > 0) saveRecentExerciseNames(names);
+    }
+    if (editingWeekCopy !== null) {
+      setEditingWeekCopy(nextWeeklyPlan);
+      if (triggerSync) {
+        onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+        onPlanSaved?.();
+      }
+    } else {
+      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+      if (triggerSync) onPlanSaved?.();
+    }
+  };
+
+  const updateDay = (
+    dayIndex: number,
+    updater: (day: FitnessPlan["workoutPlan"]["weeklyPlan"][number]) => FitnessPlan["workoutPlan"]["weeklyPlan"][number]
+  ) => {
+    const source = weeklyPlan;
+    const next = source.map((day, idx) => (idx === dayIndex ? updater(day) : day));
+    if (editingWeekCopy !== null) {
+      setEditingWeekCopy(next);
+    } else {
+      updateWeeklyPlan(next, false);
+    }
+  };
+
+  const moveDay = (dayIndex: number, direction: -1 | 1) => {
+    const target = dayIndex + direction;
+    if (target < 0 || target >= weeklyPlan.length) return;
+    const next = [...weeklyPlan];
+    const [moved] = next.splice(dayIndex, 1);
+    next.splice(target, 0, moved);
+    updateWeeklyPlan(next, true);
+  };
+
+  const toggleComplete = (
+    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+    exercise: WorkoutExercise,
+    section: ExSection = "main"
+  ) => {
+    const key = exerciseKey(day, exercise, section, viewingWeekStart);
+    const legacyKey = exerciseKey(day, exercise, section);
+    const next = { ...progress };
+    const ts = new Date().toISOString();
+    if (next[key]) {
+      delete next[key];
+      delete next[legacyKey];
+    } else {
+      next[key] = ts;
+      next[legacyKey] = ts; // Dashboard uses legacy keys
+    }
+    setProgress(next);
+    saveWorkoutProgress(next);
+    syncToServer();
+  };
+
+  const setDayCompletion = (
+    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+    complete: boolean
+  ) => {
+    const next = { ...progress };
+    const ts = new Date().toISOString();
+    for (const ex of day.warmups ?? []) {
+      const key = exerciseKey(day, ex, "warmup", viewingWeekStart);
+      const legacyKey = exerciseKey(day, ex, "warmup");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
+    }
+    for (const exercise of day.exercises) {
+      const key = exerciseKey(day, exercise, "main", viewingWeekStart);
+      const legacyKey = exerciseKey(day, exercise, "main");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
+    }
+    for (const ex of day.finishers ?? []) {
+      const key = exerciseKey(day, ex, "finisher", viewingWeekStart);
+      const legacyKey = exerciseKey(day, ex, "finisher");
+      if (complete) {
+        next[key] = ts;
+        next[legacyKey] = ts;
+      } else {
+        delete next[key];
+        delete next[legacyKey];
+      }
+    }
+    setProgress(next);
+    saveWorkoutProgress(next);
+    syncToServer();
+  };
+
+  const handleWorkoutUrlImport = useCallback(async () => {
+    const url = workoutImportUrl.trim();
+    if (!url) return;
+    setWorkoutImportLoading(true);
+    setImportedWorkout(null);
+    try {
+      const res = await fetch("/api/workouts/parse-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.workout) {
+        setImportedWorkout(data.workout);
+        setShowImportPanel(true);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from web`);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not parse workout URL", "error");
+    } finally {
+      setWorkoutImportLoading(false);
+    }
+  }, [workoutImportUrl, showToast]);
+
+  const addImportedWorkout = useCallback(
+    (targetDayIndex: number | null) => {
+      if (!plan || !importedWorkout) return;
+      const next = [...weeklyPlan];
+      if (targetDayIndex === null) {
+        next.push(importedWorkout);
+        setExpandedDay(next.length - 1);
+        setEditingDay(next.length - 1);
+      } else {
+        const target = next[targetDayIndex];
+        next[targetDayIndex] = {
+          ...target,
+          exercises: [...(target.exercises ?? []), ...importedWorkout.exercises],
+        };
+      }
+      const names = extractExerciseNames(next);
+      if (names.length > 0) saveRecentExerciseNames(names);
+      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+      onPlanSaved?.();
+      setImportedWorkout(null);
+      setWorkoutImportUrl("");
+      setShowImportPanel(false);
+      showToast("Workout added to plan");
+    },
+    [plan, weeklyPlan, importedWorkout, onUpdatePlan, onPlanSaved, showToast]
+  );
+
+  /** Get today's or most recent wearable for recovery assessment */
+  const getWearableForRecovery = useCallback((): { sleepScore?: number; readinessScore?: number; heartRateResting?: number } | null => {
+    if (!wearableData?.length) return null;
+    const todayEntry = wearableData.find((d) => d.date === today);
+    const latest = todayEntry ?? wearableData.sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) return null;
+    return {
+      sleepScore: latest.sleepScore,
+      readinessScore: latest.readinessScore,
+      heartRateResting: latest.heartRateResting,
+    };
+  }, [wearableData, today]);
+
+  const fetchRecovery = useCallback(async () => {
+    const w = getWearableForRecovery();
+    const dayIdx = matchDayToDate(selectedDate);
+    if (dayIdx === null) return;
+    const day = weeklyPlan[dayIdx];
+    const todayWorkout = day ? { day: day.day, focus: day.focus, exercises: day.exercises.map((e) => e.name) } : null;
+    setRecoveryLoading(true);
+    try {
+      const res = await fetch("/api/workouts/recovery-adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wearableData: w ?? {}, todayWorkout }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRecoveryAssessment(data);
+    } catch {
+      setRecoveryAssessment(null);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }, [getWearableForRecovery, matchDayToDate, selectedDate, weeklyPlan]);
+
+  const fetchMusic = useCallback(async (dayIndex: number) => {
+    const day = weeklyPlan[dayIndex];
+    if (!day) return;
+    const pref = getMusicPreference();
+    const provider = pref?.provider ?? "spotify";
+    setMusicLoading((prev) => ({ ...prev, [dayIndex]: true }));
+    try {
+      const res = await fetch("/api/music/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workoutFocus: day.focus, provider }),
+      });
+      const data = await res.json();
+      if (data.suggestions?.length) {
+        setMusicSuggestions((prev) => ({ ...prev, [dayIndex]: data.suggestions }));
+      }
+    } catch {
+      setMusicSuggestions((prev) => ({ ...prev, [dayIndex]: [] }));
+    } finally {
+      setMusicLoading((prev) => ({ ...prev, [dayIndex]: false }));
+    }
+  }, [weeklyPlan]);
+
+  const parseRest = (notes?: string): string | null => {
+    if (!notes) return null;
+    const m = notes.match(/rest[:\s]*(\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?)/i);
+    return m ? m[1].trim() : null;
+  };
+
+  const suggestedExerciseNames = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const n of [...getRecentExerciseNames(), ...extractExerciseNames(weeklyPlan)]) {
+      const key = n.toLowerCase().trim();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out.push(n.trim());
+      }
+    }
+    return out;
+  }, [weeklyPlan]);
+
+  if (!plan) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <h2 className="section-title !text-xl">Workout planner</h2>
+        <p className="section-subtitle">Generate a plan first to manage workouts.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <datalist id="workout-exercise-names">
+        {suggestedExerciseNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="section-title !text-xl">Workout planner</h2>
+          <p className="section-subtitle">Tap a day to expand. Import workouts from the web, or mark exercises done as you go.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCalendarOpen((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${calendarOpen
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+            aria-pressed={calendarOpen}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Calendar
+          </button>
+          <button
+            onClick={() => setShowImportPanel((v) => !v)}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${showImportPanel
+                ? "bg-[var(--accent)] text-white"
+                : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"
+              }`}
+            aria-pressed={showImportPanel}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Import from web
+          </button>
+          <button
+            onClick={() => {
+              const next = [
+                ...weeklyPlan,
+                { day: `Day ${weeklyPlan.length + 1}`, focus: "General fitness", warmups: [], exercises: [], finishers: [] },
+              ];
+              const names = extractExerciseNames(next);
+              if (names.length > 0) saveRecentExerciseNames(names);
+              setEditingWeekCopy(next);
+              onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+              onPlanSaved?.();
+              setExpandedDay(next.length - 1);
+              setEditingDay(next.length - 1);
+            }}
+            className="btn-primary px-4 py-2 text-sm"
+          >
+            + Add day
+          </button>
+        </div>
+      </div>
+
+      {/* Import from web */}
+      {showImportPanel && (
+        <div className="card p-4 animate-slide-up border border-[var(--accent)]/30">
+          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout from URL</h3>
+          <p className="text-sm text-[var(--muted)] mb-3">
+            Paste a link to a workout page (fitness blog, YouTube description, program, etc.). We&apos;ll extract the exercises.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+            <input
+              type="url"
+              placeholder="https://example.com/workout/chest-day"
+              value={workoutImportUrl}
+              onChange={(e) => setWorkoutImportUrl(e.target.value)}
+              className="input-base rounded-lg px-4 py-2 text-sm flex-1"
+            />
+            <button
+              type="button"
+              onClick={handleWorkoutUrlImport}
+              disabled={workoutImportLoading || !workoutImportUrl.trim()}
+              className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
+            >
+              {workoutImportLoading ? "Fetching…" : "Import"}
+            </button>
+          </div>
+          {importedWorkout && (
+            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                {importedWorkout.day} — {importedWorkout.focus} ({importedWorkout.exercises.length} exercises)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => addImportedWorkout(null)}
+                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+                >
+                  Add as new day
+                </button>
+                {weeklyPlan.map((day, idx) => (
+                  <button
+                    key={`${day.day}-${idx}`}
+                    type="button"
+                    onClick={() => addImportedWorkout(idx)}
+                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--surface-elevated)]"
+                  >
+                    Add to {day.day}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => { setImportedWorkout(null); setWorkoutImportUrl(""); }}
+                className="text-xs text-[var(--muted)] hover:underline"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Calendar */}
+      {calendarOpen && (
+        <div className="card p-4 animate-slide-up">
+          <CalendarView
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            dotDates={completedDates}
+            daySummary={
+              matchDayToDate(selectedDate) !== null ? (
+                <div className="text-xs text-[var(--muted)] space-y-0.5">
+                  <p className="font-medium text-[var(--foreground)]">
+                    {weeklyPlan[matchDayToDate(selectedDate)!]?.day}
+                  </p>
+                  <p>{weeklyPlan[matchDayToDate(selectedDate)!]?.focus}</p>
+                  <p>
+                    {weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length} exercise{weeklyPlan[matchDayToDate(selectedDate)!]?.exercises.length !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-[var(--muted)]">No workout scheduled</p>
+              )
+            }
+          />
+        </div>
+      )}
+
+      <div className="card p-5">
+        <div className="mb-2 flex items-center justify-between text-sm">
+          <span className="text-[var(--muted)]">
+            Weekly completion
+            {calendarOpen && (() => {
+              const d = new Date(viewingDate + "T12:00:00");
+              const mon = new Date(d);
+              mon.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1));
+              const sun = new Date(mon);
+              sun.setDate(mon.getDate() + 6);
+              const fmt = (x: Date) => x.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+              return <span className="ml-1 text-[var(--foreground)]"> · {fmt(mon)} – {fmt(sun)}</span>;
+            })()}
+          </span>
+          <span className="font-semibold">{completedExercises} / {totalExercises} exercises</span>
+        </div>
+        <div className="progress-track !mt-0">
+          <div className="progress-fill" style={{ width: `${completionPct}%` }} />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {weeklyPlan.map((day, dayIndex) => {
+          // When calendar is open, only show the matched day
+          const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
+          if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
+          if (calendarOpen && matchedIdx === null) return null;
+
+          const total =
+            (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);
+          const effectiveProgress = progressThisWeek;
+          const completed =
+            (day.warmups ?? []).filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "warmup")])).length +
+            day.exercises.filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "main")])).length +
+            (day.finishers ?? []).filter((ex) => Boolean(effectiveProgress[exerciseKey(day, ex, "finisher")])).length;
+          const allDone = total > 0 && completed === total;
+          const isExpanded = calendarOpen ? true : expandedDay === dayIndex;
+          const isEditing = editingDay === dayIndex;
+
+          return (
+            <div key={`${day.day}-${dayIndex}`} className="rounded-xl card overflow-hidden transition-all">
+              {/* ── Collapsed card header (always visible, clickable) ── */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (isExpanded) {
+                    if (editingDay === dayIndex) commitEdit();
+                    setEditingDay(null);
+                  }
+                  setExpandedDay(isExpanded ? null : dayIndex);
+                }}
+                className="w-full px-5 py-4 text-left flex items-center gap-4 hover:bg-[var(--surface-elevated)] transition-colors"
+                aria-expanded={isExpanded}
+              >
+                {/* Day number / completion ring */}
+                <div className={`relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors ${allDone ? "border-[var(--accent)] bg-[var(--accent)]/10" : "border-[var(--border)] bg-[var(--surface-elevated)]"}`}>
+                  <span className={`text-sm font-bold ${allDone ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
+                    {day.day.replace(/^Day\s*/i, "").slice(0, 3)}
+                  </span>
+                  {allDone && (
+                    <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-label text-white">
+                      ✓
+                    </span>
+                  )}
+                </div>
+
+                {/* Title + summary */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold truncate">{day.day}</p>
+                    <span className="rounded-full bg-[var(--accent)]/10 px-2 py-0.5 text-xs font-medium text-[var(--accent)] whitespace-nowrap">
+                      {day.focus}
+                    </span>
+                  </div>
+                  <p className="text-sm text-[var(--muted)] truncate">
+                    {total === 0
+                      ? "No exercises yet"
+                      : day.exercises.slice(0, 4).map((e) => e.name).join(", ") + (total > 4 ? ` +${total - 4} more` : "")}
+                  </p>
+                </div>
+
+                {/* Progress badge */}
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <div className="text-right">
+                    <p className={`text-sm font-medium ${allDone ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
+                      {completed}/{total}
+                    </p>
+                    <p className="text-label text-[var(--muted)]">done</p>
+                  </div>
+                  <svg
+                    className={`h-4 w-4 text-[var(--muted)] transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </button>
+
+              {/* ── Expanded detail panel ── */}
+              {isExpanded && (
+                <div className="border-t border-[var(--border-soft)] px-5 py-4 space-y-4">
+                  {/* Recovery badge (today's workout only) */}
+                  {selectedDate === today && matchDayToDate(selectedDate) === dayIndex && (
+                    <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Recovery</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); fetchRecovery(); }}
+                          disabled={recoveryLoading}
+                          className="rounded-lg px-2.5 py-1 text-xs font-medium bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20 disabled:opacity-50"
+                        >
+                          {recoveryLoading ? "Checking…" : "Check recovery"}
+                        </button>
+                      </div>
+                      {recoveryAssessment && (
+                        <div className="space-y-1 text-sm">
+                          <p className="font-medium">
+                            {recoveryAssessment.score}/100 · {recoveryAssessment.level}
+                          </p>
+                          <p className="text-[var(--muted)]">{recoveryAssessment.recommendation}</p>
+                          {recoveryAssessment.modifiedWorkout?.suggestedSwaps?.length ? (
+                            <ul className="mt-2 space-y-1 text-xs">
+                              {recoveryAssessment.modifiedWorkout.suggestedSwaps.map((s, i) => (
+                                <li key={i}>Swap {s.original} → {s.replacement}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      )}
+                      {!recoveryAssessment && !recoveryLoading && wearableData.length > 0 && (
+                        <p className="text-xs text-[var(--muted)]">Uses sleep, readiness, HR to suggest adjustments</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Action bar */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDayCompletion(day, !allDone); }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${allDone ? "bg-[var(--accent)]/10 text-[var(--accent)]" : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+                      disabled={total === 0 || isViewingFutureDate}
+                      title={isViewingFutureDate ? "Can't mark future workouts complete" : undefined}
+                    >
+                      {allDone ? "Clear completion" : "Mark all complete"}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isEditing) {
+                          commitEdit();
+                          setEditingDay(null);
+                        } else {
+                          setEditingWeekCopy(JSON.parse(JSON.stringify(plan.workoutPlan.weeklyPlan)));
+                          setEditingDay(dayIndex);
+                        }
+                      }}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${isEditing ? "bg-[var(--accent)] text-white" : "bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+                    >
+                      {isEditing ? "Done editing" : "Edit"}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, -1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === 0}>Move up</button>
+                    <button onClick={(e) => { e.stopPropagation(); moveDay(dayIndex, 1); }} className="btn-secondary px-2 py-1 text-xs" disabled={dayIndex === weeklyPlan.length - 1}>Move down</button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); fetchMusic(dayIndex); }}
+                      disabled={musicLoading[dayIndex]}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium bg-[var(--surface-elevated)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+                    >
+                      {musicLoading[dayIndex] ? "Loading…" : "🎵 Get music"}
+                    </button>
+                    {isEditing && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateWeeklyPlan(weeklyPlan.filter((_, idx) => idx !== dayIndex), true);
+                          setExpandedDay(null);
+                          setEditingDay(null);
+                        }}
+                        className="px-2 py-1 text-xs text-[var(--accent-terracotta)] hover:underline"
+                      >
+                        Delete day
+                      </button>
+                    )}
+                  </div>
+
+                  {musicSuggestions[dayIndex]?.length ? (
+                    <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-3 space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Music</p>
+                      <div className="flex flex-wrap gap-2">
+                        {musicSuggestions[dayIndex].map((s, i) => (
+                          <a
+                            key={i}
+                            href={s.deepLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex flex-col rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-xs hover:border-[var(--accent)]/40 transition-colors"
+                          >
+                            <span className="font-medium">{s.name}</span>
+                            {s.mood && <span className="text-[var(--muted)]">{s.mood}</span>}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Editable day name + focus (only in edit mode) */}
+                  {isEditing && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <input
+                        value={day.day}
+                        onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, day: e.target.value }))}
+                        className="input-base rounded-lg px-3 py-2 text-sm"
+                        placeholder="Day name"
+                      />
+                      <input
+                        value={day.focus}
+                        onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, focus: e.target.value }))}
+                        className="input-base rounded-lg px-3 py-2 text-sm"
+                        placeholder="Focus area"
+                      />
+                    </div>
+                  )}
+
+                  {/* ── Warm-ups, Main exercises, Finishers ── */}
+                  {total === 0 && !isEditing ? (
+                    <p className="py-4 text-center text-sm text-[var(--muted)]">No exercises yet. Tap &quot;Edit&quot; to add some.</p>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* ── Warm-ups ── */}
+                      {((day.warmups?.length ?? 0) > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Warm-ups</p>
+                          <div className="space-y-2">
+                            {(day.warmups ?? []).map((exercise, exIndex) => {
+                              const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "warmup")]);
+                              const completedAt = effectiveProgress[exerciseKey(day, exercise, "warmup")];
+                              const restTime = parseRest(exercise.notes);
+                              return (
+                                <div
+                                  key={`warmup-${dayIndex}-${exIndex}`}
+                                  className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
+                                    }`}
+                                >
+                                  {isEditing ? (
+                                    <>
+                                      <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
+                                        <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
+                                        <div className="flex gap-2 justify-end">
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const w = d.warmups ?? []; if (exIndex === 0) return d; const next = [...w]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex - 1, 0, moved); return { ...d, warmups: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const w = d.warmups ?? []; if (exIndex >= w.length - 1) return d; const next = [...w]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex + 1, 0, moved); return { ...d, warmups: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === (day.warmups?.length ?? 0) - 1}>↓</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                        </div>
+                                      </div>
+                                      <input value={exercise.notes ?? ""} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, warmups: (d.warmups ?? []).map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)) }))} placeholder="Notes" className="mt-2 input-base rounded px-2 py-1 text-xs w-full" />
+                                    </>
+                                  ) : (
+                                    <div className="flex items-start gap-3">
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "warmup")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
+                                        <div className="mt-1.5 flex flex-wrap gap-2">
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.sets}</span> <span className="text-[var(--muted)]">sets</span></span>
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.reps}</span> <span className="text-[var(--muted)]">reps</span></span>
+                                          {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
+                                        </div>
+                                        {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-label text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, warmups: [...(d.warmups ?? []), { name: "New warm-up", sets: "1", reps: "30s", notes: "" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add warm-up</button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Main exercises ── */}
+                      {(day.exercises.length > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Main workout</p>
+                          <div className="hidden sm:grid sm:grid-cols-[auto_2fr_1fr_1fr_1fr] gap-2 px-3 text-label font-semibold uppercase tracking-wider text-[var(--muted)]">
+                            <span /><span>Exercise</span><span>Sets</span><span>Reps</span><span>Rest</span>
+                          </div>
+                          {day.exercises.map((exercise, exIndex) => {
+                            const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "main")]);
+                            const completedAt = effectiveProgress[exerciseKey(day, exercise, "main")];
+                            const restTime = parseRest(exercise.notes);
+
+                            return (
+                              <div
+                                key={`main-${dayIndex}-${exIndex}`}
+                                className={`rounded-lg border p-3 transition-colors ${isDone
+                                    ? "border-[var(--accent)]/30 bg-[var(--accent)]/5"
+                                    : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"
+                                  }`}
+                              >
+                                {isEditing ? (
+                                  /* ── Edit mode: inline inputs ── */
+                                  <>
+                                    <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={isDone}
+                                        onChange={() => toggleComplete(day, exercise, "main")}
+                                        disabled={isViewingFutureDate}
+                                        aria-label={`Mark ${exercise.name || "exercise"} complete`}
+                                        className="h-4 w-4 accent-[var(--accent)]"
+                                      />
+                                      <input
+                                        value={exercise.name}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Exercise"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                        list="workout-exercise-names"
+                                      />
+                                      <input
+                                        value={exercise.sets}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Sets"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                      />
+                                      <input
+                                        value={exercise.reps}
+                                        onChange={(e) =>
+                                          updateDay(dayIndex, (d) => ({
+                                            ...d,
+                                            exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)),
+                                          }))
+                                        }
+                                        placeholder="Reps"
+                                        className="input-base rounded px-2 py-1 text-sm"
+                                      />
+                                      <div className="flex items-center gap-2 justify-end">
+                                        <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === 0) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex - 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                        <button onClick={() => updateDay(dayIndex, (d) => { if (exIndex === d.exercises.length - 1) return d; const exercises = [...d.exercises]; const [moved] = exercises.splice(exIndex, 1); exercises.splice(exIndex + 1, 0, moved); return { ...d, exercises }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === day.exercises.length - 1}>↓</button>
+                                        <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: d.exercises.filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                      </div>
+                                    </div>
+                                    <input
+                                      value={exercise.notes ?? ""}
+                                      onChange={(e) =>
+                                        updateDay(dayIndex, (d) => ({
+                                          ...d,
+                                          exercises: d.exercises.map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)),
+                                        }))
+                                      }
+                                      placeholder="Notes (e.g. rest: 60s, tempo: 3-1-1)"
+                                      className="mt-2 input-base rounded px-2 py-1 text-xs w-full"
+                                    />
+                                    {(() => {
+                                      const gifKey = exercise.name.toLowerCase().trim();
+                                      const gif = exerciseGifs[gifKey];
+                                      const isExpanded = expandedExerciseDemos.has(gifKey);
+                                      const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                      return (
+                                        <div className="mt-2">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                              else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                            }}
+                                            className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                          >
+                                            {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                          </button>
+                                          {showGif && gif && typeof gif === "object" && gif.gifUrl && (
+                                            <div className="mt-1.5 space-y-1">
+                                              <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} />
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </>
+                                ) : (
+                                  /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
+                                  <div className="flex items-start gap-3">
+                                    <input
+                                      type="checkbox"
+                                      checked={isDone}
+                                      onChange={() => toggleComplete(day, exercise, "main")}
+                                      disabled={isViewingFutureDate}
+                                      aria-label={`Mark ${exercise.name || "exercise"} complete`}
+                                      className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
+                                          {exercise.name}
+                                        </p>
+                                        {(() => {
+                                          const gifKey = exercise.name.toLowerCase().trim();
+                                          const gif = exerciseGifs[gifKey];
+                                          const isExpanded = expandedExerciseDemos.has(gifKey);
+                                          const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                                else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                              }}
+                                              className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                            >
+                                              {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                            </button>
+                                          );
+                                        })()}
+                                      </div>
+                                      <div className="mt-1.5 flex flex-wrap gap-2">
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                          <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
+                                          <span className="text-[var(--muted)]">sets</span>
+                                        </span>
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                          <span className="font-semibold text-[var(--foreground)]">{exercise.reps}</span>
+                                          <span className="text-[var(--muted)]">reps</span>
+                                        </span>
+                                        {restTime && (
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs">
+                                            <span className="font-semibold text-[var(--accent-warm)]">{restTime}</span>
+                                            <span className="text-[var(--muted)]">rest</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                      {(() => {
+                                        const gifKey = exercise.name.toLowerCase().trim();
+                                        const gif = exerciseGifs[gifKey];
+                                        const isExpanded = expandedExerciseDemos.has(gifKey);
+                                        const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                        if (!showGif) return null;
+                                        return (
+                                          <div className="mt-2 space-y-1">
+                                            <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
+                                          </div>
+                                        );
+                                      })()}
+                                      {exercise.notes && !restTime && (
+                                        <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
+                                      )}
+                                      {exercise.notes && restTime && exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").trim() && (
+                                        <p className="mt-1 text-xs text-[var(--muted)] italic">
+                                          {exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim()}
+                                        </p>
+                                      )}
+                                      {isDone && completedAt && (
+                                        <p className="mt-1 text-label text-[var(--accent)]">
+                                          Completed {new Date(completedAt).toLocaleString()}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, exercises: [...d.exercises, { name: "New exercise", sets: "3", reps: "10-12", notes: "rest: 60s" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add exercise</button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Finishers (optional) ── */}
+                      {((day.finishers?.length ?? 0) > 0 || isEditing) && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Finishers (optional)</p>
+                          <div className="space-y-2">
+                            {(day.finishers ?? []).map((exercise, exIndex) => {
+                              const isDone = Boolean(effectiveProgress[exerciseKey(day, exercise, "finisher")]);
+                              const completedAt = effectiveProgress[exerciseKey(day, exercise, "finisher")];
+                              const restTime = parseRest(exercise.notes);
+                              return (
+                                <div key={`finisher-${dayIndex}-${exIndex}`} className={`rounded-lg border p-3 transition-colors ${isDone ? "border-[var(--accent)]/30 bg-[var(--accent)]/5" : "border-[var(--border-soft)] hover:bg-[var(--surface-elevated)]"}`}>
+                                  {isEditing ? (
+                                    <>
+                                      <div className="grid gap-2 sm:grid-cols-[auto_2fr_1fr_1fr_auto] sm:items-center">
+                                        <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="h-4 w-4 accent-[var(--accent)]" />
+                                        <input value={exercise.name} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, name: e.target.value } : x)) }))} placeholder="Exercise" className="input-base rounded px-2 py-1 text-sm" list="workout-exercise-names" />
+                                        <input value={exercise.sets} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, sets: e.target.value } : x)) }))} placeholder="Sets" className="input-base rounded px-2 py-1 text-sm" />
+                                        <input value={exercise.reps} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, reps: e.target.value } : x)) }))} placeholder="Reps" className="input-base rounded px-2 py-1 text-sm" />
+                                        <div className="flex gap-2 justify-end">
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const f = d.finishers ?? []; if (exIndex === 0) return d; const next = [...f]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex - 1, 0, moved); return { ...d, finishers: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === 0}>↑</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => { const f = d.finishers ?? []; if (exIndex >= f.length - 1) return d; const next = [...f]; const [moved] = next.splice(exIndex, 1); next.splice(exIndex + 1, 0, moved); return { ...d, finishers: next }; })} className="btn-secondary px-2 py-1 text-xs" disabled={exIndex === (day.finishers?.length ?? 0) - 1}>↓</button>
+                                          <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).filter((_, i) => i !== exIndex) }))} className="text-xs text-[var(--accent-terracotta)] hover:underline">Delete</button>
+                                        </div>
+                                      </div>
+                                      <input value={exercise.notes ?? ""} onChange={(e) => updateDay(dayIndex, (d) => ({ ...d, finishers: (d.finishers ?? []).map((x, i) => (i === exIndex ? { ...x, notes: e.target.value } : x)) }))} placeholder="Notes" className="mt-2 input-base rounded px-2 py-1 text-xs w-full" />
+                                    </>
+                                  ) : (
+                                    <div className="flex items-start gap-3">
+                                      <input type="checkbox" checked={isDone} onChange={() => toggleComplete(day, exercise, "finisher")} disabled={isViewingFutureDate} aria-label={`Mark ${exercise.name} complete`} className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]" />
+                                      <div className="flex-1 min-w-0">
+                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>{exercise.name}</p>
+                                        <div className="mt-1.5 flex flex-wrap gap-2">
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.sets}</span> <span className="text-[var(--muted)]">sets</span></span>
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs"><span className="font-semibold">{exercise.reps}</span> <span className="text-[var(--muted)]">reps</span></span>
+                                          {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
+                                        </div>
+                                        {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
+                                        {isDone && completedAt && <p className="mt-1 text-label text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {isEditing && (
+                            <button onClick={() => updateDay(dayIndex, (d) => ({ ...d, finishers: [...(d.finishers ?? []), { name: "New finisher", sets: "2", reps: "45s", notes: "" }] }))} className="btn-secondary px-3 py-1 text-sm">+ Add finisher</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Empty state when calendar is open but no workout matches */}
+        {calendarOpen && matchDayToDate(selectedDate) === null && (
+          <div className="card px-5 py-8 text-center">
+            <p className="text-sm text-[var(--muted)]">No workout scheduled for this day.</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">Select a different date or close the calendar to see all days.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

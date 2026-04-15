@@ -1,0 +1,513 @@
+# Refactor
+
+**A multi-agent, multimodal AI system built on the full Amazon Nova portfolio** — 8 Nova features (Lite, Sonic, Canvas, Reel, Act, Embeddings, Web Grounding, Extended Thinking) orchestrated into a cohesive body recomposition app. Dynamic agent routing, bidirectional voice streaming, browser automation, and tool-use agentic loops demonstrate Nova's capabilities as a full-stack AI platform.
+
+Built for the [Amazon Nova AI Hackathon](https://amazon-nova.devpost.com).
+
+**Repository:** [github.com/JStoweYouKnow/recomp](https://github.com/JStoweYouKnow/recomp)
+
+**Judge materials:** [JUDGE_NOTES.md](./JUDGE_NOTES.md) (novel aspects) · [IMPACT.md](./IMPACT.md) (enterprise/community impact evidence) · [API structure](./docs/API_STRUCTURE.md) (domain map, service layer)
+
+## Quick Start for Judges
+
+> **Live demo:** [https://recomp-one.vercel.app](https://recomp-one.vercel.app)
+>
+> 1. Click **"Try pre-seeded demo user"** — no setup needed
+> 2. Dashboard loads instantly with 7 days of sample data
+> 3. Try: **Log a meal** (text/voice/photo) → **The Ref AI coach** (tap The Ref button) → **Weekly review** (Dashboard → Generate)
+> 4. All 8 Nova features work out of the box in demo mode
+>
+> **Health check:** `GET /api/judge/health` — returns status of all integrations (Bedrock, DynamoDB, Act service, wearables)
+>
+> **Act service status:** `GET /api/act/status` — confirms whether Nova Act grocery/nutrition automation is live or falling back to demo mode
+
+---
+
+## Why This Architecture Matters
+
+Most Nova integrations use one or two models for text generation. Refactor demonstrates how the **entire Nova portfolio** can be composed into a single cohesive experience:
+
+- **Multi-agent orchestration** with dynamic routing — the coordinator examines available data and selectively invokes specialist agents, each using Bedrock Converse tool-use loops
+- **Bidirectional voice streaming** via Nova Sonic — real-time audio-in, audio-out for conversational onboarding and an AI coach
+- **Browser automation** via Nova Act — grocery search with one-tap Amazon links; add-to-cart requires local session (see [Nova Act](#nova-act-optional))
+- **Multimodal understanding** — plate photos, receipt scans, and text all processed by Nova Lite
+- **Extended thinking** for complex reasoning during plan generation
+
+The result: a production-grade app that treats Nova not as a text generator, but as an **AI operating system**.
+
+## Impact
+
+**Evidence & methodology:** The pre-seeded demo (Jordan) uses a 7-day synthetic dataset to demonstrate measurable outcomes: 87% macro adherence, 7/10 AI weekly score, 21 meals logged, 7-day streak. Judges can verify by clicking "Try pre-seeded demo" and "Show metrics" in the Evidence card. This illustrates the app's end-to-end impact without requiring weeks of real usage.
+
+**Community:** Refactor removes cost and complexity barriers—no subscription wall, no trainer required. Voice + photo logging (Nova Sonic, Lite) lets users log meals in seconds vs. manual entry. Multimodal embeddings power "similar meals" so repeat logging is one tap. Web-grounding and Act deliver USDA-backed nutrition without separate apps.
+
+**Enterprise:** Wearable integration (Oura, Fitbit, Apple Health) surfaces sleep, activity, and readiness in one place. Single API for corporate wellness dashboards; no per-user licensing from third-party nutrition APIs. DynamoDB sync supports multi-device and team deployments.
+
+**Differentiators:** (1) 4-way meal logging (text, voice, photo, receipt) in one flow—competitors typically offer 1–2. (2) Dynamic caloric budget that adjusts with activity, not a fixed target. (3) Multi-agent weekly review with web-grounded research and wearable synthesis. (4) Nova Act grocery automation → one-tap Amazon links for plan-aligned ingredients.
+
+**Roadmap:** Open source, self-host, mobile PWA, freemium tier, enterprise licensing.
+
+## Innovation Highlights
+
+What makes Refactor novel — both technically and as a product:
+
+- **Dynamic agent routing** — The weekly review coordinator examines available data (meals, wearables) and selectively invokes specialist agents. No wearable data? Skip the biometrics agent, run research-only. No meals logged? Skip meal analysis. This is genuinely adaptive agentic behavior.
+- **Conversational onboarding** — Users can set up their profile via voice conversation with Nova Sonic instead of filling a form. The AI asks questions one at a time, then extracts structured profile data.
+- **Dynamic caloric budget** — Log activity to earn calories, or sedentary time to deduct; budget adjusts in real time (not a fixed daily target).
+- **AI transformation preview** — Upload a full-body photo; Nova Canvas generates an "after" image based on your goal.
+- **Nova Act grocery & nutrition** — The Act service (entrant-built Python bridge deployed on Railway) searches Amazon for diet-plan ingredients and returns one-tap links; add-to-cart requires local session. USDA nutrition via Act or web grounding. If Act is unavailable, grocery falls back to Amazon search links; nutrition to estimated macros.
+- **Multi-agent weekly review** — Coordinator + meal analyst + wellness (wearable + web research) + synthesis; parallel execution with tool-call rounds.
+- **4-way meal logging** — Text, voice (Nova Sonic), photo (Nova Lite vision), and receipt scan in one flow.
+
+## Nova Feature Map (judges)
+
+| Nova capability | Feature | Verify |
+|-----------------|---------|--------|
+| Nova 2 Lite | Plan generation, meal suggestions, The Ref chat, weekly review agents | Onboarding → plan; Meals → suggest; The Ref; Dashboard → Generate |
+| Nova 2 Sonic | Voice coach, voice meal logging | The Ref → hold mic; Meals → Log meal → Voice log |
+| Nova Lite + vision | Photo meal analysis, receipt scan | Meals → Snap plate; Receipt tab |
+| Nova Canvas | Transformation preview | Dashboard → See your transformation → upload photo |
+| Nova Reel | Progress reel from body scans | Milestones → Body scan → Generate progress reel (≥2 scans) |
+| Nova Act | Grocery links, USDA nutrition | Shopping list → search; Meals → Auto-fill nutrition |
+| Embeddings | Similar meals (one-tap re-log) | Meals → tap similar meal suggestion |
+| Web grounding | Research card, nutrition fallback | Dashboard → Research; or meal lookup when Act unavailable |
+| Extended thinking | Plan generation reasoning | Onboarding → submit; plan uses `invokeNovaWithExtendedThinking` |
+
+**API check:** `curl https://recomp-one.vercel.app/api/judge/health` — all features should show `"live"`.
+
+## Judge Access
+
+- **Live demo**: [https://recomp-one.vercel.app/](https://recomp-one.vercel.app/). To deploy your own: [Deploy to Vercel](#deployment-vercel) — `vercel --prod` (requires `vercel login`). Add the deployment URL to your Devpost submission. Configure `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` in Vercel dashboard. **For judge demos:** "Try pre-seeded demo" sets an auth cookie via `/api/auth/demo`, so AI routes work even if `REQUIRE_AUTH_FOR_AI=true`; leave it unset/false for best experience.
+- **Repo access (if private)**: Add `testing@devpost.com` and `Amazon-Nova-hackathon@amazon.com` as collaborators (GitHub → Settings → Collaborators), or make the repo public.
+- **AWS**: For a hosted demo, configure Bedrock credentials in the deployment environment. For local evaluation, judges can run `npm run dev` with their own AWS credentials (see Setup).
+- **Demo mode vs logged-in:** Without auth (first visit or cleared cookies), data stays in localStorage and a "Demo mode" banner appears. Complete onboarding to register; then data syncs to DynamoDB. Judges can use "Try pre-seeded demo" for instant access with sample data.
+- **Judge reliability mode**: If external services (Act, Reel, DynamoDB) are flaky during evaluation, set `JUDGE_MODE=true` in Vercel env to force deterministic fallback. Demos then run without Act service, S3, or DynamoDB. Verify at `/api/judge/health`. The app also degrades gracefully when Act fails—grocery returns search links; nutrition returns estimated macros.
+- **Submission**: Demo video (~3 min, #AmazonNova), live URL, repo access, Devpost form.
+
+### 2-minute golden path (judges)
+
+1. Open app and click **Try pre-seeded demo user (instant dashboard)** on landing.
+2. Dashboard loads with Jordan's 7-day data. Click **Show metrics** in the "Evidence & Results" card.
+3. Open Meals and add one text meal.
+4. Return to Dashboard and click **Generate** in Weekly AI Review (multi-agent demo).
+5. Open The Ref (👨‍⚖️) and send one text message, or switch to **Voice** and hold the mic for Nova Sonic.
+
+If optional integrations are unavailable, set `JUDGE_MODE=true` for deterministic fallback. Verify with `GET /api/judge/health`.
+
+### How to Evaluate (judges)
+
+Suggested flow to assess all Nova features (~5–10 min):
+
+1. **Onboarding** — Fill the form and submit. Plan generation uses Nova Lite with extended thinking (`invokeNovaWithExtendedThinking` in `src/lib/nova.ts`) for complex multi-day plan reasoning.
+2. **Dashboard** — "Today at a Glance" (budget, macros, today's workout/diet), unified calendar with diet/workout popups and "Edit plan," transformation preview (upload photo → "after" image via Nova Canvas).
+3. **Meals / Workouts** — Use the calendar to pick a date; view or edit that day's meals or workout. On Workouts, use "Show demo" / "Hide demo" for inline exercise GIFs.
+4. **Meals — Log a meal** — Try **Voice log** (Nova Sonic) or **Snap plate** (Nova Lite image), or **Auto-fill nutrition** (Nova Act or web grounding fallback).
+5. **The Ref** — Click the 👨‍⚖️ button; chat with the AI coach (text or voice via Nova Sonic).
+6. **Weekly review** — Dashboard → "Generate" in the Weekly AI Review card (multi-agent orchestration).
+7. **Adjust** — Navigate to Adjust; add feedback and run plan adjustments (Nova Lite).
+8. **Wearables** — Connect Oura/Fitbit or import health data (optional).
+
+## Features
+
+- **Personalized plans** — AI-generated diet and workout plans based on fitness level, goals, restrictions, and more
+- **Unified calendar** — Same calendar on Dashboard, Meals, and Workouts; date-based filtering; single-day workout view; "Edit plan" from calendar popups
+- **Today at a Glance** — Dashboard hero: caloric budget bar, macro pills, today’s workout and diet mini-cards
+- **Exercise demo GIFs** — Inline demos with target muscles on dashboard and Workouts tab; show/hide per exercise
+- **Calorie & macro tracking** — Daily targets and progress bars for calories, protein, carbs, and fat
+- **Meal logging (4 ways)** — Text, voice (Nova Sonic), photo analysis, and receipt scanning
+- **The Ref AI Coach** — Conversational fitness coach with text + voice modes (bidirectional Nova Sonic streaming)
+- **Agentic Weekly Review** — Multi-agent autonomous analysis: meal patterns, wearable trends, web research, and synthesized recommendations
+- **Dynamic plan adjustments** — AI-powered suggestions based on progress, feedback, and wearable data
+- **Receipt scanning** — Photograph a grocery receipt, Nova extracts food items with estimated macros
+- **Wearable connectivity** — Oura Ring, Fitbit, Apple Watch (HealthKit bridge), Health Connect (import)
+- **Nova Act automation** — Grocery search → Amazon product links; USDA nutrition lookup. Add-to-cart in cloud = links; true automation requires local session.
+- **Nova Labs** — Explore Canvas image generation, Reel video generation, multimodal embeddings, and web grounding
+- **DynamoDB persistence** — Server-side storage with cookie-based auth; falls back to localStorage when offline
+- **Demo mode indicator** — When using the app without auth (localStorage only), a banner shows "Demo mode — Data stored locally"
+- **Offline support** — Error boundaries and local-first design
+- **Accessibility** — Skip link, landmarks (banner, main, nav), aria-labels on interactive elements, focus management
+
+## Tech Stack
+
+- **Next.js 16** (App Router, React 19)
+- **Amazon Nova 2 Lite** — Plan generation, meal suggestions, photo analysis, The Ref coach, weekly review agent
+- **Amazon Nova 2 Sonic** — Bidirectional streaming voice for The Ref chat and meal logging
+- **Amazon Nova Canvas** — AI image generation
+- **Amazon Nova Reel** — AI video generation (requires S3)
+- **Amazon Nova Multimodal Embeddings** — Text/image similarity
+- **Amazon Nova Act** — Browser UI automation (Python SDK, with demo-mode fallback)
+- **Amazon DynamoDB** — Single-table design for user profiles, meals, plans, milestones, wearable data
+- **TypeScript**, **Tailwind CSS v4**, **Zod** validation
+- **Vitest** + Testing Library for unit tests
+
+## Prerequisites
+
+1. **AWS account** with access to Amazon Bedrock
+2. **Nova 2 Lite** model enabled in Bedrock ([Bedrock Console](https://console.aws.amazon.com/bedrock) → Model access)
+3. **AWS credentials** configured (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
+4. **DynamoDB table** (optional — app works without it using localStorage)
+
+## Setup
+
+```bash
+cd recomp
+npm install
+```
+
+Create a `.env.local` file:
+
+```
+AWS_REGION=us-east-1
+DYNAMODB_TABLE_NAME=RefactorTable
+
+# Optional — Web grounding (research / nutrition lookup)
+BEDROCK_NOVA_WEB_GROUNDING_MODEL_ID=us.amazon.nova-2-lite-v1:0
+# IAM: add bedrock:InvokeTool on arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding
+
+# Optional — shared rate limiting (recommended for production with family/multiple users)
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=xxx
+
+# Optional
+NOVA_REEL_S3_BUCKET=your-bucket-name
+FITBIT_CLIENT_ID=...
+FITBIT_CLIENT_SECRET=...
+APPLE_HEALTH_INGEST_KEY=...
+NOVA_ACT_API_KEY=...
+JUDGE_MODE=false
+
+# Optional — require auth for AI routes (rico, weekly review, meals/suggest, research, images, video, embeddings)
+# Set to true in production to prevent anonymous abuse of Bedrock. Default false for hackathon demo compatibility.
+REQUIRE_AUTH_FOR_AI=false
+
+# Optional — session cookie Domain= so www and apex share login (see README "Cross-device data")
+# AUTH_COOKIE_DOMAIN=.yourdomain.com
+```
+
+Configure AWS credentials (e.g. `~/.aws/credentials` or environment variables).
+
+If your Bedrock account requires inference profiles (instead of on-demand model IDs), set:
+
+```
+BEDROCK_NOVA_LITE_MODEL_ID=us.amazon.nova-2-lite-v1:0
+```
+
+You can also use a full inference profile ARN.
+
+### DynamoDB Table (optional)
+
+1. Create IAM user with DynamoDB permissions (`dynamodb:*` on `RefactorTable`).
+2. Run: `export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1 && npm run dynamo:create-table`
+3. Add `DYNAMODB_TABLE_NAME=RefactorTable` to Vercel env.
+
+**Schema:** Single-table design. PK/SK patterns: `USER#{userId}#PROFILE`, `USER#{userId}#MEAL#{date}#{id}`, etc. GSI1 (GSI1PK, GSI1SK) for alternative access patterns. See [ARCHITECTURE.md](./ARCHITECTURE.md). To add GSI1 to an existing table: `npx tsx scripts/add-gsi1.ts`.
+
+### Nova Act (optional)
+
+Nova Act powers nutrition lookup and grocery automation.
+
+**API key (required):** Get from [nova.amazon.com/act → Dev Tools](https://nova.amazon.com/act?tab=dev_tools). Add `NOVA_ACT_API_KEY` to `.env.local`.
+
+**Local:** `pip install nova-act`. Nutrition/grocery work via Python subprocess. Add-to-cart needs one-time `scripts/setup_amazon_login.py`; set `NOVA_ACT_USER_DATA_DIR`.
+
+**Production:** Act does not run on Vercel (no Python). Deploy `act-service/` to Railway/Render:
+
+```bash
+cd recomp && railway login && railway up
+railway variable set NOVA_ACT_API_KEY=your-key
+```
+
+Generate domain in Railway → Settings → Networking. Add `ACT_SERVICE_URL` (and `NEXT_PUBLIC_ACT_SERVICE_URL` for direct calls) in Vercel. If you see CORS errors, redeploy the act-service (`railway up`); it allows `recomp-one.vercel.app` and all `*.vercel.app` deployments containing "recomp". Add `CORS_ORIGINS=https://your-domain.com` on Railway for custom domains.
+
+**Troubleshooting:** "Authentication Failed" → set `NOVA_ACT_API_KEY`. "Python not found" → set `ACT_PYTHON` to full path. Nutrition returns estimated → install `nova-act`, restart.
+
+### Known Limitations
+
+| Feature | Works without | Notes |
+|---------|----------------|-------|
+| **Demo mode** | Yes | Full app with localStorage; no server sync |
+| **Plan generation** | Bedrock credentials | Requires AWS + Nova Lite; fails with clear error if missing |
+| **Meal logging** | Yes | Text always works; voice/photo need Bedrock |
+| **Nutrition lookup** | Yes | Act → USDA when `nova-act` installed; otherwise web grounding or estimated fallback |
+| **Grocery Act** | `nova-act` + profile | Without: returns demo results; add-to-cart needs Amazon login setup |
+| **Nova Reel (video)** | S3 bucket | Set `NOVA_REEL_S3_BUCKET` for live generation; without it, returns demo video fallback |
+| **Transformation preview** | Bedrock + Nova Canvas | Upload photo → generate "after" image |
+| **DynamoDB sync** | Optional | App works with localStorage only; table needed for cross-device sync |
+| **Judge reliability mode** | Yes | Set `JUDGE_MODE=true` to force deterministic fallback for optional integrations and use `/api/judge/health` to verify status |
+| **Web grounding** | IAM + US CRIS profile | Requires `bedrock:InvokeTool` on `arn:aws:bedrock::{account}:system-tool/amazon.nova_grounding`; uses `us.amazon.nova-2-lite-v1:0` by default. Falls back to Nova Lite if unavailable. |
+
+### Cross-device data (mobile browser vs desktop)
+
+Data stays in **this browser’s `localStorage`** until the app can load your account from the server. The server copy is tied to the **`recomp_uid` httpOnly cookie** (set when you register, log in, or use the demo button).
+
+**Single deployment (e.g. `refactor-one.vercel.app` on both phone and laptop):** You do **not** need `AUTH_COOKIE_DOMAIN`—that hostname is already one origin. Phone Safari and desktop Chrome still have **separate** `localStorage` and cookies until you **sign in (or use the demo button) on each device**; the app then loads the same DynamoDB snapshot. If `DYNAMODB_TABLE_NAME` is unset on that Vercel project, there is no server copy to share—each browser only keeps its own local data.
+
+If phone and computer show different dashboards:
+
+1. **Sign in on both** — Each browser needs its own session cookie; local progress before sign-in does not magically appear on the other device.
+2. **Use one canonical URL** — `https://app.example.com` and `https://www.app.example.com` are different sites (different cookies and localStorage). Pick one hostname in DNS / Vercel and redirect the other.
+3. **Optional: shared cookie across subdomains** — If you intentionally serve both `example.com` and `www.example.com`, set **`AUTH_COOKIE_DOMAIN=.example.com`** (leading dot is fine) in Vercel env so the session cookie is sent on both. Only set this when you control the whole zone; leave unset for single-host deployments.
+4. **Safari / Private mode** — ITP or private browsing can isolate storage; sign in again if sync looks empty.
+
+Sync calls use `credentials: "include"` so cookies are always sent on same-origin requests.
+
+**“Today at a glance” is zero on one device but not the other:** Each meal is stored with a **calendar date** (`YYYY-MM-DD`) from the device where it was logged. The dashboard only sums meals whose date equals **this browser’s local “today”**. If your phone is already on the next calendar day (or behind) relative to where you logged, totals for “today” on the phone can be zero while the other device still shows intake — open **Meals** and select the date that has your entries.
+
+**Desktop shows meals but phone does not (same account):** Meals must exist in **DynamoDB**, not only in one browser’s `localStorage`. After loading, the app **uploads merged local data** following a successful server fetch, and **flushes sync when you leave the tab** so pending writes are less likely to be lost. Open the app once on the device that has the full meal log (while signed in) so it can backfill the server, then refresh on the other device.
+
+**Macro targets & workouts:** Daily macro targets and the exercise list live in the same **`plan`** item as your generated week. **Completed sets** use **`workoutProgress`**. Both are part of `/api/data/sync`. **Adaptive TDEE** (`METABOLIC_MODEL`) and **Milestones measurement targets** (weight / body fat / muscle goals, stored on `META`) are now included in that sync as well; they were previously easy to leave only in `localStorage`.
+
+**Web grounding IAM:** Add this statement to your IAM policy (replace `526015377909` with your AWS account ID):
+
+```json
+{
+  "Effect": "Allow",
+  "Action": ["bedrock:InvokeTool"],
+  "Resource": ["arn:aws:bedrock:526015377909:system-tool/amazon.nova_grounding"]
+}
+```
+
+**Amazon login for add-to-cart:** To add grocery items to your Amazon cart, Nova Act needs a persisted browser profile with your login. One-time setup:
+
+```bash
+# Nova Act API key required (get from nova.amazon.com/act → Dev Tools)
+export NOVA_ACT_API_KEY=your-key-here
+
+# Create profile dir and log in (browser will open)
+export NOVA_ACT_USER_DATA_DIR=~/nova-act-amazon-profile
+python3 scripts/setup_amazon_login.py
+# Log into Amazon in the browser, then press Enter
+
+# Add to .env so the app reuses the profile
+echo "NOVA_ACT_USER_DATA_DIR=$HOME/nova-act-amazon-profile" >> .env
+```
+
+## Run
+
+```bash
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Tests
+
+```bash
+npm test            # run once
+npm run test:watch  # watch mode
+```
+
+## Deployment (Vercel)
+
+```bash
+# First time: install and log in
+npm install -g vercel
+vercel login
+
+# Deploy to production
+vercel --prod
+```
+
+Set environment variables in the [Vercel dashboard](https://vercel.com/dashboard) → Project → Settings → Environment Variables:
+
+- `AWS_REGION` (e.g. `us-east-1`)
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- Optionally: `DYNAMODB_TABLE_NAME`, `NOVA_REEL_S3_BUCKET`
+
+Add the deployment URL to your Devpost submission and to the Judge Access section above.
+
+### Scalability & Cost
+
+- **Serverless**: Next.js API routes run on Vercel (60s Hobby, 300s Pro). Plan generation and weekly review may take 30–60s; Pro recommended for demos.
+- **Bedrock costs**: Nova Lite, Sonic, Canvas, Reel billed per token/image/video. Typical: ~$0.01–0.05 per plan, ~$0.001 per meal suggestion.
+- **DynamoDB**: On-demand capacity; set billing alarms.
+- **Troubleshooting**: AI 401 → unset `REQUIRE_AUTH_FOR_AI` or use "Try pre-seeded demo". Plan/voice disabled → configure AWS credentials. Without credentials → `JUDGE_MODE=true` for fallbacks.
+
+### Performance Benchmarks
+
+Measured on Vercel Pro (us-east-1), Nova 2 Lite, typical payloads:
+
+| Operation | Latency | Notes |
+|-----------|---------|-------|
+| **Plan generation** (extended thinking) | 15–45s | Depends on profile complexity; extended thinking adds ~10s |
+| **Meal suggestion** | 2–4s | Single Nova Lite call |
+| **Photo analysis** (plate → macros) | 3–6s | Image upload + Nova Lite vision |
+| **Receipt scanning** | 4–8s | Multi-item extraction |
+| **Voice parse** (transcript → macros) | 1–3s | Text-only Nova Lite call |
+| **The Ref AI coach** (text) | 2–5s | Context-aware single turn |
+| **The Ref voice** (Nova Sonic streaming) | <1s first token | Bidirectional streaming; latency = time-to-first-audio |
+| **Weekly review** (multi-agent) | 20–60s | 3–4 agent rounds with tool calls; wearable + web research adds time |
+| **Nova Canvas** (image generation) | 8–15s | Single image |
+| **Nova Act** (grocery search) | 30–90s | Browser automation; Railway cold start adds ~15s |
+| **Dashboard load** (hydrated) | <200ms | localStorage primary; server sync in background |
+
+**Vercel Hobby vs Pro:** Plan generation and weekly review may timeout on Hobby tier (60s limit). Pro tier (300s limit) recommended for demos. `maxDuration = 60` configured on long-running routes.
+
+## Amazon Nova Integration — All 8 Features
+
+Refactor integrates the full Amazon Nova portfolio:
+
+| # | Feature | Model/Service | Where |
+|---|---------|---------------|-------|
+| 1 | **Nova 2 Sonic (Voice)** | `amazon.nova-sonic-v1:0` | The Ref chat — real-time bidirectional streaming: audio chunks stream to Bedrock during recording, response text/audio streamed back. Voice meal logging in Meals tab. |
+| 2 | **Multimodal Embeddings** | `amazon.nova-2-multimodal-embeddings-v1:0` | Nova Labs — embed text for similarity/RAG |
+| 3 | **Nova 2 Lite Image Input** | `amazon.nova-2-lite-v1:0` | Snap plate in Meals → photo analysis & macro estimates. Receipt scanning → grocery item extraction. |
+| 4 | **Web Grounding** | Nova 2 Lite + `nova_grounding` | `/api/research` — search web for nutrition/fitness info. Used by weekly review agent. |
+| 5 | **Nova Canvas** | `amazon.nova-canvas-v1:0` | Nova Labs — generate meal/workout inspiration images |
+| 6 | **Nova Reel** | `amazon.nova-reel-v1:1` | Nova Labs — generate 6s exercise demo videos (requires S3) |
+| 7 | **Extended Thinking** | Nova 2 Lite reasoning config | Plan generation uses high reasoning effort |
+| 8 | **Nova Act** | Nova Act SDK (Python) | Nova Labs — browser automation for grocery search & USDA nutrition lookup. Demo-mode fallback when SDK not installed. |
+
+### Agentic Architecture
+
+The weekly review uses a **multi-agent orchestration** pattern:
+
+- **Coordinator Agent** — Routes tasks and synthesizes the final review
+- **Meal Analysis Agent** — Analyzes meal patterns, macro adherence, consistency
+- **Wellness Agent** — Reviews wearable data (sleep, activity, heart rate trends) and researches current guidelines via web grounding
+- **Synthesis Agent** — Generates actionable recommendations from all agent outputs
+
+Each agent uses Nova 2 Lite Converse API with tool use. The coordinator orchestrates up to 5 rounds of tool calls before producing the final review.
+
+### Wearables
+
+| Device | Method |
+|--------|--------|
+| **Oura Ring** | Personal Access Token from cloud.ouraring.com |
+| **Fitbit** | OAuth (set `FITBIT_CLIENT_ID`, `FITBIT_CLIENT_SECRET`) |
+| **Apple Watch** | HealthKit SDK bridge sync (iOS companion) or JSON import |
+| **Android / Health Connect** | Import export, or use Fitbit if your watch syncs there |
+| **Garmin** | Garmin Health API (developer approval required) — import supported |
+
+### Cooking & Nutrition App Integrations
+
+| App | Method |
+|-----|--------|
+| **Cronometer** | JSON/CSV export → Import, or webhook |
+| **MyFitnessPal** | CSV diary export → Import, or webhook |
+| **Yummly** | Webhook integration |
+| **Whisk** | Webhook integration |
+| **Mealime** | JSON export → Import |
+| **Paprika** | Recipe export → Import |
+| **LoseIt** | CSV export → Import |
+| **Custom** | Any app via webhook (HMAC-SHA256) or paste/upload |
+
+Cooking app data is parsed by Nova AI to extract meal names, macro breakdowns (calories, protein, carbs, fat, fiber, sugar, sodium), and recipe metadata. Set `COOKING_WEBHOOK_SECRET` for server-to-server integrations.
+
+### API Routes
+
+**Auth & Data**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/auth/register` | POST | Create user profile, set auth cookie |
+| `/api/auth/me` | GET | Auth status (`authenticated`, `profile`). Used for demo-mode detection. |
+| `/api/data/sync` | POST | Sync localStorage to DynamoDB |
+
+**Plans**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/plans/generate` | POST | Generate diet + workout plan (extended thinking) |
+| `/api/plans/adjust` | POST | Dynamic plan adjustments |
+
+**Meals**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/meals/suggest` | POST | AI meal suggestions |
+| `/api/meals/analyze-photo` | POST | Photo → macro estimates (Nova Lite image) |
+| `/api/meals/analyze-receipt` | POST | Receipt image → grocery items + nutrition |
+| `/api/meals/lookup-nutrition-web` | POST | Web grounding fallback for nutrition when Act unavailable |
+
+**Voice**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/voice/parse` | POST | Parse spoken meal → structured data (Nova Lite) |
+| `/api/voice/sonic` | POST | Nova Sonic voice conversation (single turn) |
+| `/api/voice/sonic/stream` | POST | Bidirectional streaming voice (The Ref + meal logging) |
+
+**AI Coach & Agents**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/rico` | POST | The Ref AI coach text conversation |
+| `/api/agent/weekly-review` | POST | Multi-agent autonomous weekly analysis |
+
+**Nova Labs**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/images/generate` | POST | Nova Canvas image generation |
+| `/api/images/after` | POST | AI "after" image from full-body photo + goal (transformation preview) |
+| `/api/video/generate` | POST | Nova Reel video generation (S3 for live; demo fallback when unconfigured) |
+| `/api/embeddings` | POST | Nova Multimodal Embeddings |
+| `/api/research` | POST | Web grounding for nutrition/fitness info |
+
+**Nova Act**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/act/grocery` | POST | Grocery search automation (demo-mode fallback) |
+| `/api/act/nutrition` | POST | USDA nutrition lookup automation |
+| `/api/act/sync` | POST | Act feature status and capabilities |
+
+**Cooking App Integrations**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/cooking/connect` | POST/DELETE | Connect or disconnect a cooking/nutrition app |
+| `/api/cooking/webhook` | POST | Receive meal data via webhook (HMAC-signed) |
+| `/api/cooking/import` | POST | Import CSV/JSON/text exports (Nova AI parsing) |
+
+**Wearables**
+| Route | Method | Description |
+|-------|--------|-------------|
+| `/api/wearables/oura/connect` | POST | Connect Oura Ring |
+| `/api/wearables/oura/data` | GET | Fetch Oura data |
+| `/api/wearables/oura/disconnect` | POST | Disconnect Oura |
+| `/api/wearables/fitbit/auth` | GET | Fitbit OAuth flow |
+| `/api/wearables/fitbit/callback` | GET | Fitbit OAuth callback |
+| `/api/wearables/fitbit/data` | GET | Fetch Fitbit data |
+| `/api/wearables/fitbit/disconnect` | POST | Disconnect Fitbit |
+| `/api/wearables/apple/healthkit` | POST | Apple HealthKit SDK ingest bridge |
+| `/api/wearables/health/import` | POST | Health Connect / generic health data import |
+
+**Architecture:** See [ARCHITECTURE.md](./ARCHITECTURE.md) for system diagrams and data flow.
+
+### Project Structure
+
+```
+src/
+├── app/
+│   ├── page.tsx           # Main app shell, routing, state
+│   └── api/               # API routes
+├── components/
+│   ├── LandingPage.tsx    # Onboarding form
+│   ├── Dashboard.tsx      # Caloric budget, diet/workout preview, weekly review
+│   ├── MealsView.tsx      # Meal logging, voice/photo/receipt, cooking sync
+│   ├── WorkoutPlannerView.tsx
+│   ├── ProfileView.tsx
+│   ├── WearablesView.tsx
+│   ├── AdjustView.tsx
+│   ├── MilestonesView.tsx
+│   └── RicoChat.tsx
+└── lib/
+    ├── types.ts
+    ├── storage.ts         # localStorage + DynamoDB sync
+    ├── logger.ts          # Structured logging for API routes
+    └── ...
+```
+
+### Security
+
+- **Rate limiting** on all API routes (fixed-window). Uses **Upstash Redis** when `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are set; otherwise in-memory (per-instance on Vercel). For production with multiple users, [create an Upstash Redis](https://console.upstash.com/redis) and add the env vars to Vercel.
+- **Judge mode** (`JUDGE_MODE=true`): Forces deterministic fallbacks for Nova Act, Nova Reel, DynamoDB, and wearables. Use when optional integrations are unavailable (e.g. no Act service, no S3 for Reel). Ensures demos run reliably without external dependencies. Check status at `GET /api/judge/health`.
+- **Zod schema validation** on registration and voice input
+- **Cookie-based auth** (httpOnly `recomp_uid` cookie)
+- **Input sanitization** on AI context payloads
+- **Error boundaries** and graceful fallbacks throughout
+
+## Hackathon Category
+
+**Freestyle** (recommended) — Refactor integrates all 8 Nova features in one cohesive app. Breadth of integration is the differentiator.
+
+**Agentic AI** (alternative) — The weekly review uses a multi-agent orchestration pattern where a coordinator delegates to specialist agents (meal analyst, wellness, synthesizer), each using Nova tool-use to autonomously gather and analyze data.
+
+## License
+
+MIT

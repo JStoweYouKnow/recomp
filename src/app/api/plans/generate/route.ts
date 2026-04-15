@@ -1,0 +1,664 @@
+import { NextRequest, NextResponse } from "next/server";
+import { invokeNovaWithExtendedThinking } from "@/lib/nova";
+import { logError, logInfo, withRequestLogging } from "@/lib/logger";
+import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
+import { calculateMacros } from "@/lib/macro-calculator";
+import { v4 as uuidv4 } from "uuid";
+import { getUserId } from "@/lib/auth";
+import {
+  fixedWindowRateLimit,
+  getClientKey,
+  getRateLimitHeaderValues,
+  getRequestIp,
+} from "@/lib/server-rate-limit";
+import { z } from "zod";
+
+/** Allow plan generation (extended thinking) to complete within Vercel Hobby 60s limit */
+export const maxDuration = 60;
+const PLAN_TIMEOUT_MS = 55_000;
+const WEEK_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+const SYSTEM_PROMPT = `You are an expert fitness and nutrition coach powered by Amazon Nova AI. Your role is to create personalized, safe, and effective diet and workout plans.
+
+Guidelines:
+- Use evidence-based nutrition and exercise science
+- Adapt plans to fitness level: beginner (minimal experience), intermediate (6+ months), advanced (2+ years), athlete (competitive)
+- Goals: lose_weight (calorie deficit), maintain (balance), build_muscle (surplus + protein), improve_endurance (cardio focus)
+- Workout location: home (minimal space, limited equipment), gym (full access), outside (parks, running, bodyweight, portable)
+- Workout frequency: respect workoutDaysPerWeek (2–7); create exactly that many workout days
+- Preferred time (morning/afternoon/evening/flexible): optional scheduling hints in workoutTips
+- Design exercises ONLY using the equipment listed; avoid exercises requiring equipment the user does not have
+- For exercises, use ONLY specific, real exercise names (e.g. "Barbell Bench Press", "Romanian Deadlift", "Goblet Squat", "Pull-Up"). Never use vague placeholders like "Compound lift variation", "Accessory movement", "Mobility flow", or "Conditioning finisher"
+- Account for dietary restrictions and injuries
+- Be encouraging and realistic
+- Format responses as valid JSON only, no markdown or extra text
+
+Diet must be tailored to the user's goal:
+- lose_weight: High-volume, lower-calorie meals. Emphasize lean protein, fiber, vegetables. Avoid calorie-dense snacks. Specific foods: salads, grilled chicken, eggs, Greek yogurt, vegetables, berries, nuts in small portions.
+- maintain: Balanced, varied meals. Sustainable eating. Mix protein, carbs, and fat. Include favorite foods in moderation.
+- build_muscle: Higher protein (1.6–2.2g/kg), calorie surplus, carbs around training. Specific: oatmeal + eggs, chicken rice bowls, salmon/steak with potatoes, protein shakes, cottage cheese. Spread protein across 4–5 meals.
+- improve_endurance: Carbohydrate-focused for fuel. Oatmeal, pasta, rice, bananas, energy bars. Moderate protein; carbs before and after long sessions. Include electrolytes for long workouts.`;
+
+/** Extract outermost JSON object from LLM output (handles markdown, extra text) */
+function extractJsonObject(text: string): string {
+  // Strip markdown code blocks
+  let s = text.replace(/^[\s\S]*?```(?:json)?\s*\n?/i, "").replace(/\n?```[\s\S]*$/i, "").trim();
+  const start = s.indexOf("{");
+  if (start < 0) throw new Error("No JSON object found");
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let quote = "";
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === quote) inString = false;
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      inString = true;
+      quote = c;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") {
+      depth--;
+      if (depth === 0) return s.slice(start, i + 1);
+    }
+  }
+  throw new Error("Unbalanced braces in JSON");
+}
+
+/** Remove trailing commas before } or ] (common LLM mistake) */
+function removeTrailingCommas(json: string): string {
+  return json.replace(/,(\s*[}\]])/g, "$1");
+}
+
+/** Repair common LLM JSON malformations (conservative - avoid corrupting valid JSON) */
+function repairLlmJson(json: string): string {
+  return removeTrailingCommas(json);
+}
+
+/** Attempt to close truncated JSON by balancing braces/brackets */
+function closeTruncatedJson(json: string): string {
+  let depth = { brace: 0, bracket: 0 };
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (c === "\\") escape = true;
+      else if (c === '"') inString = false;
+      continue;
+    }
+    if (c === '"') { inString = true; continue; }
+    if (c === "{") depth.brace++;
+    else if (c === "}") depth.brace--;
+    else if (c === "[") depth.bracket++;
+    else if (c === "]") depth.bracket--;
+  }
+  // If we ended inside a string, close it
+  let suffix = "";
+  if (inString) suffix += '"';
+  // Close remaining open brackets/braces
+  for (let i = 0; i < depth.bracket; i++) suffix += "]";
+  for (let i = 0; i < depth.brace; i++) suffix += "}";
+  return json + suffix;
+}
+
+/** Parse JSON with tolerance for common LLM malformations */
+function parsePlanJsonTolerant(raw: string): {
+  dailyTargets: Macros;
+  dietDays: { day: string; meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[] }[];
+  workoutDays: {
+    day: string;
+    focus: string;
+    warmups?: { name: string; sets: string; reps: string; notes?: string }[];
+    exercises: { name: string; sets: string; reps: string; notes?: string }[];
+    finishers?: { name: string; sets: string; reps: string; notes?: string }[];
+  }[];
+  dietTips: string[];
+  workoutTips: string[];
+} {
+  const extracted = extractJsonObject(raw);
+  const repaired = repairLlmJson(extracted);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(repaired);
+  } catch {
+    // Second attempt: try closing truncated JSON
+    try {
+      const closed = closeTruncatedJson(repaired);
+      parsed = JSON.parse(closed);
+    } catch {
+      throw new Error("JSON parse failed after repair attempts");
+    }
+  }
+
+  // Validate and coerce with Zod
+  const MacrosSchema = z.object({
+    calories: z.coerce.number().min(0).max(10000),
+    protein: z.coerce.number().min(0).max(500),
+    carbs: z.coerce.number().min(0).max(1000),
+    fat: z.coerce.number().min(0).max(500),
+  });
+  const MealSchema = z.object({
+    mealType: z.string().min(1).default("Meal"),
+    description: z.string().default(""),
+    calories: z.coerce.number().min(0).max(2000),
+    protein: z.coerce.number().min(0).max(200),
+    carbs: z.coerce.number().min(0).max(300),
+    fat: z.coerce.number().min(0).max(100),
+  });
+  const ExerciseSchema = z.object({
+    name: z.string().min(1).default("Exercise"),
+    sets: z.union([z.string(), z.number()]).transform(String),
+    reps: z.union([z.string(), z.number()]).transform(String),
+    notes: z.union([z.string(), z.undefined()]).optional(),
+  });
+  const WorkoutDaySchema = z.object({
+    day: z.string().min(1),
+    focus: z.string().default("Workout"),
+    warmups: z.array(ExerciseSchema).optional().default([]),
+    exercises: z.array(ExerciseSchema).min(1),
+    finishers: z.array(ExerciseSchema).optional().default([]),
+  });
+  const DietDaySchema = z.object({
+    day: z.string().min(1),
+    meals: z.array(MealSchema),
+  });
+  const PlanSchema = z.object({
+    dailyTargets: MacrosSchema,
+    dietDays: z.array(DietDaySchema),
+    workoutDays: z.array(WorkoutDaySchema),
+    dietTips: z.array(z.string()).default([]),
+    workoutTips: z.array(z.string()).default([]),
+  });
+
+  // Normalize snake_case keys from LLM to camelCase
+  const normalized = normalizePlanKeys(parsed);
+
+  const result = PlanSchema.safeParse(normalized);
+  if (!result.success) {
+    throw new Error(`Plan validation failed: ${result.error.message}`);
+  }
+  return result.data;
+}
+
+/** Map snake_case keys to camelCase for schema compatibility */
+function normalizePlanKeys(obj: unknown): unknown {
+  if (obj === null || typeof obj !== "object") return obj;
+  const keyMap: Record<string, string> = {
+    daily_targets: "dailyTargets",
+    diet_days: "dietDays",
+    workout_days: "workoutDays",
+    diet_tips: "dietTips",
+    workout_tips: "workoutTips",
+    meal_type: "mealType",
+  };
+  const map = (o: unknown): unknown => {
+    if (Array.isArray(o)) return o.map(map);
+    if (o === null || typeof o !== "object") return o;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(o)) {
+      const newKey = keyMap[k] ?? k;
+      out[newKey] = map(v);
+    }
+    return out;
+  };
+  return map(obj);
+}
+
+type MealOpt = string | string[];
+const GOAL_MEALS: Record<UserProfile["goal"], { breakfast: MealOpt; lunch: MealOpt; dinner: MealOpt; snack: MealOpt; tips: string[] }> = {
+  lose_weight: {
+    breakfast: [
+      "High-volume, protein-rich: eggs or Greek yogurt with veggies and berries to stay full on fewer calories",
+      "Egg white veggie omelet with spinach and tomato, or a smoothie with protein powder and berries",
+      "Cottage cheese with cucumber, cherry tomatoes, and a sprinkle of everything bagel seasoning",
+    ],
+    lunch: [
+      "Large salad with grilled chicken or fish, light dressing; add quinoa or chickpeas for fiber and satiety",
+      "Turkey lettuce wraps with hummus and shredded veggies; side of apple slices",
+      "White fish or shrimp with a big portion of roasted vegetables and a small serving of brown rice",
+    ],
+    dinner: [
+      "Lean protein (chicken breast, white fish) with steamed veggies and a small portion of whole grains",
+      "Grilled chicken or tofu stir-fry with lots of vegetables and minimal oil",
+      "Baked cod or turkey meatballs with zucchini noodles and a light marinara",
+    ],
+    snack: [
+      "Vegetable sticks and hummus, or a small handful of almonds with an apple",
+      "Greek yogurt with berries, or rice cakes with peanut butter",
+      "Bell pepper slices with guacamole, or a small portion of edamame",
+    ],
+    tips: [
+      "Prioritize protein and fiber at each meal—they keep you full on fewer calories.",
+      "Use smaller plates; eat slowly. Drink water before meals.",
+      "Avoid liquid calories; swap sugary drinks for water, tea, or black coffee.",
+    ],
+  },
+  maintain: {
+    breakfast: [
+      "Balanced plate: oatmeal with nuts and fruit, or eggs with avocado toast—mix it up day to day",
+      "Yogurt parfait with granola and berries, or a breakfast burrito with eggs and black beans",
+      "Whole-grain toast with nut butter and banana, or a veggie scramble with toast",
+    ],
+    lunch: [
+      "Varied lunches: grain bowl, wrap, or soup with a side of vegetables and protein",
+      "Mediterranean bowl with chickpeas, feta, cucumber, and olives; or a turkey club wrap",
+      "Leftover dinner over greens, or a hearty soup with a side salad and bread",
+    ],
+    dinner: [
+      "Balanced plate: protein, vegetables, and quality carbs (rice, potato, whole grains)",
+      "Grilled salmon or chicken with roasted vegetables and a small portion of pasta or rice",
+      "Tacos or burrito bowl with lean protein, beans, and plenty of veggies",
+    ],
+    snack: [
+      "Greek yogurt, fruit with nut butter, or a small portion of trail mix",
+      "Apple with almond butter, or popcorn with a sprinkle of nutritional yeast",
+      "Cheese and crackers, or a small smoothie with fruit and milk",
+    ],
+    tips: [
+      "Keep variety in your meals to avoid boredom and stay consistent.",
+      "Listen to hunger cues; adjust portions based on activity level.",
+      "Hydrate consistently and aim for regular meal timing.",
+    ],
+  },
+  build_muscle: {
+    breakfast: [
+      "Oatmeal with eggs and banana, or protein pancakes—aim for 30–40g protein to kick off muscle synthesis",
+      "Egg scramble with cheese, whole-grain toast, and a side of fruit",
+      "Protein smoothie with banana, oats, and Greek yogurt; or cottage cheese with honey and nuts",
+    ],
+    lunch: [
+      "Chicken/beef rice bowl with vegetables; or a large sandwich with extra meat and a side of fruit",
+      "Turkey or chicken wrap with doubled protein, avocado, and a side of sweet potato fries",
+      "Lean beef or salmon over rice with steamed broccoli and a drizzle of teriyaki",
+    ],
+    dinner: [
+      "Generous protein (steak, salmon, or chicken thigh) with potatoes or rice and greens",
+      "Grilled chicken thighs or pork chop with mashed potatoes and a large green salad",
+      "Salmon fillet or lean steak with roasted sweet potato and asparagus or green beans",
+    ],
+    snack: [
+      "Protein shake, Greek yogurt with honey, or cottage cheese with fruit",
+      "Beef jerky and an apple, or a protein bar with a banana",
+      "Cottage cheese with pineapple, or peanut butter on whole-grain crackers with milk",
+    ],
+    tips: [
+      "Spread protein evenly across 4–5 meals (aim for ~0.8g per lb bodyweight).",
+      "Eat a carb + protein meal within 1–2 hours after training.",
+      "Don't skip meals—consistency supports gains.",
+    ],
+  },
+  improve_endurance: {
+    breakfast: [
+      "Carb-focused: oatmeal or toast with peanut butter and banana; add eggs for protein",
+      "Overnight oats with berries and a scoop of protein; or bagel with cream cheese and fruit",
+      "Pancakes or French toast with syrup and a side of eggs and fruit",
+    ],
+    lunch: [
+      "Pasta, rice, or wrap with lean protein and vegetables—carbs fuel your long sessions",
+      "Rice bowl with chicken or tofu, veggies, and a generous portion of rice or noodles",
+      "Large sandwich on whole grain with lean meat, avocado, and a side of chips or fruit",
+    ],
+    dinner: [
+      "Salmon or chicken with sweet potato and roasted vegetables for recovery",
+      "Pasta with lean meat sauce and a side salad, or stir-fry with extra rice",
+      "Grilled chicken or fish with quinoa, roasted vegetables, and a drizzle of olive oil",
+    ],
+    snack: [
+      "Banana and nuts, energy bar, or a small smoothie",
+      "Toast with honey or jam, or a granola bar with a glass of chocolate milk",
+      "Fig bars or dates with nut butter, or a recovery drink after long sessions",
+    ],
+    tips: [
+      "Carbs are your main fuel; eat them before and after endurance sessions.",
+      "Aim for 3–5g carbs per kg bodyweight on heavy training days.",
+      "Include sodium and electrolytes if training in heat or for long durations.",
+    ],
+  },
+};
+
+function pickMealByDay(opt: MealOpt, dayIndex: number): string {
+  const arr = Array.isArray(opt) ? opt : [opt];
+  return arr[dayIndex % arr.length] ?? arr[0] ?? "";
+}
+
+function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
+  // Healthy Eater–style macro calculator from weight, height, age, activity, goal
+  const fallbackTargets: Record<UserProfile["goal"], Macros> = {
+    lose_weight: { calories: 1900, protein: 150, carbs: 170, fat: 60 },
+    maintain: { calories: 2300, protein: 140, carbs: 260, fat: 75 },
+    build_muscle: { calories: 2600, protein: 165, carbs: 300, fat: 80 },
+    improve_endurance: { calories: 2400, protein: 135, carbs: 310, fat: 70 },
+  };
+  const dailyTargets =
+    profile.weight > 0 && profile.height > 0 && profile.age > 0
+      ? calculateMacros({
+          weightKg: profile.weight,
+          heightCm: profile.height,
+          age: profile.age,
+          gender: profile.gender,
+          dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
+          goal: profile.goal,
+        })
+      : (fallbackTargets[profile.goal] ?? fallbackTargets.maintain);
+  const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
+  const goalMeals = GOAL_MEALS[profile.goal] ?? GOAL_MEALS.maintain;
+
+  const dietPlanDays = WEEK_DAYS.map((day, dayIndex) => ({
+    day,
+    meals: [
+      {
+        mealType: "Breakfast",
+        description: pickMealByDay(goalMeals.breakfast, dayIndex),
+        macros: { calories: Math.round(dailyTargets.calories * 0.28), protein: Math.round(dailyTargets.protein * 0.28), carbs: Math.round(dailyTargets.carbs * 0.3), fat: Math.round(dailyTargets.fat * 0.3) },
+      },
+      {
+        mealType: "Lunch",
+        description: pickMealByDay(goalMeals.lunch, dayIndex),
+        macros: { calories: Math.round(dailyTargets.calories * 0.34), protein: Math.round(dailyTargets.protein * 0.34), carbs: Math.round(dailyTargets.carbs * 0.35), fat: Math.round(dailyTargets.fat * 0.33) },
+      },
+      {
+        mealType: "Dinner",
+        description: pickMealByDay(goalMeals.dinner, dayIndex),
+        macros: { calories: Math.round(dailyTargets.calories * 0.3), protein: Math.round(dailyTargets.protein * 0.3), carbs: Math.round(dailyTargets.carbs * 0.28), fat: Math.round(dailyTargets.fat * 0.3) },
+      },
+      {
+        mealType: "Snack",
+        description: pickMealByDay(goalMeals.snack, dayIndex),
+        macros: { calories: Math.round(dailyTargets.calories * 0.08), protein: Math.round(dailyTargets.protein * 0.08), carbs: Math.round(dailyTargets.carbs * 0.07), fat: Math.round(dailyTargets.fat * 0.07) },
+      },
+    ],
+  }));
+
+    const defaultWarmups = [
+      { name: "Arm Circles", sets: "1", reps: "10 each direction", notes: "Loosen shoulders" },
+      { name: "Band Pull-Aparts", sets: "1", reps: "15", notes: "Activate rear delts" },
+      { name: "Bodyweight Squat", sets: "1", reps: "10", notes: "Hip mobility" },
+    ];
+    const defaultFinishers = [
+      { name: "Plank", sets: "2", reps: "45s", notes: "Core finisher" },
+    ];
+    const workoutPlanDays = WEEK_DAYS.map((day, idx) => {
+    if (idx >= workoutDays) {
+      return {
+        day,
+        focus: "Recovery / Mobility",
+        warmups: [
+          { name: "Hip Circles", sets: "1", reps: "5 each side", notes: "Hip mobility" },
+          { name: "Cat-Cow Stretch", sets: "1", reps: "8 reps", notes: "Spine mobility" },
+        ],
+        exercises: [
+          { name: "Incline Walk", sets: "1", reps: "20-30 min", notes: "Light pace on treadmill or outdoors" },
+          { name: "Hip Flexor Stretch", sets: "2", reps: "30s per side", notes: "Hold each side" },
+        ],
+        finishers: [],
+      };
+    }
+    const focus =
+      idx % 3 === 0 ? "Upper Body Strength" : idx % 3 === 1 ? "Lower Body Strength" : "Conditioning + Core";
+    const upperExercises = [
+      { name: "Bench Press", sets: "4", reps: "6-8" },
+      { name: "Overhead Press", sets: "3", reps: "8-10" },
+      { name: "Bent Over Row", sets: "3", reps: "8-10" },
+    ];
+    const lowerExercises = [
+      { name: "Back Squat", sets: "4", reps: "5-6" },
+      { name: "Romanian Deadlift", sets: "3", reps: "8-10" },
+      { name: "Walking Lunge", sets: "3", reps: "10 per leg" },
+    ];
+    const conditioningExercises = [
+      { name: "Mountain Climber", sets: "3", reps: "30s", notes: "Moderate pace" },
+      { name: "Plank", sets: "3", reps: "45s", notes: "Hold" },
+      { name: "Burpee", sets: "2", reps: "10", notes: "Controlled pace" },
+    ];
+    const exercises =
+      focus === "Upper Body Strength"
+        ? upperExercises
+        : focus === "Lower Body Strength"
+          ? lowerExercises
+          : conditioningExercises;
+    return { day, focus, warmups: defaultWarmups, exercises, finishers: defaultFinishers };
+  });
+
+  return {
+    id: uuidv4(),
+    userId,
+    createdAt: new Date().toISOString(),
+    dietPlan: {
+      dailyTargets,
+      weeklyPlan: dietPlanDays,
+      tips: goalMeals.tips,
+    },
+    workoutPlan: {
+      weeklyPlan: workoutPlanDays,
+      tips: [
+        "Use progressive overload week to week when form is solid.",
+        "Keep one or two reps in reserve on most sets.",
+        "Take at least one complete recovery day each week.",
+      ],
+    },
+    reasoning: "Starter plan returned while full Nova generation exceeded the timeout window.",
+  };
+}
+
+const PlanRequestSchema = z.object({
+  name: z.string().min(1).max(80),
+  age: z.number().int().min(10).max(120).optional(),
+  weight: z.number().min(20).max(500).optional(),
+  height: z.number().min(80).max(260).optional(),
+  gender: z.enum(["male", "female", "other"]).optional(),
+  fitnessLevel: z.enum(["beginner", "intermediate", "advanced", "athlete"]),
+  goal: z.enum(["lose_weight", "maintain", "build_muscle", "improve_endurance"]),
+  dietaryRestrictions: z.array(z.string().max(80)).max(50).optional(),
+  injuriesOrLimitations: z.array(z.string().max(120)).max(50).optional(),
+  dailyActivityLevel: z.enum(["sedentary", "light", "moderate", "active", "very_active"]).optional(),
+  workoutLocation: z.enum(["home", "gym", "outside"]).optional(),
+  workoutEquipment: z.array(z.enum(["bodyweight", "free_weights", "barbells", "kettlebells", "machines", "resistance_bands", "cardio_machines", "pull_up_bar", "cable_machine"])).max(20).optional(),
+  workoutDaysPerWeek: z.number().int().min(2).max(7).optional(),
+  workoutTimeframe: z.enum(["morning", "afternoon", "evening", "flexible"]).optional(),
+  createdAt: z.string().optional(),
+});
+
+export const POST = withRequestLogging("/api/plans/generate", async function POST(req: NextRequest) {
+  try {
+    const userId = await getUserId();
+    if (!userId) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
+
+    const rl = await fixedWindowRateLimit(
+      getClientKey(getRequestIp(req), "plans-generate"),
+      20,
+      60_000
+    );
+    if (!rl.ok) {
+      const headers = getRateLimitHeaderValues(rl);
+      const res = NextResponse.json(
+        { error: "Rate limit exceeded. Try again shortly." },
+        { status: 429 }
+      );
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      res.headers.set("Retry-After", headers.retryAfter);
+      return res;
+    }
+
+    const incomingParsed = PlanRequestSchema.safeParse(await req.json());
+    if (!incomingParsed.success) {
+      return NextResponse.json(
+        { error: "Missing required profile fields" },
+        { status: 400 }
+      );
+    }
+    const incoming = incomingParsed.data;
+    const profile: UserProfile = {
+      id: userId,
+      name: incoming.name,
+      age: incoming.age ?? 30,
+      weight: incoming.weight ?? 70,
+      height: incoming.height ?? 170,
+      gender: incoming.gender ?? "other",
+      fitnessLevel: incoming.fitnessLevel,
+      goal: incoming.goal,
+      dietaryRestrictions: incoming.dietaryRestrictions ?? [],
+      injuriesOrLimitations: incoming.injuriesOrLimitations ?? [],
+      dailyActivityLevel: incoming.dailyActivityLevel ?? "moderate",
+      workoutLocation: incoming.workoutLocation,
+      workoutEquipment: incoming.workoutEquipment,
+      workoutDaysPerWeek: incoming.workoutDaysPerWeek,
+      workoutTimeframe: incoming.workoutTimeframe,
+      createdAt: incoming.createdAt ?? new Date().toISOString(),
+    };
+
+    const loc = profile.workoutLocation ?? "gym";
+    const equip = profile.workoutEquipment?.length ? profile.workoutEquipment.map((e) => e.replace(/_/g, " ")).join(", ") : "general gym equipment (assume available)";
+    const daysPerWeek = profile.workoutDaysPerWeek ?? 4;
+    const timeframe = profile.workoutTimeframe ?? "flexible";
+
+    const userMessage = `Create a personalized diet and workout plan for this person.
+
+Profile:
+- Name: ${profile.name}
+- Age: ${profile.age}, ${profile.gender}
+- Weight: ${profile.weight} kg, Height: ${profile.height} cm
+- Fitness level: ${profile.fitnessLevel}
+- Goal: ${profile.goal}
+- Activity level: ${profile.dailyActivityLevel}
+- Workout location: ${loc} (design exercises for this setting)
+- Equipment available: ${equip}
+- Workouts per week: ${daysPerWeek} days (create exactly ${daysPerWeek} workout days in workoutDays)
+- Preferred workout time: ${timeframe}
+- Dietary restrictions: ${profile.dietaryRestrictions.join(", ") || "None"}
+- Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}
+
+Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal (${profile.goal}). Name concrete foods and meal ideas—e.g. "Oatmeal with eggs and banana" not "Protein-rich breakfast". Vary meals across the week.
+
+CRITICAL - Exercises: Every exercise "name" MUST be a specific, real exercise (e.g. "Bench Press", "Romanian Deadlift", "Goblet Squat", "Pull-Up", "Lateral Raise"). Never output generic placeholders like "Compound lift variation", "Accessory movement", "Mobility flow", or "Conditioning finisher". Use names that match common fitness databases (ExerciseDB).
+
+CRITICAL - Every workout day MUST include:
+- "warmups": array of 2-4 warm-up exercises (e.g. "Arm Circles", "Band Pull-Aparts", "Bodyweight Squat", "Hip Circles"). Use specific, real exercise names.
+- "exercises": main workout exercises.
+- "finishers": optional array of 1-3 finisher exercises (e.g. "Plank", "Farmer's Carry", "Jump Rope"). Can be empty [] if none. Use specific, real exercise names.
+
+OUTPUT FORMAT (your entire reply must be valid JSON):
+- Reply with ONLY the JSON object. No explanation, no markdown, no code blocks.
+- Use double quotes for all strings and keys. No single quotes.
+- No trailing commas before } or ].
+{
+  "dailyTargets": {"calories": number, "protein": number, "carbs": number, "fat": number},
+  "dietDays": [
+    {"day": "Monday", "meals": [{"mealType": "Breakfast", "description": "Specific meal idea for their goal", "calories": n, "protein": n, "carbs": n, "fat": n}]}
+  ],
+  "workoutDays": [
+    {"day": "Monday", "focus": "e.g. Upper Body", "warmups": [{"name": "Arm Circles", "sets": "1", "reps": "10 each direction", "notes": "optional"}], "exercises": [{"name": "Bench Press", "sets": "3", "reps": "8-12", "notes": "optional"}], "finishers": [{"name": "Plank", "sets": "2", "reps": "45s", "notes": "optional"}]}
+  ],
+  "dietTips": ["goal-specific nutrition tip 1", "goal-specific tip 2", "goal-specific tip 3"],
+  "workoutTips": ["tip1", "tip2"]
+}`;
+
+    // Extended thinking for complex plan reasoning, with timeout fallback.
+    const timeoutToken = "__PLAN_TIMEOUT__";
+    const raw = await Promise.race<string | typeof timeoutToken>([
+      invokeNovaWithExtendedThinking(
+        SYSTEM_PROMPT,
+        userMessage,
+        "medium",
+        { maxTokens: 8192, temperature: 0.3 }
+      ),
+      new Promise<typeof timeoutToken>((resolve) => {
+        setTimeout(() => resolve(timeoutToken), PLAN_TIMEOUT_MS);
+      }),
+    ]);
+
+    if (raw === timeoutToken) {
+      const fallbackPlan = buildStarterPlan(profile, userId);
+      logInfo("Plan generation timeout fallback", { route: "plans/generate", userId, timeoutMs: PLAN_TIMEOUT_MS });
+      return NextResponse.json({
+        ...fallbackPlan,
+        source: "fallback-timeout",
+        message: "Starter plan returned quickly while the full personalized generation continues in the background.",
+      });
+    }
+
+
+    let parsed: {
+      dailyTargets: Macros;
+      dietDays: { day: string; meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[] }[];
+      workoutDays: {
+        day: string;
+        focus: string;
+        warmups?: { name: string; sets: string; reps: string; notes?: string }[];
+        exercises: { name: string; sets: string; reps: string; notes?: string }[];
+        finishers?: { name: string; sets: string; reps: string; notes?: string }[];
+      }[];
+      dietTips: string[];
+      workoutTips: string[];
+    };
+
+    try {
+      parsed = parsePlanJsonTolerant(raw);
+    } catch (parseErr) {
+      logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
+      const fallbackPlan = buildStarterPlan(profile, userId);
+      return NextResponse.json({
+        ...fallbackPlan,
+        source: "fallback-parse",
+        message: "Nova responded but the output was malformed. Returning a starter plan instead.",
+      });
+    }
+
+    const plan: FitnessPlan = {
+      id: uuidv4(),
+      userId,
+      createdAt: new Date().toISOString(),
+      dietPlan: {
+        dailyTargets: parsed.dailyTargets,
+        weeklyPlan: parsed.dietDays.map((d) => ({
+          day: d.day,
+          meals: d.meals.map((m) => ({
+            mealType: m.mealType,
+            description: m.description,
+            macros: { calories: m.calories, protein: m.protein, carbs: m.carbs, fat: m.fat },
+          })),
+        })),
+        tips: parsed.dietTips,
+      },
+      workoutPlan: {
+        weeklyPlan: parsed.workoutDays.map((d) => ({
+          day: d.day,
+          focus: d.focus,
+          warmups: d.warmups ?? [],
+          exercises: d.exercises,
+          finishers: d.finishers ?? [],
+        })),
+        tips: parsed.workoutTips,
+      },
+    };
+
+    logInfo("Plan generated", { route: "plans/generate", userId });
+    const res = NextResponse.json(plan);
+    const headers = getRateLimitHeaderValues(rl);
+    res.headers.set("X-RateLimit-Limit", headers.limit);
+    res.headers.set("X-RateLimit-Remaining", headers.remaining);
+    res.headers.set("X-RateLimit-Reset", headers.reset);
+    return res;
+  } catch (err) {
+    logError("Plan generation failed", err, { route: "plans/generate" });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Plan generation failed" },
+      { status: 500 }
+    );
+  }
+});

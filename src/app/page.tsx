@@ -1,0 +1,855 @@
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
+  getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
+  getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
+  syncToServer, flushSync, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
+  getBiofeedback, getHydration, getActiveFastingSession,
+  saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
+  saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
+  saveMetabolicModel, saveMeasurementTargets,
+} from "@/lib/storage";
+import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
+import { getTodayLocal } from "@/lib/date-utils";
+import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
+import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
+import { buildDemoSeed } from "@/lib/demoSeed";
+import { MilestonesView } from "@/components/MilestonesView";
+import { RicoChat } from "@/components/RicoChat";
+import { LandingPage } from "@/components/LandingPage";
+import { ProfileView } from "@/components/ProfileView";
+import { AdjustView } from "@/components/AdjustView";
+import { Dashboard } from "@/components/Dashboard";
+import { MealsView } from "@/components/MealsView";
+import { WorkoutPlannerView } from "@/components/WorkoutPlannerView";
+import { GroupsView } from "@/components/GroupsView";
+import { GroupDetailView } from "@/components/GroupDetailView";
+import { GroupCreateModal } from "@/components/GroupCreateModal";
+import { useToast } from "@/components/Toast";
+import { useConfetti } from "@/components/Confetti";
+import { playBadgeEarned, playLevelUp } from "@/lib/sounds";
+import { xpToLevel } from "@/lib/milestones";
+import { formatHydrationAmount, getUnitSystem } from "@/lib/units";
+import { v4 as uuidv4 } from "uuid";
+export default function Home() {
+  const { showToast } = useToast();
+  const { trigger: triggerConfetti, ConfettiOverlay } = useConfetti();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [plan, setPlan] = useState<FitnessPlan | null>(null);
+  const [meals, setMeals] = useState<MealEntry[]>([]);
+  const [view, setView] = useState<"onboard" | "dashboard" | "meals" | "workouts" | "adjust" | "milestones" | "groups" | "profile">("onboard");
+  const prevViewRef = useRef<string>("dashboard");
+  const navContainerRef = useRef<HTMLElement>(null);
+  const navBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [pillStyle, setPillStyle] = useState<{ transform: string; width: string } | null>(null);
+
+  const updatePill = useCallback(() => {
+    const container = navContainerRef.current;
+    const btn = navBtnRefs.current[view];
+    if (!container || !btn) return;
+    const cRect = container.getBoundingClientRect();
+    const bRect = btn.getBoundingClientRect();
+    setPillStyle({
+      transform: `translateX(${bRect.left - cRect.left}px)`,
+      width: `${bRect.width}px`,
+    });
+  }, [view]);
+
+  useEffect(() => {
+    updatePill();
+    window.addEventListener("resize", updatePill);
+    return () => window.removeEventListener("resize", updatePill);
+  }, [updatePill]);
+
+  // Refresh state when Rico or other code updates data (e.g. log_meal from chat)
+  useEffect(() => {
+    const handler = () => {
+      setMeals(getMeals());
+      setMilestonesState(getMilestones());
+      setXp(getXP());
+    };
+    window.addEventListener("userDataUpdated", handler);
+    return () => window.removeEventListener("userDataUpdated", handler);
+  }, []);
+  const VIEW_ORDER = ["dashboard", "meals", "workouts", "adjust", "milestones", "groups", "profile"] as const;
+  const getSlideClass = (v: string) => {
+    const curr = VIEW_ORDER.indexOf(v as typeof VIEW_ORDER[number]);
+    const prev = VIEW_ORDER.indexOf(prevViewRef.current as typeof VIEW_ORDER[number]);
+    if (curr < 0 || prev < 0) return "animate-fade-in";
+    if (curr > prev) return "animate-slide-in-left";
+    if (curr < prev) return "animate-slide-in-right";
+    return "animate-fade-in";
+  };
+  const navigateTo = (key: typeof view) => {
+    prevViewRef.current = view;
+    setView(key);
+  };
+  const [loading, setLoading] = useState(false);
+  const [planRegenerating, setPlanRegenerating] = useState(false);
+  const [adjustFeedback, setAdjustFeedback] = useState("");
+  const [adjustResult, setAdjustResult] = useState<Record<string, unknown> | null>(null);
+  const [ricoOpen, setRicoOpen] = useState(false);
+
+  // Deep-link: ?open=rico opens Rico chat (used by push notifications, home screen shortcuts)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("open") === "rico") {
+      setRicoOpen(true);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+  const [milestones, setMilestonesState] = useState(getMilestones());
+  const [xp, setXp] = useState(getXP());
+  const [milestoneProgress, setMilestoneProgress] = useState<Record<string, number>>({});
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [planLoadingMessage, setPlanLoadingMessage] = useState("Generating your plan… (may take up to 60s)");
+  const [wearableData, setWearableData] = useState<WearableDaySummary[]>(() => getWearableData());
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [showGroupCreate, setShowGroupCreate] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+
+  useEffect(() => {
+    const p = getProfile();
+
+    // If we have a local profile, render immediately from localStorage so the
+    // UI is instant, then always re-fetch from the server in the background so
+    // data stays consistent across browsers and devices.
+    if (p) {
+      setProfile(p);
+      setPlan(getPlan());
+      setMeals(getMeals());
+      setWearableData(getWearableData());
+      setMilestonesState(getMilestones());
+      setXp(getXP());
+      setView("dashboard");
+      setRestoring(false);
+    }
+
+    // Always fetch the server snapshot — not just when localStorage is empty.
+    // This ensures a second browser or device always converges to server state.
+    fetch("/api/data/sync", { credentials: "include" })
+      .then(async (res) => {
+        if (!res.ok) {
+          // 401: no session cookie on this browser — localStorage is device-only
+          // until the user signs in here (common when comparing phone vs desktop).
+          if (res.status === 401 && p && typeof window !== "undefined") {
+            const k = "recomp_sync_login_hint_shown";
+            if (!sessionStorage.getItem(k)) {
+              sessionStorage.setItem(k, "1");
+              showToast(
+                "Sign in on this browser to load your account. Until then, data here stays on this device only.",
+                "info",
+              );
+            }
+          }
+          throw new Error("No data");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data.profile) {
+          saveProfile(data.profile);
+          setProfile(data.profile);
+          if (data.plan) { savePlan(data.plan); setPlan(data.plan); }
+          if (Array.isArray(data.meals)) {
+            const mealsClean = dedupeMealsByDateAndId(data.meals);
+            saveMeals(mealsClean);
+            setMeals(mealsClean);
+          }
+          if (data.wearableData) { saveWearableData(data.wearableData); setWearableData(data.wearableData); }
+          if (data.wearableConnections) saveWearableConnections(data.wearableConnections);
+          if (Array.isArray(data.milestones)) { saveMilestones(data.milestones); setMilestonesState(data.milestones); }
+          if (data.weeklyReview) saveWeeklyReview(data.weeklyReview);
+          if (data.activityLog) saveActivityLog(data.activityLog);
+          if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress);
+          if (data.hydration) saveHydration(data.hydration);
+          if (data.fastingSessions) saveFastingSessions(data.fastingSessions);
+          if (data.biofeedback) saveBiofeedback(data.biofeedback);
+          if (data.pantry) savePantry(data.pantry);
+          if (data.bodyScans) saveBodyScans(data.bodyScans);
+          if (data.supplements) saveSupplements(data.supplements);
+          if (data.bloodWork) saveBloodWork(data.bloodWork);
+          if (data.meta) {
+            if (data.meta.xp != null) { saveXP(data.meta.xp); setXp(data.meta.xp); }
+            if (data.meta.hasAdjusted) setHasAdjustedPlan();
+            if (data.meta.ricoHistory) saveRicoHistory(data.meta.ricoHistory);
+            if (data.meta.measurementTargets != null) {
+              saveMeasurementTargets(data.meta.measurementTargets);
+            }
+          }
+          if (data.metabolicModel) {
+            saveMetabolicModel(data.metabolicModel);
+          }
+          if (!p) setView("dashboard");
+          // Push merged localStorage to DynamoDB so data that only existed in this
+          // browser (e.g. many meals logged before a successful POST) becomes
+          // visible on other devices after their next GET /api/data/sync.
+          syncToServer();
+        } else {
+          if (!p) setView("onboard");
+        }
+      })
+      .catch(() => {
+        if (!p) setView("onboard");
+      })
+      .finally(() => {
+        if (!p) setRestoring(false);
+      });
+  }, []);
+
+  useEffect(() => {
+    const persist = () => {
+      if (document.visibilityState === "hidden") flushSync();
+    };
+    document.addEventListener("visibilitychange", persist);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      document.removeEventListener("visibilitychange", persist);
+      window.removeEventListener("pagehide", persist);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!plan || meals.length === 0) return;
+    const targets = plan.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+    const conns = getWearableConnections();
+    const wData = getWearableData();
+    const wearableCount = conns.length + (wData.length > 0 ? 1 : 0);
+    const stored = getMilestones();
+    const earned = new Set(stored.map((m) => m.id));
+    const { newMilestones, xpGained, progress } = computeMilestones(
+      meals,
+      plan,
+      targets,
+      wearableCount,
+      getHasAdjustedPlan(),
+      earned
+    );
+    if (newMilestones.length > 0) {
+      const next = [...stored, ...newMilestones];
+      setMilestonesState(next);
+      saveMilestones(next);
+      // Celebrate!
+      triggerConfetti();
+      playBadgeEarned();
+      const info = getBadgeInfo();
+      const names = newMilestones.map((m) => info[m.id]?.name || m.id);
+      showToast(`Badge earned: ${names.join(", ")}!`, "success");
+    }
+    if (xpGained > 0) {
+      const currentXp = getXP();
+      const nextXp = currentXp + xpGained;
+      const prevLevel = xpToLevel(currentXp);
+      const nextLevel = xpToLevel(nextXp);
+      setXp(nextXp);
+      saveXP(nextXp);
+      if (nextLevel > prevLevel) {
+        playLevelUp();
+        showToast(`Level up! You're now level ${nextLevel}!`, "success");
+      }
+    }
+    setMilestoneProgress(progress);
+  }, [meals, plan]);
+
+  useEffect(() => {
+    if (!profile) return;
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => setIsDemoMode(data.authenticated === false))
+      .catch(() => setIsDemoMode(false));
+  }, [profile]);
+
+  const today = getTodayLocal();
+  const todaysMeals = meals.filter((m) => m.date === today);
+  const todaysTotals = todaysMeals.reduce(
+    (acc, m) => ({
+      calories: acc.calories + m.macros.calories,
+      protein: acc.protein + m.macros.protein,
+      carbs: acc.carbs + m.macros.carbs,
+      fat: acc.fat + m.macros.fat,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+  const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+
+  const handleOnboard = async (data: Partial<UserProfile> & { password?: string }) => {
+    const newProfile: UserProfile = {
+      id: uuidv4(),
+      name: data.name || "User",
+      age: data.age || 30,
+      weight: data.weight || 70,
+      height: data.height || 170,
+      gender: data.gender || "other",
+      fitnessLevel: data.fitnessLevel || "intermediate",
+      goal: data.goal || "maintain",
+      dietaryRestrictions: data.dietaryRestrictions || [],
+      injuriesOrLimitations: data.injuriesOrLimitations || [],
+      dailyActivityLevel: data.dailyActivityLevel || "moderate",
+      unitSystem: data.unitSystem ?? "us",
+      workoutLocation: data.workoutLocation ?? "gym",
+      workoutEquipment: data.workoutEquipment ?? ["free_weights", "machines"],
+      workoutDaysPerWeek: data.workoutDaysPerWeek ?? 4,
+      workoutTimeframe: data.workoutTimeframe ?? "flexible",
+      createdAt: new Date().toISOString(),
+    };
+    saveProfile(newProfile);
+    setProfile(newProfile);
+    setView("dashboard");
+    setPlanRegenerating(true);
+    setLoading(true);
+    const progressMessages = [
+      "Analyzing your profile and goal…",
+      "Calibrating calorie and macro targets…",
+      "Drafting your weekly workout split…",
+      "Finalizing your personalized plan…",
+    ];
+    let progressIndex = 0;
+    setPlanLoadingMessage(progressMessages[progressIndex]);
+    const progressTimer = setInterval(() => {
+      progressIndex = (progressIndex + 1) % progressMessages.length;
+      setPlanLoadingMessage(progressMessages[progressIndex]);
+    }, 3200);
+
+    try {
+      // Register user in DynamoDB and set auth cookie
+      const regRes = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newProfile, password: data.password }),
+      }).catch(() => null);
+      if (regRes?.ok) setIsDemoMode(false);
+
+      const res = await fetch("/api/plans/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newProfile),
+      });
+      const p = await res.json();
+      if (p.error) throw new Error(p.error);
+      savePlan(p);
+      setPlan(p);
+      syncToServer(); // persist to DynamoDB
+    } catch (e) {
+      console.error(e);
+      showToast("Plan generation took longer than expected. You can continue in the dashboard and regenerate when ready.", "info");
+    } finally {
+      clearInterval(progressTimer);
+      setLoading(false);
+      setPlanRegenerating(false);
+      setPlanLoadingMessage("Generating your plan… (may take up to 60s)");
+    }
+  };
+
+  const handleRegeneratePlan = async () => {
+    if (!profile) return;
+    setPlanRegenerating(true);
+    try {
+      const res = await fetch("/api/plans/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      const p = await res.json();
+      if (p.error) throw new Error(p.error);
+      savePlan(p);
+      setPlan(p);
+      syncToServer();
+    } catch (e) {
+      console.error(e);
+      showToast("Plan generation failed. Try again.", "error");
+    } finally {
+      setPlanRegenerating(false);
+    }
+  };
+
+  const handleAdjust = async () => {
+    if (!plan) return;
+    setLoading(true);
+    setAdjustResult(null);
+    try {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      const recentMeals = meals.filter((m) => new Date(m.date) >= weekAgo);
+      const avgCal = recentMeals.length
+        ? recentMeals.reduce((s, m) => s + m.macros.calories, 0) / 7
+        : null;
+      const avgProt = recentMeals.length
+        ? recentMeals.reduce((s, m) => s + m.macros.protein, 0) / 7
+        : null;
+
+      const res = await fetch("/api/plans/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan,
+          mealsThisWeek: recentMeals,
+          feedback: adjustFeedback,
+          avgDailyCalories: avgCal,
+          avgDailyProtein: avgProt,
+        }),
+      });
+      const r = await res.json();
+      if (r.error) throw new Error(r.error);
+      setAdjustResult(r);
+    } catch (e) {
+      console.error(e);
+      showToast("Adjustment failed.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUsePreseededDemo = async () => {
+    const seed = buildDemoSeed();
+
+    // Set auth cookie so AI routes (Weekly Review, The Ref, etc.) work when REQUIRE_AUTH_FOR_AI=true
+    try {
+      await fetch("/api/auth/demo", { method: "POST", credentials: "include" });
+    } catch {
+      // Proceed anyway — localStorage seed works; AI may fail if REQUIRE_AUTH_FOR_AI
+    }
+
+    saveProfile(seed.profile);
+    savePlan(seed.plan);
+    saveMeals(seed.meals);
+    saveWearableConnections(seed.wearableConnections);
+    saveWearableData(seed.wearableData);
+    saveMilestones(seed.milestones);
+    saveXP(seed.xp);
+    saveWeeklyReview(seed.weeklyReview);
+    saveActivityLog(seed.activityLog);
+    saveWorkoutProgress(seed.workoutProgress);
+
+    setProfile(seed.profile);
+    setPlan(seed.plan);
+    setMeals(seed.meals);
+    setWearableData(seed.wearableData);
+    setMilestonesState(seed.milestones);
+    setXp(seed.xp);
+    setMilestoneProgress({});
+    setView("dashboard");
+    setIsDemoMode(true);
+  };
+
+  const handleResetDemoData = () => {
+    if (typeof window !== "undefined") {
+      localStorage.clear();
+    }
+    setProfile(null);
+    setPlan(null);
+    setMeals([]);
+    setWearableData([]);
+    setMilestonesState([]);
+    setXp(0);
+    setMilestoneProgress({});
+    setAdjustFeedback("");
+    setAdjustResult(null);
+    setRicoOpen(false);
+    setView("onboard");
+    setIsDemoMode(false);
+  };
+
+  if (restoring) {
+    return (
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center flex-col gap-4">
+        <div className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[var(--accent)] mb-4 animate-thinking-pulse">
+          <svg className="h-7 w-7 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        </div>
+        <p className="text-[var(--foreground)] text-sm font-medium animate-pulse">Checking for existing profile...</p>
+      </div>
+    );
+  }
+
+  if (profile === null && view === "onboard") {
+    return (
+      <LandingPage
+        onSubmit={handleOnboard}
+        onLoginSuccess={() => {
+          // Cookie is set, reload the page to trigger the data restoration flow
+          window.location.reload();
+        }}
+        loading={loading}
+        onUsePreseededDemo={handleUsePreseededDemo}
+        onResetDemoData={handleResetDemoData}
+      />
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      {ConfettiOverlay}
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      {/* ── Sticky header ── */}
+      <header className="sticky top-0 z-30 border-b border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md" role="banner">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-3">
+          <button onClick={() => navigateTo("dashboard")} className="flex items-baseline gap-2 group" aria-label="Go to dashboard">
+            <span className="flex items-center gap-1" aria-hidden="true">
+              <svg className="h-5 w-5 text-[var(--accent)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+            </span>
+            <span className="brand-title !text-lg text-[var(--accent)] leading-none group-hover:opacity-80 transition-opacity">Refactor</span>
+            <span className="brand-definition text-[var(--muted)] hidden sm:inline">body recomposition</span>
+          </button>
+
+          <nav ref={navContainerRef} className="nav-morphing flex items-center gap-1 overflow-x-auto" aria-label="Main navigation">
+            {pillStyle && (
+              <span
+                className="nav-morph-pill"
+                style={pillStyle}
+                aria-hidden="true"
+              />
+            )}
+            {([
+              ["dashboard", "Dashboard", "Go to dashboard"],
+              ["meals", "Meals", "Log meals and track macros"],
+              ["workouts", "Workouts", "View and edit workout plan"],
+              ["adjust", "Adjust", "Get AI plan adjustments"],
+              ["milestones", "My Progress", "Track measurements and view progress"],
+              ["groups", "Groups", "Join groups and share progress"],
+              ["profile", "Profile", "Edit your profile"],
+            ] as const).map(([key, label, title]) => (
+              <button
+                key={key}
+                ref={(el) => { navBtnRefs.current[key] = el; }}
+                onClick={() => navigateTo(key)}
+                className={`nav-item relative z-[1] ${view === key ? "nav-item-active !bg-transparent !shadow-none" : ""}`}
+                aria-current={view === key ? "page" : undefined}
+                title={title}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      {isDemoMode && (
+        <div
+          className="mx-auto max-w-5xl px-5 py-2.5 flex items-center justify-center gap-2"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 rounded-full bg-[var(--surface-elevated)]/95 border border-[var(--border-soft)] px-3.5 py-2 text-sm text-[var(--muted-foreground)] shadow-[var(--shadow-soft)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--accent-warm)] animate-pulse shrink-0" aria-hidden />
+            <span><strong className="text-[var(--foreground)] font-medium">Demo mode</strong> — Data in browser. Register to sync to cloud.</span>
+            <button
+              type="button"
+              onClick={() => navigateTo("profile")}
+              className="shrink-0 text-xs font-medium text-[var(--accent)] hover:underline"
+            >
+              Register to sync
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom nav (mobile) */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-20 border-t border-[var(--border-soft)] bg-[var(--background)]/92 backdrop-blur-md safe-area-pb"
+        aria-label="Mobile navigation"
+      >
+        <div className="flex items-center justify-around py-2">
+          {(["dashboard", "meals", "workouts", "adjust"] as const).map((key) => (
+            <button
+              key={key}
+              onClick={() => navigateTo(key)}
+              className={`flex flex-col items-center gap-0.5 min-h-[44px] min-w-[44px] justify-center px-4 rounded-2xl transition-all duration-150 ${view === key ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                }`}
+              aria-current={view === key ? "page" : undefined}
+            >
+              <span className="flex items-center justify-center h-5 w-5" aria-hidden>
+                {key === "dashboard" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="4" rx="1.5" />
+                    <rect x="14" y="11" width="7" height="10" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                )}
+                {key === "meals" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M18 8h1a4 4 0 010 8h-1" />
+                    <path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z" />
+                    <line x1="6" y1="1" x2="6" y2="4" />
+                    <line x1="10" y1="1" x2="10" y2="4" />
+                    <line x1="14" y1="1" x2="14" y2="4" />
+                  </svg>
+                )}
+                {key === "workouts" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <path d="M6.5 6.5a2.5 2.5 0 015 0v11a2.5 2.5 0 01-5 0v-11z" />
+                    <path d="M17.5 6.5a2.5 2.5 0 00-5 0v11a2.5 2.5 0 005 0v-11z" />
+                    <path d="M4 12h16" />
+                    <path d="M2 12h2" />
+                    <path d="M20 12h2" />
+                  </svg>
+                )}
+                {key === "adjust" && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+                    <circle cx="12" cy="12" r="3" />
+                    <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83" />
+                  </svg>
+                )}
+              </span>
+              <span className="text-[10px] font-medium capitalize">{key}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <main id="main-content" className="relative z-10 mx-auto max-w-5xl px-5 py-8 pb-24 md:pb-8" role="main">
+        {view === "dashboard" && (
+          <div key="dashboard" className={getSlideClass("dashboard")}>
+            <Dashboard
+              profile={profile!}
+              plan={plan}
+              meals={meals}
+              todaysTotals={todaysTotals}
+              targets={targets}
+              wearableData={wearableData}
+              onProfileUpdate={(updated) => {
+                saveProfile(updated);
+                setProfile(updated);
+                syncToServer();
+              }}
+              onPlanUpdate={(updated) => {
+                savePlan(updated);
+                setPlan(updated);
+                syncToServer();
+              }}
+              onRegeneratePlan={handleRegeneratePlan}
+              planRegenerating={planRegenerating}
+              planLoadingMessage={planLoadingMessage}
+              onNavigateToMeals={() => navigateTo("meals")}
+              onNavigateToWorkouts={() => navigateTo("workouts")}
+              onReset={() => {
+                localStorage.clear();
+                setProfile(null);
+                setPlan(null);
+                setMeals([]);
+                setWearableData([]);
+                setMilestonesState([]);
+                setXp(0);
+                setMilestoneProgress({});
+                saveWearableData([]);
+                saveWearableConnections([]);
+                navigateTo("onboard");
+              }}
+            />
+          </div>
+        )}
+        {view === "meals" && (
+          <div key="meals" className={getSlideClass("meals")}>
+            <MealsView
+              meals={meals}
+              todaysMeals={todaysMeals}
+              todaysTotals={todaysTotals}
+              targets={targets}
+              goal={profile?.goal ?? "maintain"}
+              onAddMeal={(m) => {
+                const next = [...meals, m];
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+              onEditMeal={(m) => {
+                const next = meals.map((x) =>
+                  x.date === m.date && x.id === m.id ? m : x
+                );
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+              onDeleteMeal={(date, id) => {
+                const next = meals.filter((x) => !(x.date === date && x.id === id));
+                setMeals(next);
+                saveMeals(next);
+                syncToServer();
+              }}
+            />
+          </div>
+        )}
+        {view === "workouts" && (
+          <div key="workouts" className={getSlideClass("workouts")}>
+            <WorkoutPlannerView
+              plan={plan}
+              wearableData={wearableData}
+              onUpdatePlan={(updated) => {
+                savePlan(updated);
+                setPlan(updated);
+                syncToServer();
+              }}
+              onPlanSaved={syncToServer}
+            />
+          </div>
+        )}
+        {view === "milestones" && (
+          <div key="milestones" className={getSlideClass("milestones")}>
+            <MilestonesView
+              milestones={milestones}
+              xp={xp}
+              progress={milestoneProgress}
+              wearableData={wearableData}
+              meals={meals}
+              streak={getCurrentStreakFromMeals(meals)}
+              macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
+              onDataFetched={(data) => {
+                const existing = getWearableData();
+                const merged = [...existing];
+                (data as WearableDaySummary[]).forEach((d) => {
+                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                  if (i >= 0) merged[i] = { ...merged[i], ...d };
+                  else merged.push(d);
+                });
+                saveWearableData(merged);
+                setWearableData(merged);
+              }}
+            />
+          </div>
+        )}
+        {view === "adjust" && (
+          <div key="adjust" className={getSlideClass("adjust")}>
+            <AdjustView
+              plan={plan}
+              goal={profile?.goal ?? "maintain"}
+              unitSystem={profile?.unitSystem ?? "us"}
+              feedback={adjustFeedback}
+              setFeedback={setAdjustFeedback}
+              result={adjustResult}
+              loading={loading}
+              onAdjust={handleAdjust}
+              onApplyAdjustments={(newTargets) => {
+                if (plan && newTargets) {
+                  setHasAdjustedPlan();
+                  const updated = {
+                    ...plan,
+                    dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
+                  };
+                  savePlan(updated);
+                  setPlan(updated);
+                  setAdjustResult(null);
+                  setAdjustFeedback("");
+                  syncToServer();
+                }
+              }}
+            />
+          </div>
+        )}
+        {view === "groups" && (
+          <div key="groups" className={getSlideClass("groups")}>
+            {activeGroupId ? (
+              <GroupDetailView
+                groupId={activeGroupId}
+                onBack={() => setActiveGroupId(null)}
+              />
+            ) : (
+              <GroupsView
+                onSelectGroup={(id) => setActiveGroupId(id)}
+                onCreateGroup={() => setShowGroupCreate(true)}
+              />
+            )}
+          </div>
+        )}
+        {view === "profile" && profile && (
+          <div key="profile" className={getSlideClass("profile")}>
+            <ProfileView
+              profile={profile}
+              isDemoMode={isDemoMode}
+              onProfileUpdate={(updated) => {
+                saveProfile(updated);
+                setProfile(updated);
+                syncToServer();
+              }}
+              onRegistered={() => setIsDemoMode(false)}
+              onWearableDataFetched={(data) => {
+                const existing = getWearableData();
+                const merged = [...existing];
+                (data as WearableDaySummary[]).forEach((d) => {
+                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+                  if (i >= 0) merged[i] = { ...merged[i], ...d };
+                  else merged.push(d);
+                });
+                saveWearableData(merged);
+                setWearableData(merged);
+              }}
+            />
+          </div>
+        )}
+      </main>
+
+      <GroupCreateModal
+        open={showGroupCreate}
+        onClose={() => setShowGroupCreate(false)}
+        onCreated={(groupId) => {
+          setShowGroupCreate(false);
+          setActiveGroupId(groupId);
+          navigateTo("groups");
+        }}
+      />
+
+      {profile && view !== "onboard" && (
+        <>
+          <button
+            onClick={() => setRicoOpen(true)}
+            className="fixed bottom-20 md:bottom-6 right-6 z-20 flex h-14 w-14 min-h-[44px] min-w-[44px] items-center justify-center rounded-full bg-[var(--accent)] text-2xl shadow-[var(--shadow-strong)] transition-all duration-200 hover:bg-[var(--accent-hover)] hover:scale-110 active:scale-95 focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-3 focus-visible:ring-offset-[var(--background)] animate-fab-breathe"
+            aria-label="Chat with The Ref"
+            title="Chat with The Ref"
+          >
+            <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" /></svg>
+          </button>
+          <RicoChat
+            userName={profile.name}
+            context={{
+              streak: getCurrentStreakFromMeals(meals),
+              mealsLogged: meals.length,
+              xp,
+              goal: profile.goal,
+              recentMilestones: milestones.slice(-5).map((m) => m.id),
+              biofeedbackSummary: (() => {
+                const bio = getBiofeedback();
+                const today = getTodayLocal();
+                const latest = bio.filter((e) => e.date === today).sort((a, b) => b.time.localeCompare(a.time))[0];
+                return latest ? `Today: energy ${latest.energy}/5, mood ${latest.mood}/5, hunger ${latest.hunger}/5` : null;
+              })(),
+              hydrationSummary: (() => {
+                const h = getHydration();
+                const today = getTodayLocal();
+                const total = h.filter((e) => e.date === today).reduce((s, e) => s + e.amountMl, 0);
+                if (total <= 0) return null;
+                return formatHydrationAmount(total, getUnitSystem(profile));
+              })(),
+              activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
+              workoutPlan: plan?.workoutPlan ?? null,
+            }}
+            isOpen={ricoOpen}
+            onClose={() => setRicoOpen(false)}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function getCurrentStreakFromMeals(meals: MealEntry[]): number {
+  const dates = new Set(meals.map((m) => m.date));
+  const today = getTodayLocal();
+  if (!dates.has(today)) return 0;
+  const sorted = Array.from(dates).sort().reverse();
+  let streak = 0;
+  let prev: number | null = null;
+  for (const d of sorted) {
+    const t = new Date(d).getTime();
+    if (prev === null || prev - t === 86400000) streak++;
+    else break;
+    prev = t;
+  }
+  return streak;
+}
+
