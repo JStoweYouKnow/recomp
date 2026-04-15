@@ -46,3 +46,6 @@ next-env.d.ts
 
 # SwiftPM / Xcode (RefactorKit)
 RecompSwift/RefactorKit/.build/
+
+# Xcode / SwiftPM — machine-local UI and scheme data (never commit)
+**/xcuserdata/
