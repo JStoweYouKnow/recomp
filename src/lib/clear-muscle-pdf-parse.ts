@@ -1,10 +1,18 @@
 import type { WorkoutDay, WorkoutExercise } from "@/lib/types";
+import { correctClearMuscleReps } from "@/lib/clear-muscle-reps-correction";
 
 /** "Monday: Hypertrophy" or "Monday" alone (phase 3 PDF). */
 const DAY_HEADER =
   /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:\s*:\s*(.*))?$/i;
 
-const CLEAR_MUSCLE_WEEKDAYS = new Set(["Monday", "Wednesday", "Friday"]);
+const CLEAR_MUSCLE_WEEKDAYS = new Set([
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+]);
 
 /** "Week 11" */
 const WEEK_SINGLE = /^Week\s+(\d+)\s*$/i;
@@ -198,8 +206,12 @@ export function parseClearMuscleStyleProgram(text: string): {
 
   const dayOrder = (label: string): number => {
     if (/^monday\b/i.test(label)) return 0;
-    if (/^wednesday\b/i.test(label)) return 1;
-    if (/^friday\b/i.test(label)) return 2;
+    if (/^tuesday\b/i.test(label)) return 1;
+    if (/^wednesday\b/i.test(label)) return 2;
+    if (/^thursday\b/i.test(label)) return 3;
+    if (/^friday\b/i.test(label)) return 4;
+    if (/^saturday\b/i.test(label)) return 5;
+    if (/^sunday\b/i.test(label)) return 6;
     return 9;
   };
   const weekNum = (label: string): number => {
@@ -221,8 +233,10 @@ export function parseClearMuscleStyleProgram(text: string): {
   if (wed < 2 || fri < 2) return null;
   if (mon > 0 && wed + fri < mon * 0.5) return null;
 
+  const corrected = correctClearMuscleReps(days);
+
   return {
     programTitle: "12-Week Clear Muscle Challenge",
-    days,
+    days: corrected,
   };
 }
