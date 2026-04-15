@@ -12,6 +12,7 @@ public struct KeychainService {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: userIdKey,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
         ]
 
         SecItemDelete(query as CFDictionary)
@@ -63,6 +64,7 @@ public struct KeychainService {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: userIdKey,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
         ]
 
         let status = SecItemDelete(query as CFDictionary)

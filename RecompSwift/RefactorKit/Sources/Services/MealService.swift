@@ -94,4 +94,11 @@ public final class MealService {
         let meals = mealsForDate(today, context: context)
         return meals.reduce(.zero) { $0.adding($1.macros) }
     }
+
+    /// Calls `POST /api/meal-prep/generate` and returns decoded recipes plus batch metadata.
+    public func generateMealPrepPlan(payload: MealPrepGeneratePayload) async throws -> MealPrepGenerateResponse {
+        isLoading = true
+        defer { isLoading = false }
+        return try await api.request(MiscAPI.mealPrepGenerate(payload: payload))
+    }
 }

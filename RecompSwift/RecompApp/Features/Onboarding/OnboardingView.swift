@@ -27,6 +27,7 @@ private struct ChooseView: View {
     @Environment(AuthService.self) private var auth
     @Binding var mode: OnboardingView.OnboardingMode
     @State private var isLoadingDemo = false
+    @State private var demoError: String?
 
     var body: some View {
         ScrollView {
@@ -80,9 +81,14 @@ private struct ChooseView: View {
                     .controlSize(.large)
 
                     Button {
+                        demoError = nil
                         Task {
                             isLoadingDemo = true
-                            try? await auth.loadDemo()
+                            do {
+                                try await auth.loadDemo()
+                            } catch {
+                                demoError = error.localizedDescription
+                            }
                             isLoadingDemo = false
                         }
                     } label: {
@@ -93,7 +99,16 @@ private struct ChooseView: View {
                                 .font(.subheadline)
                         }
                     }
+                    .disabled(isLoadingDemo)
                     .padding(.top, 4)
+
+                    if let demoError {
+                        Text(demoError)
+                            .font(.caption)
+                            .foregroundStyle(Color.appError)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
@@ -109,6 +124,7 @@ private struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var errorMessage: String?
+    @State private var isLoggingIn = false
 
     var body: some View {
         Form {
@@ -117,6 +133,7 @@ private struct LoginView: View {
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
+                    .autocorrectionDisabled()
 
                 SecureField("Password", text: $password)
                     .textContentType(.password)
@@ -124,35 +141,41 @@ private struct LoginView: View {
 
             if let errorMessage {
                 Section {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .font(.caption)
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(Color.appError)
+                        Text(errorMessage)
+                            .foregroundStyle(Color.appError)
+                            .font(.subheadline)
+                    }
                 }
             }
 
             Section {
                 Button {
+                    guard !isLoggingIn else { return }
                     errorMessage = nil
+                    isLoggingIn = true
                     Task {
                         do {
                             try await auth.login(email: email, password: password)
                         } catch {
                             errorMessage = error.localizedDescription
                         }
+                        isLoggingIn = false
                     }
                 } label: {
-                    if auth.isLoading {
-                        HStack {
-                            Spacer()
+                    HStack {
+                        Spacer()
+                        if isLoggingIn {
                             ProgressView()
-                            Spacer()
+                        } else {
+                            Text("Log In").fontWeight(.semibold)
                         }
-                    } else {
-                        Text("Log In")
-                            .frame(maxWidth: .infinity)
+                        Spacer()
                     }
                 }
-                .disabled(email.isEmpty || password.isEmpty || auth.isLoading)
+                .disabled(email.isEmpty || password.isEmpty || isLoggingIn)
             }
         }
         .navigationTitle("Log In")
@@ -160,7 +183,9 @@ private struct LoginView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Back", action: onBack)
+                    .disabled(isLoggingIn)
             }
         }
+        .interactiveDismissDisabled(isLoggingIn)
     }
 }

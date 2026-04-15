@@ -41,7 +41,7 @@ struct ResearchView: View {
                                             HStack {
                                                 Text(source.title)
                                                     .font(.subheadline)
-                                                    .foregroundStyle(.blue)
+                                                    .foregroundStyle(Color.appAccent)
                                                 Spacer()
                                                 Image(systemName: "arrow.up.right.square")
                                                     .font(.caption)

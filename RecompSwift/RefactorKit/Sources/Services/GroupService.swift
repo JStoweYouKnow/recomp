@@ -89,4 +89,9 @@ public final class GroupService {
         try await api.requestVoid(ChallengeAPI.join(id: id))
         try await fetchChallenges()
     }
+
+    public func leaveChallenge(id: String) async throws {
+        try await api.requestVoid(ChallengeAPI.leave(id: id))
+        try await fetchChallenges()
+    }
 }

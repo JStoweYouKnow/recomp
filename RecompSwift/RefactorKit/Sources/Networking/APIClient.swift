@@ -26,7 +26,7 @@ public actor APIClient {
     public static let shared = APIClient()
 
     private let session: URLSession
-    private let baseURL: URL
+    public nonisolated let baseURL: URL
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
@@ -43,9 +43,10 @@ public actor APIClient {
             self.baseURL = baseURL
         } else if let envURL = ProcessInfo.processInfo.environment["RECOMP_API_URL"],
                   let url = URL(string: envURL) {
+            // Set RECOMP_API_URL in the Xcode scheme's environment variables to override.
             self.baseURL = url
         } else {
-            self.baseURL = URL(string: "https://recomp.app")!
+            self.baseURL = URL(string: "https://refactor-one.vercel.app")!
         }
 
         self.decoder = JSONDecoder()
@@ -60,20 +61,20 @@ public actor APIClient {
     public func request<T: Decodable>(_ endpoint: APIEndpoint) async throws -> T {
         let request = try buildRequest(for: endpoint)
         let (data, response) = try await perform(request)
-        try validateResponse(response)
+        try validateResponse(response, data: data)
         return try decode(data)
     }
 
     public func requestVoid(_ endpoint: APIEndpoint) async throws {
         let request = try buildRequest(for: endpoint)
-        let (_, response) = try await perform(request)
-        try validateResponse(response)
+        let (data, response) = try await perform(request)
+        try validateResponse(response, data: data)
     }
 
     public func requestRaw(_ endpoint: APIEndpoint) async throws -> Data {
         let request = try buildRequest(for: endpoint)
         let (data, response) = try await perform(request)
-        try validateResponse(response)
+        try validateResponse(response, data: data)
         return data
     }
 
@@ -98,7 +99,7 @@ public actor APIClient {
         request.httpBody = body
 
         let (data, response) = try await perform(request)
-        try validateResponse(response)
+        try validateResponse(response, data: data)
         return try decode(data)
     }
 
@@ -112,7 +113,7 @@ public actor APIClient {
                         continuation.finish(throwing: APIError.invalidResponse(0))
                         return
                     }
-                    try validateResponse(httpResponse)
+                    try validateResponse(httpResponse, data: Data())
 
                     for try await line in bytes.lines {
                         guard !line.isEmpty else { continue }
@@ -162,17 +163,40 @@ public actor APIClient {
             return (data, httpResponse)
         } catch let error as APIError {
             throw error
+        } catch let urlError as URLError where urlError.code == .cannotConnectToHost
+                                              || urlError.code == .networkConnectionLost
+                                              || urlError.code == .notConnectedToInternet {
+            let host = request.url?.host ?? "unknown"
+            let port = request.url?.port.map { ":\($0)" } ?? ""
+            throw APIError.serverError("Cannot connect to \(host)\(port). Make sure the server is running.")
         } catch {
             throw APIError.networkError(error)
         }
     }
 
-    private func validateResponse(_ response: HTTPURLResponse) throws {
+    private func validateResponse(_ response: HTTPURLResponse, data: Data) throws {
         switch response.statusCode {
         case 200...299: return
-        case 401: throw APIError.unauthorized
-        default: throw APIError.invalidResponse(response.statusCode)
+        case 401:
+            // Prefer the server's own message before the generic "Session expired" copy.
+            if let msg = parseErrorMessage(from: data) {
+                throw APIError.serverError(msg)
+            }
+            throw APIError.unauthorized
+        default:
+            if let msg = parseErrorMessage(from: data) {
+                throw APIError.serverError(msg)
+            }
+            throw APIError.invalidResponse(response.statusCode)
         }
+    }
+
+    /// Reads `{ "error": "..." }` or `{ "message": "..." }` from a JSON error body.
+    private func parseErrorMessage(from data: Data) -> String? {
+        guard !data.isEmpty,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return (json["error"] as? String) ?? (json["message"] as? String)
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {

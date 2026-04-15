@@ -7,6 +7,7 @@ struct AddMealSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.syncEngine) private var syncEngine
+    @Environment(AuthService.self) private var auth
     @State private var mealService = MealService()
 
     let date: String
@@ -20,13 +21,19 @@ struct AddMealSheet: View {
     @State private var notes = ""
     @State private var inputMode: InputMode = .manual
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedMenuPhoto: PhotosPickerItem?
+    @State private var selectedReceiptPhoto: PhotosPickerItem?
     @State private var analysisResults: [SuggestedMeal] = []
     @State private var isAnalyzing = false
     @State private var recipeURL = ""
+    @State private var foodSearchQuery = ""
 
     enum InputMode: String, CaseIterable {
         case manual = "Manual"
         case photo = "Photo"
+        case menu = "Menu scan"
+        case receipt = "Receipt scan"
+        case search = "Food search"
         case voice = "Voice"
         case recipe = "Recipe URL"
         case suggest = "AI Suggest"
@@ -37,11 +44,10 @@ struct AddMealSheet: View {
             Form {
                 Section("Input Method") {
                     Picker("Method", selection: $inputMode) {
-                        ForEach(InputMode.allCases, id: \.self) {
-                            Text($0.rawValue)
+                        ForEach(InputMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 switch inputMode {
@@ -49,6 +55,12 @@ struct AddMealSheet: View {
                     manualInputSection
                 case .photo:
                     photoInputSection
+                case .menu:
+                    menuScanSection
+                case .receipt:
+                    receiptScanSection
+                case .search:
+                    foodSearchSection
                 case .voice:
                     voiceInputSection
                 case .recipe:
@@ -136,6 +148,75 @@ struct AddMealSheet: View {
         }
     }
 
+    private var menuScanSection: some View {
+        Section("Menu scan") {
+            PhotosPicker("Select menu photo", selection: $selectedMenuPhoto, matching: .images)
+                .onChange(of: selectedMenuPhoto) { _, newValue in
+                    guard let item = newValue else { return }
+                    Task {
+                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                        isAnalyzing = true
+                        do {
+                            analysisResults = try await mealService.analyzeMenu(imageData: data)
+                        } catch {
+                            analysisResults = []
+                        }
+                        isAnalyzing = false
+                    }
+                }
+            if isAnalyzing {
+                ProgressView("Reading menu…")
+            }
+        }
+    }
+
+    private var receiptScanSection: some View {
+        Section("Receipt scan") {
+            PhotosPicker("Select receipt photo", selection: $selectedReceiptPhoto, matching: .images)
+                .onChange(of: selectedReceiptPhoto) { _, newValue in
+                    guard let item = newValue else { return }
+                    Task {
+                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                        isAnalyzing = true
+                        do {
+                            analysisResults = try await mealService.analyzeReceipt(imageData: data)
+                        } catch {
+                            analysisResults = []
+                        }
+                        isAnalyzing = false
+                    }
+                }
+            if isAnalyzing {
+                ProgressView("Reading receipt…")
+            }
+        }
+    }
+
+    private var foodSearchSection: some View {
+        Section("Food search") {
+            TextField("e.g. grilled chicken breast 200g", text: $foodSearchQuery)
+                .autocapitalization(.none)
+            Button("Look up nutrition") {
+                Task {
+                    isAnalyzing = true
+                    do {
+                        let res = try await mealService.lookupNutrition(query: foodSearchQuery)
+                        name = res.name
+                        calories = res.macros.calories
+                        protein = res.macros.protein
+                        carbs = res.macros.carbs
+                        fat = res.macros.fat
+                    } catch {}
+                    isAnalyzing = false
+                }
+            }
+            .disabled(foodSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if isAnalyzing {
+                ProgressView()
+            }
+        }
+    }
+
     private var photoInputSection: some View {
         Section("Photo Analysis") {
             PhotosPicker("Select Photo", selection: $selectedPhoto, matching: .images)
@@ -167,7 +248,7 @@ struct AddMealSheet: View {
     private var voiceInputSection: some View {
         Section("Voice Logging") {
             Label("Tap to record your meal", systemImage: "mic.fill")
-                .foregroundStyle(.blue)
+                .foregroundStyle(Color.appAccent)
             Text("Say something like \"I had a grilled chicken salad with olive oil dressing for lunch\"")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -202,13 +283,11 @@ struct AddMealSheet: View {
         Section("AI Suggestions") {
             Button {
                 Task {
+                    guard let profile = auth.currentUser else { return }
                     isAnalyzing = true
                     do {
                         try await mealService.fetchSuggestions(
-                            profile: UserProfileDTO(
-                                id: "", name: "", age: 30, weight: 70, height: 170,
-                                gender: "male", fitnessLevel: "beginner", goal: "maintain"
-                            ),
+                            profile: profile.toDTO(),
                             date: date
                         )
                         analysisResults = mealService.suggestions

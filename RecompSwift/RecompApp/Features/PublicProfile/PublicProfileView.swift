@@ -25,7 +25,7 @@ struct PublicProfileView: View {
                             .font(.caption)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 4)
-                            .background(.blue.opacity(0.1), in: Capsule())
+                            .background(Color.appAccent.opacity(0.1), in: Capsule())
                     }
 
                     HStack(spacing: 24) {

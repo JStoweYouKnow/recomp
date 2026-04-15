@@ -38,6 +38,7 @@ public struct PlanDietPlanDTO: Codable, Sendable {
 public struct PlanWorkoutPlanDTO: Codable, Sendable {
     public var weeklyPlan: [WorkoutDay]
     public var tips: [String]
+    public var programWeek1Start: String?
 }
 
 public struct FitnessPlanDTO: Codable, Sendable {

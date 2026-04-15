@@ -14,7 +14,7 @@ struct DailyQuestsCard: View {
                 ForEach(quests.indices, id: \.self) { i in
                     HStack(spacing: 8) {
                         Image(systemName: quests[i].1 ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(quests[i].1 ? .green : .secondary)
+                            .foregroundStyle(quests[i].1 ? Color.appSuccess : Color.secondary)
                             .font(.caption)
 
                         Text(quests[i].0)

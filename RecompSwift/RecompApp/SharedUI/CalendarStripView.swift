@@ -5,16 +5,25 @@ struct CalendarStripView: View {
     @Binding var selectedDate: Date
     var dotDates: Set<String> = []
 
-    private let dates = DateHelpers.weekDates()
+    /// Seven dates (Sun–Sat) for the week containing the current selection.
+    /// Dates are normalized to start-of-day so `id` values are stable across renders.
+    private var dates: [Date] {
+        let cal = Calendar.current
+        return DateHelpers.weekDates(around: selectedDate).map { cal.startOfDay(for: $0) }
+    }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(dates, id: \.self) { date in
-                    let dateStr = DateHelpers.dateString(from: date)
-                    let isSelected = DateHelpers.dateString(from: selectedDate) == dateStr
-                    let hasDot = dotDates.contains(dateStr)
+        HStack(spacing: 4) {
+            ForEach(dates, id: \.self) { date in
+                let dateStr = DateHelpers.dateString(from: date)
+                let isSelected = DateHelpers.dateString(from: selectedDate) == dateStr
+                let hasDot = dotDates.contains(dateStr)
 
+                Button {
+                    withAnimation(.spring(duration: 0.2)) {
+                        selectedDate = date
+                    }
+                } label: {
                     VStack(spacing: 4) {
                         Text(DateHelpers.dayOfWeekShort(date))
                             .font(.caption2)
@@ -25,23 +34,20 @@ struct CalendarStripView: View {
                             .foregroundStyle(isSelected ? .white : .primary)
 
                         Circle()
-                            .fill(hasDot ? (isSelected ? .white : .blue) : .clear)
+                            .fill(hasDot ? (isSelected ? Color.white : Color.appAccent) : Color.clear)
                             .frame(width: 5, height: 5)
                     }
-                    .frame(width: 44, height: 64)
+                    .frame(maxWidth: .infinity, minHeight: 64)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(isSelected ? .blue : .clear)
+                            .fill(isSelected ? Color.appAccent : Color.clear)
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(duration: 0.2)) {
-                            selectedDate = date
-                        }
-                    }
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal)
         }
+        .padding(.horizontal)
+        .frame(height: 72)
     }
 }
 

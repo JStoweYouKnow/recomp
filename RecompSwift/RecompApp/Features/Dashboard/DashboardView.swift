@@ -5,9 +5,9 @@ import RefactorKit
 struct DashboardView: View {
     @Environment(\.modelContext) private var context
     @Environment(AuthService.self) private var auth
+    @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
     @State private var planService = PlanService()
-    @State private var selectedDate = Date.now
 
     var body: some View {
         NavigationStack {
@@ -15,8 +15,11 @@ struct DashboardView: View {
                 VStack(spacing: 16) {
                     greetingSection
                     calorieBudgetSection
-                    CalendarStripView(selectedDate: $selectedDate)
                     todaysPlanSection
+                    MetabolicModelDashboardCard()
+                        .padding(.horizontal)
+                    CoachCheckInDashboardCard()
+                        .padding(.horizontal)
                     widgetGrid
                 }
                 .padding(.vertical)
@@ -24,6 +27,9 @@ struct DashboardView: View {
             .navigationTitle("Dashboard")
             .refreshable {
                 await auth.checkSession()
+                if let engine = syncEngine {
+                    try? await engine.fetchAndApply()
+                }
             }
         }
     }
@@ -65,9 +71,9 @@ struct DashboardView: View {
                         Text(workout.focus)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("\(workout.exercises.count) exercises")
+                        Text("\(workout.exerciseSlotCount) exercises")
                             .font(.caption)
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(Color.appAccent)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } label: {
@@ -124,13 +130,7 @@ struct CalorieBudgetCard: View {
                         .fill(.gray.opacity(0.15))
 
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(
-                            LinearGradient(
-                                colors: progress > 0.9 ? [.red, .orange] : [.green, .blue],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                        .fill(progress > 0.9 ? LinearGradient.appWarningGradient : LinearGradient.appAccentGradient)
                         .frame(width: geo.size.width * progress)
                 }
             }

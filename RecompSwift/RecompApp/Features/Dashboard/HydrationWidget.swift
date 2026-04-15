@@ -22,14 +22,14 @@ struct HydrationWidget: View {
             VStack(spacing: 8) {
                 ZStack {
                     Circle()
-                        .stroke(.blue.opacity(0.2), lineWidth: 5)
+                        .stroke(Color.appAccent.opacity(0.2), lineWidth: 5)
                     Circle()
                         .trim(from: 0, to: Double(totalMl) / Double(goalMl))
-                        .stroke(.blue, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .stroke(Color.appAccent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     Image(systemName: "drop.fill")
                         .font(.title3)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(Color.appAccent)
                 }
                 .frame(width: 50, height: 50)
 
@@ -60,7 +60,7 @@ struct HydrationWidget: View {
                 .font(.caption2.weight(.medium))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(.blue.opacity(0.1), in: Capsule())
+                .background(Color.appAccent.opacity(0.1), in: Capsule())
         }
         .buttonStyle(.plain)
     }

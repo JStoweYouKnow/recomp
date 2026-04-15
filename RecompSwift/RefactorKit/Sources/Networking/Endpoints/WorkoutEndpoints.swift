@@ -55,11 +55,26 @@ public struct RecoveryPayload: Encodable {
     }
 }
 
-public struct ExerciseSearchResult: Decodable, Identifiable {
+public struct ExerciseSearchResult: Decodable, Identifiable, Sendable {
+    /// Mapped from server field `exerciseId`.
     public let id: String
-    let name: String
-    let bodyPart: String?
-    let equipment: String?
-    let target: String?
-    let gifUrl: String?
+    public let name: String
+    /// Relative path returned by the server proxy, e.g. "/api/exercises/gif?id=...".
+    /// Callers must resolve against the API base URL to get an absolute URL.
+    public let gifUrl: String?
+    public let targetMuscles: [String]?
+    public let instructions: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case id = "exerciseId"
+        case name, gifUrl, targetMuscles, instructions
+    }
+
+    public init(id: String, name: String, gifUrl: String?, targetMuscles: [String]?, instructions: [String]?) {
+        self.id = id
+        self.name = name
+        self.gifUrl = gifUrl
+        self.targetMuscles = targetMuscles
+        self.instructions = instructions
+    }
 }

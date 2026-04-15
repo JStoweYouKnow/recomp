@@ -24,7 +24,7 @@ struct CoachChatView: View {
                                 HStack {
                                     ProgressView()
                                         .scaleEffect(0.8)
-                                    Text("Reco is thinking...")
+                                    Text("Ref is thinking...")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     Spacer()
@@ -50,7 +50,7 @@ struct CoachChatView: View {
 
                 inputBar
             }
-            .navigationTitle("Reco Coach")
+            .navigationTitle("Ref")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -79,10 +79,10 @@ struct CoachChatView: View {
             } label: {
                 Image(systemName: "mic.fill")
                     .font(.title3)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(Color.appAccent)
             }
 
-            TextField("Ask Reco anything...", text: $messageText, axis: .vertical)
+            TextField("Ask Ref anything...", text: $messageText, axis: .vertical)
                 .textFieldStyle(.roundedBorder)
                 .lineLimit(4)
 
@@ -95,7 +95,7 @@ struct CoachChatView: View {
             } label: {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(messageText.isEmpty ? .gray : .blue)
+                    .foregroundStyle(messageText.isEmpty ? Color.recompMuted : Color.appAccent)
             }
             .disabled(messageText.isEmpty || coachService.isResponding)
         }
@@ -113,11 +113,11 @@ struct MessageBubble: View {
 
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 Text(message.content)
-                    .font(.body)
+                    .font(Font.body)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(isUser ? .blue : Color(.systemGray5))
-                    .foregroundStyle(isUser ? .white : .primary)
+                    .background(isUser ? Color.appAccent : Color.recompSurface)
+                    .foregroundStyle(isUser ? Color.white : Color.recompForeground)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
 
                 Text(message.timestamp, style: .time)

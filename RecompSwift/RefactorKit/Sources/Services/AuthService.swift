@@ -25,11 +25,11 @@ public final class AuthService {
                 currentUser = nil
                 return
             }
-            currentUser = mapProfile(dto)
-            isAuthenticated = true
             if let userId = response.userId {
                 try? KeychainService.save(userId: userId)
             }
+            currentUser = mapProfile(dto)
+            isAuthenticated = true
         } catch {
             isAuthenticated = false
             currentUser = nil
@@ -42,11 +42,11 @@ public final class AuthService {
 
         let response: AuthResponse = try await api.request(AuthAPI.register(payload))
         if let dto = response.profile {
-            currentUser = mapProfile(dto)
-            isAuthenticated = true
             if let userId = response.userId {
                 try? KeychainService.save(userId: userId)
             }
+            currentUser = mapProfile(dto)
+            isAuthenticated = true
         }
     }
 
@@ -58,11 +58,11 @@ public final class AuthService {
         guard let dto = response.profile else {
             throw APIError.serverError("Sign-in did not return a profile. Check your email and password.")
         }
-        currentUser = mapProfile(dto)
-        isAuthenticated = true
         if let userId = response.userId {
             try? KeychainService.save(userId: userId)
         }
+        currentUser = mapProfile(dto)
+        isAuthenticated = true
     }
 
     public func loadDemo() async throws {

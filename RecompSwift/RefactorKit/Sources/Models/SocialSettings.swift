@@ -66,13 +66,16 @@ public struct WeeklyReview: Codable, Identifiable, Sendable {
     public var wearableInsights: String
     public var recommendations: [String]
     public var reasoning: String
+    public var weeklyScore: Int?
     public var agentSteps: [AgentStep]
 
     public struct AgentStep: Codable, Sendable {
+        public var agent: String?
         public var tool: String
         public var summary: String
 
-        public init(tool: String, summary: String) {
+        public init(agent: String? = nil, tool: String, summary: String) {
+            self.agent = agent
             self.tool = tool
             self.summary = summary
         }

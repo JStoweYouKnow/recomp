@@ -18,10 +18,10 @@ struct FastingWidget: View {
                         VStack(spacing: 4) {
                             ZStack {
                                 Circle()
-                                    .stroke(.purple.opacity(0.2), lineWidth: 5)
+                                    .stroke(Color.appSlate.opacity(0.2), lineWidth: 5)
                                 Circle()
                                     .trim(from: 0, to: session.progress)
-                                    .stroke(.purple, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                                    .stroke(Color.appSlate, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                                     .rotationEffect(.degrees(-90))
                                 VStack(spacing: 0) {
                                     Text(String(format: "%.1f", session.elapsedHours))
@@ -35,7 +35,7 @@ struct FastingWidget: View {
 
                             Text(session.currentPhase.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.caption2)
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(Color.appSlate)
                         }
                     }
 
@@ -45,11 +45,11 @@ struct FastingWidget: View {
                     }
                     .font(.caption2.weight(.medium))
                     .buttonStyle(.bordered)
-                    .tint(.purple)
+                    .tint(Color.appSlate)
                 } else {
                     Image(systemName: "timer")
                         .font(.title3)
-                        .foregroundStyle(.purple)
+                        .foregroundStyle(Color.appSlate)
                         .padding(.bottom, 4)
 
                     Button("Start Fast") {
@@ -58,7 +58,7 @@ struct FastingWidget: View {
                     }
                     .font(.caption2.weight(.medium))
                     .buttonStyle(.borderedProminent)
-                    .tint(.purple)
+                    .tint(Color.appSlate)
                 }
             }
         } label: {

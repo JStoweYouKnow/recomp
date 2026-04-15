@@ -4,6 +4,7 @@ import RefactorKit
 
 struct AdjustView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var planService = PlanService()
     @State private var researchService = ResearchService()
 
@@ -20,7 +21,7 @@ struct AdjustView: View {
                     if let errorMessage {
                         Text(errorMessage)
                             .font(.caption)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(Color.appError)
                     }
                 }
                 .padding()
@@ -66,9 +67,13 @@ struct AdjustView: View {
                 Button {
                     Task {
                         do {
+                            let iso = ISO8601DateFormatter()
+                            let planDTO = planService.currentPlan(context: context).map {
+                                FitnessPlanDTO(from: $0, iso8601: iso)
+                            }
                             suggestion = try await planService.adjustPlan(
                                 feedback: feedback,
-                                currentPlan: nil
+                                currentPlan: planDTO
                             )
                         } catch {
                             errorMessage = error.localizedDescription
@@ -100,10 +105,10 @@ struct AdjustView: View {
             if let newTargets = suggestion.newTargets {
                 GroupBox("New Macro Targets") {
                     HStack(spacing: 16) {
-                        macroStat("Cal", value: "\(newTargets.calories)", color: .orange)
-                        macroStat("P", value: "\(Int(newTargets.protein))g", color: .red)
-                        macroStat("C", value: "\(Int(newTargets.carbs))g", color: .blue)
-                        macroStat("F", value: "\(Int(newTargets.fat))g", color: .yellow)
+                        macroStat("Cal", value: "\(newTargets.calories)", color: .appWarm)
+                        macroStat("P", value: "\(Int(newTargets.protein))g", color: .appAccent)
+                        macroStat("C", value: "\(Int(newTargets.carbs))g", color: .appSage)
+                        macroStat("F", value: "\(Int(newTargets.fat))g", color: .appTerracotta)
                     }
                 }
             }
@@ -120,7 +125,15 @@ struct AdjustView: View {
             }
 
             Button {
-                // Apply the suggestion to the current plan
+                guard let plan = planService.currentPlan(context: context) else { return }
+                planService.applyAdjustSuggestion(suggestion, to: plan)
+                UserDefaults.standard.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
+                do {
+                    try context.save()
+                    Task { await syncEngine?.markDirty() }
+                } catch {
+                    errorMessage = error.localizedDescription
+                }
             } label: {
                 Text("Apply Changes")
                     .frame(maxWidth: .infinity)

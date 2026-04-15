@@ -90,6 +90,7 @@ public enum ChallengeAPI: APIEndpoint {
     case list
     case create(payload: CreateChallengePayload)
     case join(id: String)
+    case leave(id: String)
     case progress(id: String, score: Double)
 
     public var path: String {
@@ -97,6 +98,7 @@ public enum ChallengeAPI: APIEndpoint {
         case .list: return "/api/challenges"
         case .create: return "/api/challenges/create"
         case .join: return "/api/challenges/join"
+        case .leave: return "/api/challenges/leave"
         case .progress: return "/api/challenges/progress"
         }
     }
@@ -112,22 +114,45 @@ public enum ChallengeAPI: APIEndpoint {
         switch self {
         case .create(let payload): return AnyEncodable(payload)
         case .join(let id): return AnyEncodable(ChallengeJoinPayload(challengeId: id))
+        case .leave(let id): return AnyEncodable(ChallengeJoinPayload(challengeId: id))
         case .progress(let id, let score): return AnyEncodable(ChallengeProgressPayload(challengeId: id, score: score))
         default: return nil
         }
     }
 }
 
-public struct CreateChallengePayload: Encodable {
-    let type: String
-    let title: String
-    let description: String
-    let metric: String
-    let target: Double
-    let startDate: String
-    let endDate: String
-    let stakes: String?
-    let groupId: String?
+public struct CreateChallengePayload: Encodable, Sendable {
+    public let type: String
+    public let title: String
+    public let description: String
+    public let metric: String
+    public let target: Double
+    public let startDate: String
+    public let endDate: String
+    public let stakes: String?
+    public let groupId: String?
+
+    public init(
+        type: String,
+        title: String,
+        description: String,
+        metric: String,
+        target: Double,
+        startDate: String,
+        endDate: String,
+        stakes: String?,
+        groupId: String?
+    ) {
+        self.type = type
+        self.title = title
+        self.description = description
+        self.metric = metric
+        self.target = target
+        self.startDate = startDate
+        self.endDate = endDate
+        self.stakes = stakes
+        self.groupId = groupId
+    }
 }
 
 // MARK: - JSON DTOs (SwiftData @Model types are not Decodable)

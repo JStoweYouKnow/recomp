@@ -70,6 +70,43 @@ public enum MacroCalculator {
         let nextThreshold = level + 1 < thresholds.count ? thresholds[level + 1] : thresholds.last! + 1000
         return (currentXP - currentThreshold, nextThreshold - currentThreshold)
     }
+
+    /// XP per earned badge — aligned with `recomp/src/lib/milestones.ts` `BADGE_INFO`.
+    public static func xpReward(for milestone: MilestoneType) -> Int {
+        switch milestone {
+        case .firstMeal: return 25
+        case .mealStreak3: return 50
+        case .mealStreak7: return 100
+        case .mealStreak14: return 200
+        case .mealStreak30: return 500
+        case .macroHitWeek: return 75
+        case .macroHitMonth: return 250
+        case .weekWarrior: return 60
+        case .planAdjuster: return 40
+        case .earlyAdopter: return 50
+        case .wearableSynced: return 30
+        case .hydrationStreak3: return 30
+        case .hydrationStreak7: return 60
+        case .firstFast: return 25
+        case .fastingStreak7: return 75
+        case .biofeedbackStreak7: return 60
+        case .metabolicModeled: return 75
+        case .recoveryListener: return 40
+        case .pantryStocked: return 30
+        case .firstMealPrep: return 50
+        case .menuScanner: return 40
+        case .coachCheckInStreak7: return 75
+        case .firstChallengeWon: return 100
+        case .challengeCreator: return 30
+        case .musicConnected: return 20
+        case .supplementTracker: return 30
+        case .bloodWorkUploaded: return 50
+        }
+    }
+
+    public static func totalXp(from milestones: [Milestone]) -> Int {
+        milestones.reduce(0) { $0 + xpReward(for: $1.milestoneType) }
+    }
 }
 
 extension ActivityLevel {

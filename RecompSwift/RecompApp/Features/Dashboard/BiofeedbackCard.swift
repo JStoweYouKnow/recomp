@@ -16,7 +16,7 @@ struct BiofeedbackCard: View {
             if hasLogged {
                 VStack(spacing: 4) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Color.appSuccess)
                         .font(.title3)
                     Text("Logged today")
                         .font(.caption)
@@ -24,11 +24,11 @@ struct BiofeedbackCard: View {
                 }
             } else {
                 VStack(spacing: 6) {
-                    feedbackRow("Energy", value: $energy, icon: "bolt.fill", color: .yellow)
-                    feedbackRow("Mood", value: $mood, icon: "face.smiling", color: .green)
-                    feedbackRow("Hunger", value: $hunger, icon: "fork.knife", color: .orange)
-                    feedbackRow("Stress", value: $stress, icon: "brain", color: .red)
-                    feedbackRow("Sore", value: $soreness, icon: "figure.walk", color: .purple)
+                    feedbackRow("Energy", value: $energy, icon: "bolt.fill", color: Color.appWarm)
+                    feedbackRow("Mood", value: $mood, icon: "face.smiling", color: Color.appSuccess)
+                    feedbackRow("Hunger", value: $hunger, icon: "fork.knife", color: Color.appTerracotta)
+                    feedbackRow("Stress", value: $stress, icon: "brain", color: Color.appError)
+                    feedbackRow("Sore", value: $soreness, icon: "figure.walk", color: Color.appSlate)
 
                     Button("Log") {
                         let entry = BiofeedbackEntry(

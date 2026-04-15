@@ -13,6 +13,71 @@ public struct WorkoutExercise: Codable, Identifiable, Hashable, Sendable {
         self.reps = reps
         self.notes = notes
     }
+
+    /// Parsed set count for UI and local progress (`"4"`, `"3-5"`, **`3x10`** / **`3×12`** sets×reps, etc.). Clamped so
+    /// bad imports do not render huge rows of tiles. The `x` branch avoids treating `3`+`10` as `31`.
+    public var effectiveSetCount: Int {
+        Self.parseSetCount(from: sets)
+    }
+
+    public static func parseSetCount(from raw: String, default defaultCount: Int = 3, maxSets: Int = 12) -> Int {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return defaultCount }
+        func clamp(_ n: Int) -> Int { min(max(n, 1), maxSets) }
+
+        let lowered = s.lowercased()
+
+        // Natural language: "3 sets of 10", "1 set of 20", "3setsof10" (spaces stripped in imports).
+        if let n = firstCaptureInt(
+            pattern: #"^\s*(\d+)\s*sets?\s*of\s*(\d+)"#,
+            in: lowered,
+            group: 1
+        ) {
+            return clamp(n)
+        }
+
+        // Sets × reps: `3x10`, `3 × 12`, `3 x 10 reps` — use a real `x`/`×` token, not `firstIndex(of: "x")`
+        // (which could match an accidental `x` in longer strings after space removal).
+        if let n = firstCaptureInt(
+            pattern: #"(\d+)\s*[x×]\s*(\d+)"#,
+            in: lowered,
+            group: 1
+        ) {
+            return clamp(n)
+        }
+
+        let normalized = s.replacingOccurrences(of: "–", with: "-")
+        let dashParts = normalized.split(separator: "-", omittingEmptySubsequences: true)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+        if dashParts.count >= 2,
+           let a = Int(dashParts[0]) {
+            let bDigits = dashParts[1].prefix(while: { $0.isNumber })
+            if let b = Int(bDigits) {
+                return clamp(max(a, b))
+            }
+        }
+
+        if let n = Int(s) {
+            return clamp(n)
+        }
+
+        var value = 0
+        var scanner = Scanner(string: s)
+        if scanner.scanInt(&value) {
+            return clamp(value)
+        }
+        return defaultCount
+    }
+
+    /// First `(group)` integer capture for `pattern` in `string`, else `nil`.
+    private static func firstCaptureInt(pattern: String, in string: String, group: Int) -> Int? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(string.startIndex..., in: string)
+        guard let m = re.firstMatch(in: string, options: [], range: range),
+              group < m.numberOfRanges,
+              let r = Range(m.range(at: group), in: string) else { return nil }
+        return Int(string[r])
+    }
 }
 
 public struct WorkoutDay: Codable, Identifiable, Hashable, Sendable {
@@ -26,4 +91,25 @@ public struct WorkoutDay: Codable, Identifiable, Hashable, Sendable {
     public var allExercises: [WorkoutExercise] {
         (warmups ?? []) + exercises + (finishers ?? [])
     }
+
+    /// Flat order matches web planner: warm-ups, main, finishers — used for stable progress slot ids.
+    public func enumeratedExerciseSlots() -> [(globalSlot: Int, exercise: WorkoutExercise)] {
+        var out: [(Int, WorkoutExercise)] = []
+        var i = 0
+        for ex in warmups ?? [] {
+            out.append((i, ex))
+            i += 1
+        }
+        for ex in exercises {
+            out.append((i, ex))
+            i += 1
+        }
+        for ex in finishers ?? [] {
+            out.append((i, ex))
+            i += 1
+        }
+        return out
+    }
+
+    public var exerciseSlotCount: Int { allExercises.count }
 }

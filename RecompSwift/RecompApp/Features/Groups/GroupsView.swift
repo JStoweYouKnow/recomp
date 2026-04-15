@@ -2,9 +2,14 @@ import SwiftUI
 import RefactorKit
 
 struct GroupsView: View {
+    @Environment(AuthService.self) private var auth
     @State private var groupService = GroupService()
     @State private var selectedTab = 0
     @State private var showCreate = false
+    @State private var showJoinByCode = false
+    @State private var showCreateChallenge = false
+    @State private var joinCode = ""
+    @State private var joinError: String?
     @State private var selectedGroupId: IdentifiedString?
 
     var body: some View {
@@ -28,13 +33,35 @@ struct GroupsView: View {
             .navigationTitle("Groups")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showCreate = true } label: {
+                    Menu {
+                        Button { showCreate = true } label: {
+                            Label("New Group", systemImage: "person.3.fill")
+                        }
+                        Button { showJoinByCode = true } label: {
+                            Label("Join with Code", systemImage: "number")
+                        }
+                        if selectedTab == 2 {
+                            Button { showCreateChallenge = true } label: {
+                                Label("New Challenge", systemImage: "flag.fill")
+                            }
+                        }
+                    } label: {
                         Image(systemName: "plus.circle.fill")
                     }
                 }
             }
+            .sheet(isPresented: $showJoinByCode) {
+                JoinGroupCodeSheet(
+                    groupService: groupService,
+                    code: $joinCode,
+                    error: $joinError
+                )
+            }
             .sheet(isPresented: $showCreate) {
                 CreateGroupSheet(groupService: groupService)
+            }
+            .sheet(isPresented: $showCreateChallenge) {
+                CreateChallengeSheet(groupService: groupService)
             }
             .sheet(item: $selectedGroupId) { item in
                 GroupDetailView(groupId: item.value, groupService: groupService)
@@ -92,7 +119,7 @@ struct GroupsView: View {
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(.blue.opacity(0.1), in: Capsule())
+                        .background(Color.appAccent.opacity(0.1), in: Capsule())
                 }
             }
         }
@@ -104,7 +131,7 @@ struct GroupsView: View {
 
     private var challengesList: some View {
         List(groupService.challenges, id: \.id) { challenge in
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(challenge.title).font(.body.weight(.medium))
                 Text(challenge.descriptionText)
                     .font(.caption)
@@ -114,17 +141,138 @@ struct GroupsView: View {
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(challenge.status == .active ? .green.opacity(0.1) : .gray.opacity(0.1), in: Capsule())
+                        .background(challenge.status == .active ? Color.appSuccess.opacity(0.1) : Color.secondary.opacity(0.1), in: Capsule())
                     Spacer()
                     Text("\(challenge.participants.count) participants")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                }
+                let uid = auth.currentUser?.id
+                let joined = uid.map { u in challenge.participants.contains { $0.userId == u } } ?? false
+                HStack(spacing: 10) {
+                    Button("Join") {
+                        Task {
+                            guard !joined else { return }
+                            try? await groupService.joinChallenge(id: challenge.id)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(joined)
+
+                    Button("Leave", role: .destructive) {
+                        Task {
+                            guard joined else { return }
+                            try? await groupService.leaveChallenge(id: challenge.id)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(!joined)
                 }
             }
         }
         .listStyle(.plain)
         .task {
             try? await groupService.fetchChallenges()
+        }
+    }
+}
+
+struct JoinGroupCodeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let groupService: GroupService
+    @Binding var code: String
+    @Binding var error: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let error {
+                    Text(error).foregroundStyle(Color.appError).font(.caption)
+                }
+                TextField("Invite code", text: $code)
+                    .textInputAutocapitalization(.characters)
+            }
+            .navigationTitle("Join Group")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        error = nil
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Join") {
+                        Task {
+                            do {
+                                try await groupService.joinByCode(code.trimmingCharacters(in: .whitespacesAndNewlines))
+                                code = ""
+                                error = nil
+                                dismiss()
+                            } catch let err {
+                                error = err.localizedDescription
+                            }
+                        }
+                    }
+                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).count < 4)
+                }
+            }
+        }
+    }
+}
+
+struct CreateChallengeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let groupService: GroupService
+
+    @State private var title = ""
+    @State private var description = ""
+    @State private var metric = "steps"
+    @State private var target: Double = 10000
+    @State private var stakes = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Challenge") {
+                    TextField("Title", text: $title)
+                    TextField("Description", text: $description, axis: .vertical)
+                        .lineLimit(3)
+                    TextField("Metric key", text: $metric)
+                        .font(.caption)
+                    Stepper("Target: \(Int(target))", value: $target, in: 1000...100_000, step: 500)
+                    TextField("Stakes (optional)", text: $stakes)
+                }
+            }
+            .navigationTitle("New Challenge")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        Task {
+                            let today = DateHelpers.todayString()
+                            let end = DateHelpers.dateString(from: Calendar.current.date(byAdding: .day, value: 14, to: Date()) ?? Date())
+                            let payload = CreateChallengePayload(
+                                type: "custom",
+                                title: title,
+                                description: description,
+                                metric: metric,
+                                target: target,
+                                startDate: today,
+                                endDate: end,
+                                stakes: stakes.isEmpty ? nil : stakes,
+                                groupId: nil
+                            )
+                            try? await groupService.createChallenge(payload)
+                            dismiss()
+                        }
+                    }
+                    .disabled(title.isEmpty)
+                }
+            }
         }
     }
 }
@@ -224,6 +372,15 @@ struct GroupDetailView: View {
             }
             .navigationTitle(groupService.currentGroup?.name ?? "Group")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Leave", role: .destructive) {
+                        Task {
+                            try? await groupService.leaveGroup(groupId: groupId)
+                        }
+                    }
+                }
+            }
             .task {
                 try? await groupService.fetchGroupDetail(id: groupId)
                 try? await groupService.fetchMessages(groupId: groupId)
@@ -283,7 +440,7 @@ struct GroupDetailView: View {
                 Spacer()
                 Text("\(member.xp) XP")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(Color.appSage)
             }
         }
         .listStyle(.plain)

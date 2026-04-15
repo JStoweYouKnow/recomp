@@ -54,7 +54,7 @@ struct SignUpFormView: View {
         HStack(spacing: 4) {
             ForEach(0..<totalSteps, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(i <= step ? .blue : .gray.opacity(0.3))
+                    .fill(i <= step ? Color.appAccent : Color.secondary.opacity(0.3))
                     .frame(height: 4)
             }
         }
@@ -182,7 +182,7 @@ struct SignUpFormView: View {
 
             if let errorMessage {
                 Section {
-                    Text(errorMessage).foregroundStyle(.red).font(.caption)
+                    Text(errorMessage).foregroundStyle(Color.appError).font(.caption)
                 }
             }
         }

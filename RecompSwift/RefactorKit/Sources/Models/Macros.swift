@@ -13,6 +13,17 @@ public struct Macros: Codable, Hashable, Sendable {
         self.fat = fat
     }
 
+    // The server marks all macro fields as optional (z.number().optional()) and the AI
+    // may return them as floats (e.g. 1850.5). Use decodeIfPresent + Double to handle
+    // both cases: missing fields default to 0, floats are rounded to Int for calories.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        calories = Int((try c.decodeIfPresent(Double.self, forKey: .calories) ?? 0).rounded())
+        protein  = try c.decodeIfPresent(Double.self, forKey: .protein) ?? 0
+        carbs    = try c.decodeIfPresent(Double.self, forKey: .carbs)   ?? 0
+        fat      = try c.decodeIfPresent(Double.self, forKey: .fat)     ?? 0
+    }
+
     public static let zero = Macros(calories: 0, protein: 0, carbs: 0, fat: 0)
 
     public func adding(_ other: Macros) -> Macros {

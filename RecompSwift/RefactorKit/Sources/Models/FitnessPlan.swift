@@ -39,4 +39,6 @@ public struct DietPlan: Codable, Sendable {
 public struct WorkoutPlan: Codable, Sendable {
     public var weeklyPlan: [WorkoutDay]
     public var tips: [String]
+    /// `yyyy-MM-dd` anchor for multi-week PDF plans (program week 1); matches web `programWeek1Start`.
+    public var programWeek1Start: String?
 }

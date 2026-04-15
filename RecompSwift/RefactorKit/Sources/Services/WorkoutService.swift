@@ -1,46 +1,411 @@
 import Foundation
 import Observation
 
+/// Optional context so set completions can emit web-compatible `workoutProgress` keys for `/api/data/sync`.
+public struct WorkoutSetProgressContext: Sendable {
+    public let planId: String
+    public let planIndex: Int
+    public let globalSlot: Int
+    /// `warmup`, `main`, or `finisher` (matches web `exerciseKey`).
+    public let section: String
+    public let workoutDay: WorkoutDay
+    /// Calendar column `yyyy-MM-dd` for this session (same as card `progressDayKey`).
+    public let progressDayKey: String
+
+    public init(
+        planId: String,
+        planIndex: Int,
+        globalSlot: Int,
+        section: String,
+        workoutDay: WorkoutDay,
+        progressDayKey: String
+    ) {
+        self.planId = planId
+        self.planIndex = planIndex
+        self.globalSlot = globalSlot
+        self.section = section
+        self.workoutDay = workoutDay
+        self.progressDayKey = progressDayKey
+    }
+}
+
 @MainActor
 @Observable
 public final class WorkoutService {
-    private(set) var exerciseResults: [ExerciseSearchResult] = []
-    private(set) var isSearching = false
-    public var workoutProgress: [String: Set<String>] = [:]
+    /// Shared instance so the dashboard coach and workouts tab read the same completion state.
+    public static let shared = WorkoutService()
+
+    public private(set) var exerciseResults: [ExerciseSearchResult] = []
+    public private(set) var isSearching = false
+
+    /// Per calendar day (`yyyy-MM-dd`), storage key → completed set ids (`set_0`, …).
+    private var progressByDay: [String: [String: Set<String>]] = [:]
+
+    /// Mirrors web `localStorage` / Dynamo `WORKOUT_PROGRESS` — keyed by `exerciseKey`, value ISO timestamp.
+    private var webProgressMap: [String: String] = [:]
 
     private let api: APIClient
+    private let defaultsKey = "recomp_workout_set_progress_v2"
+
+    private struct ProgressRoot: Codable {
+        var byDay: [String: [String: [String]]]
+        var webProgress: [String: String]?
+    }
+
+    private let isoFull: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 
     public init(api: APIClient = .shared) {
         self.api = api
+        loadFromDefaults()
     }
 
+    // MARK: - Persistence
+
+    private func loadFromDefaults() {
+        let legacyKey = "recomp_workout_set_progress_v1"
+        let keys = [defaultsKey, legacyKey]
+        for key in keys {
+            guard let data = UserDefaults.standard.data(forKey: key),
+                  let root = try? JSONDecoder().decode(ProgressRoot.self, from: data) else { continue }
+            progressByDay = root.byDay.mapValues { inner in
+                inner.mapValues { Set($0) }
+            }
+            webProgressMap = root.webProgress ?? [:]
+            if key == legacyKey {
+                persistToDefaults()
+                UserDefaults.standard.removeObject(forKey: legacyKey)
+            }
+            return
+        }
+        progressByDay = [:]
+        webProgressMap = [:]
+    }
+
+    private func persistToDefaults() {
+        let serializable = progressByDay.mapValues { inner in
+            inner.mapValues { $0.sorted() }
+        }
+        let root = ProgressRoot(byDay: serializable, webProgress: webProgressMap.isEmpty ? nil : webProgressMap)
+        if let data = try? JSONEncoder().encode(root) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+
+    private func postSyncNotification() {
+        NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil)
+    }
+
+    // MARK: - Server merge (pull)
+
+    /// Replaces web progress from GET `/api/data/sync` and rebuilds per-set checkmarks for the active plan.
+    public func replaceWebProgressFromServer(_ map: [String: String], plan: FitnessPlan?) {
+        webProgressMap = map
+        guard let plan else {
+            persistToDefaults()
+            return
+        }
+        // Rebuild local set ticks from authoritative server map (row keys, not fragile plan indices).
+        progressByDay.removeAll()
+        for (key, iso) in map {
+            guard let parsed = WorkoutWebProgress.parseKey(key, planId: plan.id),
+                  let loc = WorkoutWebProgress.locateSlot(parsed: parsed, in: plan) else { continue }
+            let dayKey = String(iso.prefix(10))
+            let day = plan.workoutPlan.weeklyPlan[loc.planIndex]
+            let slots = day.enumeratedExerciseSlots()
+            guard let pair = slots.first(where: { $0.globalSlot == loc.globalSlot }) else { continue }
+            let n = pair.exercise.effectiveSetCount
+            let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: loc.globalSlot)
+            markAllSets(
+                planId: plan.id,
+                dayLabel: day.day,
+                section: section,
+                exercise: pair.exercise,
+                globalSlot: loc.globalSlot,
+                dayKey: dayKey,
+                setCount: n
+            )
+        }
+        persistToDefaults()
+    }
+
+    /// One-time migration from `slot:planIndex:globalSlot` keys (invalid after reordering/inserting days) to
+    /// stable row keys. Call after a `FitnessPlan` is available (e.g. post-sync).
+    public func migrateWorkoutRowProgressKeysIfNeeded(plan: FitnessPlan) {
+        var sawSlotKey = false
+        for inner in progressByDay.values where inner.keys.contains(where: { $0.hasPrefix("slot:") }) {
+            sawSlotKey = true
+            break
+        }
+        guard sawSlotKey else { return }
+
+        var newByDay: [String: [String: Set<String>]] = [:]
+        for (dayKey, dayMap) in progressByDay {
+            var out: [String: Set<String>] = [:]
+            for (key, sets) in dayMap {
+                if key.hasPrefix("slot:"),
+                   let parsed = parseLegacySlotStorageKey(key),
+                   parsed.planIndex >= 0,
+                   parsed.planIndex < plan.workoutPlan.weeklyPlan.count {
+                    let day = plan.workoutPlan.weeklyPlan[parsed.planIndex]
+                    let gs = parsed.globalSlot
+                    guard let pair = day.enumeratedExerciseSlots().first(where: { $0.globalSlot == gs }) else {
+                        out[key] = sets
+                        continue
+                    }
+                    let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: gs)
+                    let nk = WorkoutWebProgress.localRowSetProgressKey(
+                        planId: plan.id,
+                        dayLabel: day.day,
+                        section: section,
+                        exercise: pair.exercise,
+                        globalSlot: gs
+                    )
+                    out[nk, default: []].formUnion(sets)
+                } else {
+                    out[key] = sets
+                }
+            }
+            newByDay[dayKey] = out
+        }
+        progressByDay = newByDay
+        persistToDefaults()
+    }
+
+    private func parseLegacySlotStorageKey(_ key: String) -> (planIndex: Int, globalSlot: Int)? {
+        // "slot:3:5"
+        guard key.hasPrefix("slot:") else { return nil }
+        let parts = key.dropFirst(5).split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2,
+              let pi = Int(parts[0]),
+              let gs = Int(parts[1]) else { return nil }
+        return (planIndex: pi, globalSlot: gs)
+    }
+
+    /// Full map to send on sync POST (must include server keys so Dynamo isn’t wiped).
+    public func webWorkoutProgressDictionaryForSync() -> [String: String] {
+        webProgressMap
+    }
+
+    private func markAllSets(
+        planId: String,
+        dayLabel: String,
+        section: String,
+        exercise: WorkoutExercise,
+        globalSlot: Int,
+        dayKey: String,
+        setCount: Int
+    ) {
+        let sk = WorkoutWebProgress.localRowSetProgressKey(
+            planId: planId,
+            dayLabel: dayLabel,
+            section: section,
+            exercise: exercise,
+            globalSlot: globalSlot
+        )
+        var dayMap = progressByDay[dayKey] ?? [:]
+        var sets = dayMap[sk] ?? []
+        for i in 0..<setCount { sets.insert("set_\(i)") }
+        dayMap[sk] = sets
+        progressByDay[dayKey] = dayMap
+    }
+
+    // MARK: - Set progress (per day)
+
+    private func slotStorageKey(planIndex: Int, globalSlot: Int) -> String {
+        "slot:\(planIndex):\(globalSlot)"
+    }
+
+    private func rowSetProgressStorageKey(context: WorkoutSetProgressContext, exercise: WorkoutExercise) -> String {
+        WorkoutWebProgress.localRowSetProgressKey(
+            planId: context.planId,
+            dayLabel: context.workoutDay.day,
+            section: context.section,
+            exercise: exercise,
+            globalSlot: context.globalSlot
+        )
+    }
+
+    public func markSetComplete(
+        exerciseName: String,
+        setIndex: Int,
+        dayKey: String? = nil,
+        planIndex: Int? = nil,
+        globalSlot: Int? = nil,
+        webContext: WorkoutSetProgressContext? = nil,
+        exerciseForWeb: WorkoutExercise? = nil
+    ) {
+        let day = dayKey ?? DateHelpers.todayString()
+        var dayMap = progressByDay[day] ?? [:]
+        let storageKey: String
+        if let ctx = webContext, let ex = exerciseForWeb {
+            storageKey = rowSetProgressStorageKey(context: ctx, exercise: ex)
+        } else if let pi = planIndex, let gs = globalSlot {
+            storageKey = slotStorageKey(planIndex: pi, globalSlot: gs)
+        } else {
+            storageKey = exerciseName
+        }
+        var sets = dayMap[storageKey] ?? []
+        sets.insert("set_\(setIndex)")
+        dayMap[storageKey] = sets
+        progressByDay[day] = dayMap
+        persistToDefaults()
+
+        if let ctx = webContext, let ex = exerciseForWeb {
+            refreshWebProgressKeys(context: ctx, exercise: ex)
+            persistToDefaults()
+            postSyncNotification()
+        }
+    }
+
+    private func refreshWebProgressKeys(context: WorkoutSetProgressContext, exercise: WorkoutExercise) {
+        let n = exercise.effectiveSetCount
+        let allDone = (0..<n).allSatisfy {
+            isSetComplete(
+                exerciseName: exercise.name,
+                setIndex: $0,
+                dayKey: context.progressDayKey,
+                planIndex: context.planIndex,
+                globalSlot: context.globalSlot,
+                webContext: context,
+                exercise: exercise
+            )
+        }
+        let weekMon = DateHelpers.mondayWeekStartString(containingCalendarDay: context.progressDayKey)
+        let legacy = WorkoutWebProgress.legacyKey(
+            planId: context.planId,
+            dayLabel: context.workoutDay.day,
+            section: context.section,
+            exercise: exercise
+        )
+        let scoped = WorkoutWebProgress.weekScopedKey(
+            planId: context.planId,
+            weekStartMondayYyyyMmDd: weekMon,
+            dayLabel: context.workoutDay.day,
+            section: context.section,
+            exercise: exercise
+        )
+        if allDone {
+            let ts = isoFull.string(from: .now)
+            webProgressMap[legacy] = ts
+            webProgressMap[scoped] = ts
+        } else {
+            webProgressMap.removeValue(forKey: legacy)
+            webProgressMap.removeValue(forKey: scoped)
+        }
+    }
+
+    public func isSetComplete(
+        exerciseName: String,
+        setIndex: Int,
+        dayKey: String? = nil,
+        planIndex: Int? = nil,
+        globalSlot: Int? = nil,
+        webContext: WorkoutSetProgressContext? = nil,
+        exercise: WorkoutExercise? = nil
+    ) -> Bool {
+        let day = dayKey ?? DateHelpers.todayString()
+        let tag = "set_\(setIndex)"
+        if let ctx = webContext, let ex = exercise {
+            let rk = rowSetProgressStorageKey(context: ctx, exercise: ex)
+            if progressByDay[day]?[rk]?.contains(tag) == true { return true }
+        }
+        if let pi = planIndex, let gs = globalSlot {
+            let sk = slotStorageKey(planIndex: pi, globalSlot: gs)
+            if progressByDay[day]?[sk]?.contains(tag) == true { return true }
+        }
+        return progressByDay[day]?[exerciseName]?.contains(tag) ?? false
+    }
+
+    /// Clears slot progress for a calendar day and removes web entries whose completion date matches that day.
+    public func resetDayProgress(dayKey: String? = nil) {
+        let day = dayKey ?? DateHelpers.todayString()
+        progressByDay[day] = nil
+        webProgressMap = webProgressMap.filter { _, v in
+            String(v.prefix(10)) != day
+        }
+        persistToDefaults()
+        postSyncNotification()
+    }
+
+    /// Matches web planner: one unit per exercise row (warm-up + main + finisher).
+    public func completedExerciseCount(for day: WorkoutDay, dayKey: String, planIndex: Int, planId: String) -> Int {
+        day.enumeratedExerciseSlots().reduce(0) { count, pair in
+            let n = pair.exercise.effectiveSetCount
+            let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: pair.globalSlot)
+            let ctx = WorkoutSetProgressContext(
+                planId: planId,
+                planIndex: planIndex,
+                globalSlot: pair.globalSlot,
+                section: section,
+                workoutDay: day,
+                progressDayKey: dayKey
+            )
+            let allDone = (0..<n).allSatisfy {
+                isSetComplete(
+                    exerciseName: pair.exercise.name,
+                    setIndex: $0,
+                    dayKey: dayKey,
+                    planIndex: planIndex,
+                    globalSlot: pair.globalSlot,
+                    webContext: ctx,
+                    exercise: pair.exercise
+                )
+            }
+            return count + (allDone ? 1 : 0)
+        }
+    }
+
+    public func isWorkoutDayFullyComplete(_ day: WorkoutDay, dayKey: String, planIndex: Int, planId: String) -> Bool {
+        let total = day.exerciseSlotCount
+        guard total > 0 else { return false }
+        return completedExerciseCount(for: day, dayKey: dayKey, planIndex: planIndex, planId: planId) >= total
+    }
+
+    // MARK: - API
+
+    /// Search for an exercise by name. The server returns a **single** best-match object
+    /// (not an array). Resolves the relative `gifUrl` against the API base URL so callers
+    /// get a fully qualified URL they can pass to an image view.
     public func searchExercises(name: String) async throws {
         isSearching = true
         defer { isSearching = false }
 
-        exerciseResults = try await api.request(WorkoutAPI.exerciseSearch(name: name))
+        var result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseSearch(name: name))
+
+        // Server returns a relative path like "/api/exercises/gif?id=...". Build absolute URL.
+        if let relPath = result.gifUrl, !relPath.hasPrefix("http") {
+            var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
+            let pathAndQuery = relPath.split(separator: "?", maxSplits: 1)
+            components?.path = String(pathAndQuery[0])
+            if pathAndQuery.count > 1 {
+                components?.query = String(pathAndQuery[1])
+            }
+            let absoluteUrl = components?.url?.absoluteString ?? relPath
+            result = ExerciseSearchResult(
+                id: result.id,
+                name: result.name,
+                gifUrl: absoluteUrl,
+                targetMuscles: result.targetMuscles,
+                instructions: result.instructions
+            )
+        }
+
+        exerciseResults = [result]
     }
 
     public func getExerciseGifURL(id: String) async throws -> URL? {
         let result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseGif(id: id))
-        guard let urlString = result.gifUrl else { return nil }
-        return URL(string: urlString)
-    }
-
-    public func markSetComplete(exerciseName: String, setIndex: Int) {
-        let key = exerciseName
-        if workoutProgress[key] == nil {
-            workoutProgress[key] = []
-        }
-        workoutProgress[key]?.insert("set_\(setIndex)")
-    }
-
-    public func isSetComplete(exerciseName: String, setIndex: Int) -> Bool {
-        workoutProgress[exerciseName]?.contains("set_\(setIndex)") ?? false
-    }
-
-    public func resetDayProgress() {
-        workoutProgress.removeAll()
+        guard let relPath = result.gifUrl else { return nil }
+        if relPath.hasPrefix("http") { return URL(string: relPath) }
+        var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
+        let parts = relPath.split(separator: "?", maxSplits: 1)
+        components?.path = String(parts[0])
+        if parts.count > 1 { components?.query = String(parts[1]) }
+        return components?.url
     }
 
     public func assessRecovery(biofeedback: [String: Int]) async throws -> RecoveryAssessment {

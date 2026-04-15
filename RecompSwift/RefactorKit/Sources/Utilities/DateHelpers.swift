@@ -61,6 +61,18 @@ public enum DateHelpers {
         dateString == todayString()
     }
 
+    /// Monday `yyyy-MM-dd` for the week containing `yyyyMmDd` (matches web `getWeekStart`).
+    public static func mondayWeekStartString(containingCalendarDay yyyyMmDd: String) -> String {
+        guard let d = date(from: yyyyMmDd) else { return yyyyMmDd }
+        let cal = Calendar.current
+        let start = cal.startOfDay(for: d)
+        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: start) ?? start
+        let wd = cal.component(.weekday, from: noon)
+        let daysFromMonday = wd == 1 ? -6 : -(wd - 2)
+        let monday = cal.date(byAdding: .day, value: daysFromMonday, to: start) ?? start
+        return dateString(from: monday)
+    }
+
     public static func streakLength(dates: [String]) -> Int {
         let sorted = dates.sorted().reversed()
         var streak = 0

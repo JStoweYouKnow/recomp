@@ -65,10 +65,10 @@ struct MealsView: View {
     private var macroSummary: some View {
         let consumed = mealsForDate.reduce(Macros.zero) { $0.adding($1.macros) }
         return HStack(spacing: 16) {
-            macroPill("Cal", value: consumed.calories, color: .orange)
-            macroPill("P", value: Int(consumed.protein), color: .red)
-            macroPill("C", value: Int(consumed.carbs), color: .blue)
-            macroPill("F", value: Int(consumed.fat), color: .yellow)
+            macroPill("Cal", value: consumed.calories, color: .appWarm)
+            macroPill("P", value: Int(consumed.protein), color: .appAccent)
+            macroPill("C", value: Int(consumed.carbs), color: .appSage)
+            macroPill("F", value: Int(consumed.fat), color: .appTerracotta)
         }
         .padding(.horizontal)
         .padding(.bottom, 8)
@@ -127,7 +127,7 @@ struct MealRow: View {
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)
-                    .background(.blue.opacity(0.1), in: Capsule())
+                    .background(Color.appAccent.opacity(0.1), in: Capsule())
 
                 Spacer()
 

@@ -14,30 +14,31 @@ public enum SocialAPI: APIEndpoint {
         }
     }
 
+    /// `GET` loads settings; `PUT` saves. Username check uses `POST` + JSON body (matches web client).
     public var method: HTTPMethod {
         switch self {
-        case .getSettings, .checkUsername, .publicProfile: return .GET
+        case .getSettings, .publicProfile: return .GET
         case .updateSettings: return .PUT
+        case .checkUsername: return .POST
         }
     }
 
-    public var queryItems: [URLQueryItem]? {
-        switch self {
-        case .checkUsername(let username):
-            return [URLQueryItem(name: "username", value: username)]
-        default:
-            return nil
-        }
-    }
+    public var queryItems: [URLQueryItem]? { nil }
 
     public var body: (any Encodable)? {
         switch self {
         case .updateSettings(let visibility, let username):
             return AnyEncodable(SocialUpdatePayload(visibility: visibility, username: username))
+        case .checkUsername(let username):
+            return AnyEncodable(UsernameCheckRequestBody(username: username))
         default:
             return nil
         }
     }
+}
+
+private struct UsernameCheckRequestBody: Encodable {
+    let username: String
 }
 
 public struct SocialUpdatePayload: Encodable {
@@ -45,6 +46,11 @@ public struct SocialUpdatePayload: Encodable {
     let username: String?
 }
 
-public struct UsernameCheckResponse: Decodable {
-    let available: Bool
+public struct UsernameCheckResponse: Decodable, Sendable {
+    public let available: Bool
+}
+
+public struct SocialSettingsDTO: Decodable, Sendable {
+    public let visibility: String?
+    public let username: String?
 }
