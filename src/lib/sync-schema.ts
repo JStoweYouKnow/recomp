@@ -10,12 +10,25 @@ const macrosSchema = z.object({
   fat: z.number().min(0).max(2000).optional(),
 });
 
+const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
+
+function normalizeSyncMealType(value: unknown): (typeof MEAL_TYPES)[number] {
+  if (typeof value !== "string") return "snack";
+  const x = value.trim().toLowerCase();
+  return (MEAL_TYPES as readonly string[]).includes(x) ? (x as (typeof MEAL_TYPES)[number]) : "snack";
+}
+
+function defaultMacros(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+}
+
 const mealEntrySchema = z.object({
   id: z.string().max(100),
   date: z.string().max(20),
-  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+  mealType: z.preprocess(normalizeSyncMealType, z.enum(MEAL_TYPES)),
   name: z.string().max(500),
-  macros: macrosSchema,
+  macros: z.preprocess(defaultMacros, macrosSchema),
   notes: z.string().max(1000).optional(),
   imageUrl: z.string().max(2000000).optional(),
   loggedAt: z.string().max(50).optional(),
@@ -84,11 +97,13 @@ const fitnessPlanSchema = z.object({
   createdAt: z.string().max(50),
   dietPlan: z.object({
     dailyTargets: macrosSchema.optional(),
-    weeklyPlan: z.array(dietDaySchema).max(14).optional(),
+    /** LLM plans + multi-week templates can exceed one calendar week */
+    weeklyPlan: z.array(dietDaySchema).max(60).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   workoutPlan: z.object({
-    weeklyPlan: z.array(workoutDaySchema).max(14).optional(),
+    /** WorkoutPlannerView allows many template days (e.g. multi-week PDF programs) */
+    weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   reasoning: z.string().max(5000).optional(),
@@ -182,7 +197,7 @@ const activityLogEntrySchema = z.object({
 const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
 const metabolicDataPointSchema = z.object({
-  date: z.string().max(20),
+  date: z.string().max(50),
   weightKg: z.number(),
   totalIntake: z.number(),
   totalExpenditure: z.number(),
@@ -194,7 +209,8 @@ const metabolicModelSchema = z.object({
   dataPoints: z.array(metabolicDataPointSchema).max(5000),
   lastUpdated: z.string().max(50),
   history: z.array(z.object({
-    date: z.string().max(20),
+    /** Matches `new Date().toISOString()` from /api/metabolic/update */
+    date: z.string().max(50),
     tdee: z.number(),
     confidence: z.number(),
   })).max(5000),
