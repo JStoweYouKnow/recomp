@@ -25,7 +25,12 @@ public actor SyncEngine {
     }
 
     /// Pulls the full snapshot from the server and upserts it into the local SwiftData store.
+    ///
+    /// Flushes any pending local changes first so `replaceWebProgressFromServer` doesn't
+    /// wipe locally-completed workouts that haven't reached the server yet — this happens
+    /// when the app re-foregrounds during the 800ms debounce window after a set is marked done.
     public func fetchAndApply() async throws {
+        await performSync()
         try await syncService.fetchAndApply()
     }
 

@@ -100,7 +100,7 @@ public actor SyncService: ModelActor {
                 bodyScans: bodyScanDTOs.isEmpty ? nil : bodyScanDTOs,
                 pantry: pantryDTOs.isEmpty ? nil : pantryDTOs,
                 activityLog: activityLogDTOs.isEmpty ? nil : activityLogDTOs,
-                workoutProgress: workoutWebMap.isEmpty ? nil : workoutWebMap,
+                workoutProgress: workoutWebMap,
                 wearableConnections: wearableConnDTOs.isEmpty ? nil : wearableConnDTOs,
                 wearableData: wearableDataDTOs.isEmpty ? nil : wearableDataDTOs,
                 metabolicModel: metabolicDTO,
@@ -113,6 +113,7 @@ public actor SyncService: ModelActor {
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
         } catch {
             isDirty = true
+            scheduleSync() // auto-retry after failed sync
         }
     }
 
