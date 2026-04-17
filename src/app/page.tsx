@@ -126,7 +126,7 @@ export default function Home() {
     if (Array.isArray(data.milestones)) { saveMilestones(data.milestones as Parameters<typeof saveMilestones>[0]); setMilestonesState(data.milestones as Parameters<typeof setMilestonesState>[0]); }
     if (data.weeklyReview) saveWeeklyReview(data.weeklyReview as Parameters<typeof saveWeeklyReview>[0]);
     if (data.activityLog) saveActivityLog(data.activityLog as Parameters<typeof saveActivityLog>[0]);
-    if (data.workoutProgress) saveWorkoutProgress(data.workoutProgress as Parameters<typeof saveWorkoutProgress>[0]);
+    if (data.workoutProgress !== undefined) saveWorkoutProgress(data.workoutProgress as Parameters<typeof saveWorkoutProgress>[0]);
     if (data.hydration) saveHydration(data.hydration as Parameters<typeof saveHydration>[0]);
     if (data.fastingSessions) saveFastingSessions(data.fastingSessions as Parameters<typeof saveFastingSessions>[0]);
     if (data.biofeedback) saveBiofeedback(data.biofeedback as Parameters<typeof saveBiofeedback>[0]);
@@ -145,13 +145,11 @@ export default function Home() {
     return true;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pullFromServer = useCallback((): Promise<boolean> => {
-    return fetch("/api/data/sync", { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error("sync-failed");
-        return res.json();
-      })
-      .then((data) => applyServerData(data));
+  const pullFromServer = useCallback(async (): Promise<boolean> => {
+    const res = await fetch("/api/data/sync", { credentials: "include" });
+    if (!res.ok) throw new Error("sync-failed");
+    const data = await res.json();
+    return applyServerData(data);
   }, [applyServerData]);
 
   useEffect(() => {
@@ -172,8 +170,12 @@ export default function Home() {
     }
 
     // Always fetch the server snapshot — not just when localStorage is empty.
-    // This ensures a second browser or device always converges to server state.
-    fetch("/api/data/sync", { credentials: "include" })
+    // Flush local state first so any unsaved edits (e.g. meals logged before the
+    // last reload) reach the server before we pull — otherwise applyServerData
+    // would overwrite them with the stale server state and they'd be lost.
+    (p ? flushSync() : Promise.resolve())
+      .catch(() => {})
+      .then(() => fetch("/api/data/sync", { credentials: "include" }))
       .then(async (res) => {
         if (!res.ok) {
           // 401: no session cookie on this browser — localStorage is device-only
@@ -196,10 +198,6 @@ export default function Home() {
         const applied = applyServerData(data);
         if (applied) {
           if (!p) setView("dashboard");
-          // Push merged localStorage to DynamoDB so data that only existed in this
-          // browser (e.g. many meals logged before a successful POST) becomes
-          // visible on other devices after their next GET /api/data/sync.
-          syncToServer();
         } else {
           if (!p) setView("onboard");
         }
@@ -724,6 +722,7 @@ export default function Home() {
                 });
                 saveWearableData(merged);
                 setWearableData(merged);
+                syncToServer();
               }}
             />
           </div>
@@ -793,6 +792,7 @@ export default function Home() {
                 });
                 saveWearableData(merged);
                 setWearableData(merged);
+                syncToServer();
               }}
             />
           </div>

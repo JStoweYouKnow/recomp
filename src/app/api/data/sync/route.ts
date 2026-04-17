@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     const body = JSON.parse(raw);
     const parsed = syncBodySchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
     const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
@@ -306,7 +306,9 @@ export async function GET(req: NextRequest) {
       wearableData: wearableData.length > 0 ? wearableData : undefined,
       weeklyReview: weeklyReview ?? undefined,
       activityLog: activityLog.length > 0 ? activityLog : undefined,
-      workoutProgress: Object.keys(workoutProgress).length > 0 ? workoutProgress : undefined,
+      // Always include workoutProgress (even empty) so clients can clear stale local entries
+      // when a reset is performed on another device and synced up as an empty map.
+      workoutProgress,
       hydration: hydration.length > 0 ? hydration : undefined,
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,

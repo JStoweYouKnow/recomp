@@ -39,7 +39,7 @@ const wearableConnectionSchema = z.object({
   label: z.string().max(100).optional(),
 });
 
-const wearableDaySummarySchema = z.object({
+const wearableDaySummarySchema = z.looseObject({
   date: z.string().max(20),
   provider: z.enum(["oura", "fitbit", "apple", "garmin", "android", "scale"]),
   steps: z.number().min(0).max(1000000).optional(),
@@ -53,16 +53,16 @@ const wearableDaySummarySchema = z.object({
   weight: z.number().min(0).max(1100).optional(), // lbs
   bodyFatPercent: z.number().min(0).max(100).optional(),
   muscleMass: z.number().min(0).max(500).optional(), // lbs
-}).passthrough();
+});
 
-const dietDaySchema = z.object({
+const dietDaySchema = z.looseObject({
   day: z.string().max(50),
   meals: z.array(z.object({
     mealType: z.string().max(20),
     description: z.string().max(500),
     macros: macrosSchema,
   })).max(10),
-}).passthrough();
+});
 
 const workoutExerciseSchema = z.object({
   name: z.string().max(200),
@@ -70,31 +70,31 @@ const workoutExerciseSchema = z.object({
   reps: z.string().max(20),
   notes: z.string().max(500).optional(),
 });
-const workoutDaySchema = z.object({
+const workoutDaySchema = z.looseObject({
   day: z.string().max(50),
   focus: z.string().max(200),
   warmups: z.array(workoutExerciseSchema).max(20).optional(),
   exercises: z.array(workoutExerciseSchema).max(50),
   finishers: z.array(workoutExerciseSchema).max(20).optional(),
-}).passthrough();
+});
 
-const fitnessPlanSchema = z.object({
+const fitnessPlanSchema = z.looseObject({
   id: z.string().max(100),
   userId: z.string().max(100),
   createdAt: z.string().max(50),
-  dietPlan: z.object({
+  dietPlan: z.looseObject({
     dailyTargets: macrosSchema.optional(),
     weeklyPlan: z.array(dietDaySchema).max(14).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
-  }).passthrough(),
-  workoutPlan: z.object({
+  }),
+  workoutPlan: z.looseObject({
     /** Multi-week PDF programs (e.g. 12 weeks × 3 days) exceed a single calendar week. */
     weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
     programWeek1Start: z.string().max(12).optional(),
-  }).passthrough(),
+  }),
   reasoning: z.string().max(5000).optional(),
-}).passthrough();
+});
 
 const hydrationEntrySchema = z.object({
   id: z.string().max(100),
@@ -181,7 +181,7 @@ const activityLogEntrySchema = z.object({
   loggedAt: z.string().max(50).optional(),
 });
 
-const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
+const workoutProgressMapSchema = z.record(z.string().max(2000), z.string().max(5000));
 
 const metabolicDataPointSchema = z.object({
   date: z.string().max(50),
@@ -190,7 +190,7 @@ const metabolicDataPointSchema = z.object({
   totalExpenditure: z.number(),
 });
 
-const metabolicModelSchema = z.object({
+const metabolicModelSchema = z.looseObject({
   estimatedTDEE: z.number(),
   confidence: z.number(),
   dataPoints: z.array(metabolicDataPointSchema).max(5000),
@@ -200,25 +200,25 @@ const metabolicModelSchema = z.object({
     tdee: z.number(),
     confidence: z.number(),
   })).max(5000),
-}).passthrough();
+});
 
-const measurementTargetsSchema = z.object({
+const measurementTargetsSchema = z.looseObject({
   targetWeightLbs: z.number().optional(),
   targetBodyFatPercent: z.number().optional(),
   targetMuscleMassLbs: z.number().optional(),
-}).passthrough();
+});
 
-// Loose profile schema — passthrough so unknown fields don't break validation
-const profileSchema = z.object({
+// Loose profile schema — unknown fields pass through without breaking validation
+const profileSchema = z.looseObject({
   id: z.string().max(100),
   name: z.string().max(80),
-  email: z.string().email().optional(),
+  email: z.string().max(254).optional(),
   age: z.number().int().min(10).max(120).optional(),
   weight: z.number().min(20).max(500).optional(),
   height: z.number().min(80).max(260).optional(),
   goal: z.string().max(50).optional(),
   createdAt: z.string().max(50).optional(),
-}).passthrough();
+});
 
 export const syncBodySchema = z.object({
   profile: profileSchema.optional().nullable(),
