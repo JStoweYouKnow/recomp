@@ -66,10 +66,11 @@ public final class WorkoutService {
     // MARK: - Persistence
 
     private func loadFromDefaults() {
+        let store = RecompAppGroupDefaults.shared
         let legacyKey = "recomp_workout_set_progress_v1"
         let keys = [defaultsKey, legacyKey]
         for key in keys {
-            guard let data = UserDefaults.standard.data(forKey: key),
+            guard let data = store.data(forKey: key),
                   let root = try? JSONDecoder().decode(ProgressRoot.self, from: data) else { continue }
             progressByDay = root.byDay.mapValues { inner in
                 inner.mapValues { Set($0) }
@@ -77,7 +78,7 @@ public final class WorkoutService {
             webProgressMap = root.webProgress ?? [:]
             if key == legacyKey {
                 persistToDefaults()
-                UserDefaults.standard.removeObject(forKey: legacyKey)
+                store.removeObject(forKey: legacyKey)
             }
             return
         }
@@ -91,7 +92,7 @@ public final class WorkoutService {
         }
         let root = ProgressRoot(byDay: serializable, webProgress: webProgressMap.isEmpty ? nil : webProgressMap)
         if let data = try? JSONEncoder().encode(root) {
-            UserDefaults.standard.set(data, forKey: defaultsKey)
+            RecompAppGroupDefaults.shared.set(data, forKey: defaultsKey)
         }
     }
 

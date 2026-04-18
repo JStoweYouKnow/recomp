@@ -59,6 +59,10 @@ struct MealsView: View {
             .sheet(isPresented: $showAddMeal) {
                 AddMealSheet(date: DateHelpers.dateString(from: selectedDate))
             }
+            .refreshable {
+                guard let engine = syncEngine else { return }
+                try? await engine.fetchAndApply()
+            }
         }
     }
 

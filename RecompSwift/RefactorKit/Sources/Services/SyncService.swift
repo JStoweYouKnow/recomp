@@ -75,9 +75,10 @@ public actor SyncService: ModelActor {
             let metabolicDTO    = metabolicModels.first.map(metabolicModelDTO(from:))
 
             let xpTotal = MacroCalculator.totalXp(from: milestones)
-            let hasAdjustedFlag = UserDefaults.standard.bool(forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
+            let defaults = RecompAppGroupDefaults.shared
+            let hasAdjustedFlag = defaults.bool(forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
             let ricoForPush: [RicoMessageDTO]? = {
-                guard let data = UserDefaults.standard.data(forKey: RecompUserDefaultsKeys.ricoHistoryJSON),
+                guard let data = defaults.data(forKey: RecompUserDefaultsKeys.ricoHistoryJSON),
                       let decoded = try? JSONDecoder().decode([RicoMessageDTO].self, from: data),
                       !decoded.isEmpty else { return nil }
                 return decoded
@@ -273,17 +274,18 @@ public actor SyncService: ModelActor {
 
     private func persistRemoteMeta(_ meta: SyncMetaDTO?) {
         guard let meta else { return }
+        let defaults = RecompAppGroupDefaults.shared
         if let xp = meta.xp {
-            UserDefaults.standard.set(xp, forKey: RecompUserDefaultsKeys.remoteMetaXp)
+            defaults.set(xp, forKey: RecompUserDefaultsKeys.remoteMetaXp)
         }
         if let h = meta.hasAdjusted, h {
-            UserDefaults.standard.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
+            defaults.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
         }
         if let r = meta.ricoHistory, let data = try? JSONEncoder().encode(r) {
-            UserDefaults.standard.set(data, forKey: RecompUserDefaultsKeys.ricoHistoryJSON)
+            defaults.set(data, forKey: RecompUserDefaultsKeys.ricoHistoryJSON)
         }
         if let mt = meta.measurementTargets, let data = try? JSONEncoder().encode(mt) {
-            UserDefaults.standard.set(data, forKey: RecompUserDefaultsKeys.measurementTargetsJSON)
+            defaults.set(data, forKey: RecompUserDefaultsKeys.measurementTargetsJSON)
         }
     }
 

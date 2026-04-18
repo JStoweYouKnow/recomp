@@ -127,7 +127,7 @@ struct AdjustView: View {
             Button {
                 guard let plan = planService.currentPlan(context: context) else { return }
                 planService.applyAdjustSuggestion(suggestion, to: plan)
-                UserDefaults.standard.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
+                RecompAppGroupDefaults.shared.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
                 do {
                     try context.save()
                     Task { await syncEngine?.markDirty() }

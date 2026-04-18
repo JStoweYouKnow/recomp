@@ -33,6 +33,9 @@ struct RefactorWatchApp: App {
 }
 
 struct WatchTabView: View {
+    @Environment(\.syncEngine) private var syncEngine
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         TabView {
             WatchDashboardView()
@@ -44,5 +47,17 @@ struct WatchTabView: View {
             WatchCoachView()
         }
         .tabViewStyle(.verticalPage)
+        .task { await refreshFromServerIfSignedIn() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshFromServerIfSignedIn() }
+        }
+    }
+
+    /// Keeps SwiftData + shared defaults aligned with the phone after edits on either device.
+    private func refreshFromServerIfSignedIn() async {
+        guard let engine = syncEngine else { return }
+        guard let uid = try? KeychainService.loadUserId(), !uid.isEmpty else { return }
+        try? await engine.fetchAndApply()
     }
 }

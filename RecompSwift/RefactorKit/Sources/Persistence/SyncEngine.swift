@@ -24,14 +24,18 @@ public actor SyncEngine {
         await performSync()
     }
 
-    /// Pulls the full snapshot from the server and upserts it into the local SwiftData store.
+    /// Pulls the full snapshot from the server and upserts it into the local SwiftData store,
+    /// then pushes local state so edits made on this device (and workout progress) reach the server.
     ///
-    /// Flushes any pending local changes first so `replaceWebProgressFromServer` doesn't
-    /// wipe locally-completed workouts that haven't reached the server yet — this happens
-    /// when the app re-foregrounds during the 800ms debounce window after a set is marked done.
+    /// **Order is pull → push.** A push-first snapshot would POST stale meals from this device
+    /// before the GET; the API treats the meal list as authoritative and deletes server rows
+    /// missing from that payload, so web-only meals disappeared and the phone never caught up.
+    ///
+    /// Workout progress: `WorkoutService.replaceWebProgressFromServer` only clears day buckets
+    /// for dates present in the server map, preserving in-progress days not yet on the server.
     public func fetchAndApply() async throws {
-        await performSync()
         try await syncService.fetchAndApply()
+        await performSync()
     }
 
     /// Call after local SwiftData mutations (meals, plan, milestones) so they upload to the server.

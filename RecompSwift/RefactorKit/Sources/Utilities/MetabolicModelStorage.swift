@@ -19,7 +19,7 @@ public enum MetabolicModelStorage {
     }
 
     public static func load() -> CachedModel? {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        guard let data = RecompAppGroupDefaults.shared.data(forKey: key) else { return nil }
         return try? JSONDecoder().decode(CachedModel.self, from: data)
     }
 
@@ -31,11 +31,11 @@ public enum MetabolicModelStorage {
             dataPointCount: dataPointCount
         )
         if let data = try? JSONEncoder().encode(cached) {
-            UserDefaults.standard.set(data, forKey: key)
+            RecompAppGroupDefaults.shared.set(data, forKey: key)
         }
     }
 
     public static func clear() {
-        UserDefaults.standard.removeObject(forKey: key)
+        RecompAppGroupDefaults.shared.removeObject(forKey: key)
     }
 }
