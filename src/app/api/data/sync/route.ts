@@ -183,8 +183,12 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveActivityLog(userId, activityLog as ActivityLogEntry[]));
     }
 
-    if (workoutProgress) {
-      promises.push(dbSaveWorkoutProgress(userId, workoutProgress as Record<string, string>));
+    // Only touch workout progress when the client included the key. An empty object `{}`
+    // is intentional (e.g. web reset). Omitting the key means "no change" — native clients
+    // omit it when they have nothing to push so we must not overwrite Dynamo with `{}`
+    // (empty object is truthy in JS and used to wipe the map).
+    if (Object.prototype.hasOwnProperty.call(parsed.data, "workoutProgress")) {
+      promises.push(dbSaveWorkoutProgress(userId, (workoutProgress ?? {}) as Record<string, string>));
     }
 
     // Auto-populate community exercise DB from user-submitted exercise names (fire-and-forget)
@@ -298,8 +302,9 @@ export async function GET(req: NextRequest) {
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableData.length > 0 ? wearableData : undefined,
       weeklyReview: weeklyReview ?? undefined,
-      activityLog: activityLog.length > 0 ? activityLog : undefined,
-      workoutProgress: Object.keys(workoutProgress).length > 0 ? workoutProgress : undefined,
+      // Always send arrays/maps so native clients can replace local state (including clears).
+      activityLog,
+      workoutProgress,
       hydration: hydration.length > 0 ? hydration : undefined,
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,
