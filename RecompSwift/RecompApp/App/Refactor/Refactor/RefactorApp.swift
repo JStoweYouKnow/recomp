@@ -3,6 +3,7 @@ import SwiftData
 import Combine
 import RefactorKit
 import UIKit
+import WatchConnectivity
 
 // MARK: - App entry point
 
@@ -16,6 +17,7 @@ struct RefactorApp: App {
     private let syncEngine: SyncEngine
 
     init() {
+        PhoneSessionManager.shared.activate()
         do {
             let container = try RefactorSchema.makeContainer(
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
@@ -92,11 +94,15 @@ struct RootView: View {
             await auth.checkSession()
             if auth.isAuthenticated, let engine = syncEngine {
                 try? await engine.fetchAndApply()
+                PhoneSessionManager.shared.pushUserId()
             }
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
             guard isAuthenticated, let engine = syncEngine else { return }
-            Task { try? await engine.fetchAndApply() }
+            Task {
+                try? await engine.fetchAndApply()
+                PhoneSessionManager.shared.pushUserId()
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, auth.isAuthenticated, let engine = syncEngine else { return }

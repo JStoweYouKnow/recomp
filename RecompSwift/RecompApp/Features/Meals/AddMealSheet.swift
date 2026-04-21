@@ -27,6 +27,9 @@ struct AddMealSheet: View {
     @State private var isAnalyzing = false
     @State private var recipeURL = ""
     @State private var foodSearchQuery = ""
+    @State private var voiceTranscript = ""
+    @State private var voiceParseError: String?
+    @State private var speech = MealSpeechTranscription()
 
     enum InputMode: String, CaseIterable {
         case manual = "Manual"
@@ -95,6 +98,14 @@ struct AddMealSheet: View {
             }
             .navigationTitle("Add Meal")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: inputMode) { _, mode in
+                if mode != .voice {
+                    speech.stopRecording()
+                }
+            }
+            .onDisappear {
+                speech.stopRecording()
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -246,12 +257,64 @@ struct AddMealSheet: View {
     }
 
     private var voiceInputSection: some View {
-        Section("Voice Logging") {
-            Label("Tap to record your meal", systemImage: "mic.fill")
-                .foregroundStyle(Color.appAccent)
-            Text("Say something like \"I had a grilled chicken salad with olive oil dressing for lunch\"")
+        Section("Voice logging") {
+            Text("Use Listen for live transcription, type in the field, or use the keyboard microphone. Tap Parse to send the text to Refactor and list suggested meals below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if let voiceParseError {
+                Text(voiceParseError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if let err = speech.errorMessage {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            HStack(spacing: 12) {
+                if speech.isRecording {
+                    Button(role: .destructive) {
+                        speech.stopRecording()
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        Task { await speech.startRecording() }
+                    } label: {
+                        Label("Listen", systemImage: "mic.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isAnalyzing)
+                }
+            }
+
+            TextField("e.g. grilled chicken salad with olive oil dressing", text: $voiceTranscript, axis: .vertical)
+                .lineLimit(3...8)
+                .textInputAutocapitalization(.sentences)
+                .disabled(speech.isRecording)
+
+            Button {
+                Task { await parseVoiceTranscript() }
+            } label: {
+                Label("Parse meal", systemImage: "text.magnifyingglass")
+            }
+            .disabled(voiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAnalyzing)
+
+            if isAnalyzing && inputMode == .voice {
+                ProgressView("Parsing…")
+            }
+        }
+        .onChange(of: speech.transcript) { _, newValue in
+            guard speech.isRecording else { return }
+            voiceTranscript = newValue
+        }
+        .onChange(of: speech.isRecording) { wasRecording, isRecording in
+            if wasRecording, !isRecording, !speech.transcript.isEmpty {
+                voiceTranscript = speech.transcript
+            }
         }
     }
 
@@ -301,6 +364,22 @@ struct AddMealSheet: View {
             if isAnalyzing {
                 ProgressView("Thinking...")
             }
+        }
+    }
+
+    private func parseVoiceTranscript() async {
+        voiceParseError = nil
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+        do {
+            let meals = try await mealService.parseVoiceMeals(transcript: voiceTranscript)
+            analysisResults = meals
+            if meals.isEmpty {
+                voiceParseError = "No meals returned. Try adding more detail (food names and amounts)."
+            }
+        } catch {
+            analysisResults = []
+            voiceParseError = error.localizedDescription
         }
     }
 

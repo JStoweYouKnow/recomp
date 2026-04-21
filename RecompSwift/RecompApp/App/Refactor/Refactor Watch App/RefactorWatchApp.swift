@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import RefactorKit
+import WatchConnectivity
 
 @main
 struct RefactorWatchApp: App {
@@ -8,6 +9,7 @@ struct RefactorWatchApp: App {
     private let syncEngine: SyncEngine
 
     init() {
+        WatchSessionManager.shared.activate()
         do {
             modelContainer = try RefactorSchema.makeContainer(
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
@@ -52,12 +54,22 @@ struct WatchTabView: View {
             guard phase == .active else { return }
             Task { await refreshFromServerIfSignedIn() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .recompScheduleDataSync)) { _ in
+            guard let engine = syncEngine else { return }
+            Task { await engine.scheduleSync() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchDidReceiveUserId)) { _ in
+            Task { await refreshFromServerIfSignedIn() }
+        }
     }
 
     /// Keeps SwiftData + shared defaults aligned with the phone after edits on either device.
     private func refreshFromServerIfSignedIn() async {
         guard let engine = syncEngine else { return }
-        guard let uid = try? KeychainService.loadUserId(), !uid.isEmpty else { return }
+        // Prefer keychain; fall back to the userId pushed from iPhone via WCSession.
+        let uid = (try? KeychainService.loadUserId())
+            ?? RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.userId)
+        guard let uid, !uid.isEmpty else { return }
         try? await engine.fetchAndApply()
     }
 }

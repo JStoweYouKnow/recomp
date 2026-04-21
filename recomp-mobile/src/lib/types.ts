@@ -84,6 +84,7 @@ export interface FitnessPlan {
     tips: string[];
   };
   workoutPlan: {
+    programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
   };

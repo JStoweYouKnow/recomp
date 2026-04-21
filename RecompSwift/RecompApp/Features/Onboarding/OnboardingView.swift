@@ -35,9 +35,7 @@ private struct ChooseView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "figure.run")
                         .font(.system(size: 56))
-                        .foregroundStyle(
-                            LinearGradient(colors: [.blue, .purple], startPoint: .top, endPoint: .bottom)
-                        )
+                        .foregroundStyle(LinearGradient.appAccentGradient)
                         .padding(.top, 24)
 
                     Text("Refactor")
@@ -60,6 +58,7 @@ private struct ChooseView: View {
                             .padding(.vertical, 14)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.appAccent)
                     .controlSize(.large)
                     .accessibilityIdentifier("onboarding_log_in")
 
@@ -78,6 +77,7 @@ private struct ChooseView: View {
                             .padding(.vertical, 14)
                     }
                     .buttonStyle(.bordered)
+                    .tint(Color.appAccent)
                     .controlSize(.large)
 
                     Button {

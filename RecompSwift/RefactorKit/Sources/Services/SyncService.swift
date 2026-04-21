@@ -84,9 +84,11 @@ public actor SyncService: ModelActor {
                 return decoded
             }()
 
-            let workoutWebMap = await MainActor.run {
-                WorkoutService.shared.webWorkoutProgressDictionaryForSync()
+            let planModel = plans.first
+            let workoutMerged = await MainActor.run {
+                WorkoutService.shared.webWorkoutProgressMergedForSync(plan: planModel)
             }
+            let workoutPayload: [String: String]? = workoutMerged.isEmpty ? nil : workoutMerged
 
             let payload = SyncPayload(
                 profile: profileDTO,
@@ -101,7 +103,7 @@ public actor SyncService: ModelActor {
                 bodyScans: bodyScanDTOs.isEmpty ? nil : bodyScanDTOs,
                 pantry: pantryDTOs.isEmpty ? nil : pantryDTOs,
                 activityLog: activityLogDTOs.isEmpty ? nil : activityLogDTOs,
-                workoutProgress: workoutWebMap,
+                workoutProgress: workoutPayload,
                 wearableConnections: wearableConnDTOs.isEmpty ? nil : wearableConnDTOs,
                 wearableData: wearableDataDTOs.isEmpty ? nil : wearableDataDTOs,
                 metabolicModel: metabolicDTO,
@@ -247,13 +249,12 @@ public actor SyncService: ModelActor {
             }
         }
 
-        if let activityLogDTOs = response.activityLog {
-            for x in (try? modelContext.fetch(FetchDescriptor<ActivityLogEntry>())) ?? [] {
-                modelContext.delete(x)
-            }
-            for dto in activityLogDTOs {
-                modelContext.insert(ActivityLogEntry(dto: dto, iso8601: iso8601))
-            }
+        // Server always returns `activityLog` as an array (possibly empty) so we replace local rows.
+        for x in (try? modelContext.fetch(FetchDescriptor<ActivityLogEntry>())) ?? [] {
+            modelContext.delete(x)
+        }
+        for dto in response.activityLog {
+            modelContext.insert(ActivityLogEntry(dto: dto, iso8601: iso8601))
         }
 
         if let metabolicDTO = response.metabolicModel {

@@ -5,6 +5,7 @@ import { useAppStore } from "../store/appStore";
 import { CalendarView } from "../components/CalendarView";
 import { Card, Button } from "../components/ui";
 import { colors, fontSize, fontWeight, spacing, radius, lineHeight } from "../theme";
+import { planWorkoutDayIndexForDate } from "../lib/workout-program-schedule";
 
 export function WorkoutsScreen() {
   const navigation = useNavigation();
@@ -14,21 +15,8 @@ export function WorkoutsScreen() {
     hydrate();
   }, [hydrate]);
 
-  const matchWorkoutDay = (date: string): number | null => {
-    if (!plan) return null;
-    const d = new Date(date + "T12:00:00");
-    const dow = d.getDay();
-    const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const shortNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const dayName = dayNames[dow].toLowerCase();
-    const shortName = shortNames[dow].toLowerCase();
-    for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
-      const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
-      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
-    }
-    const mondayBased = dow === 0 ? 6 : dow - 1;
-    return mondayBased < plan.workoutPlan.weeklyPlan.length ? mondayBased : null;
-  };
+  const matchWorkoutDay = (date: string): number | null =>
+    plan ? planWorkoutDayIndexForDate(plan, date) : null;
   const idx = plan ? matchWorkoutDay(selectedDate) : null;
   const workoutDay = idx !== null && idx >= 0 ? plan!.workoutPlan.weeklyPlan[idx] : null;
 

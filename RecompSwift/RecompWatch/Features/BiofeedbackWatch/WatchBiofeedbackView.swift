@@ -4,6 +4,7 @@ import RefactorKit
 
 struct WatchBiofeedbackView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var currentField = 0
     @State private var values = [3, 3, 3, 3, 3]
     @State private var saved = false
@@ -25,6 +26,13 @@ struct WatchBiofeedbackView: View {
                         .foregroundStyle(.green)
                     Text("Logged!")
                         .font(.caption)
+                    Button("Log Again") {
+                        values = [3, 3, 3, 3, 3]
+                        currentField = 0
+                        saved = false
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.bordered)
                 }
             } else {
                 let field = fields[currentField]
@@ -85,6 +93,8 @@ struct WatchBiofeedbackView: View {
             soreness: values[4]
         )
         context.insert(entry)
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
         saved = true
     }
 }

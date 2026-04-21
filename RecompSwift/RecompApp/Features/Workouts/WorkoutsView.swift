@@ -4,14 +4,18 @@ import RefactorKit
 
 struct WorkoutsView: View {
     @Environment(\.modelContext) private var context
-    @State private var planService = PlanService()
     private let workoutService = WorkoutService.shared
     @State private var selectedDate = Date.now
     @State private var recoveryAssessment: RecoveryAssessment?
     @State private var isLoadingRecovery = false
 
+    @Query(sort: \FitnessPlan.createdAt, order: .reverse)
+    private var allPlans: [FitnessPlan]
+
     @Query(sort: \BiofeedbackEntry.time, order: .reverse)
     private var biofeedbackEntries: [BiofeedbackEntry]
+
+    private var currentPlan: FitnessPlan? { allPlans.first }
 
     private var todaysBiofeedback: BiofeedbackEntry? {
         biofeedbackEntries.first { $0.date == DateHelpers.todayString() }
@@ -29,7 +33,7 @@ struct WorkoutsView: View {
                     VStack(spacing: 16) {
                         recoverySection
 
-                        if let plan = planService.currentPlan(context: context) {
+                        if let plan = currentPlan {
                             let items = WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
                             let todayKey = DateHelpers.todayString()
                             ForEach(items) { item in
@@ -61,7 +65,7 @@ struct WorkoutsView: View {
             }
             .navigationTitle("Workouts")
             .onAppear {
-                if let plan = planService.currentPlan(context: context) {
+                if let plan = currentPlan {
                     workoutService.migrateWorkoutRowProgressKeysIfNeeded(plan: plan)
                 }
             }
@@ -170,8 +174,9 @@ struct RecoveryCard: View {
                     RoundedRectangle(cornerRadius: 4).fill(.gray.opacity(0.15))
                     RoundedRectangle(cornerRadius: 4)
                         .fill(levelColor)
-                        .frame(width: geo.size.width * assessment.score)
+                        .frame(width: geo.size.width * min(assessment.score, 1.0))
                 }
+                .clipped()
             }
             .frame(height: 8)
 
@@ -298,8 +303,10 @@ struct WorkoutDayCard: View {
                     if totalExercises > 0 {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("\(completedExercises)/\(totalExercises)")
-                                .font(.caption.weight(.medium))
+                                .font(.caption.weight(.bold))
+                                .monospacedDigit()
                                 .foregroundStyle(completedExercises == totalExercises ? Color.appSuccess : Color.primary)
+                                .contentTransition(.numericText())
                             Text("done")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -442,14 +449,14 @@ struct WorkoutDayCard: View {
                         ProgressView().scaleEffect(0.75)
                     } else {
                         Image(systemName: showMusic ? "music.note.list" : "music.note")
-                            .foregroundStyle(.pink)
+                            .foregroundStyle(Color.appSlate)
                     }
                     Text(showMusic ? "Hide Playlists" : "Workout Music")
                         .font(.caption.weight(.medium))
                 }
             }
             .buttonStyle(.bordered)
-            .tint(.pink)
+            .tint(Color.appSlate)
             .controlSize(.small)
             .padding(.horizontal)
             .padding(.top, 6)
@@ -549,7 +556,7 @@ struct ExerciseRow: View {
                             exercise: exercise
                         )
                         Button {
-                            withAnimation(.spring(duration: 0.2)) {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                                 workoutService.markSetComplete(
                                     exerciseName: exercise.name,
                                     setIndex: setIdx,
@@ -562,19 +569,21 @@ struct ExerciseRow: View {
                             }
                         } label: {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.15))
-                                    .frame(width: 32, height: 32)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.12))
+                                    .frame(width: 38, height: 38)
+                                    .shadow(color: done ? Color.appAccent.opacity(0.3) : .clear, radius: 4, y: 2)
                                 if done {
                                     Image(systemName: "checkmark")
-                                        .font(.caption.weight(.bold))
+                                        .font(.caption.weight(.black))
                                         .foregroundStyle(.white)
                                 } else {
                                     Text("\(setIdx + 1)")
-                                        .font(.caption2)
+                                        .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .scaleEffect(done ? 1.05 : 1.0)
                         }
                         .buttonStyle(.plain)
                     }
@@ -616,12 +625,12 @@ struct PlaylistPill: View {
                         .foregroundStyle(.secondary)
                     Text(suggestion.bpm + " BPM")
                         .font(.system(size: 9))
-                        .foregroundStyle(.pink)
+                        .foregroundStyle(Color.appSlate)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.pink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.pink.opacity(0.2), lineWidth: 1))
+                .background(Color.appSlate.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appSlate.opacity(0.2), lineWidth: 1))
             }
         }
     }

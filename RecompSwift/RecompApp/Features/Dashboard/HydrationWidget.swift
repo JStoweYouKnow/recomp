@@ -35,10 +35,15 @@ struct HydrationWidget: View {
 
                 Text("\(totalMl) ml")
                     .font(.caption.weight(.semibold))
+                    .monospacedDigit()
 
-                HStack(spacing: 8) {
-                    quickAddButton(250)
-                    quickAddButton(500)
+                HStack(spacing: 6) {
+                    adjustButton(-250)
+                    adjustButton(+250)
+                }
+                HStack(spacing: 6) {
+                    adjustButton(-500)
+                    adjustButton(+500)
                 }
             }
         } label: {
@@ -47,21 +52,40 @@ struct HydrationWidget: View {
         }
     }
 
-    private func quickAddButton(_ ml: Int) -> some View {
-        Button {
-            let entry = HydrationEntry(
-                date: DateHelpers.todayString(),
-                time: DateHelpers.timeString(from: .now),
-                amountMl: ml
-            )
-            context.insert(entry)
+    private func adjustButton(_ ml: Int) -> some View {
+        let isSubtract = ml < 0
+        let label = isSubtract ? "\(ml)" : "+\(ml)"
+        let wouldGoNegative = isSubtract && totalMl + ml < 0
+
+        return Button {
+            if isSubtract {
+                // Remove the most recent entry with this magnitude, or the closest one.
+                let target = -ml
+                if let idx = todaysEntries.indices.reversed().first(where: { todaysEntries[$0].amountMl == target }) {
+                    context.delete(todaysEntries[idx])
+                } else if let last = todaysEntries.last {
+                    context.delete(last)
+                }
+            } else {
+                let entry = HydrationEntry(
+                    date: DateHelpers.todayString(),
+                    time: DateHelpers.timeString(from: .now),
+                    amountMl: ml
+                )
+                context.insert(entry)
+            }
         } label: {
-            Text("+\(ml)")
+            Text(label)
                 .font(.caption2.weight(.medium))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Color.appAccent.opacity(0.1), in: Capsule())
+                .background(
+                    (isSubtract ? Color.red : Color.appAccent).opacity(0.1),
+                    in: Capsule()
+                )
+                .foregroundStyle(isSubtract ? Color.red : Color.appAccent)
         }
         .buttonStyle(.plain)
+        .disabled(wouldGoNegative || (isSubtract && todaysEntries.isEmpty))
     }
 }

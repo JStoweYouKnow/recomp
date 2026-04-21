@@ -10,5 +10,7 @@
 	<true/>
 	<key>WKCompanionAppBundleIdentifier</key>
 	<string>com.recomp.ios</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Refactor uses the microphone when you dictate your meal in the text field.</string>
 </dict>
 </plist>

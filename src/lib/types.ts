@@ -90,6 +90,8 @@ export interface FitnessPlan {
     tips: string[];
   };
   workoutPlan: {
+    /** Anchor Monday week for multi-week PDF plans (`yyyy-MM-dd`); pairs with `Week N` day labels. */
+    programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
   };

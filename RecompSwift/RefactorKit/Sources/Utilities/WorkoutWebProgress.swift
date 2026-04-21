@@ -49,6 +49,10 @@ public enum WorkoutWebProgress {
         public let dayLabel: String
         public let section: String
         public let exercise: WorkoutExercise
+        /// Monday `yyyy-MM-dd` of the week this completion belongs to (week-scoped keys only).
+        /// Use this to derive the calendar `dayKey` instead of the UTC timestamp to avoid
+        /// timezone-induced off-by-one-day mismatches.
+        public let weekStartMonday: String?
     }
 
     public static func parseKey(_ key: String, planId: String) -> ParsedKey? {
@@ -63,6 +67,7 @@ public enum WorkoutWebProgress {
             //   parts[0]=weekStart  parts[1]=dayLabel  parts[2]=section
             //   parts[3]=name       parts[4]=sets       parts[5]=reps  parts[6+]=notes
             guard parts.count >= 6 else { return nil }
+            let weekStart = parts[0]
             let dayLabel = parts[1]
             let section = parts[2]
             let name = parts[3]
@@ -75,7 +80,7 @@ public enum WorkoutWebProgress {
                 reps: reps,
                 notes: notes.isEmpty ? nil : notes
             )
-            return ParsedKey(dayLabel: dayLabel, section: section, exercise: ex)
+            return ParsedKey(dayLabel: dayLabel, section: section, exercise: ex, weekStartMonday: weekStart)
         }
 
         // Legacy non-main: planId : day : warmup|finisher : name : sets : reps : notes
@@ -88,7 +93,7 @@ public enum WorkoutWebProgress {
             let reps = parts[4]
             let notes = parts.dropFirst(5).joined(separator: ":")
             let ex = WorkoutExercise(name: name, sets: sets, reps: reps, notes: notes.isEmpty ? nil : notes)
-            return ParsedKey(dayLabel: dayLabel, section: section, exercise: ex)
+            return ParsedKey(dayLabel: dayLabel, section: section, exercise: ex, weekStartMonday: nil)
         }
 
         // Legacy main: planId : day : name : sets : reps : notes
@@ -100,7 +105,7 @@ public enum WorkoutWebProgress {
         let reps = parts[3]
         let notes = parts.dropFirst(4).joined(separator: ":")
         let ex = WorkoutExercise(name: name, sets: sets, reps: reps, notes: notes.isEmpty ? nil : notes)
-        return ParsedKey(dayLabel: dayLabel, section: "main", exercise: ex)
+        return ParsedKey(dayLabel: dayLabel, section: "main", exercise: ex, weekStartMonday: nil)
     }
 
     /// Finds `planIndex` and `globalSlot` for a parsed key in the given plan.
@@ -147,6 +152,31 @@ public enum WorkoutWebProgress {
         }
 
         return nil
+    }
+
+    /// Derives the local calendar `yyyy-MM-dd` for a workout day given the Monday week-start.
+    /// Mon=+0, Tue=+1, Wed=+2, Thu=+3, Fri=+4, Sat=+5, Sun=+6 (relative to Monday).
+    /// Falls back to `fallbackUtcDate` (the UTC timestamp prefix) if parsing fails.
+    public static func calendarDayKey(
+        weekStartMonday: String,
+        dayLabel: String,
+        fallbackUtcDate: String
+    ) -> String {
+        let offsets: [String: Int] = [
+            "monday": 0, "mon": 0,
+            "tuesday": 1, "tue": 1,
+            "wednesday": 2, "wed": 2,
+            "thursday": 3, "thu": 3,
+            "friday": 4, "fri": 4,
+            "saturday": 5, "sat": 5,
+            "sunday": 6, "sun": 6,
+        ]
+        let lower = dayLabel.lowercased()
+        guard let offset = offsets.first(where: { lower.hasPrefix($0.key) })?.value,
+              let monday = DateHelpers.date(from: weekStartMonday),
+              let target = Calendar.current.date(byAdding: .day, value: offset, to: monday)
+        else { return fallbackUtcDate }
+        return DateHelpers.dateString(from: target)
     }
 
     private static func sectionForSlot(day: WorkoutDay, globalSlot: Int) -> String {

@@ -13,29 +13,37 @@ struct MacroRing: View {
         return min(current / target, 1.0)
     }
 
+    private var isOverTarget: Bool { current > target && target > 0 }
+
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
-                    .stroke(color.opacity(0.2), lineWidth: 6)
+                    .stroke(color.opacity(0.15), lineWidth: 7)
 
                 Circle()
                     .trim(from: 0, to: progress)
-                    .stroke(color, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .stroke(
+                        isOverTarget ? Color.appError : color,
+                        style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                    )
                     .rotationEffect(.degrees(-90))
+                    .shadow(color: (isOverTarget ? Color.appError : color).opacity(0.35), radius: 3)
 
-                VStack(spacing: 0) {
-                    Text("\(Int(current))")
-                        .font(.system(.caption, design: .rounded, weight: .bold))
+                VStack(spacing: 1) {
+                    Text("\(Int(current.rounded()))")
+                        .font(.system(.subheadline, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(isOverTarget ? Color.appError : Color.primary)
                     Text(unit)
-                        .font(.system(size: 8))
+                        .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 52, height: 52)
+            .frame(width: 70, height: 70)
 
             Text(label)
-                .font(.caption2)
+                .font(.caption2.weight(.medium))
                 .foregroundStyle(.secondary)
         }
     }
@@ -46,12 +54,16 @@ struct MacroPillsView: View {
     let target: Macros
 
     var body: some View {
-        HStack(spacing: 12) {
-            MacroRing(current: Double(consumed.calories), target: Double(target.calories), color: .orange, label: "Cal", unit: "kcal")
-            MacroRing(current: consumed.protein, target: target.protein, color: .red, label: "Protein", unit: "g")
-            MacroRing(current: consumed.carbs, target: target.carbs, color: .blue, label: "Carbs", unit: "g")
-            MacroRing(current: consumed.fat, target: target.fat, color: .yellow, label: "Fat", unit: "g")
+        HStack(spacing: 0) {
+            MacroRing(current: Double(consumed.calories), target: Double(target.calories), color: .appWarm, label: "Cal", unit: "kcal")
+            Spacer()
+            MacroRing(current: consumed.protein, target: target.protein, color: .appAccent, label: "Protein", unit: "g")
+            Spacer()
+            MacroRing(current: consumed.carbs, target: target.carbs, color: .appSage, label: "Carbs", unit: "g")
+            Spacer()
+            MacroRing(current: consumed.fat, target: target.fat, color: .appTerracotta, label: "Fat", unit: "g")
         }
+        .padding(.horizontal, 8)
     }
 }
 

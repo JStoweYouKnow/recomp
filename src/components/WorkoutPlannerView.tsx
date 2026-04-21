@@ -6,6 +6,10 @@ import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, Reco
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import {
+  getDisplayedWorkoutPlanIndicesFromRows,
+  planWorkoutDayIndexForWeeklyPlan,
+} from "@/lib/workout-program-schedule";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
@@ -115,37 +119,16 @@ export function WorkoutPlannerView({
   }, [exerciseGifs]);
 
   /**
-   * Try to match a calendar date to a workout day index.
-   * Strategy: match day name ("Monday" → "Monday" / "Mon"), or "Day N" → Nth weekday from Monday.
+   * Calendar date → row index. For multi-week PDF plans, uses `programWeek1Start` + `Week N` labels
+   * (same rules as iOS `WorkoutProgramSchedule.planIndex`), not the first matching weekday in the list.
    */
   const matchDayToDate = useCallback(
     (date: string): number | null => {
       if (!plan) return null;
-      const d = new Date(date + "T12:00:00");
-      const dow = d.getDay(); // 0=Sun
-      const dayName = WEEKDAY_NAMES[dow].toLowerCase();
-      const shortName = SHORT_WEEKDAY[dow].toLowerCase();
-
-      for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
-        const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
-        if (
-          planDay === dayName ||
-          planDay === shortName ||
-          planDay.startsWith(dayName) ||
-          planDay.startsWith(shortName)
-        ) {
-          return i;
-        }
-      }
-
-      // Fallback: "Day 1" → Monday=0, "Day 2" → Tuesday=1, etc.
-      const mondayBased = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
-      if (mondayBased < plan.workoutPlan.weeklyPlan.length) {
-        return mondayBased;
-      }
-      return null;
+      const wp = editingWeekCopy ?? plan.workoutPlan.weeklyPlan;
+      return planWorkoutDayIndexForWeeklyPlan(wp, plan.workoutPlan.programWeek1Start, date);
     },
-    [plan]
+    [plan, editingWeekCopy]
   );
 
   // When viewing a future date, don't show exercises as completed (can't have done them yet)
@@ -221,6 +204,19 @@ export function WorkoutPlannerView({
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
 
+  /** Indices for the current program week (PDF-style plans), or all rows for classic weekly plans. */
+  const displayedWorkoutIndices = useMemo(
+    () =>
+      plan
+        ? getDisplayedWorkoutPlanIndicesFromRows(
+            weeklyPlan,
+            plan.workoutPlan.programWeek1Start,
+            viewingDate
+          )
+        : [],
+    [plan, weeklyPlan, viewingDate]
+  );
+
   /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
   const toLegacyLookupKey = useCallback((key: string): string | null => {
     const parts = key.split(":");
@@ -253,20 +249,31 @@ export function WorkoutPlannerView({
     return filtered;
   }, [progress, viewingWeekStart, isViewingFutureDate, toLegacyLookupKey]);
 
-  const totalExercises = weeklyPlan.reduce(
-    (sum, day) =>
-      sum +
-      (day.warmups?.length ?? 0) +
-      day.exercises.length +
-      (day.finishers?.length ?? 0),
-    0
-  );
-  const completedExercises = weeklyPlan.reduce((sum, day) => {
-    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
-    const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
-    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
-    return sum + warmupDone + mainDone + finisherDone;
-  }, 0);
+  const totalExercises = useMemo(() => {
+    let sum = 0;
+    for (const idx of displayedWorkoutIndices) {
+      const day = weeklyPlan[idx];
+      if (!day) continue;
+      sum +=
+        (day.warmups?.length ?? 0) +
+        day.exercises.length +
+        (day.finishers?.length ?? 0);
+    }
+    return sum;
+  }, [weeklyPlan, displayedWorkoutIndices]);
+
+  const completedExercises = useMemo(() => {
+    let sum = 0;
+    for (const idx of displayedWorkoutIndices) {
+      const day = weeklyPlan[idx];
+      if (!day) continue;
+      const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
+      const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
+      const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
+      sum += warmupDone + mainDone + finisherDone;
+    }
+    return sum;
+  }, [weeklyPlan, displayedWorkoutIndices, progressThisWeek]);
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
   const commitEdit = useCallback(() => {
@@ -694,10 +701,14 @@ export function WorkoutPlannerView({
 
       <div className="space-y-3">
         {weeklyPlan.map((day, dayIndex) => {
-          // When calendar is open, only show the matched day
+          // Calendar open: single matched day. Closed: current program week only for PDF-style plans.
           const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
-          if (calendarOpen && matchedIdx !== null && dayIndex !== matchedIdx) return null;
-          if (calendarOpen && matchedIdx === null) return null;
+          if (calendarOpen) {
+            if (matchedIdx !== null && dayIndex !== matchedIdx) return null;
+            if (matchedIdx === null) return null;
+          } else if (!displayedWorkoutIndices.includes(dayIndex)) {
+            return null;
+          }
 
           const total =
             (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);

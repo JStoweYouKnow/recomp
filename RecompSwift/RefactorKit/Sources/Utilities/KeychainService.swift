@@ -30,6 +30,10 @@ public struct KeychainService {
         guard status == errSecSuccess else {
             throw KeychainError.unableToSave(status)
         }
+
+        // Mirror into the shared App Group defaults so watchOS can read it without
+        // depending on cross-process keychain access group availability.
+        RecompAppGroupDefaults.shared.set(userId, forKey: RecompUserDefaultsKeys.userId)
     }
 
     public static func loadUserId() throws -> String? {
@@ -53,9 +57,11 @@ public struct KeychainService {
             }
             return userId
         case errSecItemNotFound:
-            return nil
+            // Keychain unavailable (common on watchOS) — fall back to app group defaults.
+            return RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.userId)
         default:
-            throw KeychainError.unableToLoad(status)
+            // Any other keychain error — fall back rather than throwing so watchOS stays functional.
+            return RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.userId)
         }
     }
 
@@ -71,6 +77,8 @@ public struct KeychainService {
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.unableToDelete(status)
         }
+
+        RecompAppGroupDefaults.shared.removeObject(forKey: RecompUserDefaultsKeys.userId)
     }
 }
 

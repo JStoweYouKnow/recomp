@@ -12,6 +12,8 @@ struct SignUpFormView: View {
     @State private var age = 30
     @State private var weight: Double = 70
     @State private var height: Double = 170
+    @State private var heightFeet: Int = 5
+    @State private var heightInches: Int = 10
     @State private var gender: Gender = .male
     @State private var fitnessLevel: FitnessLevel = .beginner
     @State private var goal: FitnessGoal = .loseWeight
@@ -48,6 +50,10 @@ struct SignUpFormView: View {
                 Button("Back", action: onBack)
             }
         }
+        .onAppear {
+            // Default unit system is US — seed height from feet/inches state
+            height = Double(heightFeet * 12 + heightInches)
+        }
     }
 
     private var stepIndicator: some View {
@@ -66,12 +72,21 @@ struct SignUpFormView: View {
             Section("About You") {
                 TextField("Name", text: $name)
                     .textContentType(.name)
-                TextField("Email (optional)", text: $email)
+                TextField("Email", text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
-                SecureField("Password (optional)", text: $password)
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $password)
                     .textContentType(.newPassword)
+            }
+
+            if step == 0 && (!email.isEmpty && !isValidEmail(email)) {
+                Section {
+                    Text("Enter a valid email address.")
+                        .font(.caption)
+                        .foregroundStyle(Color.appError)
+                }
             }
 
             Section("Measurement System") {
@@ -80,6 +95,18 @@ struct SignUpFormView: View {
                     Text("Metric (kg/cm)").tag(MeasurementSystem.metric)
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: unitSystem) { _, newValue in
+                    if newValue == .metric {
+                        // inches → cm
+                        height = Double(heightFeet * 12 + heightInches) * 2.54
+                    } else {
+                        // cm → feet+inches
+                        let totalInches = Int((height / 2.54).rounded())
+                        heightFeet = max(4, min(7, totalInches / 12))
+                        heightInches = totalInches % 12
+                        height = Double(heightFeet * 12 + heightInches)
+                    }
+                }
             }
         }
     }
@@ -98,13 +125,38 @@ struct SignUpFormView: View {
                         .frame(width: 80)
                 }
 
-                HStack {
-                    Text(unitSystem == .metric ? "Height (cm)" : "Height (in)")
-                    Spacer()
-                    TextField("", value: $height, format: .number)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                if unitSystem == .metric {
+                    HStack {
+                        Text("Height (cm)")
+                        Spacer()
+                        TextField("", value: $height, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                } else {
+                    HStack {
+                        Text("Height")
+                        Spacer()
+                        Picker("Feet", selection: $heightFeet) {
+                            ForEach(4...7, id: \.self) { ft in
+                                Text("\(ft) ft").tag(ft)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(width: 80, height: 100)
+                        .clipped()
+                        Picker("Inches", selection: $heightInches) {
+                            ForEach(0...11, id: \.self) { ins in
+                                Text("\(ins) in").tag(ins)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(width: 80, height: 100)
+                        .clipped()
+                    }
+                    .onChange(of: heightFeet) { _, _ in height = Double(heightFeet * 12 + heightInches) }
+                    .onChange(of: heightInches) { _, _ in height = Double(heightFeet * 12 + heightInches) }
                 }
             }
 
@@ -204,7 +256,7 @@ struct SignUpFormView: View {
                     withAnimation { step += 1 }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(step == 0 && name.isEmpty)
+                .disabled(step == 0 && !step0Valid)
             } else {
                 Button {
                     submit()
@@ -216,18 +268,26 @@ struct SignUpFormView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(name.isEmpty || isSubmitting)
+                .disabled(!step0Valid || isSubmitting)
             }
         }
         .padding()
+    }
+
+    private var step0Valid: Bool {
+        !name.isEmpty && isValidEmail(email) && password.count >= 6
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        value.contains("@") && value.contains(".")
     }
 
     private func submit() {
         isSubmitting = true
         let payload = SignUpPayload(
             name: name,
-            email: email.isEmpty ? nil : email,
-            password: password.isEmpty ? nil : password,
+            email: email,
+            password: password,
             age: age,
             weight: weight,
             height: height,

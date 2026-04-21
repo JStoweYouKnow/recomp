@@ -391,10 +391,38 @@ public struct SyncResponseDTO: Decodable, Sendable {
     public let pantry: [PantryItemDTO]?
     public let wearableConnections: [WearableConnectionDTO]?
     public let wearableData: [WearableDaySummaryDTO]?
-    public let activityLog: [ActivityLogEntryDTO]?
+    /// Always an array in current API; missing key decodes as `[]` for older responses.
+    public let activityLog: [ActivityLogEntryDTO]
     public let metabolicModel: MetabolicModelDTO?
     public let workoutProgress: [String: String]?
     public let meta: SyncMetaDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case profile, plan, meals, milestones, hydration, fastingSessions, biofeedback
+        case supplements, bloodWork, bodyScans, pantry, wearableConnections, wearableData
+        case activityLog, metabolicModel, workoutProgress, meta
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try c.decodeIfPresent(UserProfileDTO.self, forKey: .profile)
+        plan = try c.decodeIfPresent(FitnessPlanDTO.self, forKey: .plan)
+        meals = try c.decodeIfPresent([MealEntryDTO].self, forKey: .meals)
+        milestones = try c.decodeIfPresent([MilestoneEntryDTO].self, forKey: .milestones)
+        hydration = try c.decodeIfPresent([HydrationEntryDTO].self, forKey: .hydration)
+        fastingSessions = try c.decodeIfPresent([FastingSessionDTO].self, forKey: .fastingSessions)
+        biofeedback = try c.decodeIfPresent([BiofeedbackEntryDTO].self, forKey: .biofeedback)
+        supplements = try c.decodeIfPresent([SupplementDTO].self, forKey: .supplements)
+        bloodWork = try c.decodeIfPresent([BloodWorkDTO].self, forKey: .bloodWork)
+        bodyScans = try c.decodeIfPresent([BodyScanDTO].self, forKey: .bodyScans)
+        pantry = try c.decodeIfPresent([PantryItemDTO].self, forKey: .pantry)
+        wearableConnections = try c.decodeIfPresent([WearableConnectionDTO].self, forKey: .wearableConnections)
+        wearableData = try c.decodeIfPresent([WearableDaySummaryDTO].self, forKey: .wearableData)
+        activityLog = try c.decodeIfPresent([ActivityLogEntryDTO].self, forKey: .activityLog) ?? []
+        metabolicModel = try c.decodeIfPresent(MetabolicModelDTO.self, forKey: .metabolicModel)
+        workoutProgress = try c.decodeIfPresent([String: String].self, forKey: .workoutProgress)
+        meta = try c.decodeIfPresent(SyncMetaDTO.self, forKey: .meta)
+    }
 }
 
 // MARK: - Weekly review (POST /api/agent/weekly-review)

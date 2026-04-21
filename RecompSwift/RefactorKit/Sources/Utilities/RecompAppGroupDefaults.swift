@@ -9,6 +9,7 @@ public enum RecompAppGroupDefaults {
         RecompUserDefaultsKeys.remoteMetaXp,
         RecompUserDefaultsKeys.ricoHistoryJSON,
         RecompUserDefaultsKeys.measurementTargetsJSON,
+        RecompUserDefaultsKeys.userId,
         "recomp_workout_set_progress_v2",
         "recomp_workout_set_progress_v1",
         "recomp_metabolic_model_cache_v1",

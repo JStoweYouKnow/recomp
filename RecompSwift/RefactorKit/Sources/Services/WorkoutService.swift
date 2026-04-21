@@ -120,7 +120,20 @@ public final class WorkoutService {
         for (key, iso) in map {
             guard let parsed = WorkoutWebProgress.parseKey(key, planId: plan.id),
                   let loc = WorkoutWebProgress.locateSlot(parsed: parsed, in: plan) else { continue }
-            let dayKey = String(iso.prefix(10))
+            // Prefer deriving the local calendar date from the key's embedded weekStart so that
+            // UTC timestamps from the web don't cause an off-by-one-day mismatch for users
+            // who complete workouts in the evening in UTC-offset timezones.
+            let utcDate = String(iso.prefix(10))
+            let dayKey: String
+            if let weekStart = parsed.weekStartMonday {
+                dayKey = WorkoutWebProgress.calendarDayKey(
+                    weekStartMonday: weekStart,
+                    dayLabel: parsed.dayLabel,
+                    fallbackUtcDate: utcDate
+                )
+            } else {
+                dayKey = utcDate
+            }
             let day = plan.workoutPlan.weeklyPlan[loc.planIndex]
             let slots = day.enumeratedExerciseSlots()
             guard let pair = slots.first(where: { $0.globalSlot == loc.globalSlot }) else { continue }
@@ -195,6 +208,74 @@ public final class WorkoutService {
     /// Full map to send on sync POST (must include server keys so Dynamo isn’t wiped).
     public func webWorkoutProgressDictionaryForSync() -> [String: String] {
         webProgressMap
+    }
+
+    /// Keys for `POST /api/data/sync`: merges `webProgressMap` with web-style keys derived from
+    /// `progressByDay` so native-only completions (per-set rows without timestamps in `webProgressMap`)
+    /// still sync and do not cause an empty `{}` push that would wipe the server.
+    public func webWorkoutProgressMergedForSync(plan: FitnessPlan?) -> [String: String] {
+        var result = webProgressMap
+        guard let plan else { return result }
+
+        for (dayKey, _) in progressByDay {
+            guard let dayDate = DateHelpers.date(from: dayKey) else { continue }
+            guard let planIndex = WorkoutProgramSchedule.planIndex(for: plan, date: dayDate),
+                  planIndex >= 0,
+                  planIndex < plan.workoutPlan.weeklyPlan.count
+            else { continue }
+
+            let day = plan.workoutPlan.weeklyPlan[planIndex]
+            let completionTs = completionTimestampForSyncDay(dayKey: dayKey, calendarDay: dayDate)
+
+            for pair in day.enumeratedExerciseSlots() {
+                let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: pair.globalSlot)
+                let ctx = WorkoutSetProgressContext(
+                    planId: plan.id,
+                    planIndex: planIndex,
+                    globalSlot: pair.globalSlot,
+                    section: section,
+                    workoutDay: day,
+                    progressDayKey: dayKey
+                )
+                let n = pair.exercise.effectiveSetCount
+                let allDone = (0..<n).allSatisfy { i in
+                    isSetComplete(
+                        exerciseName: pair.exercise.name,
+                        setIndex: i,
+                        dayKey: dayKey,
+                        planIndex: planIndex,
+                        globalSlot: pair.globalSlot,
+                        webContext: ctx,
+                        exercise: pair.exercise
+                    )
+                }
+                guard allDone else { continue }
+
+                let weekMon = DateHelpers.mondayWeekStartString(containingCalendarDay: dayKey)
+                let legacy = WorkoutWebProgress.legacyKey(
+                    planId: plan.id,
+                    dayLabel: day.day,
+                    section: section,
+                    exercise: pair.exercise
+                )
+                let scoped = WorkoutWebProgress.weekScopedKey(
+                    planId: plan.id,
+                    weekStartMondayYyyyMmDd: weekMon,
+                    dayLabel: day.day,
+                    section: section,
+                    exercise: pair.exercise
+                )
+                if result[legacy] == nil { result[legacy] = completionTs }
+                if result[scoped] == nil { result[scoped] = completionTs }
+            }
+        }
+        return result
+    }
+
+    private func completionTimestampForSyncDay(dayKey: String, calendarDay: Date) -> String {
+        let cal = Calendar.current
+        let noon = cal.date(bySettingHour: 12, minute: 0, second: 0, of: calendarDay) ?? calendarDay
+        return isoFull.string(from: noon)
     }
 
     private func markAllSets(
