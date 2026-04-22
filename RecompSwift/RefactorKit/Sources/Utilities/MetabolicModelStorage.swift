@@ -4,17 +4,25 @@ import Foundation
 public enum MetabolicModelStorage {
     private static let key = "recomp_metabolic_model_cache_v1"
 
+    public struct CachedHistoryEntry: Codable, Sendable, Equatable {
+        public var date: String
+        public var tdee: Double
+        public var confidence: Int
+    }
+
     public struct CachedModel: Codable, Sendable, Equatable {
         public var estimatedTDEE: Double
         public var confidence: Int
         public var lastUpdated: String?
         public var dataPointCount: Int
+        public var history: [CachedHistoryEntry]
 
-        public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, dataPointCount: Int) {
+        public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, dataPointCount: Int, history: [CachedHistoryEntry] = []) {
             self.estimatedTDEE = estimatedTDEE
             self.confidence = confidence
             self.lastUpdated = lastUpdated
             self.dataPointCount = dataPointCount
+            self.history = history
         }
     }
 
@@ -28,7 +36,8 @@ public enum MetabolicModelStorage {
             estimatedTDEE: model.estimatedTDEE,
             confidence: model.confidence,
             lastUpdated: model.lastUpdated,
-            dataPointCount: dataPointCount
+            dataPointCount: dataPointCount,
+            history: model.history.map { CachedHistoryEntry(date: $0.date, tdee: $0.tdee, confidence: $0.confidence) }
         )
         if let data = try? JSONEncoder().encode(cached) {
             RecompAppGroupDefaults.shared.set(data, forKey: key)

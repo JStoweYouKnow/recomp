@@ -527,14 +527,34 @@ public struct MetabolicDataPointPayload: Encodable, Sendable {
     }
 }
 
+public struct MetabolicHistoryEntry: Encodable, Sendable {
+    public let date: String
+    public let tdee: Double
+    public let confidence: Int
+
+    public init(date: String, tdee: Double, confidence: Int) {
+        self.date = date
+        self.tdee = tdee
+        self.confidence = confidence
+    }
+}
+
 public struct MetabolicBatchUpdatePayload: Encodable, Sendable {
     public let dataPoints: [MetabolicDataPointPayload]
     public let currentTDEE: Int
+    public let history: [MetabolicHistoryEntry]
 
-    public init(dataPoints: [MetabolicDataPointPayload], currentTDEE: Int) {
+    public init(dataPoints: [MetabolicDataPointPayload], currentTDEE: Int, history: [MetabolicHistoryEntry] = []) {
         self.dataPoints = dataPoints
         self.currentTDEE = currentTDEE
+        self.history = history
     }
+}
+
+public struct MetabolicModelResponseHistoryEntry: Decodable, Sendable {
+    public let date: String
+    public let tdee: Double
+    public let confidence: Int
 }
 
 public struct MetabolicModelResponse: Decodable, Sendable {
@@ -542,12 +562,14 @@ public struct MetabolicModelResponse: Decodable, Sendable {
     public let confidence: Int
     public let lastUpdated: String?
     public let message: String?
+    public let history: [MetabolicModelResponseHistoryEntry]
 
     enum CodingKeys: String, CodingKey {
         case estimatedTDEE
         case confidence
         case lastUpdated
         case message
+        case history
     }
 
     public init(from decoder: Decoder) throws {
@@ -562,13 +584,15 @@ public struct MetabolicModelResponse: Decodable, Sendable {
         confidence = try c.decodeIfPresent(Int.self, forKey: .confidence) ?? 0
         lastUpdated = try c.decodeIfPresent(String.self, forKey: .lastUpdated)
         message = try c.decodeIfPresent(String.self, forKey: .message)
+        history = (try? c.decodeIfPresent([MetabolicModelResponseHistoryEntry].self, forKey: .history)) ?? []
     }
 
-    public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, message: String? = nil) {
+    public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, message: String? = nil, history: [MetabolicModelResponseHistoryEntry] = []) {
         self.estimatedTDEE = estimatedTDEE
         self.confidence = confidence
         self.lastUpdated = lastUpdated
         self.message = message
+        self.history = history
     }
 }
 

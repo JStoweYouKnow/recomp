@@ -74,6 +74,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSelectedDate: (date) => set({ selectedDate: date }),
 
   hydrate: async () => {
+    try {
+      const { useAuthStore } = await import("./authStore");
+      const { pullRemoteSnapshot } = await import("../lib/sync");
+      if (useAuthStore.getState().userId) {
+        await pullRemoteSnapshot();
+      }
+    } catch {
+      /* offline or pull failed — still load local snapshot */
+    }
     const [plan, meals, activityLog, workoutProgress] = await Promise.all([
       storage.getPlan(),
       storage.getMeals(),

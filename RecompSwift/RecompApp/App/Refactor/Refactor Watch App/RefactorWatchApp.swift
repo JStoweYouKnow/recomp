@@ -56,7 +56,7 @@ struct WatchTabView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompScheduleDataSync)) { _ in
             guard let engine = syncEngine else { return }
-            Task { await engine.scheduleSync() }
+            Task { await engine.scheduleFetchAndApply() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompWatchDidReceiveUserId)) { _ in
             Task { await refreshFromServerIfSignedIn() }

@@ -333,7 +333,7 @@ function pickMealByDay(opt: MealOpt, dayIndex: number): string {
   return arr[dayIndex % arr.length] ?? arr[0] ?? "";
 }
 
-function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
+function buildStarterPlan(profile: UserProfile, userId: string, learnedTDEE?: number): FitnessPlan {
   // Healthy Eater–style macro calculator from weight, height, age, activity, goal
   const fallbackTargets: Record<UserProfile["goal"], Macros> = {
     lose_weight: { calories: 1900, protein: 150, carbs: 170, fat: 60 },
@@ -350,6 +350,7 @@ function buildStarterPlan(profile: UserProfile, userId: string): FitnessPlan {
           gender: profile.gender,
           dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
           goal: profile.goal,
+          learnedTDEE,
         })
       : (fallbackTargets[profile.goal] ?? fallbackTargets.maintain);
   const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
@@ -468,6 +469,8 @@ const PlanRequestSchema = z.object({
   workoutDaysPerWeek: z.number().int().min(2).max(7).optional(),
   workoutTimeframe: z.enum(["morning", "afternoon", "evening", "flexible"]).optional(),
   createdAt: z.string().optional(),
+  /** Learned TDEE from the adaptive metabolic model (only passed when confidence >= 70) */
+  learnedTDEE: z.number().min(1200).max(5000).optional(),
 });
 
 export const POST = withRequestLogging("/api/plans/generate", async function POST(req: NextRequest) {
@@ -503,6 +506,7 @@ export const POST = withRequestLogging("/api/plans/generate", async function POS
       );
     }
     const incoming = incomingParsed.data;
+    const learnedTDEE = incoming.learnedTDEE;
     const profile: UserProfile = {
       id: userId,
       name: incoming.name,
@@ -526,6 +530,9 @@ export const POST = withRequestLogging("/api/plans/generate", async function POS
     const equip = profile.workoutEquipment?.length ? profile.workoutEquipment.map((e) => e.replace(/_/g, " ")).join(", ") : "general gym equipment (assume available)";
     const daysPerWeek = profile.workoutDaysPerWeek ?? 4;
     const timeframe = profile.workoutTimeframe ?? "flexible";
+    const tdeeNote = learnedTDEE
+      ? `- Calibrated TDEE (learned from 50+ days of real data): ${learnedTDEE} kcal/day — use this as the maintenance baseline for calorie targets, not a generic formula`
+      : "";
 
     const userMessage = `Create a personalized diet and workout plan for this person.
 
@@ -541,7 +548,7 @@ Profile:
 - Workouts per week: ${daysPerWeek} days (create exactly ${daysPerWeek} workout days in workoutDays)
 - Preferred workout time: ${timeframe}
 - Dietary restrictions: ${profile.dietaryRestrictions.join(", ") || "None"}
-- Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}
+- Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}${tdeeNote ? `\n${tdeeNote}` : ""}
 
 Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal (${profile.goal}). Name concrete foods and meal ideas—e.g. "Oatmeal with eggs and banana" not "Protein-rich breakfast". Vary meals across the week.
 
@@ -583,7 +590,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
     ]);
 
     if (raw === timeoutToken) {
-      const fallbackPlan = buildStarterPlan(profile, userId);
+      const fallbackPlan = buildStarterPlan(profile, userId, learnedTDEE);
       logInfo("Plan generation timeout fallback", { route: "plans/generate", userId, timeoutMs: PLAN_TIMEOUT_MS });
       return NextResponse.json({
         ...fallbackPlan,
@@ -611,7 +618,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
       parsed = parsePlanJsonTolerant(raw);
     } catch (parseErr) {
       logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
-      const fallbackPlan = buildStarterPlan(profile, userId);
+      const fallbackPlan = buildStarterPlan(profile, userId, learnedTDEE);
       return NextResponse.json({
         ...fallbackPlan,
         source: "fallback-parse",

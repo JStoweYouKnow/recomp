@@ -42,14 +42,14 @@ const linking = {
 export function RootNavigator() {
   const { userId, profile, isHydrated, hydrate, handleUnauthorized } = useAuthStore();
   const navigationRef = useRef<NavigationContainerRef<Record<string, undefined>>>(null);
-  const routeNameRef = useRef<string | undefined>();
+  const routeNameRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
   useEffect(() => {
-    if (userId) useAppStore.getState().hydrate();
+    if (userId) void useAppStore.getState().hydrate();
   }, [userId]);
 
   useEffect(() => {

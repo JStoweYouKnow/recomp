@@ -9,7 +9,7 @@ import {
   getBiofeedback, getHydration, getActiveFastingSession,
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
-  saveMetabolicModel, saveMeasurementTargets,
+  saveMetabolicModel, saveMeasurementTargets, getMetabolicModel,
 } from "@/lib/storage";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
@@ -322,10 +322,12 @@ export default function Home() {
       }).catch(() => null);
       if (regRes?.ok) setIsDemoMode(false);
 
+      const metabolicModel = getMetabolicModel();
+      const learnedTDEE = metabolicModel && metabolicModel.confidence >= 70 ? metabolicModel.estimatedTDEE : undefined;
       const res = await fetch("/api/plans/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newProfile),
+        body: JSON.stringify({ ...newProfile, ...(learnedTDEE ? { learnedTDEE } : {}) }),
       });
       const p = await res.json();
       if (p.error) throw new Error(p.error);
@@ -347,10 +349,12 @@ export default function Home() {
     if (!profile) return;
     setPlanRegenerating(true);
     try {
+      const metabolicModel = getMetabolicModel();
+      const learnedTDEE = metabolicModel && metabolicModel.confidence >= 70 ? metabolicModel.estimatedTDEE : undefined;
       const res = await fetch("/api/plans/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({ ...profile, ...(learnedTDEE ? { learnedTDEE } : {}) }),
       });
       const p = await res.json();
       if (p.error) throw new Error(p.error);
