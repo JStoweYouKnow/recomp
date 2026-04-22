@@ -124,7 +124,7 @@ struct MetabolicModelDashboardCard: View {
         do {
             let cachedHistory = MetabolicModelStorage.load()?.history ?? []
             let historyPayload = cachedHistory.map {
-                MetabolicHistoryEntry(date: $0.date, tdee: $0.tdee, confidence: $0.confidence)
+                MetabolicHistoryEntry(date: $0.date, tdee: $0.tdee, confidence: Double($0.confidence))
             }
             let payload = MetabolicBatchUpdatePayload(dataPoints: points, currentTDEE: targets.calories, history: historyPayload)
             let model: MetabolicModelResponse = try await APIClient.shared.request(MiscAPI.metabolicUpdate(payload: payload))

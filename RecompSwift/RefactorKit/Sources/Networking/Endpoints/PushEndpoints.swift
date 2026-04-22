@@ -527,18 +527,6 @@ public struct MetabolicDataPointPayload: Encodable, Sendable {
     }
 }
 
-public struct MetabolicHistoryEntry: Encodable, Sendable {
-    public let date: String
-    public let tdee: Double
-    public let confidence: Int
-
-    public init(date: String, tdee: Double, confidence: Int) {
-        self.date = date
-        self.tdee = tdee
-        self.confidence = confidence
-    }
-}
-
 public struct MetabolicBatchUpdatePayload: Encodable, Sendable {
     public let dataPoints: [MetabolicDataPointPayload]
     public let currentTDEE: Int
