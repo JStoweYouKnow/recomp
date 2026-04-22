@@ -12,6 +12,12 @@ public struct MetabolicHistoryEntry: Codable, Sendable {
     public var date: String
     public var tdee: Double
     public var confidence: Double
+
+    public init(date: String, tdee: Double, confidence: Double) {
+        self.date = date
+        self.tdee = tdee
+        self.confidence = confidence
+    }
 }
 
 @Model
