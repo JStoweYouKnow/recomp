@@ -131,11 +131,18 @@ struct AddMealSheet: View {
 
     private var macroInputSection: some View {
         Section("Macros") {
-            Stepper("Calories: \(calories)", value: $calories, in: 0...5000, step: 25)
+            HStack {
+                Text("Calories")
+                Spacer()
+                TextField("0", value: $calories, format: .number)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 60)
+            }
             HStack {
                 Text("Protein (g)")
                 Spacer()
-                TextField("", value: $protein, format: .number)
+                TextField("0", value: $protein, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
@@ -143,7 +150,7 @@ struct AddMealSheet: View {
             HStack {
                 Text("Carbs (g)")
                 Spacer()
-                TextField("", value: $carbs, format: .number)
+                TextField("0", value: $carbs, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
@@ -151,7 +158,7 @@ struct AddMealSheet: View {
             HStack {
                 Text("Fat (g)")
                 Spacer()
-                TextField("", value: $fat, format: .number)
+                TextField("0", value: $fat, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
