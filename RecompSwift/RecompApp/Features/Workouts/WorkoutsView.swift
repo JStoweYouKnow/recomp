@@ -525,21 +525,26 @@ struct ExerciseRow: View {
                 // GIF demo toggle
                 Button {
                     if gifURL != nil {
-                        withAnimation { showGif.toggle() }
+                        withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
                     } else {
                         Task { await onLoadGif() }
                     }
                 } label: {
-                    if isLoadingGif {
-                        ProgressView().scaleEffect(0.7)
-                            .frame(width: 28)
-                    } else {
-                        Image(systemName: showGif ? "eye.slash" : "play.circle")
-                            .font(.title3)
-                            .foregroundStyle(Color.appAccent)
+                    ZStack {
+                        if isLoadingGif {
+                            ProgressView()
+                                .scaleEffect(0.75)
+                                .frame(width: 28, height: 28)
+                        } else {
+                            Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
+                        }
                     }
+                    .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .disabled(isLoadingGif)
             }
 
             // Set completion checkboxes — horizontal scroll so many sets stay one row (no wrap / “calendar” illusion).
@@ -600,6 +605,11 @@ struct ExerciseRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
+        .onChange(of: gifURL) { _, newURL in
+            if newURL != nil {
+                withAnimation(.easeIn(duration: 0.25)) { showGif = true }
+            }
+        }
         Divider().padding(.leading)
     }
 }
