@@ -424,8 +424,10 @@ struct WorkoutDayCard: View {
         guard gifURLs[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
         loadingGifs.insert(slotTag)
         do {
-            try await workoutService.searchExercises(name: searchName)
-            if let url = workoutService.exerciseResults.first?.gifUrl {
+            // Use returned results directly — avoids a race where concurrent searches
+            // overwrite the shared exerciseResults before we read it.
+            let results = try await workoutService.searchExercises(name: searchName)
+            if let url = results.first?.gifUrl {
                 gifURLs[slotTag] = url
             }
         } catch {}

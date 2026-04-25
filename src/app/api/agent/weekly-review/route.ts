@@ -370,7 +370,15 @@ async function runAgent(
     const output = response.output?.message;
     if (!output) break;
 
-    messages = [...messages, { role: "assistant", content: output.content }];
+    // Bedrock rejects empty text content blocks in conversation history
+    const cleanContent = (output.content ?? []).filter((c: unknown) => {
+      if (c && typeof c === "object" && "text" in c) {
+        return typeof (c as { text: unknown }).text === "string" && ((c as { text: string }).text).trim().length > 0;
+      }
+      return true;
+    });
+    if (cleanContent.length === 0) break;
+    messages = [...messages, { role: "assistant", content: cleanContent }];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const toolUses = (output.content ?? []).filter((c: any) => "toolUse" in c);

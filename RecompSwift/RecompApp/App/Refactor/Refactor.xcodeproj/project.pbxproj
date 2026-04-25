@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		154C41F32F941CA400BF3E19 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */; };
 		154C41F82F941CBE00BF3E19 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */; };
+		154C42842F9C407F00BF3E19 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C42832F9C407F00BF3E19 /* StoreKit.framework */; };
 		15A600402F88BB0C008B807A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15A6003F2F88BB0A008B807A /* WidgetKit.framework */; };
 		15A600422F88BB0C008B807A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15A600412F88BB0C008B807A /* SwiftUI.framework */; };
 		15A600512F88BB12008B807A /* RefactorWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -63,6 +64,7 @@
 /* Begin PBXFileReference section */
 		154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
 		154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.4.sdk/System/Library/Frameworks/WatchConnectivity.framework; sourceTree = DEVELOPER_DIR; };
+		154C42832F9C407F00BF3E19 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		15A600102F88BA0D008B807A /* Refactor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Refactor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		15A600272F88BAA5008B807A /* RefactorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RefactorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RefactorWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -127,6 +129,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				154C42842F9C407F00BF3E19 /* StoreKit.framework in Frameworks */,
 				15A600592F895DEB008B807A /* RefactorKit in Frameworks */,
 				154C41F32F941CA400BF3E19 /* WatchConnectivity.framework in Frameworks */,
 			);
@@ -183,6 +186,7 @@
 		15A6003E2F88BB0A008B807A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				154C42832F9C407F00BF3E19 /* StoreKit.framework */,
 				154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */,
 				154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */,
 				15A6003F2F88BB0A008B807A /* WidgetKit.framework */,

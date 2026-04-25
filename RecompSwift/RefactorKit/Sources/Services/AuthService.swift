@@ -9,6 +9,8 @@ public final class AuthService {
     public private(set) var isAuthenticated = false
     public private(set) var isLoading = false
 
+    public var isDemo: Bool { currentUser?.id == "demo-user-001" }
+
     private let api: APIClient
 
     public init(api: APIClient = .shared) {

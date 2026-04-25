@@ -10,6 +10,8 @@ struct AddMealSheet: View {
     @Environment(AuthService.self) private var auth
     @State private var mealService = MealService()
 
+    @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
+
     let date: String
 
     @State private var name = ""
@@ -56,6 +58,7 @@ struct AddMealSheet: View {
                 switch inputMode {
                 case .manual:
                     manualInputSection
+                    autofillSuggestionsSection
                 case .photo:
                     photoInputSection
                 case .menu:
@@ -118,12 +121,46 @@ struct AddMealSheet: View {
         }
     }
 
+    private var nameSuggestions: [MealEntry] {
+        guard name.count >= 2 else { return [] }
+        var seen = Set<String>()
+        return allMeals.filter {
+            $0.name.localizedCaseInsensitiveContains(name) && seen.insert($0.name.lowercased()).inserted
+        }.prefix(5).map { $0 }
+    }
+
     private var manualInputSection: some View {
         Section("Meal Info") {
             TextField("Meal name", text: $name)
             Picker("Type", selection: $mealType) {
                 ForEach(MealType.allCases) { type in
                     Text(type.rawValue.capitalized).tag(type)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var autofillSuggestionsSection: some View {
+        if inputMode == .manual && !nameSuggestions.isEmpty {
+            Section("Recent matches") {
+                ForEach(nameSuggestions) { entry in
+                    Button {
+                        name = entry.name
+                        calories = entry.macros.calories
+                        protein = entry.macros.protein
+                        carbs = entry.macros.carbs
+                        fat = entry.macros.fat
+                        mealType = entry.mealType
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.name)
+                                .foregroundStyle(.primary)
+                            Text("\(entry.macros.calories) cal · P:\(Int(entry.macros.protein))g C:\(Int(entry.macros.carbs))g F:\(Int(entry.macros.fat))g")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
         }

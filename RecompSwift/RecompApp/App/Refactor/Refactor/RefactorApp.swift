@@ -11,6 +11,7 @@ import WatchConnectivity
 struct RefactorApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var authService = AuthService()
+    @State private var subscriptionService = SubscriptionService()
     @State private var coordinator = AppCoordinator()
 
     private let modelContainer: ModelContainer
@@ -41,6 +42,7 @@ struct RefactorApp: App {
         WindowGroup {
             RootView()
                 .environment(authService)
+                .environment(subscriptionService)
                 .environment(coordinator)
                 .environment(\.syncEngine, syncEngine)
         }
@@ -68,11 +70,14 @@ enum AppColorScheme: String, CaseIterable {
 
 struct RootView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SubscriptionService.self) private var subscriptions
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.syncEngine) private var syncEngine
     @Environment(\.scenePhase) private var scenePhase
 
     @AppStorage("appColorScheme") private var colorSchemePref: String = AppColorScheme.system.rawValue
+
+    @State private var showPaywall = false
 
     private var preferredScheme: ColorScheme? {
         AppColorScheme(rawValue: colorSchemePref)?.colorScheme
@@ -85,17 +90,27 @@ struct RootView: View {
                     .overlay(alignment: .bottomTrailing) {
                         CoachFloatingButton()
                     }
+                    .sheet(isPresented: $showPaywall) {
+                        PaywallView()
+                    }
             } else {
                 OnboardingView()
             }
         }
         .preferredColorScheme(preferredScheme)
         .task {
+            subscriptions.start()
             await auth.checkSession()
             if auth.isAuthenticated, let engine = syncEngine {
                 try? await engine.fetchAndApply()
                 PhoneSessionManager.shared.pushUserId()
             }
+        }
+        .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
+            if isAuthenticated { showPaywallIfNeeded() }
+        }
+        .onChange(of: subscriptions.status) { _, _ in
+            showPaywallIfNeeded()
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
             guard isAuthenticated, let engine = syncEngine else { return }
@@ -112,6 +127,11 @@ struct RootView: View {
             guard let engine = syncEngine else { return }
             Task { await engine.scheduleFetchAndApply() }
         }
+    }
+
+    private func showPaywallIfNeeded() {
+        guard auth.isAuthenticated, !auth.isDemo, subscriptions.status == .notPurchased else { return }
+        showPaywall = true
     }
 }
 

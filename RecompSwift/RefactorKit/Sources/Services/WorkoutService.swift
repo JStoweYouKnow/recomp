@@ -102,21 +102,17 @@ public final class WorkoutService {
 
     // MARK: - Server merge (pull)
 
-    /// Replaces web progress from GET `/api/data/sync` and rebuilds per-set checkmarks for the active plan.
+    /// Merges server-confirmed completions into local per-set progress.
+    /// Server data is additive only — it never clears local set checkmarks.
+    /// This prevents in-progress sets from being wiped by a sync pull, regardless
+    /// of how workout day labels map to calendar dates.
     public func replaceWebProgressFromServer(_ map: [String: String], plan: FitnessPlan?) {
         webProgressMap = map
         guard let plan else {
             persistToDefaults()
             return
         }
-        // Only clear calendar-day buckets that the server has authoritative entries for.
-        // This preserves partial set completions on days with no server data (e.g. today's
-        // in-progress sets that aren't yet fully done), while still syncing past completed days.
-        var serverDates = Set<String>()
-        for (_, iso) in map { serverDates.insert(String(iso.prefix(10))) }
-        for date in serverDates { progressByDay[date] = nil }
 
-        // Rebuild server-known dates from the authoritative map.
         for (key, iso) in map {
             guard let parsed = WorkoutWebProgress.parseKey(key, planId: plan.id),
                   let loc = WorkoutWebProgress.locateSlot(parsed: parsed, in: plan) else { continue }
@@ -149,6 +145,7 @@ public final class WorkoutService {
                 setCount: n
             )
         }
+
         persistToDefaults()
     }
 
@@ -458,7 +455,9 @@ public final class WorkoutService {
     /// Search for an exercise by name. The server returns a **single** best-match object
     /// (not an array). Resolves the relative `gifUrl` against the API base URL so callers
     /// get a fully qualified URL they can pass to an image view.
-    public func searchExercises(name: String) async throws {
+    /// Returns the resolved results directly so concurrent callers never race on `exerciseResults`.
+    @discardableResult
+    public func searchExercises(name: String) async throws -> [ExerciseSearchResult] {
         isSearching = true
         defer { isSearching = false }
 
@@ -483,6 +482,7 @@ public final class WorkoutService {
         }
 
         exerciseResults = [result]
+        return [result]
     }
 
     public func getExerciseGifURL(id: String) async throws -> URL? {
