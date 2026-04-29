@@ -319,15 +319,37 @@ function executeWearableAnalysis(
   return JSON.stringify(result);
 }
 
+/** Bedrock rejects ContentBlocks whose `text` field is blank — normalize tool/agent outputs. */
+function bedrockSafeText(value: string, fallback = "(No textual output.)"): string {
+  const s = typeof value === "string" ? value.trim() : "";
+  return s.length > 0 ? value.trim() : fallback;
+}
+
+function isToolUseBlock(c: unknown): c is { toolUse: { toolUseId: string; name: string; input: unknown } } {
+  if (!c || typeof c !== "object" || !("toolUse" in c)) return false;
+  const tu = (c as { toolUse?: { toolUseId?: string; name?: string } }).toolUse;
+  return typeof tu?.toolUseId === "string" && typeof tu?.name === "string";
+}
+
+function isTextBlock(c: unknown): c is { text: string } {
+  return (
+    !!c &&
+    typeof c === "object" &&
+    "text" in (c as object) &&
+    typeof (c as { text?: unknown }).text === "string"
+  );
+}
+
 async function executeResearch(query: string): Promise<string> {
+  const q = typeof query === "string" ? query.trim() : "";
   try {
     const { invokeNovaWithWebGrounding } = await import("@/lib/nova");
     const result = await invokeNovaWithWebGrounding(
       "You are a nutrition research assistant. Provide concise, evidence-based information.",
-      query,
+      bedrockSafeText(q, "general nutrition and fitness guidelines for active adults"),
       { temperature: 0.4, maxTokens: 512 }
     );
-    return result.slice(0, 1000);
+    return bedrockSafeText(result.slice(0, 1000), "Research completed but returned no extractable text.");
   } catch {
     return "Web research unavailable. Proceeding with existing knowledge.";
   }
@@ -353,7 +375,7 @@ async function runAgent(
   const steps: { tool: string; summary: string }[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let messages: any[] = [
-    { role: "user", content: [{ text: userPrompt }] },
+    { role: "user", content: [{ text: bedrockSafeText(userPrompt, "(Empty weekly-review prompt.)") }] },
   ];
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -380,27 +402,36 @@ async function runAgent(
     if (cleanContent.length === 0) break;
     messages = [...messages, { role: "assistant", content: cleanContent }];
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolUses = (output.content ?? []).filter((c: any) => "toolUse" in c);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const textBlocks = (output.content ?? []).filter((c: any) => "text" in c);
+    /** Explicit shape so destructuring `toolUse` is valid for Bedrock TS typings */
+    type NarrowToolUseBlock = {
+      toolUse: { toolUseId: string; name: string; input: unknown };
+    };
+
+    const toolUses = (output.content ?? []).filter(isToolUseBlock) as NarrowToolUseBlock[];
+
+    const textBlocks = (output.content ?? []).filter(isTextBlock);
 
     if (toolUses.length === 0) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const finalText = textBlocks.map((b: any) => b.text).join("\n");
-      return { output: finalText, steps };
+      const finalText = textBlocks.map((b) => b.text).join("\n");
+      return { output: bedrockSafeText(finalText, "(Agent produced no narrative.)"), steps };
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const toolResults: any[] = [];
+    const toolResults: unknown[] = [];
     for (const tc of toolUses) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { toolUseId, name, input } = (tc as any).toolUse;
-      const result = await toolExecutor(name, input);
+      const { toolUseId, name, input } = tc.toolUse;
+      const rawResult = await toolExecutor(name, input);
+      const result = bedrockSafeText(
+        typeof rawResult === "string" ? rawResult : JSON.stringify(rawResult),
+        `Tool ${name} returned empty output.`
+      );
       steps.push({ tool: name, summary: `${name}(${JSON.stringify(input).slice(0, 80)})` });
       toolResults.push({
         toolResult: { toolUseId, content: [{ text: result }] },
       });
+    }
+
+    if (toolResults.length === 0) {
+      return { output: "(Tool loop produced no valid tool results.)", steps };
     }
 
     messages = [...messages, { role: "user", content: toolResults }];
@@ -575,6 +606,15 @@ export const POST = withRequestLogging("/api/agent/weekly-review", async functio
     // Step 3: Coordinator synthesizes specialist reports into final review
     // -----------------------------------------------------------------------
 
+    const mealOut = bedrockSafeText(
+      mealResult.output,
+      "(Meal analyst did not return text.)"
+    );
+    const wellnessOut = bedrockSafeText(
+      wellnessResult.output,
+      "(Wellness analyst did not return text.)"
+    );
+
     const coordinatorResponse = await client.send(
       new ConverseCommand({
         modelId: NOVA_LITE_MODEL_ID,
@@ -583,16 +623,17 @@ export const POST = withRequestLogging("/api/agent/weekly-review", async functio
             role: "user",
             content: [
               {
-                text: `You are producing a weekly fitness review for ${safeName} (goal: ${safeGoal}).
+                text: bedrockSafeText(
+                  `You are producing a weekly fitness review for ${safeName} (goal: ${safeGoal}).
 
 Here is the Meal Analyst agent's report:
 ---
-${mealResult.output}
+${mealOut}
 ---
 
 Here is the Wellness agent's report:
 ---
-${wellnessResult.output}
+${wellnessOut}
 ---
 
 Now synthesize these into a single structured JSON review. Respond with valid JSON only, no markdown:
@@ -604,6 +645,8 @@ Now synthesize these into a single structured JSON review. Respond with valid JS
   "weeklyScore": number 1-10,
   "reasoning": "why this score and these recommendations"
 }`,
+                  "(Weekly review coordinator prompt was empty.)"
+                ),
               },
             ],
           },
