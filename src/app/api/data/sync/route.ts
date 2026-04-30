@@ -314,8 +314,12 @@ export async function GET(req: NextRequest) {
     const payload = {
       profile,
       plan,
-      // Always send an array so clients replace local state (including clearing all meals).
-      meals: mealsDeduped,
+      // Only include meals when the server actually has rows. Sending `meals: []` would
+      // cause iOS fetchAndApply() to wipe local SwiftData before the device has ever
+      // successfully pushed — e.g. after a first-sync auth failure. Omitting the key
+      // means the iOS `if let mealDTOs = response.meals` guard short-circuits, preserving
+      // local state. The web client handles undefined by treating it as an empty array.
+      meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
       milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableData.length > 0 ? wearableData : undefined,
