@@ -3,6 +3,30 @@ import { z } from "zod";
 /** Max payload size (bytes) to prevent abuse */
 export const SYNC_MAX_BODY_SIZE = 2 * 1024 * 1024; // 2MB
 
+// Flexible profile schema — iOS sends this on every sync. We use passthrough so
+// future fields don't break validation, and the route upserts it into DynamoDB so
+// the GET endpoint (which returns 404 when no profile exists) always succeeds.
+export const syncProfileSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  email: z.string().max(200).optional(),
+  age: z.number().int().min(0).max(150).optional(),
+  weight: z.number().min(0).max(1000).optional(),
+  height: z.number().min(0).max(300).optional(),
+  gender: z.string().max(20).optional(),
+  fitnessLevel: z.string().max(30).optional(),
+  goal: z.string().max(50).optional(),
+  dietaryRestrictions: z.array(z.string().max(100)).max(50).optional(),
+  injuriesOrLimitations: z.array(z.string().max(200)).max(50).optional(),
+  dailyActivityLevel: z.string().max(30).optional(),
+  unitSystem: z.string().max(20).optional(),
+  workoutLocation: z.string().max(30).optional(),
+  workoutEquipment: z.array(z.string().max(50)).max(20).optional(),
+  workoutDaysPerWeek: z.number().int().min(0).max(14).optional(),
+  workoutTimeframe: z.string().max(30).optional(),
+  createdAt: z.string().max(50).optional(),
+}).passthrough();
+
 const macrosSchema = z.object({
   calories: z.number().min(0).max(50000).optional(),
   protein: z.number().min(0).max(2000).optional(),
@@ -66,6 +90,7 @@ const wearableDaySummarySchema = z.object({
   weight: z.number().min(0).max(1100).optional(), // lbs
   bodyFatPercent: z.number().min(0).max(100).optional(),
   muscleMass: z.number().min(0).max(500).optional(), // lbs
+  manualEntryId: z.string().uuid().optional(),
 }).passthrough();
 
 const dietDaySchema = z.object({
@@ -223,6 +248,7 @@ const measurementTargetsSchema = z.object({
 }).passthrough();
 
 export const syncBodySchema = z.object({
+  profile: syncProfileSchema.optional(),
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
   milestones: z.array(milestoneSchema).max(500).optional(),

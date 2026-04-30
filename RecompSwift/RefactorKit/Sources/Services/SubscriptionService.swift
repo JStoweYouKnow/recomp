@@ -23,8 +23,11 @@ public final class SubscriptionService {
     public private(set) var products: [Product] = []
     public private(set) var isPurchasing = false
 
+    // Set by the app after auth so proAccess overrides can bypass StoreKit.
+    public var proAccessOverride = false
+
     public var isPremium: Bool {
-        status == .subscribed
+        proAccessOverride || status == .subscribed
     }
 
     // MARK: - Private

@@ -33,6 +33,7 @@ export interface UserProfile {
   workoutDaysPerWeek?: number; // 2–7
   workoutTimeframe?: "morning" | "afternoon" | "evening" | "flexible";
   createdAt: string;
+  proAccess?: boolean;
 }
 
 export interface Macros {
@@ -142,6 +143,8 @@ export interface WearableDaySummary {
   proteinPercent?: number;
   bmr?: number; // kcal
   metabolicAge?: number;
+  /** Set for weigh-ins added via Body measurements manual entry; used to remove mistaken entries without affecting sync/import rows. */
+  manualEntryId?: string;
 }
 
 export type MilestoneType =

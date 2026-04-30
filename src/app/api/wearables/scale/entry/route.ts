@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 
@@ -24,10 +25,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid weight (44–1100 lbs)" }, { status: 400 });
     }
 
+    const manualEntryId = randomUUID();
     const summary: Record<string, unknown> = {
       date,
       provider: "scale",
       weight: weightLbs,
+      manualEntryId,
     };
     if (typeof bodyFatPercent === "number" && bodyFatPercent >= 0 && bodyFatPercent <= 100) {
       summary.bodyFatPercent = bodyFatPercent;

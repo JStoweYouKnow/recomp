@@ -116,7 +116,8 @@ public final class AuthService {
             workoutLocation: WorkoutLocation(rawValue: dto.workoutLocation ?? ""),
             workoutEquipment: (dto.workoutEquipment ?? []).compactMap { WorkoutEquipment(rawValue: $0) },
             workoutDaysPerWeek: dto.workoutDaysPerWeek ?? 4,
-            workoutTimeframe: WorkoutTimeframe(rawValue: dto.workoutTimeframe ?? "")
+            workoutTimeframe: WorkoutTimeframe(rawValue: dto.workoutTimeframe ?? ""),
+            proAccess: dto.proAccess ?? false
         )
     }
 }

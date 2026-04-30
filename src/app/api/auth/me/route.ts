@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { dbGetProfile } from "@/lib/db";
 import { logInfo, logError } from "@/lib/logger";
+import { hasProAccess } from "@/lib/proAccess";
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,6 +12,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ authenticated: false, profile: null });
     }
     const profile = await dbGetProfile(userId);
+    if (profile && hasProAccess(userId)) profile.proAccess = true;
     logInfo("Auth check: authenticated", { route: "auth/me", userId });
     return NextResponse.json({ authenticated: true, userId, profile });
   } catch (err) {

@@ -22,6 +22,7 @@ import {
   dbGetBloodWork,
   dbGetMetabolicModel,
   dbSaveMetabolicModel,
+  dbSaveProfile,
   dbSavePlan,
   dbSaveMeal,
   dbDeleteMeal,
@@ -43,7 +44,7 @@ import {
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
@@ -79,9 +80,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
+
+    // iOS sends the full profile on every sync. Upsert it so the GET endpoint
+    // (which returns 404 when no profile row exists) always has a valid record,
+    // even if DynamoDB was unavailable during the original registration.
+    // Wrapped in try/catch so a transient profile-save failure never blocks meal sync.
+    if (profile) {
+      promises.push(
+        (async () => {
+          try {
+            const existing = await dbGetProfile(userId);
+            await dbSaveProfile(userId, { ...(existing ?? {}), ...profile, id: userId } as UserProfile);
+          } catch (e) {
+            console.error("Profile upsert failed during sync:", e);
+          }
+        })()
+      );
+    }
 
     if (metabolicModel) {
       promises.push(dbSaveMetabolicModel(userId, metabolicModel as MetabolicModel));

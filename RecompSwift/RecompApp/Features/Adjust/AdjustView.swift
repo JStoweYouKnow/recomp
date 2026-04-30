@@ -11,6 +11,7 @@ struct AdjustView: View {
     @State private var feedback = ""
     @State private var suggestion: AdjustSuggestion?
     @State private var errorMessage: String?
+    @FocusState private var feedbackFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -26,7 +27,14 @@ struct AdjustView: View {
                 }
                 .padding()
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Adjust Plan")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { feedbackFocused = false }
+                }
+            }
         }
     }
 
@@ -46,6 +54,7 @@ struct AdjustView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(.secondary.opacity(0.3))
                 )
+                .focused($feedbackFocused)
 
             HStack {
                 Button {

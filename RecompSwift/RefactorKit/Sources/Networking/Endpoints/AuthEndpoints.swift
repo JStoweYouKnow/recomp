@@ -69,6 +69,7 @@ public struct UserProfileDTO: Codable, Sendable {
     public var workoutDaysPerWeek: Int?
     public var workoutTimeframe: String?
     public var createdAt: String?
+    public var proAccess: Bool?
 
     public init(
         id: String,

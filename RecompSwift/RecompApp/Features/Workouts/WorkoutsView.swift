@@ -62,6 +62,7 @@ struct WorkoutsView: View {
                     }
                     .padding(.vertical)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Workouts")
             .onAppear {
@@ -564,15 +565,27 @@ struct ExerciseRow: View {
                         )
                         Button {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                                workoutService.markSetComplete(
-                                    exerciseName: exercise.name,
-                                    setIndex: setIdx,
-                                    dayKey: progressDayKey,
-                                    planIndex: planIndex,
-                                    globalSlot: globalSlot,
-                                    webContext: webContext,
-                                    exerciseForWeb: exercise
-                                )
+                                if done {
+                                    workoutService.unmarkSetComplete(
+                                        exerciseName: exercise.name,
+                                        setIndex: setIdx,
+                                        dayKey: progressDayKey,
+                                        planIndex: planIndex,
+                                        globalSlot: globalSlot,
+                                        webContext: webContext,
+                                        exerciseForWeb: exercise
+                                    )
+                                } else {
+                                    workoutService.markSetComplete(
+                                        exerciseName: exercise.name,
+                                        setIndex: setIdx,
+                                        dayKey: progressDayKey,
+                                        planIndex: planIndex,
+                                        globalSlot: globalSlot,
+                                        webContext: webContext,
+                                        exerciseForWeb: exercise
+                                    )
+                                }
                             }
                         } label: {
                             ZStack {

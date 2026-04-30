@@ -135,6 +135,26 @@ export function saveWearableData(data: WearableDaySummary[]): void {
   localStorage.setItem(STORAGE_KEYS.wearableData, JSON.stringify(data));
 }
 
+/** Merge synced or manual wearable rows — matches by manualEntryId first, then date+provider. */
+export function mergeWearableIncoming(
+  existing: WearableDaySummary[],
+  incoming: WearableDaySummary[],
+): WearableDaySummary[] {
+  const merged = [...existing];
+  for (const d of incoming) {
+    let i = -1;
+    if (d.manualEntryId) {
+      i = merged.findIndex((x) => x.manualEntryId === d.manualEntryId);
+    }
+    if (i < 0) {
+      i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
+    }
+    if (i >= 0) merged[i] = { ...merged[i], ...d };
+    else merged.push(d);
+  }
+  return merged;
+}
+
 export function getMilestones(): Milestone[] {
   if (typeof window === "undefined") return [];
   const parsed = safeParse<Milestone[]>(localStorage.getItem(STORAGE_KEYS.milestones), []);

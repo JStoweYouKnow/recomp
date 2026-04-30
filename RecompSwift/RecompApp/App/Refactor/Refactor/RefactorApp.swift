@@ -107,7 +107,10 @@ struct RootView: View {
             }
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
-            if isAuthenticated { showPaywallIfNeeded() }
+            if isAuthenticated {
+                subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
+                showPaywallIfNeeded()
+            }
         }
         .onChange(of: subscriptions.status) { _, _ in
             showPaywallIfNeeded()

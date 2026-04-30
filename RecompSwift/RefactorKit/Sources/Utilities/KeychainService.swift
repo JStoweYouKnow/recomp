@@ -26,14 +26,14 @@ public struct KeychainService {
             kSecAttrAccessGroup as String: "group.com.refactor.ios",
         ]
 
+        // Mirror into App Group defaults BEFORE the keychain guard so the fallback
+        // is always populated, even if the keychain access group write fails.
+        RecompAppGroupDefaults.shared.set(userId, forKey: RecompUserDefaultsKeys.userId)
+
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else {
             throw KeychainError.unableToSave(status)
         }
-
-        // Mirror into the shared App Group defaults so watchOS can read it without
-        // depending on cross-process keychain access group availability.
-        RecompAppGroupDefaults.shared.set(userId, forKey: RecompUserDefaultsKeys.userId)
     }
 
     public static func loadUserId() throws -> String? {

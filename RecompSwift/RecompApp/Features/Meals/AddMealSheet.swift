@@ -109,6 +109,7 @@ struct AddMealSheet: View {
             .onDisappear {
                 speech.stopRecording()
             }
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -116,6 +117,10 @@ struct AddMealSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveMeal() }
                         .disabled(name.isEmpty)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
                 }
             }
         }

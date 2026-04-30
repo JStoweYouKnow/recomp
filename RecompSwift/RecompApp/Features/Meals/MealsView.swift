@@ -55,6 +55,11 @@ struct MealsView: View {
                         Image(systemName: "plus.circle.fill")
                     }
                 }
+                if selectedTab == 0 && !mealsForDate.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        EditButton()
+                    }
+                }
             }
             .sheet(isPresented: $showAddMeal) {
                 AddMealSheet(date: DateHelpers.dateString(from: selectedDate))
@@ -116,6 +121,7 @@ struct MealsView: View {
                     }
                 }
                 .listStyle(.plain)
+                .scrollDismissesKeyboard(.interactively)
             }
         }
     }

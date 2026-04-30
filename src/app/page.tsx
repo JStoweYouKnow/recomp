@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
-  getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
+  getWearableData, saveWearableData, mergeWearableIncoming, getWearableConnections, saveWearableConnections,
   getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
   syncToServer, flushSync, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
   getBiofeedback, getHydration, getActiveFastingSession,
@@ -705,15 +705,15 @@ export default function Home() {
               streak={getCurrentStreakFromMeals(meals)}
               macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
               onDataFetched={(data) => {
-                const existing = getWearableData();
-                const merged = [...existing];
-                (data as WearableDaySummary[]).forEach((d) => {
-                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                  if (i >= 0) merged[i] = { ...merged[i], ...d };
-                  else merged.push(d);
-                });
+                const merged = mergeWearableIncoming(getWearableData(), data as WearableDaySummary[]);
                 saveWearableData(merged);
                 setWearableData(merged);
+              }}
+              onManualWearableEntryRemoved={(manualEntryId) => {
+                const next = getWearableData().filter((x) => x.manualEntryId !== manualEntryId);
+                saveWearableData(next);
+                setWearableData(next);
+                syncToServer();
               }}
             />
           </div>
@@ -773,13 +773,7 @@ export default function Home() {
               }}
               onRegistered={() => setIsDemoMode(false)}
               onWearableDataFetched={(data) => {
-                const existing = getWearableData();
-                const merged = [...existing];
-                (data as WearableDaySummary[]).forEach((d) => {
-                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                  if (i >= 0) merged[i] = { ...merged[i], ...d };
-                  else merged.push(d);
-                });
+                const merged = mergeWearableIncoming(getWearableData(), data as WearableDaySummary[]);
                 saveWearableData(merged);
                 setWearableData(merged);
               }}

@@ -18,14 +18,14 @@ public enum PlanAPI: APIEndpoint {
         case .generate(let profile):
             return AnyEncodable(profile)
         case .adjust(let feedback, let currentPlan):
-            return AnyEncodable(AdjustPayload(feedback: feedback, currentPlan: currentPlan))
+            return AnyEncodable(AdjustPayload(feedback: feedback, plan: currentPlan))
         }
     }
 }
 
 public struct AdjustPayload: Encodable {
     public let feedback: String
-    public let currentPlan: FitnessPlanDTO?
+    public let plan: FitnessPlanDTO?
 }
 
 /// Top-level DTOs (not nested under `FitnessPlanDTO`) so `public` properties stay valid for module clients.

@@ -325,14 +325,7 @@ public final class WorkoutService {
     ) {
         let day = dayKey ?? DateHelpers.todayString()
         var dayMap = progressByDay[day] ?? [:]
-        let storageKey: String
-        if let ctx = webContext, let ex = exerciseForWeb {
-            storageKey = rowSetProgressStorageKey(context: ctx, exercise: ex)
-        } else if let pi = planIndex, let gs = globalSlot {
-            storageKey = slotStorageKey(planIndex: pi, globalSlot: gs)
-        } else {
-            storageKey = exerciseName
-        }
+        let storageKey = resolveStorageKey(exerciseName: exerciseName, planIndex: planIndex, globalSlot: globalSlot, webContext: webContext, exerciseForWeb: exerciseForWeb)
         var sets = dayMap[storageKey] ?? []
         sets.insert("set_\(setIndex)")
         dayMap[storageKey] = sets
@@ -344,6 +337,54 @@ public final class WorkoutService {
             persistToDefaults()
             postSyncNotification()
         }
+    }
+
+    public func unmarkSetComplete(
+        exerciseName: String,
+        setIndex: Int,
+        dayKey: String? = nil,
+        planIndex: Int? = nil,
+        globalSlot: Int? = nil,
+        webContext: WorkoutSetProgressContext? = nil,
+        exerciseForWeb: WorkoutExercise? = nil
+    ) {
+        let day = dayKey ?? DateHelpers.todayString()
+        var dayMap = progressByDay[day] ?? [:]
+        let storageKey = resolveStorageKey(exerciseName: exerciseName, planIndex: planIndex, globalSlot: globalSlot, webContext: webContext, exerciseForWeb: exerciseForWeb)
+        var sets = dayMap[storageKey] ?? []
+        sets.remove("set_\(setIndex)")
+        if sets.isEmpty {
+            dayMap.removeValue(forKey: storageKey)
+        } else {
+            dayMap[storageKey] = sets
+        }
+        if dayMap.isEmpty {
+            progressByDay.removeValue(forKey: day)
+        } else {
+            progressByDay[day] = dayMap
+        }
+        persistToDefaults()
+
+        if let ctx = webContext, let ex = exerciseForWeb {
+            refreshWebProgressKeys(context: ctx, exercise: ex)
+            persistToDefaults()
+            postSyncNotification()
+        }
+    }
+
+    private func resolveStorageKey(
+        exerciseName: String,
+        planIndex: Int?,
+        globalSlot: Int?,
+        webContext: WorkoutSetProgressContext?,
+        exerciseForWeb: WorkoutExercise?
+    ) -> String {
+        if let ctx = webContext, let ex = exerciseForWeb {
+            return rowSetProgressStorageKey(context: ctx, exercise: ex)
+        } else if let pi = planIndex, let gs = globalSlot {
+            return slotStorageKey(planIndex: pi, globalSlot: gs)
+        }
+        return exerciseName
     }
 
     private func refreshWebProgressKeys(context: WorkoutSetProgressContext, exercise: WorkoutExercise) {
