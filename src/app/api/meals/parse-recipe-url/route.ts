@@ -220,7 +220,7 @@ ${truncated}`;
       name: name || "Recipe",
       imageUrl: imageUrl || undefined,
       servings,
-      nutrition: nutrition ?? {
+      macros: nutrition ?? {
         calories: 0,
         protein: 0,
         carbs: 0,

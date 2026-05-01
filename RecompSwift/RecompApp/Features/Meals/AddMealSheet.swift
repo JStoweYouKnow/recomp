@@ -31,6 +31,7 @@ struct AddMealSheet: View {
     @State private var foodSearchQuery = ""
     @State private var voiceTranscript = ""
     @State private var voiceParseError: String?
+    @State private var recipeParseError: String?
     @State private var speech = MealSpeechTranscription()
 
     enum InputMode: String, CaseIterable {
@@ -376,6 +377,7 @@ struct AddMealSheet: View {
             Button("Parse Recipe") {
                 Task {
                     isAnalyzing = true
+                    recipeParseError = nil
                     do {
                         let result = try await mealService.parseRecipeUrl(recipeURL)
                         name = result.name
@@ -383,11 +385,19 @@ struct AddMealSheet: View {
                         protein = result.macros.protein
                         carbs = result.macros.carbs
                         fat = result.macros.fat
-                    } catch {}
+                    } catch {
+                        recipeParseError = error.localizedDescription
+                    }
                     isAnalyzing = false
                 }
             }
-            .disabled(recipeURL.isEmpty)
+            .disabled(recipeURL.isEmpty || isAnalyzing)
+
+            if let err = recipeParseError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
