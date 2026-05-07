@@ -30,8 +30,11 @@ User's recent data:
 
 Suggest adjustments. Respond with this JSON only:
 {
-  "dietAdjustments": {"summary": "brief explanation", "newTargets": {"calories": number, "protein": number, "carbs": number, "fat": number} | null, "mealSuggestions": ["suggestion1", "suggestion2"]},
-  "workoutAdjustments": {"summary": "brief explanation", "changes": ["change1", "change2"]}
+  "suggestion": {
+    "explanation": "brief explanation of what to change and why",
+    "newTargets": {"calories": number, "protein": number, "carbs": number, "fat": number} | null,
+    "changes": ["specific change 1", "specific change 2"]
+  }
 }`;
 
     const raw = await invokeNova(SYSTEM_PROMPT, userMessage, {
@@ -40,7 +43,7 @@ Suggest adjustments. Respond with this JSON only:
     });
 
     const match = raw.match(/\{[\s\S]*\}/);
-    const parsed = match ? JSON.parse(match[0]) : { dietAdjustments: {}, workoutAdjustments: {} };
+    const parsed = match ? JSON.parse(match[0]) : { suggestion: { explanation: "No adjustment suggested.", newTargets: null, changes: [] } };
 
     logInfo("Plan adjusted", { route: "plans/adjust" });
     return NextResponse.json(parsed);
