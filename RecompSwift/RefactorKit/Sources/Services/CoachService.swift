@@ -22,7 +22,10 @@ public final class CoachService {
     }
 
     public func sendMessage(_ text: String, context: ModelContext) async throws {
-        let userMessage = CoachMessage(role: .user, content: text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let userMessage = CoachMessage(role: .user, content: trimmed)
         context.insert(userMessage)
         messages.append(userMessage)
 
@@ -39,9 +42,16 @@ public final class CoachService {
 
         let ricoContext = buildRicoContext(modelContext: context)
 
-        let response: CoachChatResponse = try await api.request(
-            CoachAPI.chat(message: text, history: historyDTOs, context: ricoContext)
-        )
+        let response: CoachChatResponse
+        do {
+            response = try await api.request(
+                CoachAPI.chat(message: trimmed, history: historyDTOs, context: ricoContext)
+            )
+        } catch {
+            context.delete(userMessage)
+            messages.removeAll { $0.id == userMessage.id }
+            throw error
+        }
 
         let assistantMessage = CoachMessage(role: .assistant, content: response.reply)
         context.insert(assistantMessage)
@@ -51,7 +61,7 @@ public final class CoachService {
             applyActions(response.actions, modelContext: context)
         }
 
-        try? context.save()
+        try context.save()
     }
 
     public func clearHistory(context: ModelContext) {
@@ -233,8 +243,8 @@ public final class CoachService {
                 )
                 plan.synced = false
 
-            case .unknown:
-                break
+            case .unknown(let actionType):
+                print("[CoachService] Unhandled action type: \(actionType)")
             }
         }
     }

@@ -501,29 +501,60 @@ public final class WorkoutService {
     public func searchExercises(name: String) async throws -> [ExerciseSearchResult] {
         isSearching = true
         defer { isSearching = false }
+        do {
+            var result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseSearch(name: name))
 
-        var result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseSearch(name: name))
-
-        // Server returns a relative path like "/api/exercises/gif?id=...". Build absolute URL.
-        if let relPath = result.gifUrl, !relPath.hasPrefix("http") {
-            var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
-            let pathAndQuery = relPath.split(separator: "?", maxSplits: 1)
-            components?.path = String(pathAndQuery[0])
-            if pathAndQuery.count > 1 {
-                components?.query = String(pathAndQuery[1])
+            // Server returns a relative path like "/api/exercises/gif?id=...". Build absolute URL.
+            if let relPath = result.gifUrl, !relPath.hasPrefix("http") {
+                var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
+                let pathAndQuery = relPath.split(separator: "?", maxSplits: 1)
+                components?.path = String(pathAndQuery[0])
+                if pathAndQuery.count > 1 {
+                    components?.query = String(pathAndQuery[1])
+                }
+                let absoluteUrl = components?.url?.absoluteString ?? relPath
+                result = ExerciseSearchResult(
+                    id: result.id,
+                    name: result.name,
+                    gifUrl: absoluteUrl,
+                    targetMuscles: result.targetMuscles,
+                    instructions: result.instructions
+                )
+            } else if result.gifUrl == nil {
+                // Exercise search may return no direct match; fallback to name-based GIF proxy lookup.
+                result = ExerciseSearchResult(
+                    id: result.id,
+                    name: result.name,
+                    gifUrl: fallbackGifURLString(for: name),
+                    targetMuscles: result.targetMuscles,
+                    instructions: result.instructions
+                )
             }
-            let absoluteUrl = components?.url?.absoluteString ?? relPath
-            result = ExerciseSearchResult(
-                id: result.id,
-                name: result.name,
-                gifUrl: absoluteUrl,
-                targetMuscles: result.targetMuscles,
-                instructions: result.instructions
-            )
-        }
 
-        exerciseResults = [result]
-        return [result]
+            exerciseResults = [result]
+            return [result]
+        } catch {
+            // Keep workout demos resilient when upstream ExerciseDB search is unavailable.
+            let fallback = ExerciseSearchResult(
+                id: "fallback-\(name.lowercased().replacingOccurrences(of: " ", with: "-"))",
+                name: name,
+                gifUrl: fallbackGifURLString(for: name),
+                targetMuscles: nil,
+                instructions: nil
+            )
+            exerciseResults = [fallback]
+            return [fallback]
+        }
+    }
+
+    private func fallbackGifURLString(for name: String) -> String? {
+        var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
+        components?.path = "/api/exercises/gif"
+        components?.queryItems = [
+            URLQueryItem(name: "id", value: "0000"),
+            URLQueryItem(name: "name", value: name)
+        ]
+        return components?.url?.absoluteString
     }
 
     public func getExerciseGifURL(id: String) async throws -> URL? {

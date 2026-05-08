@@ -6,6 +6,13 @@ public struct MetabolicDataPoint: Codable, Sendable {
     public var weightKg: Double
     public var totalIntake: Double
     public var totalExpenditure: Double
+
+    public init(date: String, weightKg: Double, totalIntake: Double, totalExpenditure: Double) {
+        self.date = date
+        self.weightKg = weightKg
+        self.totalIntake = totalIntake
+        self.totalExpenditure = totalExpenditure
+    }
 }
 
 public struct MetabolicHistoryEntry: Codable, Sendable {

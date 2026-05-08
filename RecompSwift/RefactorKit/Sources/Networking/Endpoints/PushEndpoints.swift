@@ -235,9 +235,14 @@ public struct WearableDaySummaryDTO: Codable, Sendable {
     public var readinessScore: Int?
     public var heartRateAvg: Int?
     public var heartRateResting: Int?
+    /// Pounds (`sync-schema` wearable payloads).
     public var weight: Double?
     public var bodyFatPercent: Double?
+    /// Pounds (`sync-schema` wearable payloads).
     public var muscleMass: Double?
+    /// Server normalizes to canonical lbs; omit or send `lbs`/`kg` (`sync-schema`).
+    public var weightUnit: String?
+    public var muscleMassUnit: String?
 }
 
 // MARK: - ActivityLog DTO

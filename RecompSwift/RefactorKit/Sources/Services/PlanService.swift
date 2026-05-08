@@ -8,6 +8,9 @@ public final class PlanService {
     public private(set) var isGenerating = false
     public private(set) var isAdjusting = false
 
+    private static let minReasonableTDEE = 1200.0
+    private static let maxReasonableTDEE = 4500.0
+
     private let api: APIClient
 
     public init(api: APIClient = .shared) {
@@ -18,7 +21,31 @@ public final class PlanService {
         isGenerating = true
         defer { isGenerating = false }
 
-        let dto: FitnessPlanDTO = try await api.request(PlanAPI.generate(profile: profile))
+        var requestProfile = profile
+
+        // Match web behavior: only pass learned TDEE when confidence is high enough.
+        if let model = highestConfidenceMetabolicModel(context: context), model.confidence >= 70 {
+            requestProfile.learnedTDEE = clampTDEE(model.estimatedTDEE)
+        } else if let cached = MetabolicModelStorage.load(), cached.confidence >= 70 {
+            requestProfile.learnedTDEE = clampTDEE(cached.estimatedTDEE)
+        }
+
+        if let targets = MeasurementTargetsStorage.load() {
+            let hasAnyTarget = targets.targetWeightLbs != nil || targets.targetBodyFatPercent != nil || targets.targetMuscleMassLbs != nil
+            if hasAnyTarget {
+                requestProfile.measurementTargets = MeasurementTargetsDTO(
+                    targetWeightLbs: targets.targetWeightLbs,
+                    targetBodyFatPercent: targets.targetBodyFatPercent,
+                    targetMuscleMassLbs: targets.targetMuscleMassLbs
+                )
+            }
+        }
+
+        let latestComposition = latestBodyComposition(context: context)
+        requestProfile.currentBodyFatPercent = latestComposition.currentBodyFatPercent
+        requestProfile.currentMuscleMassLbs = latestComposition.currentMuscleMassLbs
+
+        let dto: FitnessPlanDTO = try await api.request(PlanAPI.generate(profile: requestProfile))
         let plan = mapPlan(dto)
         context.insert(plan)
         try? context.save()
@@ -93,5 +120,23 @@ public final class PlanService {
             ),
             reasoning: dto.reasoning
         )
+    }
+
+    private func highestConfidenceMetabolicModel(context: ModelContext) -> MetabolicModel? {
+        let models = (try? context.fetch(FetchDescriptor<MetabolicModel>())) ?? []
+        return models.max(by: { $0.confidence < $1.confidence })
+    }
+
+    private func latestBodyComposition(context: ModelContext) -> (currentBodyFatPercent: Double?, currentMuscleMassLbs: Double?) {
+        let rows = (try? context.fetch(FetchDescriptor<WearableDaySummary>())) ?? []
+        if rows.isEmpty { return (nil, nil) }
+        let sorted = rows.sorted { $0.date > $1.date }
+        let bodyFat = sorted.first(where: { $0.bodyFatPercent != nil })?.bodyFatPercent
+        let muscle = sorted.first(where: { $0.muscleMass != nil })?.muscleMass
+        return (bodyFat, muscle)
+    }
+
+    private func clampTDEE(_ value: Double) -> Double {
+        min(max(value, Self.minReasonableTDEE), Self.maxReasonableTDEE)
     }
 }

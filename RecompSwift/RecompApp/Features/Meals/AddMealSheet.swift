@@ -32,6 +32,10 @@ struct AddMealSheet: View {
     @State private var voiceTranscript = ""
     @State private var voiceParseError: String?
     @State private var recipeParseError: String?
+    @State private var foodSearchError: String?
+    @State private var suggestError: String?
+    @State private var menuScanError: String?
+    @State private var receiptScanError: String?
     @State private var speech = MealSpeechTranscription()
 
     enum InputMode: String, CaseIterable {
@@ -214,6 +218,7 @@ struct AddMealSheet: View {
             PhotosPicker("Select menu photo", selection: $selectedMenuPhoto, matching: .images)
                 .onChange(of: selectedMenuPhoto) { _, newValue in
                     guard let item = newValue else { return }
+                    menuScanError = nil
                     Task {
                         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
                         isAnalyzing = true
@@ -221,12 +226,16 @@ struct AddMealSheet: View {
                             analysisResults = try await mealService.analyzeMenu(imageData: data)
                         } catch {
                             analysisResults = []
+                            menuScanError = error.localizedDescription
                         }
                         isAnalyzing = false
                     }
                 }
             if isAnalyzing {
                 ProgressView("Reading menu…")
+            }
+            if let err = menuScanError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -236,6 +245,7 @@ struct AddMealSheet: View {
             PhotosPicker("Select receipt photo", selection: $selectedReceiptPhoto, matching: .images)
                 .onChange(of: selectedReceiptPhoto) { _, newValue in
                     guard let item = newValue else { return }
+                    receiptScanError = nil
                     Task {
                         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
                         isAnalyzing = true
@@ -243,12 +253,16 @@ struct AddMealSheet: View {
                             analysisResults = try await mealService.analyzeReceipt(imageData: data)
                         } catch {
                             analysisResults = []
+                            receiptScanError = error.localizedDescription
                         }
                         isAnalyzing = false
                     }
                 }
             if isAnalyzing {
                 ProgressView("Reading receipt…")
+            }
+            if let err = receiptScanError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -258,6 +272,7 @@ struct AddMealSheet: View {
             TextField("e.g. grilled chicken breast 200g", text: $foodSearchQuery)
                 .autocapitalization(.none)
             Button("Look up nutrition") {
+                foodSearchError = nil
                 Task {
                     isAnalyzing = true
                     do {
@@ -267,13 +282,18 @@ struct AddMealSheet: View {
                         protein = res.macros.protein
                         carbs = res.macros.carbs
                         fat = res.macros.fat
-                    } catch {}
+                    } catch {
+                        foodSearchError = error.localizedDescription
+                    }
                     isAnalyzing = false
                 }
             }
             .disabled(foodSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if isAnalyzing {
                 ProgressView()
+            }
+            if let err = foodSearchError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -404,6 +424,7 @@ struct AddMealSheet: View {
     private var suggestSection: some View {
         Section("AI Suggestions") {
             Button {
+                suggestError = nil
                 Task {
                     guard let profile = auth.currentUser else { return }
                     isAnalyzing = true
@@ -413,7 +434,9 @@ struct AddMealSheet: View {
                             date: date
                         )
                         analysisResults = mealService.suggestions
-                    } catch {}
+                    } catch {
+                        suggestError = error.localizedDescription
+                    }
                     isAnalyzing = false
                 }
             } label: {
@@ -422,6 +445,9 @@ struct AddMealSheet: View {
 
             if isAnalyzing {
                 ProgressView("Thinking...")
+            }
+            if let err = suggestError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }

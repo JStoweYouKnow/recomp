@@ -8,6 +8,7 @@ struct WorkoutsView: View {
     @State private var selectedDate = Date.now
     @State private var recoveryAssessment: RecoveryAssessment?
     @State private var isLoadingRecovery = false
+    @State private var recoveryError: String?
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var allPlans: [FitnessPlan]
@@ -93,32 +94,42 @@ struct WorkoutsView: View {
             }
             .padding(.horizontal)
         } else if let bf = todaysBiofeedback {
-            Button {
-                Task { await checkRecovery(bf) }
-            } label: {
-                HStack(spacing: 8) {
-                    if isLoadingRecovery {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Assessing recovery…")
-                    } else {
-                        Image(systemName: "heart.text.square.fill")
-                            .foregroundStyle(Color.appSuccess)
-                        Text("Check Today's Recovery")
-                            .fontWeight(.medium)
+            VStack(spacing: 6) {
+                Button {
+                    Task { await checkRecovery(bf) }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isLoadingRecovery {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Assessing recovery…")
+                        } else {
+                            Image(systemName: "heart.text.square.fill")
+                                .foregroundStyle(Color.appSuccess)
+                            Text("Check Today's Recovery")
+                                .fontWeight(.medium)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .buttonStyle(.bordered)
+                .tint(Color.appSuccess)
+                .padding(.horizontal)
+                .disabled(isLoadingRecovery)
+
+                if let recoveryError {
+                    Text(recoveryError)
+                        .font(.caption)
+                        .foregroundStyle(Color.appError)
+                        .padding(.horizontal)
+                }
             }
-            .buttonStyle(.bordered)
-            .tint(Color.appSuccess)
-            .padding(.horizontal)
-            .disabled(isLoadingRecovery)
         }
     }
 
     private func checkRecovery(_ bf: BiofeedbackEntry) async {
         isLoadingRecovery = true
+        recoveryError = nil
         do {
             recoveryAssessment = try await workoutService.assessRecovery(biofeedback: [
                 "energy": bf.energy,
@@ -127,7 +138,9 @@ struct WorkoutsView: View {
                 "stress": bf.stress,
                 "soreness": bf.soreness
             ])
-        } catch {}
+        } catch {
+            recoveryError = error.localizedDescription
+        }
         isLoadingRecovery = false
     }
 
@@ -247,11 +260,13 @@ struct WorkoutDayCard: View {
     var recoveryModifier: Double? = nil
 
     @State private var isExpanded: Bool
-    @State private var gifURLs: [String: String] = [:]
+    @State private var gifData: [String: Data] = [:]
     @State private var loadingGifs: Set<String> = []
+    @State private var gifErrors: [String: String] = [:]
     @State private var musicSuggestions: [PlaylistSuggestion] = []
     @State private var isLoadingMusic = false
     @State private var showMusic = false
+    @State private var musicError: String?
 
     init(
         planId: String,
@@ -413,8 +428,9 @@ struct WorkoutDayCard: View {
                     planIndex: planIndex,
                     globalSlot: globalSlot,
                     webContext: webCtx,
-                    gifURL: gifURLs["\(globalSlot)-\(exercise.name)"],
+                    gifData: gifData["\(globalSlot)-\(exercise.name)"],
                     isLoadingGif: loadingGifs.contains("\(globalSlot)-\(exercise.name)"),
+                    gifError: gifErrors["\(globalSlot)-\(exercise.name)"],
                     onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) }
                 )
             }
@@ -422,17 +438,63 @@ struct WorkoutDayCard: View {
     }
 
     private func loadGif(slotTag: String, searchName: String) async {
-        guard gifURLs[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
+        guard gifData[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
         loadingGifs.insert(slotTag)
+        gifErrors[slotTag] = nil
+        defer { loadingGifs.remove(slotTag) }
         do {
-            // Use returned results directly — avoids a race where concurrent searches
-            // overwrite the shared exerciseResults before we read it.
             let results = try await workoutService.searchExercises(name: searchName)
-            if let url = results.first?.gifUrl {
-                gifURLs[slotTag] = url
+            guard let urlString = results.first?.gifUrl, let url = URL(string: urlString) else {
+                gifErrors[slotTag] = "Demo unavailable for this exercise."
+                return
             }
-        } catch {}
-        loadingGifs.remove(slotTag)
+
+            var lastError: Error?
+            for _ in 0..<2 {
+                do {
+                    let data = try await APIClient.shared.requestRawURL(url)
+                    if isLikelyImagePayload(data) {
+                        gifData[slotTag] = data
+                        return
+                    }
+                } catch {
+                    lastError = error
+                }
+            }
+
+            if lastError != nil {
+                gifErrors[slotTag] = "Could not load demo animation."
+            } else {
+                gifErrors[slotTag] = "Demo unavailable for this exercise."
+            }
+        } catch {
+            gifErrors[slotTag] = "Could not find exercise demo."
+        }
+    }
+
+    private func isLikelyImagePayload(_ data: Data) -> Bool {
+        guard !data.isEmpty else { return false }
+        // GIF87a / GIF89a
+        if data.count >= 6, let sig = String(data: data.prefix(6), encoding: .ascii),
+           sig == "GIF87a" || sig == "GIF89a" {
+            return true
+        }
+        // PNG header
+        if data.count >= 8, Array(data.prefix(8)) == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            return true
+        }
+        // JPEG header
+        if data.count >= 2, data[data.startIndex] == 0xFF, data[data.index(after: data.startIndex)] == 0xD8 {
+            return true
+        }
+        // Proxy may intentionally return SVG placeholder.
+        if let prefix = String(data: data.prefix(256), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           prefix.hasPrefix("<svg") || prefix.hasPrefix("<?xml") {
+            return true
+        }
+        return false
     }
 
     // MARK: Music section
@@ -465,7 +527,12 @@ struct WorkoutDayCard: View {
             .padding(.top, 6)
             .disabled(isLoadingMusic)
 
-            if showMusic && !musicSuggestions.isEmpty {
+            if let musicError {
+                Text(musicError)
+                    .font(.caption)
+                    .foregroundStyle(Color.appError)
+                    .padding(.horizontal)
+            } else if showMusic && !musicSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(musicSuggestions) { suggestion in
@@ -480,13 +547,16 @@ struct WorkoutDayCard: View {
 
     private func fetchMusic() async {
         isLoadingMusic = true
+        musicError = nil
         do {
             let response: MusicSuggestResponse = try await APIClient.shared.request(
                 MusicAPI.suggest(workoutFocus: day.focus, provider: nil)
             )
             musicSuggestions = response.suggestions
             withAnimation { showMusic = true }
-        } catch {}
+        } catch {
+            musicError = error.localizedDescription
+        }
         isLoadingMusic = false
     }
 }
@@ -500,8 +570,9 @@ struct ExerciseRow: View {
     let planIndex: Int
     let globalSlot: Int
     let webContext: WorkoutSetProgressContext
-    let gifURL: String?
+    let gifData: Data?
     let isLoadingGif: Bool
+    let gifError: String?
     let onLoadGif: () async -> Void
 
     @State private var showGif = false
@@ -527,7 +598,7 @@ struct ExerciseRow: View {
                 Spacer()
                 // GIF demo toggle
                 Button {
-                    if gifURL != nil {
+                    if gifData != nil {
                         withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
                     } else {
                         Task { await onLoadGif() }
@@ -612,16 +683,22 @@ struct ExerciseRow: View {
             .frame(minHeight: 36)
 
             // GIF display — WKWebView so animated GIFs play correctly
-            if showGif, let urlString = gifURL, let url = URL(string: urlString) {
-                AnimatedGIFView(url: url)
+            if showGif, let data = gifData {
+                AnimatedGIFView(data: data)
                     .frame(height: 220)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if let gifError {
+                Label(gifError, systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
-        .onChange(of: gifURL) { _, newURL in
-            if newURL != nil {
+        .onChange(of: gifData != nil) { _, hasData in
+            if hasData {
                 withAnimation(.easeIn(duration: 0.25)) { showGif = true }
             }
         }

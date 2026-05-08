@@ -524,6 +524,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Refactor: Body Composition";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -563,6 +565,8 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Refactor: Body Composition";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

@@ -29,8 +29,11 @@ public final class WearableDaySummary: @unchecked Sendable {
     public var readinessScore: Int?
     public var heartRateAvg: Int?
     public var heartRateResting: Int?
+    /// Body mass **in pounds**. Matches `/api/data/sync` and `WearableDaySummaryDTO` (`sync-schema`).
+    /// Use ``WearableMassStoredPounds.weightKg(fromStoredPounds:)`` where you need kg.
     public var weight: Double?
     public var bodyFatPercent: Double?
+    /// Muscle mass **in pounds** (same sync contract as `weight`).
     public var muscleMass: Double?
     public var bmi: Double?
     public var bmr: Double?
@@ -70,4 +73,14 @@ public struct MeasurementTargets: Codable, Sendable {
     public var targetWeightLbs: Double?
     public var targetBodyFatPercent: Double?
     public var targetMuscleMassLbs: Double?
+
+    public init(
+        targetWeightLbs: Double? = nil,
+        targetBodyFatPercent: Double? = nil,
+        targetMuscleMassLbs: Double? = nil
+    ) {
+        self.targetWeightLbs = targetWeightLbs
+        self.targetBodyFatPercent = targetBodyFatPercent
+        self.targetMuscleMassLbs = targetMuscleMassLbs
+    }
 }

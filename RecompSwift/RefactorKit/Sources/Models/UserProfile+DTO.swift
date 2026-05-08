@@ -22,7 +22,11 @@ extension UserProfile {
             workoutEquipment: workoutEquipment.map(\.rawValue),
             workoutDaysPerWeek: workoutDaysPerWeek,
             workoutTimeframe: workoutTimeframe?.rawValue,
-            createdAt: createdAtISO ?? iso.string(from: createdAt)
+            createdAt: createdAtISO ?? iso.string(from: createdAt),
+            learnedTDEE: nil,
+            measurementTargets: nil,
+            currentBodyFatPercent: nil,
+            currentMuscleMassLbs: nil
         )
     }
 }

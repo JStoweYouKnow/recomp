@@ -4,12 +4,14 @@ import RefactorKit
 
 struct BiofeedbackCard: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var energy = 3
     @State private var mood = 3
     @State private var hunger = 3
     @State private var stress = 3
     @State private var soreness = 3
     @State private var hasLogged = false
+    @State private var saveError: String?
 
     var body: some View {
         GroupBox {
@@ -48,7 +50,8 @@ struct BiofeedbackCard: View {
                             soreness: soreness
                         )
                         context.insert(entry)
-                        try? context.save()
+                        do { try context.save() } catch { saveError = error.localizedDescription }
+                        Task { await syncEngine?.markDirty() }
                         hasLogged = true
                     }
                     .font(.caption.weight(.semibold))
@@ -62,6 +65,14 @@ struct BiofeedbackCard: View {
         } label: {
             Label("Biofeedback", systemImage: "heart.text.square")
                 .font(.caption.weight(.medium))
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
         }
     }
 

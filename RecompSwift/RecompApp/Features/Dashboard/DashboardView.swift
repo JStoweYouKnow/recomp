@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
     @State private var planService = PlanService()
+    @State private var syncError: String?
 
     var body: some View {
         NavigationStack {
@@ -28,8 +29,22 @@ struct DashboardView: View {
             .refreshable {
                 await auth.checkSession()
                 if let engine = syncEngine {
-                    try? await engine.fetchAndApply()
+                    do {
+                        try await engine.fetchAndApply()
+                    } catch {
+                        if !SyncPullErrorFiltering.shouldSuppressUserAlert(for: error) {
+                            syncError = error.localizedDescription
+                        }
+                    }
                 }
+            }
+            .alert("Sync Failed", isPresented: Binding(
+                get: { syncError != nil },
+                set: { if !$0 { syncError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(syncError ?? "")
             }
         }
     }

@@ -78,6 +78,20 @@ public actor APIClient {
         return data
     }
 
+    /// Fetches raw bytes from an arbitrary URL with the standard auth header attached.
+    /// Used for proxied media (e.g. exercise GIFs) that require the same session credentials
+    /// as JSON endpoints but can't receive headers through a WKWebView img tag.
+    public func requestRawURL(_ url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        if let uid = try? KeychainService.loadUserId(), !uid.isEmpty {
+            request.setValue(uid, forHTTPHeaderField: "X-Refactor-User-Id")
+        }
+        let (data, response) = try await perform(request)
+        try validateResponse(response, data: data)
+        return data
+    }
+
     public func upload<T: Decodable>(
         _ endpoint: APIEndpoint,
         imageData: Data,

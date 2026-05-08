@@ -4,7 +4,9 @@ import RefactorKit
 
 struct HydrationWidget: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \HydrationEntry.time) private var allEntries: [HydrationEntry]
+    @State private var saveError: String?
 
     private var todaysEntries: [HydrationEntry] {
         let today = DateHelpers.todayString()
@@ -50,6 +52,14 @@ struct HydrationWidget: View {
             Label("Hydration", systemImage: "drop")
                 .font(.caption.weight(.medium))
         }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private func adjustButton(_ ml: Int) -> some View {
@@ -66,6 +76,7 @@ struct HydrationWidget: View {
                 } else if let last = todaysEntries.last {
                     context.delete(last)
                 }
+                persistHydrationChange()
             } else {
                 let entry = HydrationEntry(
                     date: DateHelpers.todayString(),
@@ -73,6 +84,7 @@ struct HydrationWidget: View {
                     amountMl: ml
                 )
                 context.insert(entry)
+                persistHydrationChange()
             }
         } label: {
             Text(label)
@@ -87,5 +99,14 @@ struct HydrationWidget: View {
         }
         .buttonStyle(.plain)
         .disabled(wouldGoNegative || (isSubtract && todaysEntries.isEmpty))
+    }
+
+    private func persistHydrationChange() {
+        do {
+            try context.save()
+        } catch {
+            saveError = error.localizedDescription
+        }
+        Task { await syncEngine?.markDirty() }
     }
 }

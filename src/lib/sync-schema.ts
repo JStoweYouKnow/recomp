@@ -87,9 +87,13 @@ const wearableDaySummarySchema = z.object({
   readinessScore: z.number().min(0).max(100).optional(),
   heartRateAvg: z.number().min(20).max(300).optional(),
   heartRateResting: z.number().min(20).max(200).optional(),
-  weight: z.number().min(0).max(1100).optional(), // lbs
+  /** Raw mass — converted using `weightUnit` (default lbs) server-side before storage. */
+  weight: z.number().min(0).max(1100).optional(),
+  weightUnit: z.enum(["lbs", "kg"]).optional(),
   bodyFatPercent: z.number().min(0).max(100).optional(),
-  muscleMass: z.number().min(0).max(500).optional(), // lbs
+  /** Upper bound tolerates transient kg payloads before normalization to lbs. */
+  muscleMass: z.number().min(0).max(650).optional(),
+  muscleMassUnit: z.enum(["lbs", "kg"]).optional(),
   manualEntryId: z.string().uuid().optional(),
 }).passthrough();
 

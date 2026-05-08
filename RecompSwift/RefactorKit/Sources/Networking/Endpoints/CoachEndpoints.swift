@@ -40,8 +40,40 @@ public struct CoachMessageDTO: Codable, Sendable {
 }
 
 public struct CoachChatResponse: Decodable {
-    let reply: String
-    let actions: [RicoAction]
+    public let reply: String
+    /// Tool actions Rico returned — each entry is decoded best-effort so one malformed action does not break meal logging / chat.
+    public let actions: [RicoAction]
+
+    enum CodingKeys: String, CodingKey {
+        case reply, actions
+    }
+
+    private struct LooseRicoElement: Decodable {
+        /// `nil` when the subtree does not match a known Rico action shape.
+        let value: RicoAction?
+        nonisolated init(from decoder: Decoder) throws {
+            value = try? RicoAction(from: decoder)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reply =
+            (try c.decodeIfPresent(String.self, forKey: .reply)?.trimmingCharacters(in: .whitespacesAndNewlines))
+                ?? ""
+
+        guard c.contains(.actions) else {
+            actions = []
+            return
+        }
+        var nested = try c.nestedUnkeyedContainer(forKey: .actions)
+        var out: [RicoAction] = []
+        while !nested.isAtEnd {
+            let wrap = try nested.decode(LooseRicoElement.self)
+            if let a = wrap.value { out.append(a) }
+        }
+        actions = out
+    }
 }
 
 // MARK: - Rico Context (sent with every chat request)
@@ -136,6 +168,31 @@ public struct LogMealPayload: Decodable, Sendable {
     public let protein: Double
     public let carbs: Double
     public let fat: Double
+
+    enum CodingKeys: String, CodingKey {
+        case name, calories, protein, carbs, fat
+    }
+
+    /// Bedrock payloads can omit fields or use integers — keep meal logging resilient.
+    nonisolated public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawName = try c.decodeIfPresent(String.self, forKey: .name)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        name = rawName.flatMap { $0.isEmpty ? nil : $0 } ?? "Meal"
+        calories = Self.readDouble(c, key: .calories)
+        protein = Self.readDouble(c, key: .protein)
+        carbs = Self.readDouble(c, key: .carbs)
+        fat = Self.readDouble(c, key: .fat)
+    }
+
+    private nonisolated static func readDouble(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> Double {
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return d }
+        if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return Double(i) }
+        return 0
+    }
 
     public var asMacros: Macros {
         Macros(calories: Int(calories.rounded()), protein: protein, carbs: carbs, fat: fat)

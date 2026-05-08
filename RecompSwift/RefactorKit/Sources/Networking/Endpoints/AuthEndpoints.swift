@@ -70,6 +70,10 @@ public struct UserProfileDTO: Codable, Sendable {
     public var workoutTimeframe: String?
     public var createdAt: String?
     public var proAccess: Bool?
+    public var learnedTDEE: Double?
+    public var measurementTargets: MeasurementTargetsDTO?
+    public var currentBodyFatPercent: Double?
+    public var currentMuscleMassLbs: Double?
 
     public init(
         id: String,
@@ -90,7 +94,11 @@ public struct UserProfileDTO: Codable, Sendable {
         workoutEquipment: [String]? = nil,
         workoutDaysPerWeek: Int? = nil,
         workoutTimeframe: String? = nil,
-        createdAt: String? = nil
+        createdAt: String? = nil,
+        learnedTDEE: Double? = nil,
+        measurementTargets: MeasurementTargetsDTO? = nil,
+        currentBodyFatPercent: Double? = nil,
+        currentMuscleMassLbs: Double? = nil
     ) {
         self.id = id
         self.name = name
@@ -111,5 +119,9 @@ public struct UserProfileDTO: Codable, Sendable {
         self.workoutDaysPerWeek = workoutDaysPerWeek
         self.workoutTimeframe = workoutTimeframe
         self.createdAt = createdAt
+        self.learnedTDEE = learnedTDEE
+        self.measurementTargets = measurementTargets
+        self.currentBodyFatPercent = currentBodyFatPercent
+        self.currentMuscleMassLbs = currentMuscleMassLbs
     }
 }

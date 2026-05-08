@@ -59,9 +59,13 @@ struct AdjustView: View {
             HStack {
                 Button {
                     Task {
-                        try? await researchService.search(query: "latest nutrition guidelines for \(planService.currentPlan(context: context)?.reasoning ?? "fitness")")
-                        if let answer = researchService.result?.answer {
-                            feedback += "\n\nLatest research: \(answer)"
+                        do {
+                            try await researchService.search(query: "latest nutrition guidelines for \(planService.currentPlan(context: context)?.reasoning ?? "fitness")")
+                            if let answer = researchService.result?.answer {
+                                feedback += "\n\nLatest research: \(answer)"
+                            }
+                        } catch {
+                            errorMessage = error.localizedDescription
                         }
                     }
                 } label: {

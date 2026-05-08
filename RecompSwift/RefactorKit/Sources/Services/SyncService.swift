@@ -84,6 +84,15 @@ public actor SyncService: ModelActor {
                 return decoded
             }()
 
+            let measurementTargetsPayload: MeasurementTargetsDTO? = {
+                guard let mt = MeasurementTargetsStorage.load() else { return nil }
+                return MeasurementTargetsDTO(
+                    targetWeightLbs: mt.targetWeightLbs,
+                    targetBodyFatPercent: mt.targetBodyFatPercent,
+                    targetMuscleMassLbs: mt.targetMuscleMassLbs
+                )
+            }()
+
             let planModel = plans.first
             let workoutMerged = await MainActor.run {
                 WorkoutService.shared.webWorkoutProgressMergedForSync(plan: planModel)
@@ -111,7 +120,7 @@ public actor SyncService: ModelActor {
                 hasAdjusted: hasAdjustedFlag ? true : nil,
                 ricoHistory: ricoForPush,
                 recentExerciseNames: nil,
-                measurementTargets: nil
+                measurementTargets: measurementTargetsPayload
             )
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
         } catch {
@@ -312,7 +321,9 @@ public actor SyncService: ModelActor {
             heartRateResting: w.heartRateResting,
             weight: w.weight,
             bodyFatPercent: w.bodyFatPercent,
-            muscleMass: w.muscleMass
+            muscleMass: w.muscleMass,
+            weightUnit: "lbs",
+            muscleMassUnit: "lbs"
         )
     }
 

@@ -7,4 +7,8 @@ public extension Notification.Name {
     /// Posted on watchOS when WCSession delivers the userId from the paired iPhone,
     /// signalling that a full server pull should be attempted.
     static let recompWatchDidReceiveUserId = Notification.Name("recompWatchDidReceiveUserId")
+    /// Posted by notification action handlers to deep-link into specific tabs.
+    static let recompNavigateToMeals = Notification.Name("recompNavigateToMeals")
+    static let recompNavigateToWorkouts = Notification.Name("recompNavigateToWorkouts")
+    static let recompNavigateToDashboard = Notification.Name("recompNavigateToDashboard")
 }

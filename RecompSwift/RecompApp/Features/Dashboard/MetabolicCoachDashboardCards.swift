@@ -7,13 +7,18 @@ struct MetabolicModelDashboardCard: View {
     @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \WearableDaySummary.date, order: .reverse) private var wearables: [WearableDaySummary]
+    @Query(sort: \MetabolicModel.lastUpdated, order: .reverse) private var metabolicModels: [MetabolicModel]
     @Environment(AuthService.self) private var auth
 
     @State private var planService = PlanService()
     @State private var isUpdating = false
     @State private var errorText: String?
     @State private var resultSummary: String?
+    @State private var unitDebugSummary: String?
     @State private var showExplainer = false
+
+    private static let minReasonableTDEE = 1200.0
+    private static let maxReasonableTDEE = 4500.0
 
     var body: some View {
         GroupBox {
@@ -36,6 +41,13 @@ struct MetabolicModelDashboardCard: View {
                         .font(.caption2)
                         .foregroundStyle(Color.appError)
                 }
+                #if DEBUG
+                if let unitDebugSummary {
+                    Text(unitDebugSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                #endif
 
                 DisclosureGroup(isExpanded: $showExplainer) {
                     Text(
@@ -65,13 +77,28 @@ struct MetabolicModelDashboardCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear {
-            if resultSummary == nil, let cached = MetabolicModelStorage.load() {
-                resultSummary =
-                    "Last estimate: \(Int(cached.estimatedTDEE)) kcal/day · \(cached.confidence)% confidence " +
-                    "(\(cached.dataPointCount) pts)"
-            }
+        .onAppear { syncSummaryFromStores() }
+        .onChange(of: metabolicModels.count) { _, _ in syncSummaryFromStores() }
+        .onChange(of: metabolicModels.first?.estimatedTDEE ?? 0) { _, _ in syncSummaryFromStores() }
+    }
+
+    /// Prefer SwiftData row from server sync (`fetchAndApply`), then on-device API cache — they can differ.
+    private func syncSummaryFromStores() {
+        if let m = metabolicModels.first, m.confidence >= 20 {
+            let safeTDEE = clampTDEE(m.estimatedTDEE)
+            resultSummary =
+                "Last estimate: \(Int(safeTDEE)) kcal/day · \(Int(m.confidence))% confidence " +
+                "(\(m.dataPoints.count) pts)"
+            return
         }
+        if let cached = MetabolicModelStorage.load(), cached.confidence >= 20 {
+            let safeTDEE = clampTDEE(cached.estimatedTDEE)
+            resultSummary =
+                "Last estimate: \(Int(safeTDEE)) kcal/day · \(cached.confidence)% confidence " +
+                "(\(cached.dataPointCount) pts)"
+            return
+        }
+        resultSummary = nil
     }
 
     private func refreshModel() async {
@@ -81,22 +108,29 @@ struct MetabolicModelDashboardCard: View {
 
         let plan = planService.currentPlan(context: context)
         let targets = plan?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-        let baseWeightKg = auth.currentUser?.weight ?? 75
 
-        var byDate: [String: (intake: Double, weightKg: Double?, expenditure: Double?)] = [:]
-        for m in meals.prefix(400) {
-            var cur = byDate[m.date] ?? (0, nil, nil)
+        // Profile weight stored in lbs — convert to kg for the carry-forward starting point.
+        let baseWeightKg = (auth.currentUser?.weight ?? 165) * 0.45359237
+
+        // The server algorithm only uses weightKg + totalIntake — totalExpenditure is
+        // stored in the data point struct but never read by the regression. Mirror the
+        // web app's assembly: meals for intake, wearable weights in **lbs** → kg for the API (`weightKg`).
+        var byDate: [String: (intake: Double, weightKg: Double?)] = [:]
+        var wearableDaysWithWeight = 0
+        for m in meals.prefix(600) {
+            var cur = byDate[m.date] ?? (0, nil)
             cur.intake += Double(m.macros.calories)
             byDate[m.date] = cur
         }
-        for w in wearables.prefix(120) {
-            var cur = byDate[w.date] ?? (0, nil, nil)
+        for w in wearables.prefix(200) {
+            var cur = byDate[w.date] ?? (0, nil)
             if let lbs = w.weight {
-                cur.weightKg = lbs * 0.45359237
+                cur.weightKg = WearableMassStoredPounds.weightKg(fromStoredPounds: lbs)
+                wearableDaysWithWeight += 1
             }
-            cur.expenditure = w.caloriesBurned
             byDate[w.date] = cur
         }
+        unitDebugSummary = "Wearable weight: lbs → kg (\(wearableDaysWithWeight) day rows)."
 
         var prevWeight = baseWeightKg
         let sortedDates = byDate.keys.sorted()
@@ -105,13 +139,12 @@ struct MetabolicModelDashboardCard: View {
             guard let row = byDate[d], row.intake > 0 else { continue }
             let wKg = row.weightKg ?? prevWeight
             if let w = row.weightKg { prevWeight = w }
-            let expenditure = row.expenditure ?? Double(targets.calories)
             points.append(
                 MetabolicDataPointPayload(
                     date: d,
                     weightKg: wKg,
                     totalIntake: row.intake,
-                    totalExpenditure: expenditure
+                    totalExpenditure: Double(targets.calories)
                 )
             )
         }
@@ -128,18 +161,53 @@ struct MetabolicModelDashboardCard: View {
             }
             let payload = MetabolicBatchUpdatePayload(dataPoints: points, currentTDEE: targets.calories, history: historyPayload)
             let model: MetabolicModelResponse = try await APIClient.shared.request(MiscAPI.metabolicUpdate(payload: payload))
-            MetabolicModelStorage.save(model, dataPointCount: points.count)
+            let safeTDEE = clampTDEE(model.estimatedTDEE)
+            let safeModel = MetabolicModelResponse(
+                estimatedTDEE: safeTDEE,
+                confidence: model.confidence,
+                lastUpdated: model.lastUpdated,
+                message: model.message,
+                history: model.history
+            )
+            MetabolicModelStorage.save(safeModel, dataPointCount: points.count)
+            upsertSwiftDataMetabolicModel(safeModel, points: points)
             if let msg = model.message, !msg.isEmpty {
                 resultSummary =
-                    "\(Int(model.estimatedTDEE)) kcal/day · \(model.confidence)% — \(msg)"
+                    "\(Int(safeTDEE)) kcal/day · \(model.confidence)% — \(msg)"
             } else {
                 resultSummary =
-                    "Estimated TDEE \(Int(model.estimatedTDEE)) kcal/day · \(model.confidence)% confidence"
+                    "Estimated TDEE \(Int(safeTDEE)) kcal/day · \(model.confidence)% confidence"
             }
             await syncEngine?.markDirty()
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    private func upsertSwiftDataMetabolicModel(_ model: MetabolicModelResponse, points: [MetabolicDataPointPayload]) {
+        let iso8601 = ISO8601DateFormatter()
+        let dataPoints = points.map {
+            MetabolicDataPoint(date: $0.date, weightKg: $0.weightKg, totalIntake: $0.totalIntake, totalExpenditure: $0.totalExpenditure)
+        }
+        let history = model.history.map {
+            MetabolicHistoryEntry(date: $0.date, tdee: $0.tdee, confidence: Double($0.confidence))
+        }
+        let lastUpdated = model.lastUpdated.flatMap { iso8601.date(from: $0) } ?? .now
+        for x in (try? context.fetch(FetchDescriptor<MetabolicModel>())) ?? [] {
+            context.delete(x)
+        }
+        context.insert(MetabolicModel(
+            estimatedTDEE: model.estimatedTDEE,
+            confidence: Double(model.confidence),
+            dataPoints: dataPoints,
+            lastUpdated: lastUpdated,
+            history: history
+        ))
+        try? context.save()
+    }
+
+    private func clampTDEE(_ value: Double) -> Double {
+        min(max(value, Self.minReasonableTDEE), Self.maxReasonableTDEE)
     }
 }
 

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { invokeNovaWithExtendedThinking } from "@/lib/nova";
 import { logError, logInfo, withRequestLogging } from "@/lib/logger";
-import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
-import { calculateMacros } from "@/lib/macro-calculator";
+import type { UserProfile, FitnessPlan, Macros, MeasurementTargets } from "@/lib/types";
+import { calculateMacros, type MacroCalculatorInput } from "@/lib/macro-calculator";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/lib/auth";
 import {
@@ -333,8 +333,8 @@ function pickMealByDay(opt: MealOpt, dayIndex: number): string {
   return arr[dayIndex % arr.length] ?? arr[0] ?? "";
 }
 
-function buildStarterPlan(profile: UserProfile, userId: string, learnedTDEE?: number): FitnessPlan {
-  // Healthy Eater–style macro calculator from weight, height, age, activity, goal
+function buildStarterPlan(profile: UserProfile, userId: string, macroInputs: MacroCalculatorInput): FitnessPlan {
+  // Healthy Eater–style macro calculator from weight, height, age, activity, goal (+ measurement targets / learned TDEE)
   const fallbackTargets: Record<UserProfile["goal"], Macros> = {
     lose_weight: { calories: 1900, protein: 150, carbs: 170, fat: 60 },
     maintain: { calories: 2300, protein: 140, carbs: 260, fat: 75 },
@@ -343,15 +343,7 @@ function buildStarterPlan(profile: UserProfile, userId: string, learnedTDEE?: nu
   };
   const dailyTargets =
     profile.weight > 0 && profile.height > 0 && profile.age > 0
-      ? calculateMacros({
-          weightKg: profile.weight,
-          heightCm: profile.height,
-          age: profile.age,
-          gender: profile.gender,
-          dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
-          goal: profile.goal,
-          learnedTDEE,
-        })
+      ? calculateMacros(macroInputs)
       : (fallbackTargets[profile.goal] ?? fallbackTargets.maintain);
   const workoutDays = Math.min(Math.max(profile.workoutDaysPerWeek ?? 4, 2), 7);
   const goalMeals = GOAL_MEALS[profile.goal] ?? GOAL_MEALS.maintain;
@@ -471,7 +463,66 @@ const PlanRequestSchema = z.object({
   createdAt: z.string().optional(),
   /** Learned TDEE from the adaptive metabolic model (only passed when confidence >= 70) */
   learnedTDEE: z.number().min(1200).max(5000).optional(),
+  measurementTargets: z
+    .object({
+      targetWeightLbs: z.number().min(44).max(1100).optional(),
+      targetBodyFatPercent: z.number().min(0).max(100).optional(),
+      targetMuscleMassLbs: z.number().min(0).max(500).optional(),
+    })
+    .optional(),
+  currentBodyFatPercent: z.number().min(0).max(70).optional(),
+  currentMuscleMassLbs: z.number().min(0).max(500).optional(),
 });
+
+type PlanRequestValidated = z.infer<typeof PlanRequestSchema>;
+
+function macroInputsFromRequest(
+  profile: UserProfile,
+  learnedTDEE: number | undefined,
+  incoming: PlanRequestValidated,
+): MacroCalculatorInput {
+  const mt = incoming.measurementTargets as MeasurementTargets | undefined;
+  const hasMt =
+    mt &&
+    ((mt.targetWeightLbs != null && Number.isFinite(mt.targetWeightLbs)) ||
+      (mt.targetBodyFatPercent != null && Number.isFinite(mt.targetBodyFatPercent)) ||
+      (mt.targetMuscleMassLbs != null && Number.isFinite(mt.targetMuscleMassLbs)));
+  return {
+    weightKg: profile.weight,
+    heightCm: profile.height,
+    age: profile.age,
+    gender: profile.gender === "female" ? "female" : profile.gender === "male" ? "male" : "other",
+    dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
+    goal: profile.goal,
+    learnedTDEE,
+    measurementTargets: hasMt ? mt : undefined,
+    currentBodyFatPercent: incoming.currentBodyFatPercent,
+    currentMuscleMassLbs: incoming.currentMuscleMassLbs,
+  };
+}
+
+/** Rescale LLM meals so each day’s calories line up with formula `dailyTargets` (macro math stays consistent). */
+function alignDietDaysToDailyTargets(
+  dietDays: {
+    day: string;
+    meals: { mealType: string; description: string; calories: number; protein: number; carbs: number; fat: number }[];
+  }[],
+  dailyTargets: Macros,
+): typeof dietDays {
+  return dietDays.map((d) => {
+    const sumCal = d.meals.reduce((s, m) => s + m.calories, 0);
+    if (sumCal <= 0) return d;
+    const factor = dailyTargets.calories / sumCal;
+    const meals = d.meals.map((m) => ({
+      ...m,
+      calories: Math.max(0, Math.round(m.calories * factor)),
+      protein: Math.max(0, Math.round(m.protein * factor)),
+      carbs: Math.max(0, Math.round(m.carbs * factor)),
+      fat: Math.max(0, Math.round(m.fat * factor)),
+    }));
+    return { ...d, meals };
+  });
+}
 
 export const POST = withRequestLogging("/api/plans/generate", async function POST(req: NextRequest) {
   try {
@@ -526,6 +577,24 @@ export const POST = withRequestLogging("/api/plans/generate", async function POS
       createdAt: incoming.createdAt ?? new Date().toISOString(),
     };
 
+    const macroInputs = macroInputsFromRequest(profile, learnedTDEE, incoming);
+
+    const measurementLines: string[] = [];
+    const mtIn = incoming.measurementTargets;
+    if (mtIn?.targetWeightLbs != null) measurementLines.push(`Target weight: ${mtIn.targetWeightLbs} lb`);
+    if (mtIn?.targetBodyFatPercent != null) measurementLines.push(`Target body fat: ${mtIn.targetBodyFatPercent}%`);
+    if (mtIn?.targetMuscleMassLbs != null) measurementLines.push(`Target muscle mass: ${mtIn.targetMuscleMassLbs} lb`);
+    if (incoming.currentBodyFatPercent != null) {
+      measurementLines.push(`Latest body fat (smart scale): ${incoming.currentBodyFatPercent}%`);
+    }
+    if (incoming.currentMuscleMassLbs != null) {
+      measurementLines.push(`Latest muscle mass (smart scale): ${incoming.currentMuscleMassLbs} lb`);
+    }
+    const measurementBlock =
+      measurementLines.length > 0
+        ? `\n- Measurement goals & readings:\n  - ${measurementLines.join("\n  - ")}\nNote: Published daily calorie/macro totals are recomputed server-side using these targets versus profile weight; keep meal descriptions consistent with ${profile.goal}.`
+        : "";
+
     const loc = profile.workoutLocation ?? "gym";
     const equip = profile.workoutEquipment?.length ? profile.workoutEquipment.map((e) => e.replace(/_/g, " ")).join(", ") : "general gym equipment (assume available)";
     const daysPerWeek = profile.workoutDaysPerWeek ?? 4;
@@ -548,7 +617,7 @@ Profile:
 - Workouts per week: ${daysPerWeek} days (create exactly ${daysPerWeek} workout days in workoutDays)
 - Preferred workout time: ${timeframe}
 - Dietary restrictions: ${profile.dietaryRestrictions.join(", ") || "None"}
-- Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}${tdeeNote ? `\n${tdeeNote}` : ""}
+- Injuries/limitations: ${profile.injuriesOrLimitations.join(", ") || "None"}${tdeeNote ? `\n${tdeeNote}` : ""}${measurementBlock}
 
 Important: Each meal's "description" must be SPECIFIC and TAILORED to their goal (${profile.goal}). Name concrete foods and meal ideas—e.g. "Oatmeal with eggs and banana" not "Protein-rich breakfast". Vary meals across the week.
 
@@ -590,7 +659,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
     ]);
 
     if (raw === timeoutToken) {
-      const fallbackPlan = buildStarterPlan(profile, userId, learnedTDEE);
+      const fallbackPlan = buildStarterPlan(profile, userId, macroInputs);
       logInfo("Plan generation timeout fallback", { route: "plans/generate", userId, timeoutMs: PLAN_TIMEOUT_MS });
       return NextResponse.json({
         ...fallbackPlan,
@@ -618,13 +687,17 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
       parsed = parsePlanJsonTolerant(raw);
     } catch (parseErr) {
       logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
-      const fallbackPlan = buildStarterPlan(profile, userId, learnedTDEE);
+      const fallbackPlan = buildStarterPlan(profile, userId, macroInputs);
       return NextResponse.json({
         ...fallbackPlan,
         source: "fallback-parse",
         message: "Nova responded but the output was malformed. Returning a starter plan instead.",
       });
     }
+
+    const computedDailyTargets = calculateMacros(macroInputs);
+    parsed.dailyTargets = computedDailyTargets;
+    parsed.dietDays = alignDietDaysToDailyTargets(parsed.dietDays, computedDailyTargets);
 
     const plan: FitnessPlan = {
       id: uuidv4(),

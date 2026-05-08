@@ -10,15 +10,16 @@ struct SignUpFormView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var age = 30
-    @State private var weight: Double = 70
-    @State private var height: Double = 170
+    @State private var weight: Double = 165       // lbs (US default)
+    @State private var height: Double = 70        // total inches (US default)
     @State private var heightFeet: Int = 5
     @State private var heightInches: Int = 10
+    @State private var heightCm: Double = 177.8   // cm (metric branch)
+    @State private var unitSystem: MeasurementSystem = .us
     @State private var gender: Gender = .male
     @State private var fitnessLevel: FitnessLevel = .beginner
     @State private var goal: FitnessGoal = .loseWeight
     @State private var activityLevel: ActivityLevel = .moderate
-    @State private var unitSystem: MeasurementSystem = .us
     @State private var workoutLocation: WorkoutLocation = .gym
     @State private var workoutDays = 4
     @State private var dietaryRestrictions: [String] = []
@@ -51,8 +52,8 @@ struct SignUpFormView: View {
             }
         }
         .onAppear {
-            // Default unit system is US — seed height from feet/inches state
             height = Double(heightFeet * 12 + heightInches)
+            heightCm = height * 2.54
         }
     }
 
@@ -89,25 +90,6 @@ struct SignUpFormView: View {
                 }
             }
 
-            Section("Measurement System") {
-                Picker("Units", selection: $unitSystem) {
-                    Text("US (lbs/in)").tag(MeasurementSystem.us)
-                    Text("Metric (kg/cm)").tag(MeasurementSystem.metric)
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: unitSystem) { _, newValue in
-                    if newValue == .metric {
-                        // inches → cm
-                        height = Double(heightFeet * 12 + heightInches) * 2.54
-                    } else {
-                        // cm → feet+inches
-                        let totalInches = Int((height / 2.54).rounded())
-                        heightFeet = max(4, min(7, totalInches / 12))
-                        heightInches = totalInches % 12
-                        height = Double(heightFeet * 12 + heightInches)
-                    }
-                }
-            }
         }
     }
 
@@ -129,7 +111,7 @@ struct SignUpFormView: View {
                     HStack {
                         Text("Height (cm)")
                         Spacer()
-                        TextField("", value: $height, format: .number)
+                        TextField("", value: $heightCm, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 80)
@@ -202,6 +184,25 @@ struct SignUpFormView: View {
 
     private var preferencesStep: some View {
         Form {
+            Section("Measurement System") {
+                Picker("Units", selection: $unitSystem) {
+                    Text("US (lbs, ft)").tag(MeasurementSystem.us)
+                    Text("Metric (kg, cm)").tag(MeasurementSystem.metric)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: unitSystem) { _, newVal in
+                    if newVal == .metric {
+                        weight = (weight * 0.45359237 * 10).rounded() / 10
+                        heightCm = (height * 2.54 * 10).rounded() / 10
+                    } else {
+                        weight = (weight * 2.20462 * 10).rounded() / 10
+                        height = (heightCm / 2.54 * 10).rounded() / 10
+                        heightFeet = Int(height) / 12
+                        heightInches = Int(height) % 12
+                    }
+                }
+            }
+
             Section("Workout Preferences") {
                 Picker("Location", selection: $workoutLocation) {
                     ForEach(WorkoutLocation.allCases) { loc in
@@ -284,13 +285,16 @@ struct SignUpFormView: View {
 
     private func submit() {
         isSubmitting = true
+        // Server and SwiftData store weight in lbs and height in total inches.
+        let submitWeight = unitSystem == .metric ? weight * 2.20462 : weight
+        let submitHeight = unitSystem == .metric ? heightCm / 2.54 : height
         let payload = SignUpPayload(
             name: name,
             email: email,
             password: password,
             age: age,
-            weight: weight,
-            height: height,
+            weight: submitWeight,
+            height: submitHeight,
             gender: gender.rawValue,
             fitnessLevel: fitnessLevel.rawValue,
             goal: goal.rawValue,

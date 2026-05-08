@@ -74,6 +74,7 @@ struct RootView: View {
     @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.syncEngine) private var syncEngine
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var modelContext
 
     @AppStorage("appColorScheme") private var colorSchemePref: String = AppColorScheme.system.rawValue
 
@@ -101,6 +102,12 @@ struct RootView: View {
         .task {
             subscriptions.start()
             await auth.checkSession()
+            if auth.isAuthenticated {
+                WearableMassStoredPoundsMigration.runOnceIfNeeded(
+                    context: modelContext,
+                    profileWeightLbs: auth.currentUser?.weight
+                )
+            }
             if auth.isAuthenticated, let engine = syncEngine {
                 try? await engine.fetchAndApply()
                 PhoneSessionManager.shared.pushUserId()
@@ -129,6 +136,15 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .recompScheduleDataSync)) { _ in
             guard let engine = syncEngine else { return }
             Task { await engine.scheduleFetchAndApply() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToMeals)) { _ in
+            coordinator.navigate(to: .meals)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToWorkouts)) { _ in
+            coordinator.navigate(to: .workouts)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToDashboard)) { _ in
+            coordinator.navigate(to: .dashboard)
         }
     }
 

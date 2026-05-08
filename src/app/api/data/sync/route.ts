@@ -43,8 +43,13 @@ import {
   dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
+import {
+  normalizeWearableSummariesForStorage,
+  repairWearableScaleRowsForCanonicalLbs,
+  type WearableInbound,
+} from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
@@ -194,7 +199,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (wearableData && wearableData.length > 0) {
-      promises.push(dbSaveWearableData(userId, wearableData as WearableDaySummary[]));
+      const normalizedWearables = normalizeWearableSummariesForStorage(
+        wearableData as WearableInbound[],
+        profile ? (profile as UserProfile) : undefined
+      );
+      const repairedWearables = repairWearableScaleRowsForCanonicalLbs(
+        normalizedWearables,
+        profile ? (profile as UserProfile) : undefined
+      );
+      promises.push(dbSaveWearableData(userId, repairedWearables));
     }
 
     if (activityLog && activityLog.length > 0) {
@@ -311,6 +324,8 @@ export async function GET(req: NextRequest) {
     }
 
     const mealsDeduped = meals.length > 0 ? dedupeMealsByDateAndId(meals) : [];
+    const wearableDataRepaired =
+      wearableData.length > 0 ? repairWearableScaleRowsForCanonicalLbs(wearableData, profile) : [];
     const payload = {
       profile,
       plan,
@@ -322,7 +337,7 @@ export async function GET(req: NextRequest) {
       meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
       milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
-      wearableData: wearableData.length > 0 ? wearableData : undefined,
+      wearableData: wearableDataRepaired.length > 0 ? wearableDataRepaired : undefined,
       weeklyReview: weeklyReview ?? undefined,
       // Always send arrays/maps so native clients can replace local state (including clears).
       activityLog,

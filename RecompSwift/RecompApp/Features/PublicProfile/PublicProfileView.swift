@@ -5,12 +5,24 @@ struct PublicProfileView: View {
     let usernameOrId: String
     @State private var profile: PublicProfile?
     @State private var isLoading = true
+    @State private var loadError: String?
 
     var body: some View {
         ScrollView {
             if isLoading {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 300)
+            } else if let loadError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(Color.appError)
+                    Text(loadError)
+                        .font(.caption)
+                        .foregroundStyle(Color.appError)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, minHeight: 300)
+                .padding()
             } else if let profile {
                 VStack(spacing: 20) {
                     AvatarView(dataUrl: profile.avatarDataUrl, name: profile.name, size: 80)
@@ -80,9 +92,12 @@ struct PublicProfileView: View {
 
     private func loadProfile() async {
         isLoading = true
+        loadError = nil
         do {
             profile = try await APIClient.shared.request(SocialAPI.publicProfile(usernameOrId: usernameOrId))
-        } catch {}
+        } catch {
+            loadError = error.localizedDescription
+        }
         isLoading = false
     }
 }
