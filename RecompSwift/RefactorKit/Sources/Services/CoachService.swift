@@ -104,6 +104,35 @@ public final class CoachService {
             )
         }
 
+        let recentMeals: [RicoMealSummary]? = todayMeals.isEmpty ? nil : todayMeals.map {
+            RicoMealSummary(
+                name: $0.name,
+                mealType: $0.mealType.rawValue,
+                calories: Double($0.macros.calories),
+                protein: $0.macros.protein,
+                carbs: $0.macros.carbs,
+                fat: $0.macros.fat
+            )
+        }
+
+        let todayMacros: RicoMacroSummary? = todayMeals.isEmpty ? nil : {
+            let cal = todayMeals.reduce(0.0) { $0 + Double($1.macros.calories) }
+            let pro = todayMeals.reduce(0.0) { $0 + $1.macros.protein }
+            let carb = todayMeals.reduce(0.0) { $0 + $1.macros.carbs }
+            let fat = todayMeals.reduce(0.0) { $0 + $1.macros.fat }
+            return RicoMacroSummary(calories: cal, protein: pro, carbs: carb, fat: fat)
+        }()
+
+        let macroTargets: RicoMacroSummary? = plan.map {
+            let t = $0.dietPlan.dailyTargets
+            return RicoMacroSummary(calories: Double(t.calories), protein: t.protein, carbs: t.carbs, fat: t.fat)
+        }
+
+        let weightDescriptor = FetchDescriptor<WearableDaySummary>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        let latestWeight = (try? modelContext.fetch(weightDescriptor))?.first(where: { $0.weight != nil })?.weight
+
         return RicoContextPayload(
             name: profile?.name,
             goal: profile?.goal.rawValue,
@@ -112,7 +141,11 @@ public final class CoachService {
             workoutPlan: workoutPlanPayload,
             equipment: profile.flatMap { $0.workoutEquipment.isEmpty ? nil : $0.workoutEquipment.map { $0.rawValue } },
             injuries: profile.flatMap { $0.injuriesOrLimitations.isEmpty ? nil : $0.injuriesOrLimitations },
-            dietaryRestrictions: profile.flatMap { $0.dietaryRestrictions.isEmpty ? nil : $0.dietaryRestrictions }
+            dietaryRestrictions: profile.flatMap { $0.dietaryRestrictions.isEmpty ? nil : $0.dietaryRestrictions },
+            recentMeals: recentMeals,
+            todayMacros: todayMacros,
+            macroTargets: macroTargets,
+            bodyWeight: latestWeight
         )
     }
 

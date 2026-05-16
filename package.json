@@ -27,6 +27,7 @@
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.3",
     "bcryptjs": "^3.0.3",
+    "firebase-admin": "^13.0.2",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",

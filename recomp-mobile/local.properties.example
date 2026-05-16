@@ -1,0 +1,2 @@
+# Only this line matters for Gradle (no quotes). Copy to local.properties:
+sdk.dir=/Users/v/Library/Android/sdk

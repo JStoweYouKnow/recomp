@@ -159,6 +159,31 @@ export interface MacroCalculatorInput {
   currentMuscleMassLbs?: number;
 }
 
+const TRAINING_REST_CAL_SWING = 200;
+
+/**
+ * Derives training-day and rest-day macro targets from a base (average) target.
+ * Training days +200 kcal / +50g carbs; rest days -200 kcal / -50g carbs.
+ * Protein and fat are held constant — the full calorie swing comes from carbs.
+ */
+export function splitTrainingRestTargets(base: Macros): { trainingTargets: Macros; restTargets: Macros } {
+  const carbSwing = Math.round(TRAINING_REST_CAL_SWING / 4); // 50g carbs = 200 kcal
+  return {
+    trainingTargets: {
+      calories: base.calories + TRAINING_REST_CAL_SWING,
+      protein: base.protein,
+      carbs: base.carbs + carbSwing,
+      fat: base.fat,
+    },
+    restTargets: {
+      calories: base.calories - TRAINING_REST_CAL_SWING,
+      protein: base.protein,
+      carbs: Math.max(0, base.carbs - carbSwing),
+      fat: base.fat,
+    },
+  };
+}
+
 export function calculateMacros(input: MacroCalculatorInput): Macros {
   const {
     weightKg,

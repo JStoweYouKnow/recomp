@@ -87,6 +87,10 @@ public struct RicoContextPayload: Encodable, Sendable {
     public let equipment: [String]?
     public let injuries: [String]?
     public let dietaryRestrictions: [String]?
+    public let recentMeals: [RicoMealSummary]?
+    public let todayMacros: RicoMacroSummary?
+    public let macroTargets: RicoMacroSummary?
+    public let bodyWeight: Double?
 
     public init(
         name: String? = nil,
@@ -96,7 +100,11 @@ public struct RicoContextPayload: Encodable, Sendable {
         workoutPlan: RicoWorkoutPlanPayload? = nil,
         equipment: [String]? = nil,
         injuries: [String]? = nil,
-        dietaryRestrictions: [String]? = nil
+        dietaryRestrictions: [String]? = nil,
+        recentMeals: [RicoMealSummary]? = nil,
+        todayMacros: RicoMacroSummary? = nil,
+        macroTargets: RicoMacroSummary? = nil,
+        bodyWeight: Double? = nil
     ) {
         self.name = name
         self.goal = goal
@@ -106,6 +114,42 @@ public struct RicoContextPayload: Encodable, Sendable {
         self.equipment = equipment
         self.injuries = injuries
         self.dietaryRestrictions = dietaryRestrictions
+        self.recentMeals = recentMeals
+        self.todayMacros = todayMacros
+        self.macroTargets = macroTargets
+        self.bodyWeight = bodyWeight
+    }
+}
+
+public struct RicoMealSummary: Encodable, Sendable {
+    public let name: String
+    public let mealType: String
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    public init(name: String, mealType: String, calories: Double, protein: Double, carbs: Double, fat: Double) {
+        self.name = name
+        self.mealType = mealType
+        self.calories = calories
+        self.protein = protein
+        self.carbs = carbs
+        self.fat = fat
+    }
+}
+
+public struct RicoMacroSummary: Encodable, Sendable {
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    public init(calories: Double, protein: Double, carbs: Double, fat: Double) {
+        self.calories = calories
+        self.protein = protein
+        self.carbs = carbs
+        self.fat = fat
     }
 }
 

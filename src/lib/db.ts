@@ -607,6 +607,54 @@ export async function dbDeleteExpoPushToken(userId: string, token: string): Prom
   );
 }
 
+// ── FCM Push Tokens (native Android) ─────────────────────────────────────
+export interface FcmPushTokenRecord {
+  token: string;
+  createdAt: string;
+}
+
+function fcmTokenSk(token: string): string {
+  const hash = createHash("sha256").update(token).digest("base64url").slice(0, 32);
+  return `PUSH_FCM#${hash}`;
+}
+
+export async function dbSaveFcmPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `USER#${userId}`,
+        SK: fcmTokenSk(token),
+        data: { token, createdAt: new Date().toISOString() },
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function dbGetFcmPushTokens(userId: string): Promise<FcmPushTokenRecord[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "PUSH_FCM#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as FcmPushTokenRecord);
+}
+
+export async function dbDeleteFcmPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new DeleteCommand({
+      TableName: TABLE,
+      Key: { PK: `USER#${userId}`, SK: fcmTokenSk(token) },
+    })
+  );
+}
+
 // ── Social Settings ──────────────────────────────────────
 export async function dbGetSocialSettings(userId: string): Promise<SocialSettings | null> {
   const doc = getDocClient();

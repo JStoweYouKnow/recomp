@@ -11,7 +11,7 @@ import {
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
   saveMetabolicModel, saveMeasurementTargets, getMetabolicModel, getMeasurementTargets,
 } from "@/lib/storage";
-import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
+import type { UserProfile, FitnessPlan, MealEntry, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
@@ -764,12 +764,17 @@ export default function Home() {
               result={adjustResult}
               loading={loading}
               onAdjust={handleAdjust}
-              onApplyAdjustments={(newTargets) => {
-                if (plan && newTargets) {
+              onApplyAdjustments={({ daily, training, rest }) => {
+                if (plan) {
                   setHasAdjustedPlan();
                   const updated = {
                     ...plan,
-                    dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
+                    dietPlan: {
+                      ...plan.dietPlan,
+                      ...(daily ? { dailyTargets: daily } : {}),
+                      ...(training !== undefined ? { trainingTargets: training } : {}),
+                      ...(rest !== undefined ? { restTargets: rest } : {}),
+                    },
                   };
                   savePlan(updated);
                   setPlan(updated);

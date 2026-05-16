@@ -62,10 +62,41 @@ public final class PlanService {
         return response.suggestion
     }
 
+    /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
+    public func todaysTargets(context: ModelContext) -> Macros {
+        let fallback = Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
+        guard let plan = currentPlan(context: context) else { return fallback }
+        if let workout = todaysWorkout(context: context) {
+            let f = workout.focus.lowercased()
+            let isRest = f.contains("rest") || f.contains("recovery") || f.contains("off")
+            if isRest, let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
+            if !isRest, let t = plan.dietPlan.trainingTargets, t.calories > 0 { return t }
+        } else {
+            // No workout scheduled today — treat as rest day
+            if let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
+        }
+        let daily = plan.dietPlan.dailyTargets
+        return daily.calories > 0 ? daily : fallback
+    }
+
     /// Applies AI adjustment targets to the in-memory plan. Caller must `save` the `ModelContext` and trigger sync.
     public func applyAdjustSuggestion(_ suggestion: AdjustSuggestion, to plan: FitnessPlan) {
         if let targets = suggestion.newTargets {
             plan.dietPlan.dailyTargets = targets
+            // Re-derive training/rest split from the new base
+            let carbSwing: Double = 50
+            plan.dietPlan.trainingTargets = Macros(
+                calories: targets.calories + 200,
+                protein: targets.protein,
+                carbs: targets.carbs + carbSwing,
+                fat: targets.fat
+            )
+            plan.dietPlan.restTargets = Macros(
+                calories: targets.calories - 200,
+                protein: targets.protein,
+                carbs: max(0, targets.carbs - carbSwing),
+                fat: targets.fat
+            )
         }
         let note: String
         if let changes = suggestion.changes, !changes.isEmpty {
@@ -110,6 +141,8 @@ public final class PlanService {
             userId: dto.userId,
             dietPlan: DietPlan(
                 dailyTargets: dto.dietPlan.dailyTargets,
+                trainingTargets: dto.dietPlan.trainingTargets,
+                restTargets: dto.dietPlan.restTargets,
                 weeklyPlan: dto.dietPlan.weeklyPlan,
                 tips: dto.dietPlan.tips
             ),

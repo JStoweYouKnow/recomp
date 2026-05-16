@@ -276,7 +276,7 @@ struct SignUpFormView: View {
     }
 
     private var step0Valid: Bool {
-        !name.isEmpty && isValidEmail(email) && password.count >= 6
+        !name.isEmpty && isValidEmail(email) && password.count >= 8
     }
 
     private func isValidEmail(_ value: String) -> Bool {

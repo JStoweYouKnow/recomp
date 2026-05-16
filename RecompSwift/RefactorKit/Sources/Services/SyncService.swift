@@ -404,9 +404,11 @@ public actor SyncService: ModelActor {
 
         let createdAt = iso8601.date(from: dto.createdAt) ?? .now
         let dietPlan = DietPlan(
-            dailyTargets: dto.dietPlan.dailyTargets,
-            weeklyPlan:   dto.dietPlan.weeklyPlan,
-            tips:         dto.dietPlan.tips
+            dailyTargets:    dto.dietPlan.dailyTargets,
+            trainingTargets: dto.dietPlan.trainingTargets,
+            restTargets:     dto.dietPlan.restTargets,
+            weeklyPlan:      dto.dietPlan.weeklyPlan,
+            tips:            dto.dietPlan.tips
         )
         let workoutPlan = WorkoutPlan(
             weeklyPlan: dto.workoutPlan.weeklyPlan,
@@ -577,9 +579,11 @@ public extension FitnessPlanDTO {
             userId:    plan.userId,
             createdAt: iso8601.string(from: plan.createdAt),
             dietPlan: PlanDietPlanDTO(
-                dailyTargets: plan.dietPlan.dailyTargets,
-                weeklyPlan:   plan.dietPlan.weeklyPlan,
-                tips:         plan.dietPlan.tips
+                dailyTargets:    plan.dietPlan.dailyTargets,
+                trainingTargets: plan.dietPlan.trainingTargets,
+                restTargets:     plan.dietPlan.restTargets,
+                weeklyPlan:      plan.dietPlan.weeklyPlan,
+                tips:            plan.dietPlan.tips
             ),
             workoutPlan: PlanWorkoutPlanDTO(
                 weeklyPlan: plan.workoutPlan.weeklyPlan,

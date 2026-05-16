@@ -59,6 +59,18 @@ struct ProfileView: View {
                     } label: {
                         Label("Ref Schedule", systemImage: "clock")
                     }
+
+                    NavigationLink {
+                        MusicPreferenceView()
+                    } label: {
+                        Label("Music", systemImage: "music.note")
+                    }
+
+                    NavigationLink {
+                        APITokenView()
+                    } label: {
+                        Label("Siri Shortcuts / API", systemImage: "link")
+                    }
                 }
 
                 Section("Health") {
@@ -195,6 +207,12 @@ struct ProfileView: View {
                 }
             }
             .padding(.vertical, 4)
+
+            NavigationLink {
+                ProfileEditView(user: user)
+            } label: {
+                Label("Edit Profile", systemImage: "pencil")
+            }
         }
     }
 }
@@ -238,7 +256,7 @@ struct WearableConnectionsView: View {
     @ViewBuilder
     private var appleHealthSection: some View {
         let connected = connectedProviders.contains(.apple)
-        Section("Apple Health") {
+        Section {
             HStack {
                 Label("Apple Health", systemImage: "heart.fill").foregroundStyle(.red)
                 Spacer()
@@ -263,6 +281,11 @@ struct WearableConnectionsView: View {
                 Text("Health data not available on this device.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+        } header: {
+            Text("Apple Health")
+        } footer: {
+            Text("Refactor reads steps, active calories, heart rate, resting heart rate, sleep duration, and body weight from Apple Health. No health data is written back to Apple Health.")
+                .font(.caption2)
         }
     }
 
@@ -561,6 +584,17 @@ struct SocialSettingsView: View {
     @State private var isSaving = false
     @State private var didSave = false
     @State private var errorMessage: String?
+    @State private var usernameStatus: UsernameCheckStatus = .idle
+    @State private var didCopyLink = false
+
+    private enum UsernameCheckStatus {
+        case idle, checking, available, taken
+    }
+
+    private var profileURL: String {
+        let base = APIClient.shared.baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return "\(base)/u/\(username)"
+    }
 
     var body: some View {
         Form {
@@ -577,12 +611,58 @@ struct SocialSettingsView: View {
                 }
             }
 
-            Section("Username") {
+            Section {
                 TextField("username", text: $username)
                     .autocapitalization(.none)
-                Text("At least 3 characters to claim a username on save.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .autocorrectionDisabled()
+                HStack(spacing: 6) {
+                    switch usernameStatus {
+                    case .idle:
+                        Text("At least 3 characters to claim a public username.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    case .checking:
+                        ProgressView().scaleEffect(0.7)
+                        Text("Checking…").font(.caption2).foregroundStyle(.secondary)
+                    case .available:
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.appSuccess)
+                        Text("Available").font(.caption2).foregroundStyle(Color.appSuccess)
+                    case .taken:
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Color.appError)
+                        Text("Already taken").font(.caption2).foregroundStyle(Color.appError)
+                    }
+                }
+                if username.count >= 3 {
+                    Button {
+                        UIPasteboard.general.string = profileURL
+                        didCopyLink = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            didCopyLink = false
+                        }
+                    } label: {
+                        Label(
+                            didCopyLink ? "Copied!" : "Copy Profile Link",
+                            systemImage: didCopyLink ? "checkmark" : "doc.on.doc"
+                        )
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+            } header: {
+                Text("Username")
+            }
+            .task(id: username) {
+                guard username.count >= 3 else { usernameStatus = .idle; return }
+                usernameStatus = .checking
+                try? await Task.sleep(for: .milliseconds(600))
+                guard !Task.isCancelled else { return }
+                do {
+                    let res: UsernameCheckResponse = try await APIClient.shared.request(
+                        SocialAPI.checkUsername(username: username)
+                    )
+                    usernameStatus = res.available ? .available : .taken
+                } catch {
+                    usernameStatus = .idle
+                }
             }
 
             Section {
@@ -777,7 +857,10 @@ struct ScheduleItem: Identifiable {
 
 struct CoachScheduleView: View {
     @AppStorage("coachScheduleTimes") private var timesRaw: String = "08:00 12:00 20:00"
+    @AppStorage("coachScheduleWeeklyReviewDay") private var weeklyReviewDay: Int = 0
     @State private var items: [ScheduleItem] = []
+
+    private let weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
     var body: some View {
         Form {
@@ -811,6 +894,16 @@ struct CoachScheduleView: View {
             } footer: {
                 Text("Ref sends a daily check-in prompt at each scheduled time.")
             }
+
+            Section {
+                Picker("Weekly Review Day", selection: $weeklyReviewDay) {
+                    ForEach(0..<7, id: \.self) { i in
+                        Text(weekdays[i]).tag(i)
+                    }
+                }
+            } footer: {
+                Text("Ref sends your weekly progress summary on this day.")
+            }
         }
         .navigationTitle("Ref Schedule")
         .toolbar { EditButton() }
@@ -843,6 +936,10 @@ struct SupplementsView: View {
     @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \Supplement.name) private var supplements: [Supplement]
 
+    @State private var isAnalyzing = false
+    @State private var analysisResult: SupplementAnalysisResponse?
+    @State private var analysisError: String?
+
     var body: some View {
         List {
             ForEach(supplements, id: \.id) { supp in
@@ -868,8 +965,110 @@ struct SupplementsView: View {
                 try? context.save()
                 Task { await syncEngine?.markDirty() }
             }
+
+            if !supplements.isEmpty {
+                Section {
+                    Button {
+                        Task { await analyze() }
+                    } label: {
+                        HStack {
+                            Label("AI Analysis", systemImage: "sparkles")
+                            if isAnalyzing { Spacer(); ProgressView().scaleEffect(0.8) }
+                        }
+                    }
+                    .disabled(isAnalyzing)
+
+                    if let err = analysisError {
+                        Text(err).font(.caption).foregroundStyle(Color.appError)
+                    }
+                }
+
+                if let result = analysisResult {
+                    if !result.deficiencies.isEmpty {
+                        Section("Potential Deficiencies") {
+                            ForEach(result.deficiencies, id: \.nutrient) { d in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(d.nutrient).font(.subheadline.weight(.medium))
+                                        Spacer()
+                                        Text(d.severity.capitalized)
+                                            .font(.caption2)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(severityColor(d.severity).opacity(0.15))
+                                            .foregroundStyle(severityColor(d.severity))
+                                            .clipShape(Capsule())
+                                    }
+                                    Text(d.evidence).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    if !result.recommendations.isEmpty {
+                        Section("Recommendations") {
+                            ForEach(result.recommendations, id: \.action) { r in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text(r.action).font(.subheadline.weight(.medium))
+                                        Spacer()
+                                        Text(r.priority.capitalized)
+                                            .font(.caption2)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(priorityColor(r.priority).opacity(0.15))
+                                            .foregroundStyle(priorityColor(r.priority))
+                                            .clipShape(Capsule())
+                                    }
+                                    Text(r.reason).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    if !result.interactions.isEmpty {
+                        Section("Interactions to Note") {
+                            ForEach(result.interactions, id: \.self) { i in
+                                Label(i, systemImage: "exclamationmark.triangle")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    Section {
+                        Text("Not medical advice. Discuss with a healthcare provider.")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
         .navigationTitle("Supplements")
+    }
+
+    private func analyze() async {
+        isAnalyzing = true
+        analysisError = nil
+        defer { isAnalyzing = false }
+        let names = supplements.map { $0.name }
+        do {
+            analysisResult = try await APIClient.shared.request(
+                MiscAPI.supplementsAnalyze(supplements: names)
+            )
+        } catch {
+            analysisError = error.localizedDescription
+        }
+    }
+
+    private func severityColor(_ s: String) -> Color {
+        switch s {
+        case "confirmed": return Color.appError
+        case "likely": return Color.appWarm
+        default: return Color.secondary
+        }
+    }
+
+    private func priorityColor(_ p: String) -> Color {
+        switch p {
+        case "high": return Color.appError
+        case "medium": return Color.appWarm
+        default: return Color.appSuccess
+        }
     }
 }
 
@@ -1074,6 +1273,119 @@ struct ClaimAccountView: View {
     }
 }
 
+struct MusicPreferenceView: View {
+    @AppStorage("musicProvider") private var musicProviderRaw: String = MusicProvider.appleMusic.rawValue
+    @AppStorage("soundEffectsEnabled") private var soundEffectsEnabled: Bool = true
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("Music Provider", selection: $musicProviderRaw) {
+                    Text("Apple Music").tag(MusicProvider.appleMusic.rawValue)
+                    Text("Spotify").tag(MusicProvider.spotify.rawValue)
+                }
+                Toggle("Sound Effects", isOn: $soundEffectsEnabled)
+            } footer: {
+                Text("Your preferred music provider is used when Ref suggests workout playlists.")
+            }
+        }
+        .navigationTitle("Music")
+    }
+}
+
+struct APITokenView: View {
+    @State private var token: String?
+    @State private var endpoint: String?
+    @State private var isGenerating = false
+    @State private var error: String?
+    @State private var didCopy = false
+
+    var body: some View {
+        Form {
+            Section {
+                Text("Generate an API token to use Ref from Siri Shortcuts, Home automations, or any HTTP client.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let token {
+                Section("Your Token") {
+                    Text(token)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        UIPasteboard.general.string = token
+                        didCopy = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            didCopy = false
+                        }
+                    } label: {
+                        Label(
+                            didCopy ? "Copied!" : "Copy Token",
+                            systemImage: didCopy ? "checkmark" : "doc.on.doc"
+                        )
+                        .foregroundStyle(Color.accentColor)
+                    }
+                }
+
+                if let endpoint {
+                    Section("Endpoint") {
+                        Text(endpoint)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section {
+                    Text("Send a POST request with Authorization: Bearer <token> and body { \"message\": \"...\" } to chat with Ref from any automation.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let error {
+                Section {
+                    Text(error).font(.caption).foregroundStyle(Color.appError)
+                }
+            }
+
+            Section {
+                Button {
+                    Task { await generate() }
+                } label: {
+                    HStack {
+                        Label(token == nil ? "Generate Token" : "Regenerate Token", systemImage: "key")
+                        if isGenerating { Spacer(); ProgressView().scaleEffect(0.8) }
+                    }
+                }
+                .disabled(isGenerating)
+            } footer: {
+                if token != nil {
+                    Text("Generating a new token revokes the previous one.")
+                        .font(.caption2)
+                }
+            }
+        }
+        .navigationTitle("Siri Shortcuts / API")
+    }
+
+    private func generate() async {
+        isGenerating = true
+        error = nil
+        defer { isGenerating = false }
+        do {
+            let res: APITokenResponse = try await APIClient.shared.request(MiscAPI.generateAPIToken)
+            token = res.token
+            endpoint = res.endpoint
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
 struct CalendarFeedView: View {
     @State private var feedURL = ""
     @State private var isLoading = false
@@ -1113,7 +1425,7 @@ struct CalendarFeedView: View {
 
     private func calendarBaseURL() -> String {
         let env = ProcessInfo.processInfo.environment["RECOMP_API_URL"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let raw = (env?.isEmpty == false ? env! : "https://refactor-one.vercel.app").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let raw = (env?.isEmpty == false ? env! : "https://recomp-one.vercel.app").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         return raw
     }
 

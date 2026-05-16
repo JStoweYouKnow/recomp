@@ -5,6 +5,7 @@ struct ResearchView: View {
     @State private var researchService = ResearchService()
     @State private var query = ""
     @State private var searchError: String?
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -12,6 +13,8 @@ struct ResearchView: View {
                 HStack {
                     TextField("Search nutrition & fitness research...", text: $query)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isSearchFocused)
+                        .submitLabel(.search)
                         .onSubmit { search() }
 
                     Button {
@@ -74,6 +77,12 @@ struct ResearchView: View {
                 }
             }
             .navigationTitle("Research")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isSearchFocused = false }
+                }
+            }
         }
     }
 

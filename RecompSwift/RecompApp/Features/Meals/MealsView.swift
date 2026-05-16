@@ -9,6 +9,7 @@ struct MealsView: View {
     @State private var selectedDate = Date.now
     @State private var showAddMeal = false
     @State private var selectedTab = 0
+    @State private var mealEditToken: EditableMealToken?
 
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
     private var allMeals: [MealEntry]
@@ -55,14 +56,12 @@ struct MealsView: View {
                         Image(systemName: "plus.circle.fill")
                     }
                 }
-                if selectedTab == 0 && !mealsForDate.isEmpty {
-                    ToolbarItem(placement: .topBarLeading) {
-                        EditButton()
-                    }
-                }
             }
             .sheet(isPresented: $showAddMeal) {
                 AddMealSheet(date: DateHelpers.dateString(from: selectedDate))
+            }
+            .sheet(item: $mealEditToken) { token in
+                EditMealSheet(meal: token.meal)
             }
             .refreshable {
                 guard let engine = syncEngine else { return }
@@ -110,14 +109,21 @@ struct MealsView: View {
             } else {
                 List {
                     ForEach(mealsForDate, id: \.syncKey) { meal in
-                        MealRow(meal: meal)
-                    }
-                    .onDelete { indices in
-                        for index in indices {
-                            context.delete(mealsForDate[index])
+                        Button {
+                            mealEditToken = EditableMealToken(meal)
+                        } label: {
+                            MealRow(meal: meal)
                         }
-                        try? context.save()
-                        Task { await syncEngine?.markDirty() }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                context.delete(meal)
+                                try? context.save()
+                                Task { await syncEngine?.markDirty() }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -143,10 +149,15 @@ struct MealRow: View {
 
                 Text("\(meal.macros.calories) cal")
                     .font(.subheadline.weight(.medium))
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
 
             Text(meal.name)
                 .font(.body)
+                .multilineTextAlignment(.leading)
 
             HStack(spacing: 12) {
                 Text("P: \(Int(meal.macros.protein))g")

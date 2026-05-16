@@ -88,6 +88,20 @@ public struct WorkoutDay: Codable, Identifiable, Hashable, Sendable {
     public var exercises: [WorkoutExercise]
     public var finishers: [WorkoutExercise]?
 
+    public init(
+        day: String,
+        focus: String,
+        warmups: [WorkoutExercise]?,
+        exercises: [WorkoutExercise],
+        finishers: [WorkoutExercise]?
+    ) {
+        self.day = day
+        self.focus = focus
+        self.warmups = warmups
+        self.exercises = exercises
+        self.finishers = finishers
+    }
+
     public var allExercises: [WorkoutExercise] {
         (warmups ?? []) + exercises + (finishers ?? [])
     }

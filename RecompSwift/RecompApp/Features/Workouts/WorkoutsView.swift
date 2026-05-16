@@ -3,12 +3,13 @@ import SwiftData
 import RefactorKit
 
 struct WorkoutsView: View {
-    @Environment(\.modelContext) private var context
     private let workoutService = WorkoutService.shared
     @State private var selectedDate = Date.now
     @State private var recoveryAssessment: RecoveryAssessment?
     @State private var isLoadingRecovery = false
     @State private var recoveryError: String?
+    @State private var editRoute: WorkoutDayEditRoute?
+    @State private var showImportSheet = false
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var allPlans: [FitnessPlan]
@@ -49,7 +50,10 @@ struct WorkoutsView: View {
                                     progressDayKey: progressKey,
                                     planIndex: item.planIndex,
                                     isToday: progressKey == todayKey,
-                                    recoveryModifier: recoveryModifier(for: item.day)
+                                    recoveryModifier: recoveryModifier(for: item.day),
+                                    onEdit: {
+                                        editRoute = WorkoutDayEditRoute(planIndex: item.planIndex)
+                                    }
                                 )
                             }
                         } else {
@@ -73,12 +77,37 @@ struct WorkoutsView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation { workoutService.resetDayProgress(dayKey: DateHelpers.todayString()) }
+                    Menu {
+                        if currentPlan != nil {
+                            Button {
+                                showImportSheet = true
+                            } label: {
+                                Label("Import from URL", systemImage: "link.badge.plus")
+                            }
+                        }
+                        Button {
+                            withAnimation { workoutService.resetDayProgress(dayKey: DateHelpers.todayString()) }
+                        } label: {
+                            Label("Reset today's progress", systemImage: "arrow.counterclockwise.circle")
+                        }
                     } label: {
-                        Image(systemName: "arrow.counterclockwise.circle")
-                            .help("Reset today's progress")
+                        Image(systemName: "ellipsis.circle")
                     }
+                }
+            }
+            .sheet(item: $editRoute) { route in
+                NavigationStack {
+                    if let plan = currentPlan {
+                        EditWorkoutDayView(plan: plan, planIndex: route.planIndex)
+                    } else {
+                        Text("No workout plan")
+                            .padding()
+                    }
+                }
+            }
+            .sheet(isPresented: $showImportSheet) {
+                if let plan = currentPlan {
+                    WorkoutImportSheet(plan: plan)
                 }
             }
         }
@@ -147,6 +176,11 @@ struct WorkoutsView: View {
     private func recoveryModifier(for day: WorkoutDay) -> Double? {
         recoveryAssessment?.modifiedWorkout?.volumeAdjustment
     }
+}
+
+private struct WorkoutDayEditRoute: Identifiable, Hashable {
+    let planIndex: Int
+    var id: Int { planIndex }
 }
 
 // MARK: - Recovery Card
@@ -258,6 +292,7 @@ struct WorkoutDayCard: View {
     let planIndex: Int
     var isToday: Bool = false
     var recoveryModifier: Double? = nil
+    var onEdit: (() -> Void)? = nil
 
     @State private var isExpanded: Bool
     @State private var gifData: [String: Data] = [:]
@@ -275,7 +310,8 @@ struct WorkoutDayCard: View {
         progressDayKey: String,
         planIndex: Int,
         isToday: Bool = false,
-        recoveryModifier: Double? = nil
+        recoveryModifier: Double? = nil,
+        onEdit: (() -> Void)? = nil
     ) {
         self.planId = planId
         self.day = day
@@ -284,6 +320,7 @@ struct WorkoutDayCard: View {
         self.planIndex = planIndex
         self.isToday = isToday
         self.recoveryModifier = recoveryModifier
+        self.onEdit = onEdit
         _isExpanded = State(initialValue: isToday)
     }
 
@@ -296,54 +333,69 @@ struct WorkoutDayCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Button {
-                withAnimation(.spring(duration: 0.3)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 12) {
-                    if isToday {
-                        Circle()
-                            .fill(Color.appAccent)
-                            .frame(width: 8, height: 8)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(day.day)
-                            .font(.headline)
-                            .foregroundStyle(isToday ? Color.appAccent : Color.primary)
-                        Text(day.focus)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    // Progress: completed / total **exercise rows** (web planner parity), not sum of sets.
-                    if totalExercises > 0 {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(completedExercises)/\(totalExercises)")
-                                .font(.caption.weight(.bold))
-                                .monospacedDigit()
-                                .foregroundStyle(completedExercises == totalExercises ? Color.appSuccess : Color.primary)
-                                .contentTransition(.numericText())
-                            Text("done")
-                                .font(.caption2)
+            // Header: expand row + optional edit
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(.spring(duration: 0.3)) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 12) {
+                        if isToday {
+                            Circle()
+                                .fill(Color.appAccent)
+                                .frame(width: 8, height: 8)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(day.day)
+                                .font(.headline)
+                                .foregroundStyle(isToday ? Color.appAccent : Color.primary)
+                            Text(day.focus)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            (completedExercises == totalExercises ? Color.appSuccess : Color.secondary)
-                                .opacity(0.12),
-                            in: Capsule()
-                        )
+                        Spacer()
+                        // Progress: completed / total **exercise rows** (web planner parity), not sum of sets.
+                        if totalExercises > 0 {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("\(completedExercises)/\(totalExercises)")
+                                    .font(.caption.weight(.bold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(completedExercises == totalExercises ? Color.appSuccess : Color.primary)
+                                    .contentTransition(.numericText())
+                                Text("done")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                (completedExercises == totalExercises ? Color.appSuccess : Color.secondary)
+                                    .opacity(0.12),
+                                in: Capsule()
+                            )
+                        }
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
                     }
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
+                    .padding()
+                    .contentShape(Rectangle())
                 }
-                .padding()
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                if let onEdit {
+                    Button {
+                        onEdit()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.body)
+                            .foregroundStyle(Color.appAccent)
+                            .padding(.trailing, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit workout")
+                }
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 Divider()
@@ -735,5 +787,149 @@ struct PlaylistPill: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appSlate.opacity(0.2), lineWidth: 1))
             }
         }
+    }
+}
+
+// MARK: - Workout Import Sheet
+
+struct WorkoutImportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.syncEngine) private var syncEngine
+
+    let plan: FitnessPlan
+
+    @State private var urlText = ""
+    @State private var isImporting = false
+    @State private var importedDay: WorkoutDay?
+    @State private var importError: String?
+    @State private var mergeTargetIndex: Int? = nil
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("https://…", text: $urlText)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    Button("Import from URL") {
+                        Task { await importWorkout() }
+                    }
+                    .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+
+                    if isImporting {
+                        HStack {
+                            ProgressView()
+                            Text("Fetching workout…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let err = importError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(Color.appError)
+                    }
+                } header: {
+                    Text("Paste a URL from a fitness blog, program page, or YouTube description")
+                }
+
+                if let day = importedDay {
+                    Section("Imported: \(day.day)") {
+                        LabeledContent("Focus", value: day.focus)
+                        LabeledContent("Exercises", value: "\(day.exercises.count)")
+                        ForEach(day.exercises) { ex in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ex.name).font(.subheadline)
+                                Text("\(ex.sets) × \(ex.reps)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Section("Add to plan") {
+                        Button("Add as new workout day") {
+                            addAsNewDay(day)
+                        }
+                        .foregroundStyle(Color.appAccent)
+
+                        if !plan.workoutPlan.weeklyPlan.isEmpty {
+                            Picker("Merge into existing day", selection: $mergeTargetIndex) {
+                                Text("Select day").tag(Optional<Int>.none)
+                                ForEach(plan.workoutPlan.weeklyPlan.indices, id: \.self) { i in
+                                    Text(plan.workoutPlan.weeklyPlan[i].day).tag(Optional(i))
+                                }
+                            }
+                            if let idx = mergeTargetIndex {
+                                Button("Merge into \(plan.workoutPlan.weeklyPlan[idx].day)") {
+                                    mergeIntoDay(day, targetIndex: idx)
+                                }
+                                .foregroundStyle(Color.appAccent)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Import Workout")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private func importWorkout() async {
+        importError = nil
+        importedDay = nil
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            importedDay = try await WorkoutService.shared.parseWorkoutUrl(
+                urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            mergeTargetIndex = nil
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func addAsNewDay(_ day: WorkoutDay) {
+        var weekly = plan.workoutPlan.weeklyPlan
+        weekly.append(day)
+        savePlan(weekly: weekly)
+    }
+
+    private func mergeIntoDay(_ day: WorkoutDay, targetIndex: Int) {
+        var weekly = plan.workoutPlan.weeklyPlan
+        guard targetIndex < weekly.count else { return }
+        let existing = weekly[targetIndex]
+        weekly[targetIndex] = WorkoutDay(
+            day: existing.day,
+            focus: existing.focus,
+            warmups: existing.warmups,
+            exercises: existing.exercises + day.exercises,
+            finishers: existing.finishers
+        )
+        savePlan(weekly: weekly)
+    }
+
+    private func savePlan(weekly: [WorkoutDay]) {
+        plan.workoutPlan = WorkoutPlan(
+            weeklyPlan: weekly,
+            tips: plan.workoutPlan.tips,
+            programWeek1Start: plan.workoutPlan.programWeek1Start
+        )
+        try? modelContext.save()
+        Task { await syncEngine?.markDirty() }
+        dismiss()
     }
 }

@@ -281,8 +281,7 @@ struct CoachCheckInDashboardCard: View {
         guard let profile = auth.currentUser else { return }
         loading = true
         defer { loading = false }
-        let targets = planService.currentPlan(context: context)?.dietPlan.dailyTargets
-            ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
+        let targets = planService.todaysTargets(context: context)
         let todayMealCount = mealService.mealsForDate(todayKey, context: context).count
         let bioSnap: CoachBiofeedbackSnapshot? = latestTodayBio.map {
             CoachBiofeedbackSnapshot(

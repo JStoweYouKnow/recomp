@@ -31,6 +31,8 @@ public struct AdjustPayload: Encodable {
 /// Top-level DTOs (not nested under `FitnessPlanDTO`) so `public` properties stay valid for module clients.
 public struct PlanDietPlanDTO: Codable, Sendable {
     public var dailyTargets: Macros
+    public var trainingTargets: Macros?
+    public var restTargets: Macros?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
 }

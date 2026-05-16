@@ -32,6 +32,8 @@ public final class FitnessPlan: @unchecked Sendable {
 
 public struct DietPlan: Codable, Sendable {
     public var dailyTargets: Macros
+    public var trainingTargets: Macros?
+    public var restTargets: Macros?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
 }
@@ -41,4 +43,10 @@ public struct WorkoutPlan: Codable, Sendable {
     public var tips: [String]
     /// `yyyy-MM-dd` anchor for multi-week PDF plans (program week 1); matches web `programWeek1Start`.
     public var programWeek1Start: String?
+
+    public init(weeklyPlan: [WorkoutDay], tips: [String], programWeek1Start: String? = nil) {
+        self.weeklyPlan = weeklyPlan
+        self.tips = tips
+        self.programWeek1Start = programWeek1Start
+    }
 }

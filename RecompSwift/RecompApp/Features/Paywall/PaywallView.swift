@@ -9,6 +9,7 @@ struct PaywallView: View {
     @State private var selectedProductID: String = SubscriptionService.annualID
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var productsTimedOut = false
 
     private var annualProduct: Product? {
         subscriptions.products.first { $0.id == SubscriptionService.annualID }
@@ -100,9 +101,26 @@ struct PaywallView: View {
             }
 
             if subscriptions.products.isEmpty {
-                ProgressView()
+                if productsTimedOut {
+                    VStack(spacing: 8) {
+                        Text("Could not load pricing")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Button("Retry") {
+                            productsTimedOut = false
+                            subscriptions.start()
+                            scheduleProductTimeout()
+                        }
+                        .font(.subheadline)
+                    }
                     .frame(maxWidth: .infinity)
                     .padding()
+                } else {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .onAppear { scheduleProductTimeout() }
+                }
             }
         }
         .padding(.horizontal, 24)
@@ -132,7 +150,7 @@ struct PaywallView: View {
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .disabled(subscriptions.isPurchasing || subscriptions.products.isEmpty)
+            .disabled(subscriptions.isPurchasing)
 
             Text("Then \(selectedPriceDescription) — cancel anytime")
                 .font(.caption)
@@ -166,8 +184,21 @@ struct PaywallView: View {
         return product?.displayPrice ?? "—"
     }
 
+    private func scheduleProductTimeout() {
+        Task {
+            try? await Task.sleep(for: .seconds(8))
+            if subscriptions.products.isEmpty {
+                productsTimedOut = true
+            }
+        }
+    }
+
     private func startPurchase() async {
-        guard let product = subscriptions.products.first(where: { $0.id == selectedProductID }) else { return }
+        guard let product = subscriptions.products.first(where: { $0.id == selectedProductID }) else {
+            errorMessage = "Products are still loading. Please wait a moment and try again."
+            showError = true
+            return
+        }
         do {
             let purchased = try await subscriptions.purchase(product)
             if purchased { dismiss() }

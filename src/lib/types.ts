@@ -89,6 +89,8 @@ export interface FitnessPlan {
   createdAt: string;
   dietPlan: {
     dailyTargets: Macros;
+    trainingTargets?: Macros;
+    restTargets?: Macros;
     weeklyPlan: DietDay[];
     tips: string[];
   };

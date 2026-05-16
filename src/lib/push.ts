@@ -1,6 +1,22 @@
+import admin from "firebase-admin";
 import webpush from "web-push";
-import { dbGetPushSubscriptions, dbGetExpoPushTokens } from "./db";
+import { dbGetExpoPushTokens, dbGetFcmPushTokens, dbGetPushSubscriptions } from "./db";
 import type { PushSubscriptionRecord } from "./db";
+
+function getFirebaseMessagingOrNull(): admin.messaging.Messaging | null {
+  const json = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  if (!json?.trim()) return null;
+  try {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(JSON.parse(json) as admin.ServiceAccount),
+      });
+    }
+    return admin.messaging();
+  } catch {
+    return null;
+  }
+}
 
 const vapidPublic = process.env.VAPID_PUBLIC_KEY;
 const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
@@ -35,9 +51,10 @@ export function ricoReminderPayload(baseUrl: string): PushPayload {
 }
 
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<{ sent: number; failed: number }> {
-  const [subs, expoTokens] = await Promise.all([
+  const [subs, expoTokens, fcmTokens] = await Promise.all([
     dbGetPushSubscriptions(userId),
     dbGetExpoPushTokens(userId),
+    dbGetFcmPushTokens(userId),
   ]);
 
   let sent = 0;
@@ -96,6 +113,30 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
       }
     } catch {
       failed += expoTokens.length;
+    }
+  }
+
+  const messaging = getFirebaseMessagingOrNull();
+  if (messaging && fcmTokens.length > 0) {
+    const tokens = fcmTokens.map((t) => t.token);
+    const dataUrl = payload.data?.url ?? "";
+    try {
+      const res = await messaging.sendEachForMulticast({
+        tokens,
+        notification: {
+          title: payload.title,
+          body: payload.body ?? "",
+        },
+        data: {
+          url: dataUrl,
+          tag: payload.tag ?? "refactor",
+        },
+        android: { priority: "high" },
+      });
+      sent += res.successCount;
+      failed += res.failureCount;
+    } catch {
+      failed += fcmTokens.length;
     }
   }
 

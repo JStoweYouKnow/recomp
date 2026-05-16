@@ -11,47 +11,44 @@ struct CoachChatView: View {
     @State private var scrollProxy: ScrollViewProxy?
     @State private var sendError: String?
     @State private var speechTranscription = MealSpeechTranscription()
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(coachService.messages, id: \.id) { message in
-                                MessageBubble(message: message)
-                                    .id(message.id)
-                            }
-
-                            if coachService.isResponding {
-                                HStack {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                    Text("Ref is thinking...")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                }
-                                .padding(.horizontal)
-                            }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 12) {
+                        ForEach(coachService.messages, id: \.id) { message in
+                            MessageBubble(message: message)
+                                .id(message.id)
                         }
-                        .padding()
-                    }
-                    .onAppear {
-                        scrollProxy = proxy
-                    }
-                    .onChange(of: coachService.messages.count) { _, _ in
-                        if let last = coachService.messages.last {
-                            withAnimation {
-                                proxy.scrollTo(last.id, anchor: .bottom)
+
+                        if coachService.isResponding {
+                            HStack {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Ref is thinking...")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
                             }
+                            .padding(.horizontal)
+                        }
+                    }
+                    .padding()
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .safeAreaInset(edge: .bottom) {
+                    inputBar
+                }
+                .onAppear { scrollProxy = proxy }
+                .onChange(of: coachService.messages.count) { _, _ in
+                    if let last = coachService.messages.last {
+                        withAnimation {
+                            proxy.scrollTo(last.id, anchor: .bottom)
                         }
                     }
                 }
-
-                Divider()
-
-                inputBar
             }
             .navigationTitle("Ref")
             .navigationBarTitleDisplayMode(.inline)
@@ -67,6 +64,10 @@ struct CoachChatView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isInputFocused = false }
                 }
             }
             .onAppear {
@@ -85,6 +86,8 @@ struct CoachChatView: View {
 
     private var inputBar: some View {
         VStack(spacing: 4) {
+            Divider()
+
             if let micError = speechTranscription.errorMessage {
                 Text(micError)
                     .font(.caption)
@@ -116,34 +119,38 @@ struct CoachChatView: View {
                     }
                 }
 
-            TextField("Ask Ref anything...", text: $messageText, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .lineLimit(4)
+                TextField("Ask Ref anything...", text: $messageText, axis: .vertical)
+                    .textFieldStyle(.roundedBorder)
+                    .lineLimit(4)
+                    .focused($isInputFocused)
 
-            Button {
-                let text = messageText
-                messageText = ""
-                Task {
-                    do {
-                        try await coachService.sendMessage(text, context: context)
-                        await syncEngine?.markDirty()
-                    } catch {
-                        sendError =
-                            (error as? LocalizedError)?.errorDescription
-                            ?? (error as? APIError)?.errorDescription
-                            ?? error.localizedDescription
-                        messageText = text
+                Button {
+                    let text = messageText
+                    messageText = ""
+                    isInputFocused = false
+                    Task {
+                        do {
+                            try await coachService.sendMessage(text, context: context)
+                            await syncEngine?.markDirty()
+                        } catch {
+                            sendError =
+                                (error as? LocalizedError)?.errorDescription
+                                ?? (error as? APIError)?.errorDescription
+                                ?? error.localizedDescription
+                            messageText = text
+                        }
                     }
+                } label: {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(messageText.isEmpty ? Color.recompMuted : Color.appAccent)
                 }
-            } label: {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(messageText.isEmpty ? Color.recompMuted : Color.appAccent)
+                .disabled(messageText.isEmpty || coachService.isResponding)
             }
-            .disabled(messageText.isEmpty || coachService.isResponding)
-            }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 10)
         }
+        .background(.regularMaterial)
     }
 }
 

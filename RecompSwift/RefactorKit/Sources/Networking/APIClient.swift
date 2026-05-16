@@ -46,7 +46,8 @@ public actor APIClient {
             // Set RECOMP_API_URL in the Xcode scheme's environment variables to override.
             self.baseURL = url
         } else {
-            self.baseURL = URL(string: "https://refactor-one.vercel.app")!
+            // Default must match production docs + Android (`recomp-one`); override with RECOMP_API_URL for other stacks.
+            self.baseURL = URL(string: "https://recomp-one.vercel.app")!
         }
 
         self.decoder = JSONDecoder()

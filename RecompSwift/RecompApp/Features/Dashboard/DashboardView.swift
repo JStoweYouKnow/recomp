@@ -67,8 +67,7 @@ struct DashboardView: View {
     private var calorieBudgetSection: some View {
         VStack(spacing: 12) {
             let consumed = mealService.todaysMacros(context: context)
-            let plan = planService.currentPlan(context: context)
-            let targets = plan?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
+            let targets = planService.todaysTargets(context: context)
             let activityAdj = mealService.todaysActivityCalorieAdjustment(context: context)
             let adjustedCalorieTarget = targets.calories + activityAdj
 

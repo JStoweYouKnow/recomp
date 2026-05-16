@@ -1,0 +1,7 @@
+# Copy to `gradle.properties` (do not commit secrets) to enable Firebase Cloud Messaging client registration.
+# Values come from Firebase Console → Project settings → Your apps → Android `google-services.json`
+# (mobilesdk_app_id → FIREBASE_APP_ID, api_key.current_key → FIREBASE_API_KEY, project_id → FIREBASE_PROJECT_ID).
+
+# FIREBASE_APP_ID=1:1234567890:android:abc
+# FIREBASE_API_KEY=...
+# FIREBASE_PROJECT_ID=your-project-id

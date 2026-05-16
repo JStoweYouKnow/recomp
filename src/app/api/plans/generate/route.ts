@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { invokeNovaWithExtendedThinking } from "@/lib/nova";
 import { logError, logInfo, withRequestLogging } from "@/lib/logger";
 import type { UserProfile, FitnessPlan, Macros, MeasurementTargets } from "@/lib/types";
-import { calculateMacros, type MacroCalculatorInput } from "@/lib/macro-calculator";
+import { calculateMacros, splitTrainingRestTargets, type MacroCalculatorInput } from "@/lib/macro-calculator";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/lib/auth";
 import {
@@ -424,12 +424,15 @@ function buildStarterPlan(profile: UserProfile, userId: string, macroInputs: Mac
     return { day, focus, warmups: defaultWarmups, exercises, finishers: defaultFinishers };
   });
 
+  const { trainingTargets: starterTraining, restTargets: starterRest } = splitTrainingRestTargets(dailyTargets);
   return {
     id: uuidv4(),
     userId,
     createdAt: new Date().toISOString(),
     dietPlan: {
       dailyTargets,
+      trainingTargets: starterTraining,
+      restTargets: starterRest,
       weeklyPlan: dietPlanDays,
       tips: goalMeals.tips,
     },
@@ -696,6 +699,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
     }
 
     const computedDailyTargets = calculateMacros(macroInputs);
+    const { trainingTargets, restTargets } = splitTrainingRestTargets(computedDailyTargets);
     parsed.dailyTargets = computedDailyTargets;
     parsed.dietDays = alignDietDaysToDailyTargets(parsed.dietDays, computedDailyTargets);
 
@@ -705,6 +709,8 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
       createdAt: new Date().toISOString(),
       dietPlan: {
         dailyTargets: parsed.dailyTargets,
+        trainingTargets,
+        restTargets,
         weeklyPlan: parsed.dietDays.map((d) => ({
           day: d.day,
           meals: d.meals.map((m) => ({

@@ -573,4 +573,10 @@ public final class WorkoutService {
             WorkoutAPI.recoveryAdjust(payload: RecoveryPayload(biofeedback: biofeedback, wearableData: nil))
         )
     }
+
+    /// Fetches a URL, extracts exercises via AI, and returns a `WorkoutDay` ready to insert into a plan.
+    public func parseWorkoutUrl(_ url: String) async throws -> WorkoutDay {
+        let response: WorkoutImportResponse = try await api.request(WorkoutAPI.parseUrl(url: url))
+        return response.workout
+    }
 }

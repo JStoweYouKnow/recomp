@@ -407,6 +407,7 @@ struct GroupDetailView: View {
     @State private var selectedTab = 0
     @State private var messageText = ""
     @State private var groupError: String?
+    @FocusState private var isChatFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -458,46 +459,57 @@ struct GroupDetailView: View {
     }
 
     private var chatSection: some View {
-        VStack {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(groupService.messages, id: \.id) { msg in
-                        HStack(alignment: .top, spacing: 8) {
-                            AvatarView(dataUrl: msg.authorAvatarUrl, name: msg.authorName, size: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(msg.authorName).font(.caption.weight(.semibold))
-                                Text(msg.text).font(.subheadline)
-                            }
-                            Spacer()
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(groupService.messages, id: \.id) { msg in
+                    HStack(alignment: .top, spacing: 8) {
+                        AvatarView(dataUrl: msg.authorAvatarUrl, name: msg.authorName, size: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(msg.authorName).font(.caption.weight(.semibold))
+                            Text(msg.text).font(.subheadline)
                         }
-                        .padding(.horizontal)
+                        Spacer()
                     }
+                    .padding(.horizontal)
                 }
             }
-
-            Divider()
-
-            HStack {
-                TextField("Message...", text: $messageText)
-                    .textFieldStyle(.roundedBorder)
-                Button {
-                    Task {
+            .padding(.vertical, 8)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                HStack {
+                    TextField("Message...", text: $messageText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($isChatFocused)
+                    Button {
                         let text = messageText
                         messageText = ""
-                        do {
-                            try await groupService.sendMessage(groupId: groupId, text: text)
-                        } catch {
-                            groupError = error.localizedDescription
-                            messageText = text
+                        isChatFocused = false
+                        Task {
+                            do {
+                                try await groupService.sendMessage(groupId: groupId, text: text)
+                            } catch {
+                                groupError = error.localizedDescription
+                                messageText = text
+                            }
                         }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
                     }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
+                    .disabled(messageText.isEmpty)
                 }
-                .disabled(messageText.isEmpty)
+                .padding()
             }
-            .padding()
+            .background(.regularMaterial)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isChatFocused = false }
+            }
         }
     }
 

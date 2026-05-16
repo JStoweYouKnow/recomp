@@ -347,7 +347,7 @@ export function ProfileView({
         body: JSON.stringify(profile),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Registration failed");
+      if (!res.ok) throw new Error(data.message || data.error || "Registration failed");
       onRegistered?.();
       flushSync();
       setRegisterStatus("success");

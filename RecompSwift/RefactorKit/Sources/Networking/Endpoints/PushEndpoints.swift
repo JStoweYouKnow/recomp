@@ -47,6 +47,7 @@ public enum MiscAPI: APIEndpoint {
     case cookingConnect(provider: String)
     case cookingImport
     case feedbackSubmit(rating: Int?, text: String)
+    case generateAPIToken
 
     public var path: String {
         switch self {
@@ -66,12 +67,14 @@ public enum MiscAPI: APIEndpoint {
         case .cookingConnect: return "/api/cooking/connect"
         case .cookingImport: return "/api/cooking/import"
         case .feedbackSubmit: return "/api/feedback"
+        case .generateAPIToken: return "/api/user/api-token"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .dataFetch, .calendarFeed: return .GET
+        case .generateAPIToken: return .POST
         default: return .POST
         }
     }
@@ -653,4 +656,32 @@ public struct FeedbackPayload: Encodable {
 public struct ImageGenerateResponse: Decodable {
     let imageUrl: String?
     let imageBase64: String?
+}
+
+// MARK: - API Token
+
+public struct APITokenResponse: Decodable, Sendable {
+    public let token: String
+    public let endpoint: String?
+    public let note: String?
+}
+
+// MARK: - Supplement Analysis
+
+public struct SupplementDeficiency: Decodable, Sendable {
+    public let nutrient: String
+    public let severity: String
+    public let evidence: String
+}
+
+public struct SupplementRecommendation: Decodable, Sendable {
+    public let action: String
+    public let priority: String
+    public let reason: String
+}
+
+public struct SupplementAnalysisResponse: Decodable, Sendable {
+    public let deficiencies: [SupplementDeficiency]
+    public let recommendations: [SupplementRecommendation]
+    public let interactions: [String]
 }
