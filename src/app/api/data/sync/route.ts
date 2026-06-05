@@ -190,11 +190,11 @@ export async function POST(req: NextRequest) {
     if (wearableData && wearableData.length > 0) {
       const normalizedWearables = normalizeWearableSummariesForStorage(
         wearableData as WearableInbound[],
-        profile ? (profile as UserProfile) : undefined
+        profile ? (profile as unknown as UserProfile) : undefined
       );
       const repairedWearables = repairWearableScaleRowsForCanonicalLbs(
         normalizedWearables,
-        profile ? (profile as UserProfile) : undefined
+        profile ? (profile as unknown as UserProfile) : undefined
       );
       promises.push(dbSaveWearableData(userId, repairedWearables));
     }
