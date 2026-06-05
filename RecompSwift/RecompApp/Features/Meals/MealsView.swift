@@ -9,6 +9,7 @@ struct MealsView: View {
     @State private var selectedDate = Date.now
     @State private var showAddMeal = false
     @State private var selectedTab = 0
+    @State private var mealEditToken: EditableMealToken?
 
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
     private var allMeals: [MealEntry]
@@ -54,10 +55,18 @@ struct MealsView: View {
                     } label: {
                         Image(systemName: "plus.circle.fill")
                     }
+                    .accessibilityLabel("Add meal")
                 }
             }
             .sheet(isPresented: $showAddMeal) {
                 AddMealSheet(date: DateHelpers.dateString(from: selectedDate))
+            }
+            .sheet(item: $mealEditToken) { token in
+                EditMealSheet(meal: token.meal)
+            }
+            .refreshable {
+                guard let engine = syncEngine else { return }
+                try? await engine.fetchAndApply()
             }
         }
     }
@@ -75,7 +84,16 @@ struct MealsView: View {
     }
 
     private func macroPill(_ label: String, value: Int, color: Color) -> some View {
-        HStack(spacing: 4) {
+        let spokenName: String = {
+            switch label {
+            case "Cal": return "Calories"
+            case "P": return "Protein"
+            case "C": return "Carbs"
+            case "F": return "Fat"
+            default: return label
+            }
+        }()
+        return HStack(spacing: 4) {
             Text(label)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(color)
@@ -85,6 +103,9 @@ struct MealsView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(color.opacity(0.1), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenName)
+        .accessibilityValue("\(value)")
     }
 
     private var mealListSection: some View {
@@ -101,17 +122,25 @@ struct MealsView: View {
             } else {
                 List {
                     ForEach(mealsForDate, id: \.syncKey) { meal in
-                        MealRow(meal: meal)
-                    }
-                    .onDelete { indices in
-                        for index in indices {
-                            context.delete(mealsForDate[index])
+                        Button {
+                            mealEditToken = EditableMealToken(meal)
+                        } label: {
+                            MealRow(meal: meal)
                         }
-                        try? context.save()
-                        Task { await syncEngine?.markDirty() }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                context.delete(meal)
+                                try? context.save()
+                                Task { await syncEngine?.markDirty() }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 }
                 .listStyle(.plain)
+                .scrollDismissesKeyboard(.interactively)
             }
         }
     }
@@ -133,10 +162,16 @@ struct MealRow: View {
 
                 Text("\(meal.macros.calories) cal")
                     .font(.subheadline.weight(.medium))
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
 
             Text(meal.name)
                 .font(.body)
+                .multilineTextAlignment(.leading)
 
             HStack(spacing: 12) {
                 Text("P: \(Int(meal.macros.protein))g")
@@ -153,5 +188,6 @@ struct MealRow: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }

@@ -7,73 +7,79 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		15A600282F88BAA5008B807A /* RecompWatch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 15A600272F88BAA5008B807A /* RecompWatch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		154C41F32F941CA400BF3E19 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */; };
+		154C41F82F941CBE00BF3E19 /* WatchConnectivity.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */; };
+		154C42842F9C407F00BF3E19 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 154C42832F9C407F00BF3E19 /* StoreKit.framework */; };
 		15A600402F88BB0C008B807A /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15A6003F2F88BB0A008B807A /* WidgetKit.framework */; };
 		15A600422F88BB0C008B807A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15A600412F88BB0C008B807A /* SwiftUI.framework */; };
-		15A600512F88BB12008B807A /* RecompWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 15A6003D2F88BB0A008B807A /* RecompWidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		15A600512F88BB12008B807A /* RefactorWidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		15A600592F895DEB008B807A /* RefactorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 15A600582F895DEB008B807A /* RefactorKit */; };
 		15A600622F88D001008B807A /* RefactorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 15A600582F895DEB008B807A /* RefactorKit */; };
 		15A600652F88D002008B807A /* RefactorKit in Frameworks */ = {isa = PBXBuildFile; productRef = 15A600582F895DEB008B807A /* RefactorKit */; };
+		B1A600282F88BAA5008B807A /* RefactorWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 15A600272F88BAA5008B807A /* RefactorWatch.app */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		15A600292F88BAA5008B807A /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 15A600082F88BA0D008B807A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 15A600262F88BAA5008B807A;
-			remoteInfo = "RecompWatch Watch App";
-		};
 		15A6004F2F88BB12008B807A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 15A600082F88BA0D008B807A /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 15A6003C2F88BB0A008B807A;
-			remoteInfo = RecompWidgetsExtension;
+			remoteInfo = RefactorWidgetsExtension;
+		};
+		B1A600292F88BAA5008B807A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 15A600082F88BA0D008B807A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 15A600262F88BAA5008B807A;
+			remoteInfo = "Refactor Watch App";
 		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
-		15A600352F88BAA6008B807A /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
-			dstSubfolderSpec = 16;
-			files = (
-				15A600282F88BAA5008B807A /* RecompWatch Watch App.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		15A600562F88BB12008B807A /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				15A600512F88BB12008B807A /* RecompWidgetsExtension.appex in Embed Foundation Extensions */,
+				15A600512F88BB12008B807A /* RefactorWidgetsExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1A600352F88BAA6008B807A /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				B1A600282F88BAA5008B807A /* RefactorWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = System/Library/Frameworks/WatchConnectivity.framework; sourceTree = SDKROOT; };
+		154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WatchConnectivity.framework; path = Platforms/WatchOS.platform/Developer/SDKs/WatchOS26.4.sdk/System/Library/Frameworks/WatchConnectivity.framework; sourceTree = DEVELOPER_DIR; };
+		154C42832F9C407F00BF3E19 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		15A600102F88BA0D008B807A /* Refactor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Refactor.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		15A600222F88BAA5008B807A /* RecompWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RecompWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		15A600272F88BAA5008B807A /* RecompWatch Watch App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RecompWatch Watch App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		15A6003D2F88BB0A008B807A /* RecompWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RecompWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		15A600272F88BAA5008B807A /* RefactorWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RefactorWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RefactorWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		15A6003F2F88BB0A008B807A /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		15A600412F88BB0C008B807A /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		F2A600662F99C001008B807A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		15A600522F88BB12008B807A /* Exceptions for "Refactor Widgets" folder in "RecompWidgetsExtension" target */ = {
+		15A600522F88BB12008B807A /* Exceptions for "Refactor Widgets" folder in "RefactorWidgetsExtension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 15A6003C2F88BB0A008B807A /* RecompWidgetsExtension */;
+			target = 15A6003C2F88BB0A008B807A /* RefactorWidgetsExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -91,7 +97,7 @@
 		15A600432F88BB0C008B807A /* Refactor Widgets */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				15A600522F88BB12008B807A /* Exceptions for "Refactor Widgets" folder in "RecompWidgetsExtension" target */,
+				15A600522F88BB12008B807A /* Exceptions for "Refactor Widgets" folder in "RefactorWidgetsExtension" target */,
 			);
 			path = "Refactor Widgets";
 			sourceTree = "<group>";
@@ -123,7 +129,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				154C42842F9C407F00BF3E19 /* StoreKit.framework in Frameworks */,
 				15A600592F895DEB008B807A /* RefactorKit in Frameworks */,
+				154C41F32F941CA400BF3E19 /* WatchConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -132,6 +140,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				15A600622F88D001008B807A /* RefactorKit in Frameworks */,
+				154C41F82F941CBE00BF3E19 /* WatchConnectivity.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -158,6 +167,7 @@
 				15A600632F88D001008B807A /* ../../../RecompWatch/Features */,
 				15A600642F88D001008B807A /* ../../../RecompWatch/Complications */,
 				15A600432F88BB0C008B807A /* Refactor Widgets */,
+				F2A600672F99C001008B807A /* RefactorWatch */,
 				15A6003E2F88BB0A008B807A /* Frameworks */,
 				15A600112F88BA0D008B807A /* Products */,
 			);
@@ -167,9 +177,8 @@
 			isa = PBXGroup;
 			children = (
 				15A600102F88BA0D008B807A /* Refactor.app */,
-				15A600222F88BAA5008B807A /* RecompWatch.app */,
-				15A600272F88BAA5008B807A /* RecompWatch Watch App.app */,
-				15A6003D2F88BB0A008B807A /* RecompWidgetsExtension.appex */,
+				15A600272F88BAA5008B807A /* RefactorWatch.app */,
+				15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -177,10 +186,21 @@
 		15A6003E2F88BB0A008B807A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				154C42832F9C407F00BF3E19 /* StoreKit.framework */,
+				154C41F12F941C9900BF3E19 /* WatchConnectivity.framework */,
+				154C41F62F941CB900BF3E19 /* WatchConnectivity.framework */,
 				15A6003F2F88BB0A008B807A /* WidgetKit.framework */,
 				15A600412F88BB0C008B807A /* SwiftUI.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		F2A600672F99C001008B807A /* RefactorWatch */ = {
+			isa = PBXGroup;
+			children = (
+				F2A600662F99C001008B807A /* Info.plist */,
+			);
+			path = RefactorWatch;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -193,10 +213,12 @@
 				15A6000C2F88BA0D008B807A /* Sources */,
 				15A6000D2F88BA0D008B807A /* Frameworks */,
 				15A6000E2F88BA0D008B807A /* Resources */,
+				B1A600352F88BAA6008B807A /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B1A6002A2F88BAA5008B807A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				15A600122F88BA0D008B807A /* Refactor */,
@@ -211,28 +233,9 @@
 			productReference = 15A600102F88BA0D008B807A /* Refactor.app */;
 			productType = "com.apple.product-type.application";
 		};
-		15A600212F88BAA5008B807A /* RecompWatch */ = {
+		15A600262F88BAA5008B807A /* Refactor Watch App */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 15A600362F88BAA6008B807A /* Build configuration list for PBXNativeTarget "RecompWatch" */;
-			buildPhases = (
-				15A600202F88BAA5008B807A /* Resources */,
-				15A600352F88BAA6008B807A /* Embed Watch Content */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				15A6002A2F88BAA5008B807A /* PBXTargetDependency */,
-			);
-			name = RecompWatch;
-			packageProductDependencies = (
-			);
-			productName = RecompWatch;
-			productReference = 15A600222F88BAA5008B807A /* RecompWatch.app */;
-			productType = "com.apple.product-type.application.watchapp2-container";
-		};
-		15A600262F88BAA5008B807A /* RecompWatch Watch App */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 15A600322F88BAA6008B807A /* Build configuration list for PBXNativeTarget "RecompWatch Watch App" */;
+			buildConfigurationList = 15A600322F88BAA6008B807A /* Build configuration list for PBXNativeTarget "Refactor Watch App" */;
 			buildPhases = (
 				15A600232F88BAA5008B807A /* Sources */,
 				15A600242F88BAA5008B807A /* Frameworks */,
@@ -249,17 +252,17 @@
 				15A600632F88D001008B807A /* ../../../RecompWatch/Features */,
 				15A600642F88D001008B807A /* ../../../RecompWatch/Complications */,
 			);
-			name = "RecompWatch Watch App";
+			name = "Refactor Watch App";
 			packageProductDependencies = (
 				15A600582F895DEB008B807A /* RefactorKit */,
 			);
 			productName = "RecompWatch Watch App";
-			productReference = 15A600272F88BAA5008B807A /* RecompWatch Watch App.app */;
+			productReference = 15A600272F88BAA5008B807A /* RefactorWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
-		15A6003C2F88BB0A008B807A /* RecompWidgetsExtension */ = {
+		15A6003C2F88BB0A008B807A /* RefactorWidgetsExtension */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 15A600532F88BB12008B807A /* Build configuration list for PBXNativeTarget "RecompWidgetsExtension" */;
+			buildConfigurationList = 15A600532F88BB12008B807A /* Build configuration list for PBXNativeTarget "RefactorWidgetsExtension" */;
 			buildPhases = (
 				15A600392F88BB0A008B807A /* Sources */,
 				15A6003A2F88BB0A008B807A /* Frameworks */,
@@ -272,12 +275,12 @@
 			fileSystemSynchronizedGroups = (
 				15A600432F88BB0C008B807A /* Refactor Widgets */,
 			);
-			name = RecompWidgetsExtension;
+			name = RefactorWidgetsExtension;
 			packageProductDependencies = (
 				15A600582F895DEB008B807A /* RefactorKit */,
 			);
 			productName = RecompWidgetsExtension;
-			productReference = 15A6003D2F88BB0A008B807A /* RecompWidgetsExtension.appex */;
+			productReference = 15A6003D2F88BB0A008B807A /* RefactorWidgetsExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -291,9 +294,6 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					15A6000F2F88BA0D008B807A = {
-						CreatedOnToolsVersion = 26.4;
-					};
-					15A600212F88BAA5008B807A = {
 						CreatedOnToolsVersion = 26.4;
 					};
 					15A600262F88BAA5008B807A = {
@@ -322,22 +322,14 @@
 			projectRoot = "";
 			targets = (
 				15A6000F2F88BA0D008B807A /* Refactor */,
-				15A600212F88BAA5008B807A /* RecompWatch */,
-				15A600262F88BAA5008B807A /* RecompWatch Watch App */,
-				15A6003C2F88BB0A008B807A /* RecompWidgetsExtension */,
+				15A600262F88BAA5008B807A /* Refactor Watch App */,
+				15A6003C2F88BB0A008B807A /* RefactorWidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		15A6000E2F88BA0D008B807A /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		15A600202F88BAA5008B807A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -385,15 +377,15 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		15A6002A2F88BAA5008B807A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 15A600262F88BAA5008B807A /* RecompWatch Watch App */;
-			targetProxy = 15A600292F88BAA5008B807A /* PBXContainerItemProxy */;
-		};
 		15A600502F88BB12008B807A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 15A6003C2F88BB0A008B807A /* RecompWidgetsExtension */;
+			target = 15A6003C2F88BB0A008B807A /* RefactorWidgetsExtension */;
 			targetProxy = 15A6004F2F88BB12008B807A /* PBXContainerItemProxy */;
+		};
+		B1A6002A2F88BAA5008B807A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 15A600262F88BAA5008B807A /* Refactor Watch App */;
+			targetProxy = B1A600292F88BAA5008B807A /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -433,7 +425,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -497,7 +488,6 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -524,13 +514,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Refactor: Body Composition";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -540,7 +537,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -558,13 +555,20 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Refactor: Body Composition";
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -574,7 +578,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 3.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -590,24 +594,31 @@
 		15A600332F88BAA6008B807A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=watchos*]" = (
+					arm64,
+					arm64_32,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = RecompWatch;
+				INFOPLIST_FILE = RefactorWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Refactor Watch";
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKWatchOnly = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.recomp.ios;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 3.5;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
+				PRODUCT_NAME = RefactorWatch;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -624,24 +635,31 @@
 		15A600342F88BAA6008B807A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=watchos*]" = (
+					arm64,
+					arm64_32,
+				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = RecompWatch;
+				INFOPLIST_FILE = RefactorWatch/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Refactor Watch";
+				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
-				INFOPLIST_KEY_WKWatchOnly = YES;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.recomp.ios;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch.watchkitapp;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				MARKETING_VERSION = 3.5;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
+				PRODUCT_NAME = RefactorWatch;
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -655,46 +673,18 @@
 			};
 			name = Release;
 		};
-		15A600372F88BAA6008B807A /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4GG5889HS8;
-				INFOPLIST_KEY_CFBundleDisplayName = RefactorWatch;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Debug;
-		};
-		15A600382F88BAA6008B807A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 4GG5889HS8;
-				INFOPLIST_KEY_CFBundleDisplayName = RefactorWatch;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_APPROACHABLE_CONCURRENCY = YES;
-				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
-				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
 		15A600542F88BB12008B807A /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=watchos*]" = (
+					arm64,
+					arm64_32,
+				);
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -706,8 +696,9 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch.watchkitapp.RefactorWidgets;
+				MARKETING_VERSION = 3.5;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -724,11 +715,15 @@
 		15A600552F88BB12008B807A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				"ARCHS[sdk=watchos*]" = (
+					arm64,
+					arm64_32,
+				);
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 78;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -740,8 +735,9 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ProjectComfortDev.RecompWatch.watchkitapp.RefactorWidgets;
+				MARKETING_VERSION = 3.5;
+				ONLY_ACTIVE_ARCH = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -776,7 +772,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		15A600322F88BAA6008B807A /* Build configuration list for PBXNativeTarget "RecompWatch Watch App" */ = {
+		15A600322F88BAA6008B807A /* Build configuration list for PBXNativeTarget "Refactor Watch App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				15A600332F88BAA6008B807A /* Debug */,
@@ -785,16 +781,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		15A600362F88BAA6008B807A /* Build configuration list for PBXNativeTarget "RecompWatch" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				15A600372F88BAA6008B807A /* Debug */,
-				15A600382F88BAA6008B807A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		15A600532F88BB12008B807A /* Build configuration list for PBXNativeTarget "RecompWidgetsExtension" */ = {
+		15A600532F88BB12008B807A /* Build configuration list for PBXNativeTarget "RefactorWidgetsExtension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				15A600542F88BB12008B807A /* Debug */,

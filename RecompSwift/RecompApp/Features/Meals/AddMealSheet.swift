@@ -8,7 +8,9 @@ struct AddMealSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.syncEngine) private var syncEngine
     @Environment(AuthService.self) private var auth
-    @State private var mealService = MealService()
+    @State private var vm = AddMealViewModel()
+
+    @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
 
     let date: String
 
@@ -19,14 +21,18 @@ struct AddMealSheet: View {
     @State private var carbs: Double = 0
     @State private var fat: Double = 0
     @State private var notes = ""
+    @State private var servings: Double = 1
     @State private var inputMode: InputMode = .manual
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var selectedMenuPhoto: PhotosPickerItem?
     @State private var selectedReceiptPhoto: PhotosPickerItem?
-    @State private var analysisResults: [SuggestedMeal] = []
-    @State private var isAnalyzing = false
     @State private var recipeURL = ""
     @State private var foodSearchQuery = ""
+    @State private var voiceTranscript = ""
+    @State private var speech = MealSpeechTranscription()
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
+    @State private var pendingAIAction: (() -> Void)?
 
     enum InputMode: String, CaseIterable {
         case manual = "Manual"
@@ -53,6 +59,7 @@ struct AddMealSheet: View {
                 switch inputMode {
                 case .manual:
                     manualInputSection
+                    autofillSuggestionsSection
                 case .photo:
                     photoInputSection
                 case .menu:
@@ -69,9 +76,9 @@ struct AddMealSheet: View {
                     suggestSection
                 }
 
-                if !analysisResults.isEmpty {
+                if !vm.analysisResults.isEmpty {
                     Section("Results") {
-                        ForEach(analysisResults) { suggestion in
+                        ForEach(vm.analysisResults) { suggestion in
                             Button {
                                 applySuggestion(suggestion)
                             } label: {
@@ -95,6 +102,15 @@ struct AddMealSheet: View {
             }
             .navigationTitle("Add Meal")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: inputMode) { _, mode in
+                if mode != .voice {
+                    speech.stopRecording()
+                }
+            }
+            .onDisappear {
+                speech.stopRecording()
+            }
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -103,8 +119,43 @@ struct AddMealSheet: View {
                     Button("Save") { saveMeal() }
                         .disabled(name.isEmpty)
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                }
+            }
+            .sheet(isPresented: $showAIConsent) {
+                AIConsentView(
+                    onAccept: {
+                        aiConsentGiven = true
+                        showAIConsent = false
+                        pendingAIAction?()
+                        pendingAIAction = nil
+                    },
+                    onDecline: {
+                        showAIConsent = false
+                        pendingAIAction = nil
+                    }
+                )
             }
         }
+    }
+
+    private func runWithConsent(_ action: @escaping () -> Void) {
+        if aiConsentGiven {
+            action()
+        } else {
+            pendingAIAction = action
+            showAIConsent = true
+        }
+    }
+
+    private var nameSuggestions: [MealEntry] {
+        guard name.count >= 2 else { return [] }
+        var seen = Set<String>()
+        return allMeals.filter {
+            $0.name.localizedCaseInsensitiveContains(name) && seen.insert($0.name.lowercased()).inserted
+        }.prefix(5).map { $0 }
     }
 
     private var manualInputSection: some View {
@@ -118,32 +169,89 @@ struct AddMealSheet: View {
         }
     }
 
+    @ViewBuilder
+    private var autofillSuggestionsSection: some View {
+        if inputMode == .manual && !nameSuggestions.isEmpty {
+            Section("Recent matches") {
+                ForEach(nameSuggestions) { entry in
+                    Button {
+                        name = entry.name
+                        calories = entry.macros.calories
+                        protein = entry.macros.protein
+                        carbs = entry.macros.carbs
+                        fat = entry.macros.fat
+                        mealType = entry.mealType
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.name)
+                                .foregroundStyle(.primary)
+                            Text("\(entry.macros.calories) cal · P:\(Int(entry.macros.protein))g C:\(Int(entry.macros.carbs))g F:\(Int(entry.macros.fat))g")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private var macroInputSection: some View {
         Section("Macros") {
-            Stepper("Calories: \(calories)", value: $calories, in: 0...5000, step: 25)
             HStack {
-                Text("Protein (g)")
+                Text("Servings")
                 Spacer()
-                TextField("", value: $protein, format: .number)
+                Stepper(value: $servings, in: 0.5...20, step: 0.5) {
+                    Text(servings.truncatingRemainder(dividingBy: 1) == 0
+                         ? "\(Int(servings))"
+                         : String(format: "%.1f", servings))
+                        .frame(minWidth: 32, alignment: .trailing)
+                }
+            }
+            HStack {
+                Text(servings == 1 ? "Calories" : "Calories / serving")
+                Spacer()
+                TextField("0", value: $calories, format: .number)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 60)
+            }
+            HStack {
+                Text(servings == 1 ? "Protein (g)" : "Protein / serving")
+                Spacer()
+                TextField("0", value: $protein, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
             }
             HStack {
-                Text("Carbs (g)")
+                Text(servings == 1 ? "Carbs (g)" : "Carbs / serving")
                 Spacer()
-                TextField("", value: $carbs, format: .number)
+                TextField("0", value: $carbs, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
             }
             HStack {
-                Text("Fat (g)")
+                Text(servings == 1 ? "Fat (g)" : "Fat / serving")
                 Spacer()
-                TextField("", value: $fat, format: .number)
+                TextField("0", value: $fat, format: .number)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
+            }
+            if servings != 1 {
+                let totalCal = Int((Double(calories) * servings).rounded())
+                let totalP = Int((protein * servings).rounded())
+                let totalC = Int((carbs * servings).rounded())
+                let totalF = Int((fat * servings).rounded())
+                HStack {
+                    Text("Total")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(totalCal) cal · P:\(totalP)g C:\(totalC)g F:\(totalF)g")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }
@@ -151,21 +259,21 @@ struct AddMealSheet: View {
     private var menuScanSection: some View {
         Section("Menu scan") {
             PhotosPicker("Select menu photo", selection: $selectedMenuPhoto, matching: .images)
-                .onChange(of: selectedMenuPhoto) { _, newValue in
+                .onChange(of: selectedMenuPhoto) { newValue in
                     guard let item = newValue else { return }
-                    Task {
-                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                        isAnalyzing = true
-                        do {
-                            analysisResults = try await mealService.analyzeMenu(imageData: data)
-                        } catch {
-                            analysisResults = []
+                    vm.menuScanError = nil
+                    runWithConsent {
+                        Task {
+                            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                            await vm.analyzeMenu(data: data)
                         }
-                        isAnalyzing = false
                     }
                 }
-            if isAnalyzing {
+            if vm.isAnalyzing {
                 ProgressView("Reading menu…")
+            }
+            if let err = vm.menuScanError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -173,21 +281,21 @@ struct AddMealSheet: View {
     private var receiptScanSection: some View {
         Section("Receipt scan") {
             PhotosPicker("Select receipt photo", selection: $selectedReceiptPhoto, matching: .images)
-                .onChange(of: selectedReceiptPhoto) { _, newValue in
+                .onChange(of: selectedReceiptPhoto) { newValue in
                     guard let item = newValue else { return }
-                    Task {
-                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                        isAnalyzing = true
-                        do {
-                            analysisResults = try await mealService.analyzeReceipt(imageData: data)
-                        } catch {
-                            analysisResults = []
+                    vm.receiptScanError = nil
+                    runWithConsent {
+                        Task {
+                            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                            await vm.analyzeReceipt(data: data)
                         }
-                        isAnalyzing = false
                     }
                 }
-            if isAnalyzing {
+            if vm.isAnalyzing {
                 ProgressView("Reading receipt…")
+            }
+            if let err = vm.receiptScanError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -197,22 +305,23 @@ struct AddMealSheet: View {
             TextField("e.g. grilled chicken breast 200g", text: $foodSearchQuery)
                 .autocapitalization(.none)
             Button("Look up nutrition") {
+                vm.foodSearchError = nil
                 Task {
-                    isAnalyzing = true
-                    do {
-                        let res = try await mealService.lookupNutrition(query: foodSearchQuery)
+                    if let res = await vm.lookupNutrition(query: foodSearchQuery) {
                         name = res.name
                         calories = res.macros.calories
                         protein = res.macros.protein
                         carbs = res.macros.carbs
                         fat = res.macros.fat
-                    } catch {}
-                    isAnalyzing = false
+                    }
                 }
             }
             .disabled(foodSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            if isAnalyzing {
+            if vm.isAnalyzing {
                 ProgressView()
+            }
+            if let err = vm.foodSearchError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -220,21 +329,17 @@ struct AddMealSheet: View {
     private var photoInputSection: some View {
         Section("Photo Analysis") {
             PhotosPicker("Select Photo", selection: $selectedPhoto, matching: .images)
-                .onChange(of: selectedPhoto) { _, newValue in
+                .onChange(of: selectedPhoto) { newValue in
                     guard let item = newValue else { return }
-                    Task {
-                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                        isAnalyzing = true
-                        do {
-                            analysisResults = try await mealService.analyzePhoto(imageData: data)
-                        } catch {
-                            analysisResults = []
+                    runWithConsent {
+                        Task {
+                            guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                            await vm.analyzePhoto(data: data)
                         }
-                        isAnalyzing = false
                     }
                 }
 
-            if isAnalyzing {
+            if vm.isAnalyzing {
                 HStack {
                     ProgressView()
                     Text("Analyzing photo...")
@@ -246,12 +351,64 @@ struct AddMealSheet: View {
     }
 
     private var voiceInputSection: some View {
-        Section("Voice Logging") {
-            Label("Tap to record your meal", systemImage: "mic.fill")
-                .foregroundStyle(Color.appAccent)
-            Text("Say something like \"I had a grilled chicken salad with olive oil dressing for lunch\"")
+        Section("Voice logging") {
+            Text("Use Listen for live transcription, type in the field, or use the keyboard microphone. Tap Parse to send the text to Refactor and list suggested meals below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+            if let voiceParseError = vm.voiceParseError {
+                Text(voiceParseError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if let err = speech.errorMessage {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            HStack(spacing: 12) {
+                if speech.isRecording {
+                    Button(role: .destructive) {
+                        speech.stopRecording()
+                    } label: {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    Button {
+                        Task { await speech.startRecording() }
+                    } label: {
+                        Label("Listen", systemImage: "mic.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(vm.isAnalyzing)
+                }
+            }
+
+            TextField("e.g. grilled chicken salad with olive oil dressing", text: $voiceTranscript, axis: .vertical)
+                .lineLimit(3...8)
+                .textInputAutocapitalization(.sentences)
+                .disabled(speech.isRecording)
+
+            Button {
+                runWithConsent { Task { await vm.parseVoiceTranscript(voiceTranscript) } }
+            } label: {
+                Label("Parse meal", systemImage: "text.magnifyingglass")
+            }
+            .disabled(voiceTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isAnalyzing)
+
+            if vm.isAnalyzing && inputMode == .voice {
+                ProgressView("Parsing…")
+            }
+        }
+        .onChange(of: speech.transcript) { _, newValue in
+            guard speech.isRecording else { return }
+            voiceTranscript = newValue
+        }
+        .onChange(of: speech.isRecording) { wasRecording, isRecording in
+            if wasRecording, !isRecording, !speech.transcript.isEmpty {
+                voiceTranscript = speech.transcript
+            }
         }
     }
 
@@ -263,43 +420,48 @@ struct AddMealSheet: View {
 
             Button("Parse Recipe") {
                 Task {
-                    isAnalyzing = true
-                    do {
-                        let result = try await mealService.parseRecipeUrl(recipeURL)
+                    if let result = await vm.parseRecipe(url: recipeURL) {
                         name = result.name
                         calories = result.macros.calories
                         protein = result.macros.protein
                         carbs = result.macros.carbs
                         fat = result.macros.fat
-                    } catch {}
-                    isAnalyzing = false
+                    }
                 }
             }
-            .disabled(recipeURL.isEmpty)
+            .disabled(recipeURL.isEmpty || vm.isAnalyzing)
+
+            if vm.isAnalyzing && inputMode == .recipe {
+                ProgressView("Parsing recipe…")
+            }
+
+            if let err = vm.recipeParseError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         }
     }
 
     private var suggestSection: some View {
         Section("AI Suggestions") {
             Button {
-                Task {
-                    guard let profile = auth.currentUser else { return }
-                    isAnalyzing = true
-                    do {
-                        try await mealService.fetchSuggestions(
-                            profile: profile.toDTO(),
-                            date: date
-                        )
-                        analysisResults = mealService.suggestions
-                    } catch {}
-                    isAnalyzing = false
+                runWithConsent {
+                    vm.suggestError = nil
+                    Task {
+                        guard let profile = auth.currentUser else { return }
+                        await vm.fetchSuggestions(profile: profile.toDTO(), date: date)
+                    }
                 }
             } label: {
                 Label("Get Suggestions", systemImage: "sparkles")
             }
 
-            if isAnalyzing {
+            if vm.isAnalyzing {
                 ProgressView("Thinking...")
+            }
+            if let err = vm.suggestError {
+                Text(err).font(.caption).foregroundStyle(.red)
             }
         }
     }
@@ -320,7 +482,12 @@ struct AddMealSheet: View {
             date: date,
             mealType: mealType,
             name: name,
-            macros: Macros(calories: calories, protein: protein, carbs: carbs, fat: fat),
+            macros: Macros(
+                calories: Int((Double(calories) * servings).rounded()),
+                protein: (protein * servings * 10).rounded() / 10,
+                carbs: (carbs * servings * 10).rounded() / 10,
+                fat: (fat * servings * 10).rounded() / 10
+            ),
             notes: notes.isEmpty ? nil : notes
         )
         context.insert(meal)

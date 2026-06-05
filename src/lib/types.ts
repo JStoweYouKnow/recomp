@@ -19,8 +19,10 @@ export interface UserProfile {
   email?: string;
   avatarDataUrl?: string; // base64 data URL for profile picture
   age: number;
-  weight: number; // kg
-  height: number; // cm
+  /** Body weight; native iOS submits **lbs** and height **inches** (see onboarding). Treat as authoritative for BMI with wearables when present. */
+  weight: number;
+  /** Stored as **total inches** (us) or **cm** when `unitSystem === "metric"` (native clients normalize at signup). */
+  height: number;
   gender: "male" | "female" | "other";
   fitnessLevel: FitnessLevel;
   goal: Goal;
@@ -33,6 +35,7 @@ export interface UserProfile {
   workoutDaysPerWeek?: number; // 2–7
   workoutTimeframe?: "morning" | "afternoon" | "evening" | "flexible";
   createdAt: string;
+  proAccess?: boolean;
 }
 
 export interface Macros {
@@ -86,10 +89,14 @@ export interface FitnessPlan {
   createdAt: string;
   dietPlan: {
     dailyTargets: Macros;
+    trainingTargets?: Macros;
+    restTargets?: Macros;
     weeklyPlan: DietDay[];
     tips: string[];
   };
   workoutPlan: {
+    /** Anchor Monday week for multi-week PDF plans (`yyyy-MM-dd`); pairs with `Week N` day labels. */
+    programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
   };
@@ -123,12 +130,21 @@ export interface WearableDaySummary {
   heartRateAvg?: number;
   heartRateResting?: number;
   workouts?: { name: string; duration: number; calories?: number }[];
-  /** Weight in lbs (from scale, Fitbit Aria, Apple Health, etc.) */
+  /**
+   * Mass sent by the client. **Interpretation** depends on `weightUnit` (default `lbs`).
+   * After `/api/data/sync`, stored values are always **canonical lbs** (`weightUnit` stripped).
+   */
   weight?: number;
+  /** `kg` converts to lbs on ingest. Omitted ⇒ treat weight as lbs (legacy). Not persisted. */
+  weightUnit?: "lbs" | "kg";
   /** Body fat % (0–100) when available from smart scale */
   bodyFatPercent?: number;
-  /** Muscle mass in lbs when available */
+  /**
+   * Muscle mass from client; default unit `lbs`.
+   */
   muscleMass?: number;
+  /** `kg` ⇒ converted to lbs on ingest. Not persisted. */
+  muscleMassUnit?: "lbs" | "kg";
   /** RENPHO / smart scale extras (all weight-related in lbs) */
   bmi?: number;
   skeletalMusclePercent?: number;
@@ -140,6 +156,8 @@ export interface WearableDaySummary {
   proteinPercent?: number;
   bmr?: number; // kcal
   metabolicAge?: number;
+  /** Set for weigh-ins added via Body measurements manual entry; used to remove mistaken entries without affecting sync/import rows. */
+  manualEntryId?: string;
 }
 
 export type MilestoneType =

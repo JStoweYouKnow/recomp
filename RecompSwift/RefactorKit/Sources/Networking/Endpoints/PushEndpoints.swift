@@ -47,6 +47,7 @@ public enum MiscAPI: APIEndpoint {
     case cookingConnect(provider: String)
     case cookingImport
     case feedbackSubmit(rating: Int?, text: String)
+    case generateAPIToken
 
     public var path: String {
         switch self {
@@ -66,12 +67,14 @@ public enum MiscAPI: APIEndpoint {
         case .cookingConnect: return "/api/cooking/connect"
         case .cookingImport: return "/api/cooking/import"
         case .feedbackSubmit: return "/api/feedback"
+        case .generateAPIToken: return "/api/user/api-token"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .dataFetch, .calendarFeed: return .GET
+        case .generateAPIToken: return .POST
         default: return .POST
         }
     }
@@ -235,9 +238,14 @@ public struct WearableDaySummaryDTO: Codable, Sendable {
     public var readinessScore: Int?
     public var heartRateAvg: Int?
     public var heartRateResting: Int?
+    /// Pounds (`sync-schema` wearable payloads).
     public var weight: Double?
     public var bodyFatPercent: Double?
+    /// Pounds (`sync-schema` wearable payloads).
     public var muscleMass: Double?
+    /// Server normalizes to canonical lbs; omit or send `lbs`/`kg` (`sync-schema`).
+    public var weightUnit: String?
+    public var muscleMassUnit: String?
 }
 
 // MARK: - ActivityLog DTO
@@ -391,10 +399,38 @@ public struct SyncResponseDTO: Decodable, Sendable {
     public let pantry: [PantryItemDTO]?
     public let wearableConnections: [WearableConnectionDTO]?
     public let wearableData: [WearableDaySummaryDTO]?
-    public let activityLog: [ActivityLogEntryDTO]?
+    /// Always an array in current API; missing key decodes as `[]` for older responses.
+    public let activityLog: [ActivityLogEntryDTO]
     public let metabolicModel: MetabolicModelDTO?
     public let workoutProgress: [String: String]?
     public let meta: SyncMetaDTO?
+
+    private enum CodingKeys: String, CodingKey {
+        case profile, plan, meals, milestones, hydration, fastingSessions, biofeedback
+        case supplements, bloodWork, bodyScans, pantry, wearableConnections, wearableData
+        case activityLog, metabolicModel, workoutProgress, meta
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try c.decodeIfPresent(UserProfileDTO.self, forKey: .profile)
+        plan = try c.decodeIfPresent(FitnessPlanDTO.self, forKey: .plan)
+        meals = try c.decodeIfPresent([MealEntryDTO].self, forKey: .meals)
+        milestones = try c.decodeIfPresent([MilestoneEntryDTO].self, forKey: .milestones)
+        hydration = try c.decodeIfPresent([HydrationEntryDTO].self, forKey: .hydration)
+        fastingSessions = try c.decodeIfPresent([FastingSessionDTO].self, forKey: .fastingSessions)
+        biofeedback = try c.decodeIfPresent([BiofeedbackEntryDTO].self, forKey: .biofeedback)
+        supplements = try c.decodeIfPresent([SupplementDTO].self, forKey: .supplements)
+        bloodWork = try c.decodeIfPresent([BloodWorkDTO].self, forKey: .bloodWork)
+        bodyScans = try c.decodeIfPresent([BodyScanDTO].self, forKey: .bodyScans)
+        pantry = try c.decodeIfPresent([PantryItemDTO].self, forKey: .pantry)
+        wearableConnections = try c.decodeIfPresent([WearableConnectionDTO].self, forKey: .wearableConnections)
+        wearableData = try c.decodeIfPresent([WearableDaySummaryDTO].self, forKey: .wearableData)
+        activityLog = try c.decodeIfPresent([ActivityLogEntryDTO].self, forKey: .activityLog) ?? []
+        metabolicModel = try c.decodeIfPresent(MetabolicModelDTO.self, forKey: .metabolicModel)
+        workoutProgress = try c.decodeIfPresent([String: String].self, forKey: .workoutProgress)
+        meta = try c.decodeIfPresent(SyncMetaDTO.self, forKey: .meta)
+    }
 }
 
 // MARK: - Weekly review (POST /api/agent/weekly-review)
@@ -502,11 +538,19 @@ public struct MetabolicDataPointPayload: Encodable, Sendable {
 public struct MetabolicBatchUpdatePayload: Encodable, Sendable {
     public let dataPoints: [MetabolicDataPointPayload]
     public let currentTDEE: Int
+    public let history: [MetabolicHistoryEntry]
 
-    public init(dataPoints: [MetabolicDataPointPayload], currentTDEE: Int) {
+    public init(dataPoints: [MetabolicDataPointPayload], currentTDEE: Int, history: [MetabolicHistoryEntry] = []) {
         self.dataPoints = dataPoints
         self.currentTDEE = currentTDEE
+        self.history = history
     }
+}
+
+public struct MetabolicModelResponseHistoryEntry: Decodable, Sendable {
+    public let date: String
+    public let tdee: Double
+    public let confidence: Int
 }
 
 public struct MetabolicModelResponse: Decodable, Sendable {
@@ -514,12 +558,14 @@ public struct MetabolicModelResponse: Decodable, Sendable {
     public let confidence: Int
     public let lastUpdated: String?
     public let message: String?
+    public let history: [MetabolicModelResponseHistoryEntry]
 
     enum CodingKeys: String, CodingKey {
         case estimatedTDEE
         case confidence
         case lastUpdated
         case message
+        case history
     }
 
     public init(from decoder: Decoder) throws {
@@ -534,13 +580,15 @@ public struct MetabolicModelResponse: Decodable, Sendable {
         confidence = try c.decodeIfPresent(Int.self, forKey: .confidence) ?? 0
         lastUpdated = try c.decodeIfPresent(String.self, forKey: .lastUpdated)
         message = try c.decodeIfPresent(String.self, forKey: .message)
+        history = (try? c.decodeIfPresent([MetabolicModelResponseHistoryEntry].self, forKey: .history)) ?? []
     }
 
-    public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, message: String? = nil) {
+    public init(estimatedTDEE: Double, confidence: Int, lastUpdated: String?, message: String? = nil, history: [MetabolicModelResponseHistoryEntry] = []) {
         self.estimatedTDEE = estimatedTDEE
         self.confidence = confidence
         self.lastUpdated = lastUpdated
         self.message = message
+        self.history = history
     }
 }
 
@@ -608,4 +656,32 @@ public struct FeedbackPayload: Encodable {
 public struct ImageGenerateResponse: Decodable {
     let imageUrl: String?
     let imageBase64: String?
+}
+
+// MARK: - API Token
+
+public struct APITokenResponse: Decodable, Sendable {
+    public let token: String
+    public let endpoint: String?
+    public let note: String?
+}
+
+// MARK: - Supplement Analysis
+
+public struct SupplementDeficiency: Decodable, Sendable {
+    public let nutrient: String
+    public let severity: String
+    public let evidence: String
+}
+
+public struct SupplementRecommendation: Decodable, Sendable {
+    public let action: String
+    public let priority: String
+    public let reason: String
+}
+
+public struct SupplementAnalysisResponse: Decodable, Sendable {
+    public let deficiencies: [SupplementDeficiency]
+    public let recommendations: [SupplementRecommendation]
+    public let interactions: [String]
 }

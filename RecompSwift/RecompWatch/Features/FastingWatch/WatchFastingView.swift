@@ -4,6 +4,7 @@ import RefactorKit
 
 struct WatchFastingView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @Query(filter: #Predicate<FastingSession> { $0.endTime == nil },
            sort: \FastingSession.startTime, order: .reverse)
     private var activeSessions: [FastingSession]
@@ -38,6 +39,7 @@ struct WatchFastingView: View {
                 Button("End Fast") {
                     session.endTime = .now
                     try? context.save()
+                    Task { await syncEngine?.markDirty() }
                 }
                 .font(.caption2)
                 .buttonStyle(.bordered)
@@ -50,6 +52,8 @@ struct WatchFastingView: View {
                 Button("Start 16:8") {
                     let newSession = FastingSession(targetHours: 16)
                     context.insert(newSession)
+                    try? context.save()
+                    Task { await syncEngine?.markDirty() }
                 }
                 .font(.caption2)
                 .buttonStyle(.borderedProminent)

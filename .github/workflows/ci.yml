@@ -27,3 +27,23 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  android-kotlin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Gradle compile (debug Kotlin)
+        working-directory: recomp-mobile
+        run: |
+          SDK="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          printf 'sdk.dir=%s\n' "$SDK" > local.properties
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugKotlin --no-daemon

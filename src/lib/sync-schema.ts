@@ -3,6 +3,30 @@ import { z } from "zod";
 /** Max payload size (bytes) to prevent abuse */
 export const SYNC_MAX_BODY_SIZE = 2 * 1024 * 1024; // 2MB
 
+// Flexible profile schema — iOS sends this on every sync. We use passthrough so
+// future fields don't break validation, and the route upserts it into DynamoDB so
+// the GET endpoint (which returns 404 when no profile exists) always succeeds.
+export const syncProfileSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(200),
+  email: z.string().max(200).optional(),
+  age: z.number().int().min(0).max(150).optional(),
+  weight: z.number().min(0).max(1000).optional(),
+  height: z.number().min(0).max(300).optional(),
+  gender: z.string().max(20).optional(),
+  fitnessLevel: z.string().max(30).optional(),
+  goal: z.string().max(50).optional(),
+  dietaryRestrictions: z.array(z.string().max(100)).max(50).optional(),
+  injuriesOrLimitations: z.array(z.string().max(200)).max(50).optional(),
+  dailyActivityLevel: z.string().max(30).optional(),
+  unitSystem: z.string().max(20).optional(),
+  workoutLocation: z.string().max(30).optional(),
+  workoutEquipment: z.array(z.string().max(50)).max(20).optional(),
+  workoutDaysPerWeek: z.number().int().min(0).max(14).optional(),
+  workoutTimeframe: z.string().max(30).optional(),
+  createdAt: z.string().max(50).optional(),
+}).passthrough();
+
 const macrosSchema = z.object({
   calories: z.number().min(0).max(50000).optional(),
   protein: z.number().min(0).max(2000).optional(),
@@ -10,12 +34,25 @@ const macrosSchema = z.object({
   fat: z.number().min(0).max(2000).optional(),
 });
 
+const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
+
+function normalizeSyncMealType(value: unknown): (typeof MEAL_TYPES)[number] {
+  if (typeof value !== "string") return "snack";
+  const x = value.trim().toLowerCase();
+  return (MEAL_TYPES as readonly string[]).includes(x) ? (x as (typeof MEAL_TYPES)[number]) : "snack";
+}
+
+function defaultMacros(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+}
+
 const mealEntrySchema = z.object({
   id: z.string().max(100),
   date: z.string().max(20),
-  mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+  mealType: z.preprocess(normalizeSyncMealType, z.enum(MEAL_TYPES)),
   name: z.string().max(500),
-  macros: macrosSchema,
+  macros: z.preprocess(defaultMacros, macrosSchema),
   notes: z.string().max(1000).optional(),
   imageUrl: z.string().max(2000000).optional(),
   loggedAt: z.string().max(50).optional(),
@@ -50,9 +87,14 @@ const wearableDaySummarySchema = z.object({
   readinessScore: z.number().min(0).max(100).optional(),
   heartRateAvg: z.number().min(20).max(300).optional(),
   heartRateResting: z.number().min(20).max(200).optional(),
-  weight: z.number().min(0).max(1100).optional(), // lbs
+  /** Raw mass — converted using `weightUnit` (default lbs) server-side before storage. */
+  weight: z.number().min(0).max(1100).optional(),
+  weightUnit: z.enum(["lbs", "kg"]).optional(),
   bodyFatPercent: z.number().min(0).max(100).optional(),
-  muscleMass: z.number().min(0).max(500).optional(), // lbs
+  /** Upper bound tolerates transient kg payloads before normalization to lbs. */
+  muscleMass: z.number().min(0).max(650).optional(),
+  muscleMassUnit: z.enum(["lbs", "kg"]).optional(),
+  manualEntryId: z.string().uuid().optional(),
 }).passthrough();
 
 const dietDaySchema = z.object({
@@ -84,11 +126,13 @@ const fitnessPlanSchema = z.object({
   createdAt: z.string().max(50),
   dietPlan: z.object({
     dailyTargets: macrosSchema.optional(),
-    weeklyPlan: z.array(dietDaySchema).max(14).optional(),
+    /** LLM plans + multi-week templates can exceed one calendar week */
+    weeklyPlan: z.array(dietDaySchema).max(60).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   workoutPlan: z.object({
-    weeklyPlan: z.array(workoutDaySchema).max(14).optional(),
+    /** WorkoutPlannerView allows many template days (e.g. multi-week PDF programs) */
+    weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
   }).passthrough(),
   reasoning: z.string().max(5000).optional(),
@@ -182,7 +226,7 @@ const activityLogEntrySchema = z.object({
 const workoutProgressMapSchema = z.record(z.string().max(1000), z.string().max(5000));
 
 const metabolicDataPointSchema = z.object({
-  date: z.string().max(20),
+  date: z.string().max(50),
   weightKg: z.number(),
   totalIntake: z.number(),
   totalExpenditure: z.number(),
@@ -194,7 +238,8 @@ const metabolicModelSchema = z.object({
   dataPoints: z.array(metabolicDataPointSchema).max(5000),
   lastUpdated: z.string().max(50),
   history: z.array(z.object({
-    date: z.string().max(20),
+    /** Matches `new Date().toISOString()` from /api/metabolic/update */
+    date: z.string().max(50),
     tdee: z.number(),
     confidence: z.number(),
   })).max(5000),
@@ -207,6 +252,7 @@ const measurementTargetsSchema = z.object({
 }).passthrough();
 
 export const syncBodySchema = z.object({
+  profile: syncProfileSchema.optional(),
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
   milestones: z.array(milestoneSchema).max(500).optional(),

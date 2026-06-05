@@ -3,15 +3,21 @@ import SwiftData
 import RefactorKit
 
 struct WorkoutsView: View {
-    @Environment(\.modelContext) private var context
-    @State private var planService = PlanService()
     private let workoutService = WorkoutService.shared
     @State private var selectedDate = Date.now
     @State private var recoveryAssessment: RecoveryAssessment?
     @State private var isLoadingRecovery = false
+    @State private var recoveryError: String?
+    @State private var editRoute: WorkoutDayEditRoute?
+    @State private var showImportSheet = false
+
+    @Query(sort: \FitnessPlan.createdAt, order: .reverse)
+    private var allPlans: [FitnessPlan]
 
     @Query(sort: \BiofeedbackEntry.time, order: .reverse)
     private var biofeedbackEntries: [BiofeedbackEntry]
+
+    private var currentPlan: FitnessPlan? { allPlans.first }
 
     private var todaysBiofeedback: BiofeedbackEntry? {
         biofeedbackEntries.first { $0.date == DateHelpers.todayString() }
@@ -29,7 +35,7 @@ struct WorkoutsView: View {
                     VStack(spacing: 16) {
                         recoverySection
 
-                        if let plan = planService.currentPlan(context: context) {
+                        if let plan = currentPlan {
                             let items = WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
                             let todayKey = DateHelpers.todayString()
                             ForEach(items) { item in
@@ -44,7 +50,10 @@ struct WorkoutsView: View {
                                     progressDayKey: progressKey,
                                     planIndex: item.planIndex,
                                     isToday: progressKey == todayKey,
-                                    recoveryModifier: recoveryModifier(for: item.day)
+                                    recoveryModifier: recoveryModifier(for: item.day),
+                                    onEdit: {
+                                        editRoute = WorkoutDayEditRoute(planIndex: item.planIndex)
+                                    }
                                 )
                             }
                         } else {
@@ -58,21 +67,48 @@ struct WorkoutsView: View {
                     }
                     .padding(.vertical)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .navigationTitle("Workouts")
             .onAppear {
-                if let plan = planService.currentPlan(context: context) {
+                if let plan = currentPlan {
                     workoutService.migrateWorkoutRowProgressKeysIfNeeded(plan: plan)
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation { workoutService.resetDayProgress(dayKey: DateHelpers.todayString()) }
+                    Menu {
+                        if currentPlan != nil {
+                            Button {
+                                showImportSheet = true
+                            } label: {
+                                Label("Import from URL", systemImage: "link.badge.plus")
+                            }
+                        }
+                        Button {
+                            withAnimation { workoutService.resetDayProgress(dayKey: DateHelpers.todayString()) }
+                        } label: {
+                            Label("Reset today's progress", systemImage: "arrow.counterclockwise.circle")
+                        }
                     } label: {
-                        Image(systemName: "arrow.counterclockwise.circle")
-                            .help("Reset today's progress")
+                        Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("Workout options")
+                }
+            }
+            .sheet(item: $editRoute) { route in
+                NavigationStack {
+                    if let plan = currentPlan {
+                        EditWorkoutDayView(plan: plan, planIndex: route.planIndex)
+                    } else {
+                        Text("No workout plan")
+                            .padding()
+                    }
+                }
+            }
+            .sheet(isPresented: $showImportSheet) {
+                if let plan = currentPlan {
+                    WorkoutImportSheet(plan: plan)
                 }
             }
         }
@@ -88,32 +124,42 @@ struct WorkoutsView: View {
             }
             .padding(.horizontal)
         } else if let bf = todaysBiofeedback {
-            Button {
-                Task { await checkRecovery(bf) }
-            } label: {
-                HStack(spacing: 8) {
-                    if isLoadingRecovery {
-                        ProgressView().scaleEffect(0.8)
-                        Text("Assessing recovery…")
-                    } else {
-                        Image(systemName: "heart.text.square.fill")
-                            .foregroundStyle(Color.appSuccess)
-                        Text("Check Today's Recovery")
-                            .fontWeight(.medium)
+            VStack(spacing: 6) {
+                Button {
+                    Task { await checkRecovery(bf) }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isLoadingRecovery {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Assessing recovery…")
+                        } else {
+                            Image(systemName: "heart.text.square.fill")
+                                .foregroundStyle(Color.appSuccess)
+                            Text("Check Today's Recovery")
+                                .fontWeight(.medium)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
+                .buttonStyle(.bordered)
+                .tint(Color.appSuccess)
+                .padding(.horizontal)
+                .disabled(isLoadingRecovery)
+
+                if let recoveryError {
+                    Text(recoveryError)
+                        .font(.caption)
+                        .foregroundStyle(Color.appError)
+                        .padding(.horizontal)
+                }
             }
-            .buttonStyle(.bordered)
-            .tint(Color.appSuccess)
-            .padding(.horizontal)
-            .disabled(isLoadingRecovery)
         }
     }
 
     private func checkRecovery(_ bf: BiofeedbackEntry) async {
         isLoadingRecovery = true
+        recoveryError = nil
         do {
             recoveryAssessment = try await workoutService.assessRecovery(biofeedback: [
                 "energy": bf.energy,
@@ -122,13 +168,20 @@ struct WorkoutsView: View {
                 "stress": bf.stress,
                 "soreness": bf.soreness
             ])
-        } catch {}
+        } catch {
+            recoveryError = error.localizedDescription
+        }
         isLoadingRecovery = false
     }
 
     private func recoveryModifier(for day: WorkoutDay) -> Double? {
         recoveryAssessment?.modifiedWorkout?.volumeAdjustment
     }
+}
+
+private struct WorkoutDayEditRoute: Identifiable, Hashable {
+    let planIndex: Int
+    var id: Int { planIndex }
 }
 
 // MARK: - Recovery Card
@@ -162,6 +215,7 @@ struct RecoveryCard: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss recovery assessment")
             }
 
             // Score bar
@@ -170,10 +224,14 @@ struct RecoveryCard: View {
                     RoundedRectangle(cornerRadius: 4).fill(.gray.opacity(0.15))
                     RoundedRectangle(cornerRadius: 4)
                         .fill(levelColor)
-                        .frame(width: geo.size.width * assessment.score)
+                        .frame(width: geo.size.width * min(assessment.score, 1.0))
                 }
+                .clipped()
             }
             .frame(height: 8)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recovery score")
+            .accessibilityValue("\(Int(min(assessment.score, 1.0) * 100)) percent")
 
             Text(assessment.recommendation)
                 .font(.subheadline)
@@ -239,13 +297,16 @@ struct WorkoutDayCard: View {
     let planIndex: Int
     var isToday: Bool = false
     var recoveryModifier: Double? = nil
+    var onEdit: (() -> Void)? = nil
 
     @State private var isExpanded: Bool
-    @State private var gifURLs: [String: String] = [:]
+    @State private var gifData: [String: Data] = [:]
     @State private var loadingGifs: Set<String> = []
+    @State private var gifErrors: [String: String] = [:]
     @State private var musicSuggestions: [PlaylistSuggestion] = []
     @State private var isLoadingMusic = false
     @State private var showMusic = false
+    @State private var musicError: String?
 
     init(
         planId: String,
@@ -254,7 +315,8 @@ struct WorkoutDayCard: View {
         progressDayKey: String,
         planIndex: Int,
         isToday: Bool = false,
-        recoveryModifier: Double? = nil
+        recoveryModifier: Double? = nil,
+        onEdit: (() -> Void)? = nil
     ) {
         self.planId = planId
         self.day = day
@@ -263,6 +325,7 @@ struct WorkoutDayCard: View {
         self.planIndex = planIndex
         self.isToday = isToday
         self.recoveryModifier = recoveryModifier
+        self.onEdit = onEdit
         _isExpanded = State(initialValue: isToday)
     }
 
@@ -275,52 +338,69 @@ struct WorkoutDayCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Button {
-                withAnimation(.spring(duration: 0.3)) { isExpanded.toggle() }
-            } label: {
-                HStack(spacing: 12) {
-                    if isToday {
-                        Circle()
-                            .fill(Color.appAccent)
-                            .frame(width: 8, height: 8)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(day.day)
-                            .font(.headline)
-                            .foregroundStyle(isToday ? Color.appAccent : Color.primary)
-                        Text(day.focus)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    // Progress: completed / total **exercise rows** (web planner parity), not sum of sets.
-                    if totalExercises > 0 {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(completedExercises)/\(totalExercises)")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(completedExercises == totalExercises ? Color.appSuccess : Color.primary)
-                            Text("done")
-                                .font(.caption2)
+            // Header: expand row + optional edit
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(.spring(duration: 0.3)) { isExpanded.toggle() }
+                } label: {
+                    HStack(spacing: 12) {
+                        if isToday {
+                            Circle()
+                                .fill(Color.appAccent)
+                                .frame(width: 8, height: 8)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(day.day)
+                                .font(.headline)
+                                .foregroundStyle(isToday ? Color.appAccent : Color.primary)
+                            Text(day.focus)
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            (completedExercises == totalExercises ? Color.appSuccess : Color.secondary)
-                                .opacity(0.12),
-                            in: Capsule()
-                        )
+                        Spacer()
+                        // Progress: completed / total **exercise rows** (web planner parity), not sum of sets.
+                        if totalExercises > 0 {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text("\(completedExercises)/\(totalExercises)")
+                                    .font(.caption.weight(.bold))
+                                    .monospacedDigit()
+                                    .foregroundStyle(completedExercises == totalExercises ? Color.appSuccess : Color.primary)
+                                    .contentTransition(.numericText())
+                                Text("done")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                (completedExercises == totalExercises ? Color.appSuccess : Color.secondary)
+                                    .opacity(0.12),
+                                in: Capsule()
+                            )
+                        }
+                        Image(systemName: "chevron.right")
+                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
                     }
-                    Image(systemName: "chevron.right")
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .foregroundStyle(.secondary)
-                        .font(.caption)
+                    .padding()
+                    .contentShape(Rectangle())
                 }
-                .padding()
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+
+                if let onEdit {
+                    Button {
+                        onEdit()
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.body)
+                            .foregroundStyle(Color.appAccent)
+                            .padding(.trailing, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Edit workout")
+                }
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 Divider()
@@ -405,8 +485,9 @@ struct WorkoutDayCard: View {
                     planIndex: planIndex,
                     globalSlot: globalSlot,
                     webContext: webCtx,
-                    gifURL: gifURLs["\(globalSlot)-\(exercise.name)"],
+                    gifData: gifData["\(globalSlot)-\(exercise.name)"],
                     isLoadingGif: loadingGifs.contains("\(globalSlot)-\(exercise.name)"),
+                    gifError: gifErrors["\(globalSlot)-\(exercise.name)"],
                     onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) }
                 )
             }
@@ -414,15 +495,63 @@ struct WorkoutDayCard: View {
     }
 
     private func loadGif(slotTag: String, searchName: String) async {
-        guard gifURLs[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
+        guard gifData[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
         loadingGifs.insert(slotTag)
+        gifErrors[slotTag] = nil
+        defer { loadingGifs.remove(slotTag) }
         do {
-            try await workoutService.searchExercises(name: searchName)
-            if let url = workoutService.exerciseResults.first?.gifUrl {
-                gifURLs[slotTag] = url
+            let results = try await workoutService.searchExercises(name: searchName)
+            guard let urlString = results.first?.gifUrl, let url = URL(string: urlString) else {
+                gifErrors[slotTag] = "Demo unavailable for this exercise."
+                return
             }
-        } catch {}
-        loadingGifs.remove(slotTag)
+
+            var lastError: Error?
+            for _ in 0..<2 {
+                do {
+                    let data = try await APIClient.shared.requestRawURL(url)
+                    if isLikelyImagePayload(data) {
+                        gifData[slotTag] = data
+                        return
+                    }
+                } catch {
+                    lastError = error
+                }
+            }
+
+            if lastError != nil {
+                gifErrors[slotTag] = "Could not load demo animation."
+            } else {
+                gifErrors[slotTag] = "Demo unavailable for this exercise."
+            }
+        } catch {
+            gifErrors[slotTag] = "Could not find exercise demo."
+        }
+    }
+
+    private func isLikelyImagePayload(_ data: Data) -> Bool {
+        guard !data.isEmpty else { return false }
+        // GIF87a / GIF89a
+        if data.count >= 6, let sig = String(data: data.prefix(6), encoding: .ascii),
+           sig == "GIF87a" || sig == "GIF89a" {
+            return true
+        }
+        // PNG header
+        if data.count >= 8, Array(data.prefix(8)) == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+            return true
+        }
+        // JPEG header
+        if data.count >= 2, data[data.startIndex] == 0xFF, data[data.index(after: data.startIndex)] == 0xD8 {
+            return true
+        }
+        // Proxy may intentionally return SVG placeholder.
+        if let prefix = String(data: data.prefix(256), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           prefix.hasPrefix("<svg") || prefix.hasPrefix("<?xml") {
+            return true
+        }
+        return false
     }
 
     // MARK: Music section
@@ -442,20 +571,25 @@ struct WorkoutDayCard: View {
                         ProgressView().scaleEffect(0.75)
                     } else {
                         Image(systemName: showMusic ? "music.note.list" : "music.note")
-                            .foregroundStyle(.pink)
+                            .foregroundStyle(Color.appSlate)
                     }
                     Text(showMusic ? "Hide Playlists" : "Workout Music")
                         .font(.caption.weight(.medium))
                 }
             }
             .buttonStyle(.bordered)
-            .tint(.pink)
+            .tint(Color.appSlate)
             .controlSize(.small)
             .padding(.horizontal)
             .padding(.top, 6)
             .disabled(isLoadingMusic)
 
-            if showMusic && !musicSuggestions.isEmpty {
+            if let musicError {
+                Text(musicError)
+                    .font(.caption)
+                    .foregroundStyle(Color.appError)
+                    .padding(.horizontal)
+            } else if showMusic && !musicSuggestions.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(musicSuggestions) { suggestion in
@@ -470,13 +604,16 @@ struct WorkoutDayCard: View {
 
     private func fetchMusic() async {
         isLoadingMusic = true
+        musicError = nil
         do {
             let response: MusicSuggestResponse = try await APIClient.shared.request(
                 MusicAPI.suggest(workoutFocus: day.focus, provider: nil)
             )
             musicSuggestions = response.suggestions
             withAnimation { showMusic = true }
-        } catch {}
+        } catch {
+            musicError = error.localizedDescription
+        }
         isLoadingMusic = false
     }
 }
@@ -490,8 +627,9 @@ struct ExerciseRow: View {
     let planIndex: Int
     let globalSlot: Int
     let webContext: WorkoutSetProgressContext
-    let gifURL: String?
+    let gifData: Data?
     let isLoadingGif: Bool
+    let gifError: String?
     let onLoadGif: () async -> Void
 
     @State private var showGif = false
@@ -517,22 +655,28 @@ struct ExerciseRow: View {
                 Spacer()
                 // GIF demo toggle
                 Button {
-                    if gifURL != nil {
-                        withAnimation { showGif.toggle() }
+                    if gifData != nil {
+                        withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
                     } else {
                         Task { await onLoadGif() }
                     }
                 } label: {
-                    if isLoadingGif {
-                        ProgressView().scaleEffect(0.7)
-                            .frame(width: 28)
-                    } else {
-                        Image(systemName: showGif ? "eye.slash" : "play.circle")
-                            .font(.title3)
-                            .foregroundStyle(Color.appAccent)
+                    ZStack {
+                        if isLoadingGif {
+                            ProgressView()
+                                .scaleEffect(0.75)
+                                .frame(width: 28, height: 28)
+                        } else {
+                            Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
+                        }
                     }
+                    .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
+                .disabled(isLoadingGif)
             }
 
             // Set completion checkboxes — horizontal scroll so many sets stay one row (no wrap / “calendar” illusion).
@@ -549,48 +693,75 @@ struct ExerciseRow: View {
                             exercise: exercise
                         )
                         Button {
-                            withAnimation(.spring(duration: 0.2)) {
-                                workoutService.markSetComplete(
-                                    exerciseName: exercise.name,
-                                    setIndex: setIdx,
-                                    dayKey: progressDayKey,
-                                    planIndex: planIndex,
-                                    globalSlot: globalSlot,
-                                    webContext: webContext,
-                                    exerciseForWeb: exercise
-                                )
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
+                                if done {
+                                    workoutService.unmarkSetComplete(
+                                        exerciseName: exercise.name,
+                                        setIndex: setIdx,
+                                        dayKey: progressDayKey,
+                                        planIndex: planIndex,
+                                        globalSlot: globalSlot,
+                                        webContext: webContext,
+                                        exerciseForWeb: exercise
+                                    )
+                                } else {
+                                    workoutService.markSetComplete(
+                                        exerciseName: exercise.name,
+                                        setIndex: setIdx,
+                                        dayKey: progressDayKey,
+                                        planIndex: planIndex,
+                                        globalSlot: globalSlot,
+                                        webContext: webContext,
+                                        exerciseForWeb: exercise
+                                    )
+                                }
                             }
                         } label: {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.15))
-                                    .frame(width: 32, height: 32)
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.12))
+                                    .frame(width: 38, height: 38)
+                                    .shadow(color: done ? Color.appAccent.opacity(0.3) : .clear, radius: 4, y: 2)
                                 if done {
                                     Image(systemName: "checkmark")
-                                        .font(.caption.weight(.bold))
+                                        .font(.caption.weight(.black))
                                         .foregroundStyle(.white)
                                 } else {
                                     Text("\(setIdx + 1)")
-                                        .font(.caption2)
+                                        .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            .scaleEffect(done ? 1.05 : 1.0)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Set \(setIdx + 1)")
+                        .accessibilityValue(done ? "Completed" : "Not completed")
                     }
                 }
             }
             .frame(minHeight: 36)
 
             // GIF display — WKWebView so animated GIFs play correctly
-            if showGif, let urlString = gifURL, let url = URL(string: urlString) {
-                AnimatedGIFView(url: url)
+            if showGif, let data = gifData {
+                AnimatedGIFView(data: data)
                     .frame(height: 220)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if let gifError {
+                Label(gifError, systemImage: "exclamationmark.triangle")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
             }
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
+        .onChange(of: gifData != nil) { _, hasData in
+            if hasData {
+                withAnimation(.easeIn(duration: 0.25)) { showGif = true }
+            }
+        }
         Divider().padding(.leading)
     }
 }
@@ -616,13 +787,157 @@ struct PlaylistPill: View {
                         .foregroundStyle(.secondary)
                     Text(suggestion.bpm + " BPM")
                         .font(.system(size: 9))
-                        .foregroundStyle(.pink)
+                        .foregroundStyle(Color.appSlate)
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.pink.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(.pink.opacity(0.2), lineWidth: 1))
+                .background(Color.appSlate.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appSlate.opacity(0.2), lineWidth: 1))
             }
         }
+    }
+}
+
+// MARK: - Workout Import Sheet
+
+struct WorkoutImportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.syncEngine) private var syncEngine
+
+    let plan: FitnessPlan
+
+    @State private var urlText = ""
+    @State private var isImporting = false
+    @State private var importedDay: WorkoutDay?
+    @State private var importError: String?
+    @State private var mergeTargetIndex: Int? = nil
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("https://…", text: $urlText)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    Button("Import from URL") {
+                        Task { await importWorkout() }
+                    }
+                    .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+
+                    if isImporting {
+                        HStack {
+                            ProgressView()
+                            Text("Fetching workout…")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let err = importError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(Color.appError)
+                    }
+                } header: {
+                    Text("Paste a URL from a fitness blog, program page, or YouTube description")
+                }
+
+                if let day = importedDay {
+                    Section("Imported: \(day.day)") {
+                        LabeledContent("Focus", value: day.focus)
+                        LabeledContent("Exercises", value: "\(day.exercises.count)")
+                        ForEach(day.exercises) { ex in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ex.name).font(.subheadline)
+                                Text("\(ex.sets) × \(ex.reps)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
+                    Section("Add to plan") {
+                        Button("Add as new workout day") {
+                            addAsNewDay(day)
+                        }
+                        .foregroundStyle(Color.appAccent)
+
+                        if !plan.workoutPlan.weeklyPlan.isEmpty {
+                            Picker("Merge into existing day", selection: $mergeTargetIndex) {
+                                Text("Select day").tag(Optional<Int>.none)
+                                ForEach(plan.workoutPlan.weeklyPlan.indices, id: \.self) { i in
+                                    Text(plan.workoutPlan.weeklyPlan[i].day).tag(Optional(i))
+                                }
+                            }
+                            if let idx = mergeTargetIndex {
+                                Button("Merge into \(plan.workoutPlan.weeklyPlan[idx].day)") {
+                                    mergeIntoDay(day, targetIndex: idx)
+                                }
+                                .foregroundStyle(Color.appAccent)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Import Workout")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+    }
+
+    private func importWorkout() async {
+        importError = nil
+        importedDay = nil
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            importedDay = try await WorkoutService.shared.parseWorkoutUrl(
+                urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            mergeTargetIndex = nil
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func addAsNewDay(_ day: WorkoutDay) {
+        var weekly = plan.workoutPlan.weeklyPlan
+        weekly.append(day)
+        savePlan(weekly: weekly)
+    }
+
+    private func mergeIntoDay(_ day: WorkoutDay, targetIndex: Int) {
+        var weekly = plan.workoutPlan.weeklyPlan
+        guard targetIndex < weekly.count else { return }
+        let existing = weekly[targetIndex]
+        weekly[targetIndex] = WorkoutDay(
+            day: existing.day,
+            focus: existing.focus,
+            warmups: existing.warmups,
+            exercises: existing.exercises + day.exercises,
+            finishers: existing.finishers
+        )
+        savePlan(weekly: weekly)
+    }
+
+    private func savePlan(weekly: [WorkoutDay]) {
+        plan.workoutPlan = WorkoutPlan(
+            weeklyPlan: weekly,
+            tips: plan.workoutPlan.tips,
+            programWeek1Start: plan.workoutPlan.programWeek1Start
+        )
+        try? modelContext.save()
+        Task { await syncEngine?.markDirty() }
+        dismiss()
     }
 }

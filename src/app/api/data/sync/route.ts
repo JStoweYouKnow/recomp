@@ -22,6 +22,7 @@ import {
   dbGetBloodWork,
   dbGetMetabolicModel,
   dbSaveMetabolicModel,
+  dbSaveProfile,
   dbSavePlan,
   dbSaveMeal,
   dbDeleteMeal,
@@ -42,8 +43,13 @@ import {
   dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
+import {
+  normalizeWearableSummariesForStorage,
+  repairWearableScaleRowsForCanonicalLbs,
+  type WearableInbound,
+} from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
@@ -79,9 +85,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
+
+    // iOS sends the full profile on every sync. Upsert it so the GET endpoint
+    // (which returns 404 when no profile row exists) always has a valid record,
+    // even if DynamoDB was unavailable during the original registration.
+    // Wrapped in try/catch so a transient profile-save failure never blocks meal sync.
+    if (profile) {
+      promises.push(
+        (async () => {
+          try {
+            const existing = await dbGetProfile(userId);
+            await dbSaveProfile(userId, { ...(existing ?? {}), ...profile, id: userId } as UserProfile);
+          } catch (e) {
+            console.error("Profile upsert failed during sync:", e);
+          }
+        })()
+      );
+    }
 
     if (metabolicModel) {
       promises.push(dbSaveMetabolicModel(userId, metabolicModel as MetabolicModel));
@@ -176,15 +199,27 @@ export async function POST(req: NextRequest) {
     }
 
     if (wearableData && wearableData.length > 0) {
-      promises.push(dbSaveWearableData(userId, wearableData as WearableDaySummary[]));
+      const normalizedWearables = normalizeWearableSummariesForStorage(
+        wearableData as WearableInbound[],
+        profile ? (profile as UserProfile) : undefined
+      );
+      const repairedWearables = repairWearableScaleRowsForCanonicalLbs(
+        normalizedWearables,
+        profile ? (profile as UserProfile) : undefined
+      );
+      promises.push(dbSaveWearableData(userId, repairedWearables));
     }
 
     if (activityLog && activityLog.length > 0) {
       promises.push(dbSaveActivityLog(userId, activityLog as ActivityLogEntry[]));
     }
 
-    if (workoutProgress) {
-      promises.push(dbSaveWorkoutProgress(userId, workoutProgress as Record<string, string>));
+    // Only touch workout progress when the client included the key. An empty object `{}`
+    // is intentional (e.g. web reset). Omitting the key means "no change" — native clients
+    // omit it when they have nothing to push so we must not overwrite Dynamo with `{}`
+    // (empty object is truthy in JS and used to wipe the map).
+    if (Object.prototype.hasOwnProperty.call(parsed.data, "workoutProgress")) {
+      promises.push(dbSaveWorkoutProgress(userId, (workoutProgress ?? {}) as Record<string, string>));
     }
 
     // Auto-populate community exercise DB from user-submitted exercise names (fire-and-forget)
@@ -289,17 +324,24 @@ export async function GET(req: NextRequest) {
     }
 
     const mealsDeduped = meals.length > 0 ? dedupeMealsByDateAndId(meals) : [];
+    const wearableDataRepaired =
+      wearableData.length > 0 ? repairWearableScaleRowsForCanonicalLbs(wearableData, profile) : [];
     const payload = {
       profile,
       plan,
-      // Always send an array so clients replace local state (including clearing all meals).
-      meals: mealsDeduped,
+      // Only include meals when the server actually has rows. Sending `meals: []` would
+      // cause iOS fetchAndApply() to wipe local SwiftData before the device has ever
+      // successfully pushed — e.g. after a first-sync auth failure. Omitting the key
+      // means the iOS `if let mealDTOs = response.meals` guard short-circuits, preserving
+      // local state. The web client handles undefined by treating it as an empty array.
+      meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
       milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
-      wearableData: wearableData.length > 0 ? wearableData : undefined,
+      wearableData: wearableDataRepaired.length > 0 ? wearableDataRepaired : undefined,
       weeklyReview: weeklyReview ?? undefined,
-      activityLog: activityLog.length > 0 ? activityLog : undefined,
-      workoutProgress: Object.keys(workoutProgress).length > 0 ? workoutProgress : undefined,
+      // Always send arrays/maps so native clients can replace local state (including clears).
+      activityLog,
+      workoutProgress,
       hydration: hydration.length > 0 ? hydration : undefined,
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,

@@ -4,19 +4,21 @@ public enum WorkoutAPI: APIEndpoint {
     case exerciseSearch(name: String)
     case exerciseGif(id: String)
     case recoveryAdjust(payload: RecoveryPayload)
+    case parseUrl(url: String)
 
     public var path: String {
         switch self {
         case .exerciseSearch: return "/api/exercises/search"
         case .exerciseGif: return "/api/exercises/gif"
         case .recoveryAdjust: return "/api/workouts/recovery-adjust"
+        case .parseUrl: return "/api/workouts/parse-url"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .exerciseSearch, .exerciseGif: return .GET
-        case .recoveryAdjust: return .POST
+        case .recoveryAdjust, .parseUrl: return .POST
         }
     }
 
@@ -35,10 +37,16 @@ public enum WorkoutAPI: APIEndpoint {
         switch self {
         case .recoveryAdjust(let payload):
             return AnyEncodable(payload)
+        case .parseUrl(let url):
+            return AnyEncodable(["url": url])
         default:
             return nil
         }
     }
+}
+
+public struct WorkoutImportResponse: Decodable {
+    public let workout: WorkoutDay
 }
 
 public struct RecoveryPayload: Encodable {

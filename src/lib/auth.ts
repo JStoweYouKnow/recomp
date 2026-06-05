@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
+import { dbGetUserIdByApiToken } from "@/lib/db";
 
 const COOKIE_NAME = "recomp_uid";
-const USER_ID_HEADER = "x-refactor-user-id";
 
 /**
  * When set (e.g. `.myapp.com`), the session cookie is sent on both `myapp.com`
@@ -15,13 +15,21 @@ export function getAuthCookieDomain(): string | undefined {
 
 /**
  * Get user ID from request. Supports:
- * - Cookie (web)
- * - X-Refactor-User-Id header (mobile / API clients)
+ * - Authorization: Bearer <token> (mobile / API clients — token validated against DB)
+ * - Session cookie (web)
+ *
+ * The previous X-Refactor-User-Id header is intentionally removed: it accepted
+ * an arbitrary user ID with no verification, allowing any caller to impersonate
+ * any account by setting that header.
  */
 export async function getUserId(headers?: Headers): Promise<string | null> {
   if (headers) {
-    const id = headers.get(USER_ID_HEADER)?.trim();
-    if (id) return id;
+    const auth = headers.get("authorization");
+    if (auth?.startsWith("Bearer ")) {
+      const token = auth.slice(7).trim();
+      const userId = await dbGetUserIdByApiToken(token);
+      if (userId) return userId;
+    }
   }
   const store = await cookies();
   return store.get(COOKIE_NAME)?.value ?? null;

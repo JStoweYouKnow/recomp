@@ -4,6 +4,8 @@ import RefactorKit
 struct ResearchView: View {
     @State private var researchService = ResearchService()
     @State private var query = ""
+    @State private var searchError: String?
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -11,6 +13,8 @@ struct ResearchView: View {
                 HStack {
                     TextField("Search nutrition & fitness research...", text: $query)
                         .textFieldStyle(.roundedBorder)
+                        .focused($isSearchFocused)
+                        .submitLabel(.search)
                         .onSubmit { search() }
 
                     Button {
@@ -25,6 +29,17 @@ struct ResearchView: View {
                 if researchService.isSearching {
                     ProgressView("Searching...")
                         .frame(maxHeight: .infinity)
+                } else if let error = searchError {
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(Color.appError)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(Color.appError)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
+                    .frame(maxHeight: .infinity)
                 } else if let result = researchService.result {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 16) {
@@ -62,12 +77,23 @@ struct ResearchView: View {
                 }
             }
             .navigationTitle("Research")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { isSearchFocused = false }
+                }
+            }
         }
     }
 
     private func search() {
+        searchError = nil
         Task {
-            try? await researchService.search(query: query)
+            do {
+                try await researchService.search(query: query)
+            } catch {
+                searchError = error.localizedDescription
+            }
         }
     }
 }

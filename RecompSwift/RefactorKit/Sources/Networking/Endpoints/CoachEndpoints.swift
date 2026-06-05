@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CoachAPI: APIEndpoint {
-    case chat(message: String, history: [CoachMessageDTO])
+    case chat(message: String, history: [CoachMessageDTO], context: RicoContextPayload? = nil)
     case checkIn(payload: CoachCheckInRequest)
     case confront(payload: CoachConfrontRequest)
 
@@ -17,8 +17,8 @@ public enum CoachAPI: APIEndpoint {
 
     public var body: (any Encodable)? {
         switch self {
-        case .chat(let message, let history):
-            return AnyEncodable(CoachChatPayload(message: message, history: history))
+        case .chat(let message, let history, let context):
+            return AnyEncodable(CoachChatPayload(message: message, history: history, context: context))
         case .checkIn(let payload):
             return AnyEncodable(payload)
         case .confront(let payload):
@@ -30,6 +30,7 @@ public enum CoachAPI: APIEndpoint {
 public struct CoachChatPayload: Encodable {
     let message: String
     let history: [CoachMessageDTO]
+    let context: RicoContextPayload?
 }
 
 public struct CoachMessageDTO: Codable, Sendable {
@@ -39,7 +40,252 @@ public struct CoachMessageDTO: Codable, Sendable {
 }
 
 public struct CoachChatResponse: Decodable {
-    let reply: String
+    public let reply: String
+    /// Tool actions Rico returned — each entry is decoded best-effort so one malformed action does not break meal logging / chat.
+    public let actions: [RicoAction]
+
+    enum CodingKeys: String, CodingKey {
+        case reply, actions
+    }
+
+    private struct LooseRicoElement: Decodable {
+        /// `nil` when the subtree does not match a known Rico action shape.
+        let value: RicoAction?
+        nonisolated init(from decoder: Decoder) throws {
+            value = try? RicoAction(from: decoder)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reply =
+            (try c.decodeIfPresent(String.self, forKey: .reply)?.trimmingCharacters(in: .whitespacesAndNewlines))
+                ?? ""
+
+        guard c.contains(.actions) else {
+            actions = []
+            return
+        }
+        var nested = try c.nestedUnkeyedContainer(forKey: .actions)
+        var out: [RicoAction] = []
+        while !nested.isAtEnd {
+            let wrap = try nested.decode(LooseRicoElement.self)
+            if let a = wrap.value { out.append(a) }
+        }
+        actions = out
+    }
+}
+
+// MARK: - Rico Context (sent with every chat request)
+
+public struct RicoContextPayload: Encodable, Sendable {
+    public let name: String?
+    public let goal: String?
+    public let streak: Int?
+    public let mealsLogged: Int?
+    public let workoutPlan: RicoWorkoutPlanPayload?
+    public let equipment: [String]?
+    public let injuries: [String]?
+    public let dietaryRestrictions: [String]?
+    public let recentMeals: [RicoMealSummary]?
+    public let todayMacros: RicoMacroSummary?
+    public let macroTargets: RicoMacroSummary?
+    public let bodyWeight: Double?
+
+    public init(
+        name: String? = nil,
+        goal: String? = nil,
+        streak: Int? = nil,
+        mealsLogged: Int? = nil,
+        workoutPlan: RicoWorkoutPlanPayload? = nil,
+        equipment: [String]? = nil,
+        injuries: [String]? = nil,
+        dietaryRestrictions: [String]? = nil,
+        recentMeals: [RicoMealSummary]? = nil,
+        todayMacros: RicoMacroSummary? = nil,
+        macroTargets: RicoMacroSummary? = nil,
+        bodyWeight: Double? = nil
+    ) {
+        self.name = name
+        self.goal = goal
+        self.streak = streak
+        self.mealsLogged = mealsLogged
+        self.workoutPlan = workoutPlan
+        self.equipment = equipment
+        self.injuries = injuries
+        self.dietaryRestrictions = dietaryRestrictions
+        self.recentMeals = recentMeals
+        self.todayMacros = todayMacros
+        self.macroTargets = macroTargets
+        self.bodyWeight = bodyWeight
+    }
+}
+
+public struct RicoMealSummary: Encodable, Sendable {
+    public let name: String
+    public let mealType: String
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    public init(name: String, mealType: String, calories: Double, protein: Double, carbs: Double, fat: Double) {
+        self.name = name
+        self.mealType = mealType
+        self.calories = calories
+        self.protein = protein
+        self.carbs = carbs
+        self.fat = fat
+    }
+}
+
+public struct RicoMacroSummary: Encodable, Sendable {
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    public init(calories: Double, protein: Double, carbs: Double, fat: Double) {
+        self.calories = calories
+        self.protein = protein
+        self.carbs = carbs
+        self.fat = fat
+    }
+}
+
+public struct RicoWorkoutPlanPayload: Encodable, Sendable {
+    public let weeklyPlan: [RicoWorkoutDayPayload]
+}
+
+public struct RicoWorkoutDayPayload: Encodable, Sendable {
+    public let day: String
+    public let focus: String
+    public let warmups: [RicoExercisePayload]?
+    public let exercises: [RicoExercisePayload]
+    public let finishers: [RicoExercisePayload]?
+}
+
+public struct RicoExercisePayload: Encodable, Sendable {
+    public let name: String
+    public let sets: String
+    public let reps: String
+    public let notes: String?
+}
+
+// MARK: - Rico Actions (received from the API, applied locally)
+
+public enum RicoAction: Decodable, Sendable {
+    case logMeal(LogMealPayload)
+    case updateMacros(UpdateMacrosPayload)
+    case swapExercise(SwapExercisePayload)
+    case addExercise(AddExercisePayload)
+    case updateWorkoutDay(UpdateWorkoutDayPayload)
+    case unknown(String)
+
+    enum CodingKeys: String, CodingKey {
+        case type, payload
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+        switch type {
+        case "log_meal":
+            self = .logMeal(try container.decode(LogMealPayload.self, forKey: .payload))
+        case "update_macros":
+            self = .updateMacros(try container.decode(UpdateMacrosPayload.self, forKey: .payload))
+        case "swap_exercise":
+            self = .swapExercise(try container.decode(SwapExercisePayload.self, forKey: .payload))
+        case "add_exercise":
+            self = .addExercise(try container.decode(AddExercisePayload.self, forKey: .payload))
+        case "update_workout_day":
+            self = .updateWorkoutDay(try container.decode(UpdateWorkoutDayPayload.self, forKey: .payload))
+        default:
+            self = .unknown(type)
+        }
+    }
+}
+
+public struct LogMealPayload: Decodable, Sendable {
+    public let name: String
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    enum CodingKeys: String, CodingKey {
+        case name, calories, protein, carbs, fat
+    }
+
+    /// Bedrock payloads can omit fields or use integers — keep meal logging resilient.
+    nonisolated public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawName = try c.decodeIfPresent(String.self, forKey: .name)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        name = rawName.flatMap { $0.isEmpty ? nil : $0 } ?? "Meal"
+        calories = Self.readDouble(c, key: .calories)
+        protein = Self.readDouble(c, key: .protein)
+        carbs = Self.readDouble(c, key: .carbs)
+        fat = Self.readDouble(c, key: .fat)
+    }
+
+    private nonisolated static func readDouble(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        key: CodingKeys
+    ) -> Double {
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return d }
+        if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return Double(i) }
+        return 0
+    }
+
+    public var asMacros: Macros {
+        Macros(calories: Int(calories.rounded()), protein: protein, carbs: carbs, fat: fat)
+    }
+}
+
+public struct UpdateMacrosPayload: Decodable, Sendable {
+    public let calories: Double
+    public let protein: Double
+    public let carbs: Double
+    public let fat: Double
+
+    public var asMacros: Macros {
+        Macros(calories: Int(calories.rounded()), protein: protein, carbs: carbs, fat: fat)
+    }
+}
+
+public struct SwapExercisePayload: Decodable, Sendable {
+    public let day: String
+    public let oldExerciseName: String
+    public let newExerciseName: String
+    public let newSets: String
+    public let newReps: String
+    public let newNotes: String?
+    public let section: String?
+}
+
+public struct AddExercisePayload: Decodable, Sendable {
+    public let day: String
+    public let exerciseName: String
+    public let sets: String
+    public let reps: String
+    public let notes: String?
+    public let section: String?
+}
+
+public struct UpdateWorkoutDayPayload: Decodable, Sendable {
+    public let day: String
+    public let focus: String
+    public let warmups: [ExerciseEntryPayload]?
+    public let exercises: [ExerciseEntryPayload]?
+    public let finishers: [ExerciseEntryPayload]?
+}
+
+public struct ExerciseEntryPayload: Decodable, Sendable {
+    public let name: String
+    public let sets: String
+    public let reps: String
+    public let notes: String?
 }
 
 public struct CoachCheckInRequest: Encodable, Sendable {

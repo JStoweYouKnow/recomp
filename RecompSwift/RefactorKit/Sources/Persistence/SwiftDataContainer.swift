@@ -57,7 +57,11 @@ public enum RefactorSchema {
                 allowsSave: true
             )
         }
-        return try ModelContainer(for: schema, configurations: [config])
+        return try ModelContainer(
+            for: schema,
+            migrationPlan: RefactorMigrationPlan.self,
+            configurations: [config]
+        )
     }
 
     /// Creates the SwiftData stack on the main actor (iOS / watch app entry points).
@@ -67,5 +71,23 @@ public enum RefactorSchema {
         appGroupIdentifier: String? = nil
     ) throws -> ModelContainer {
         try makeContainerNonisolated(inMemory: inMemory, appGroupIdentifier: appGroupIdentifier)
+    }
+
+    /// Deletes the on-disk store files so a corrupt or unmigrateable store can be
+    /// replaced with a fresh empty database on the next `makeContainer` call.
+    /// Safe to call on a sync-first app — all data re-syncs from the server.
+    public static func deleteStore(appGroupIdentifier: String? = nil) {
+        let dir: URL
+        if let groupId = appGroupIdentifier,
+           let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupId) {
+            dir = containerURL.appendingPathComponent("Library/Application Support")
+        } else if let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            dir = appSupport
+        } else {
+            return
+        }
+        for ext in [".store", ".store-shm", ".store-wal"] {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent("Refactor-v2\(ext)"))
+        }
     }
 }

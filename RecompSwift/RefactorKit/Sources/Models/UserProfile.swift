@@ -23,6 +23,7 @@ public final class UserProfile: @unchecked Sendable {
     public var workoutTimeframe: WorkoutTimeframe?
     public var createdAt: Date
     public var lastSyncedAt: Date?
+    public var proAccess: Bool
 
     public init(
         id: String = UUID().uuidString,
@@ -44,7 +45,8 @@ public final class UserProfile: @unchecked Sendable {
         workoutDaysPerWeek: Int = 4,
         workoutTimeframe: WorkoutTimeframe? = nil,
         createdAt: Date = .now,
-        lastSyncedAt: Date? = nil
+        lastSyncedAt: Date? = nil,
+        proAccess: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -66,6 +68,7 @@ public final class UserProfile: @unchecked Sendable {
         self.workoutTimeframe = workoutTimeframe
         self.createdAt = createdAt
         self.lastSyncedAt = lastSyncedAt
+        self.proAccess = proAccess
     }
 }
 

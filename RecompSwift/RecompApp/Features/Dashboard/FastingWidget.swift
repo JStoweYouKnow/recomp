@@ -4,11 +4,13 @@ import RefactorKit
 
 struct FastingWidget: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @Query(filter: #Predicate<FastingSession> { $0.endTime == nil },
            sort: \FastingSession.startTime, order: .reverse)
     private var activeSessions: [FastingSession]
 
     private var activeSession: FastingSession? { activeSessions.first }
+    @State private var saveError: String?
 
     var body: some View {
         GroupBox {
@@ -37,11 +39,15 @@ struct FastingWidget: View {
                                 .font(.caption2)
                                 .foregroundStyle(Color.appSlate)
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Fasting progress")
+                        .accessibilityValue("\(String(format: "%.1f", session.elapsedHours)) hours, \(session.currentPhase.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)")
                     }
 
                     Button("End Fast") {
                         session.endTime = .now
-                        try? context.save()
+                        do { try context.save() } catch { saveError = error.localizedDescription }
+                        Task { await syncEngine?.markDirty() }
                     }
                     .font(.caption2.weight(.medium))
                     .buttonStyle(.bordered)
@@ -51,10 +57,13 @@ struct FastingWidget: View {
                         .font(.title3)
                         .foregroundStyle(Color.appSlate)
                         .padding(.bottom, 4)
+                        .accessibilityHidden(true)
 
                     Button("Start Fast") {
                         let session = FastingSession()
                         context.insert(session)
+                        do { try context.save() } catch { saveError = error.localizedDescription }
+                        Task { await syncEngine?.markDirty() }
                     }
                     .font(.caption2.weight(.medium))
                     .buttonStyle(.borderedProminent)
@@ -64,6 +73,14 @@ struct FastingWidget: View {
         } label: {
             Label("Fasting", systemImage: "timer")
                 .font(.caption.weight(.medium))
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
         }
     }
 }

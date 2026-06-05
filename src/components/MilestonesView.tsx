@@ -46,6 +46,7 @@ export function MilestonesView({
   progress,
   wearableData = [],
   onDataFetched,
+  onManualWearableEntryRemoved,
   meals = [],
   streak = 0,
   macroTargets,
@@ -55,6 +56,8 @@ export function MilestonesView({
   progress: Record<string, number>;
   wearableData?: WearableDaySummary[];
   onDataFetched?: (data: WearableDaySummary[]) => void;
+  /** Removes a weigh-in saved via Body measurements manual entry (identified by manualEntryId). */
+  onManualWearableEntryRemoved?: (manualEntryId: string) => void;
   meals?: MealEntry[];
   streak?: number;
   macroTargets?: Macros;
@@ -252,6 +255,12 @@ export function MilestonesView({
       .sort((a, b) => b.date.localeCompare(a.date))
       .slice(0, 50);
   }, [wearableData]);
+
+  const historyDisplayRows = useMemo(() => measurementHistory.slice(0, 10), [measurementHistory]);
+  const showManualRemoveColumn = Boolean(
+    onManualWearableEntryRemoved &&
+      historyDisplayRows.some((d) => typeof d.manualEntryId === "string" && d.manualEntryId.length > 0)
+  );
 
   const addManualWeight = async () => {
     const enteredWeight = parseFloat(scaleWeight);
@@ -989,11 +998,23 @@ export function MilestonesView({
                   {hasExtras && <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">BMR</th>}
                   {hasExtras && <th className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)]">Met. age</th>}
                   <th className="text-left py-1.5 px-1.5 font-medium text-[var(--muted)]">Source</th>
+                  {showManualRemoveColumn && (
+                    <th
+                      className="text-right py-1.5 px-1.5 font-medium text-[var(--muted)] text-[10px] uppercase tracking-wide"
+                      title="Remove mistaken weigh-ins logged with Add weigh-in above"
+                      scope="col"
+                    >
+                      Del.
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {measurementHistory.slice(0, 10).map((d) => (
-                  <tr key={`${d.date}-${d.provider}`} className="border-b border-[var(--border-soft)]/50">
+                {historyDisplayRows.map((d) => (
+                  <tr
+                    key={d.manualEntryId ?? `${d.date}-${d.provider}`}
+                    className="border-b border-[var(--border-soft)]/50"
+                  >
                     <td className="py-1.5 px-1.5">{d.date}</td>
                     <td className="text-right py-1.5 px-1.5 tabular-nums">{d.weight != null ? `${toDisplayMass(d.weight)} ${massUnitLabel}` : "—"}</td>
                     <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bodyFatPercent != null ? `${d.bodyFatPercent}%` : "—"}</td>
@@ -1002,6 +1023,26 @@ export function MilestonesView({
                     {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.bmr != null ? Math.round(d.bmr) : "—"}</td>}
                     {hasExtras && <td className="text-right py-1.5 px-1.5 tabular-nums">{d.metabolicAge != null ? d.metabolicAge : "—"}</td>}
                     <td className="py-1.5 px-1.5 text-[var(--muted)] capitalize">{d.provider}</td>
+                    {showManualRemoveColumn && (
+                      <td className="py-1.5 px-1.5 text-right">
+                        {d.manualEntryId && onManualWearableEntryRemoved ? (
+                          <button
+                            type="button"
+                            className="text-label text-[var(--muted)] hover:text-[var(--accent-terracotta)] hover:underline"
+                            onClick={() => {
+                              onManualWearableEntryRemoved(d.manualEntryId!);
+                              showToast("Weigh-in removed", "info");
+                            }}
+                          >
+                            Remove
+                          </button>
+                        ) : (
+                          <span aria-hidden className="text-[var(--border-soft)] select-none">
+                            —
+                          </span>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

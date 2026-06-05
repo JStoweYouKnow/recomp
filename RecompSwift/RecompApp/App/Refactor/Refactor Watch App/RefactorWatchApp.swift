@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 import RefactorKit
+import WatchConnectivity
+import OSLog
 
 @main
 struct RefactorWatchApp: App {
@@ -8,12 +10,14 @@ struct RefactorWatchApp: App {
     private let syncEngine: SyncEngine
 
     init() {
+        WatchSessionManager.shared.activate()
         do {
             modelContainer = try RefactorSchema.makeContainer(
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
             )
         } catch {
-            print("SwiftData on-disk store failed (watch): \(error). Using in-memory container.")
+            Logger(subsystem: "com.refactor.ios", category: "SwiftData")
+                .error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Using a temporary in-memory store.")
             do {
                 modelContainer = try RefactorSchema.makeContainer(inMemory: true)
             } catch {
@@ -33,6 +37,9 @@ struct RefactorWatchApp: App {
 }
 
 struct WatchTabView: View {
+    @Environment(\.syncEngine) private var syncEngine
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         TabView {
             WatchDashboardView()
@@ -44,5 +51,27 @@ struct WatchTabView: View {
             WatchCoachView()
         }
         .tabViewStyle(.verticalPage)
+        .task { await refreshFromServerIfSignedIn() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshFromServerIfSignedIn() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompScheduleDataSync)) { _ in
+            guard let engine = syncEngine else { return }
+            Task { await engine.scheduleFetchAndApply() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchDidReceiveUserId)) { _ in
+            Task { await refreshFromServerIfSignedIn() }
+        }
+    }
+
+    /// Keeps SwiftData + shared defaults aligned with the phone after edits on either device.
+    private func refreshFromServerIfSignedIn() async {
+        guard let engine = syncEngine else { return }
+        // Prefer keychain; fall back to the userId pushed from iPhone via WCSession.
+        let uid = (try? KeychainService.loadUserId())
+            ?? RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.userId)
+        guard let uid, !uid.isEmpty else { return }
+        try? await engine.fetchAndApply()
     }
 }

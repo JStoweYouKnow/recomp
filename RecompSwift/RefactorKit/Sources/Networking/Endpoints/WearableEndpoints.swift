@@ -43,23 +43,61 @@ public enum WearableAPI: APIEndpoint {
     }
 }
 
-public struct HealthSyncPayload: Encodable {
-    let steps: Int?
-    let activeCalories: Double?
-    let weight: Double?
-    let bodyFat: Double?
-    let sleepMinutes: Int?
-    let heartRateAvg: Int?
-    let heartRateResting: Int?
-    let date: String
+public struct HealthSyncPayload: Encodable, Sendable {
+    public let steps: Int?
+    public let activeCalories: Double?
+    public let weight: Double?
+    public let bodyFat: Double?
+    public let sleepMinutes: Int?
+    public let heartRateAvg: Int?
+    public let heartRateResting: Int?
+    public let date: String
+
+    public init(
+        steps: Int?,
+        activeCalories: Double?,
+        weight: Double?,
+        bodyFat: Double?,
+        sleepMinutes: Int?,
+        heartRateAvg: Int?,
+        heartRateResting: Int?,
+        date: String
+    ) {
+        self.steps = steps
+        self.activeCalories = activeCalories
+        self.weight = weight
+        self.bodyFat = bodyFat
+        self.sleepMinutes = sleepMinutes
+        self.heartRateAvg = heartRateAvg
+        self.heartRateResting = heartRateResting
+        self.date = date
+    }
 }
 
-public struct ScaleEntryPayload: Encodable {
-    let date: String
-    let weight: Double?
-    let bodyFatPercent: Double?
-    let muscleMass: Double?
-    let bmi: Double?
-    let bmr: Double?
-    let metabolicAge: Int?
+public struct ScaleEntryPayload: Encodable, Sendable {
+    public let date: String
+    public let weightLbs: Double?
+    public let bodyFatPercent: Double?
+    public let muscleMass: Double?
+    public let bmi: Double?
+    public let bmr: Double?
+    public let metabolicAge: Int?
+
+    public init(
+        date: String,
+        weightLbs: Double? = nil,
+        bodyFatPercent: Double? = nil,
+        muscleMass: Double? = nil,
+        bmi: Double? = nil,
+        bmr: Double? = nil,
+        metabolicAge: Int? = nil
+    ) {
+        self.date = date
+        self.weightLbs = weightLbs
+        self.bodyFatPercent = bodyFatPercent
+        self.muscleMass = muscleMass
+        self.bmi = bmi
+        self.bmr = bmr
+        self.metabolicAge = metabolicAge
+    }
 }

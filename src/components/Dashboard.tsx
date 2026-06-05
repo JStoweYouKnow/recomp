@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer, getChallenges } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { planDietDayIndexForDate, planWorkoutDayIndexForDate } from "@/lib/workout-program-schedule";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 
@@ -157,8 +158,6 @@ export function Dashboard({
 
   /* ── Dashboard calendar state ── */
   const [dashCalendarDate, setDashCalendarDate] = useState(today);
-  const WEEKDAY_NAMES_DASH = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const SHORT_WEEKDAY_DASH = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const dashMealDates = useMemo(() => new Set(meals.map((m) => m.date)), [meals]);
   const dashDotDates = useMemo(() => {
@@ -174,33 +173,15 @@ export function Dashboard({
     return map;
   }, [meals]);
 
-  const matchDietDay = useCallback((date: string): number | null => {
-    if (!plan) return null;
-    const d = new Date(date + "T12:00:00");
-    const dow = d.getDay();
-    const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
-    const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
-    for (let i = 0; i < plan.dietPlan.weeklyPlan.length; i++) {
-      const planDay = plan.dietPlan.weeklyPlan[i].day.toLowerCase().trim();
-      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
-    }
-    const mondayBased = dow === 0 ? 6 : dow - 1;
-    return mondayBased < plan.dietPlan.weeklyPlan.length ? mondayBased : null;
-  }, [plan]);
+  const matchDietDay = useCallback(
+    (date: string): number | null => (plan ? planDietDayIndexForDate(plan, date) : null),
+    [plan]
+  );
 
-  const matchWorkoutDay = useCallback((date: string): number | null => {
-    if (!plan) return null;
-    const d = new Date(date + "T12:00:00");
-    const dow = d.getDay();
-    const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
-    const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
-    for (let i = 0; i < plan.workoutPlan.weeklyPlan.length; i++) {
-      const planDay = plan.workoutPlan.weeklyPlan[i].day.toLowerCase().trim();
-      if (planDay === dayName || planDay === shortName || planDay.startsWith(dayName) || planDay.startsWith(shortName)) return i;
-    }
-    const mondayBased = dow === 0 ? 6 : dow - 1;
-    return mondayBased < plan.workoutPlan.weeklyPlan.length ? mondayBased : null;
-  }, [plan]);
+  const matchWorkoutDay = useCallback(
+    (date: string): number | null => (plan ? planWorkoutDayIndexForDate(plan, date) : null),
+    [plan]
+  );
 
   // Progress for the viewing week only — so Diet/Workout cards refresh when changing weeks
   const dashViewingWeekStart = getWeekStart(dashCalendarDate);

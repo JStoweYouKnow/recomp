@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
-import { dbDeleteGroupMessage, dbUpdateGroupMessagePin, dbGetUserGroups } from "@/lib/db";
+import { dbDeleteGroupMessage, dbUpdateGroupMessagePin, dbGetUserGroups, dbGetGroupMessage } from "@/lib/db";
 import { z } from "zod";
 
 type Params = { params: Promise<{ groupId: string; messageId: string }> };
@@ -20,8 +20,15 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!timestamp) return NextResponse.json({ error: "Missing timestamp (ts) query param" }, { status: 400 });
 
   const userGroups = await dbGetUserGroups(userId);
-  if (!userGroups.some((g) => g.groupId === groupId)) {
+  const userGroup = userGroups.find((g) => g.groupId === groupId);
+  if (!userGroup) {
     return NextResponse.json({ error: "Not a member" }, { status: 403 });
+  }
+
+  const message = await dbGetGroupMessage(groupId, messageId, timestamp);
+  if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  if (message.authorId !== userId && userGroup.role !== "owner") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json();
@@ -46,10 +53,16 @@ export async function DELETE(req: NextRequest, { params }: Params) {
   const timestamp = req.nextUrl.searchParams.get("ts");
   if (!timestamp) return NextResponse.json({ error: "Missing timestamp" }, { status: 400 });
 
-  // Verify membership
   const userGroups = await dbGetUserGroups(userId);
-  if (!userGroups.some((g) => g.groupId === groupId)) {
+  const userGroup = userGroups.find((g) => g.groupId === groupId);
+  if (!userGroup) {
     return NextResponse.json({ error: "Not a member" }, { status: 403 });
+  }
+
+  const message = await dbGetGroupMessage(groupId, messageId, timestamp);
+  if (!message) return NextResponse.json({ error: "Message not found" }, { status: 404 });
+  if (message.authorId !== userId && userGroup.role !== "owner") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   await dbDeleteGroupMessage(groupId, messageId, timestamp);

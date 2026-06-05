@@ -1,0 +1,536 @@
+package com.refactor.app.ui.meals
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.refactor.app.api.MealPrepRepository
+import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.dto.MealEntryDto
+import com.refactor.app.api.dto.MealMacrosDto
+import com.refactor.app.api.dto.MealPrepGenerateResponseDto
+import com.refactor.app.api.dto.PantryItemDto
+import com.refactor.app.db.SyncCacheDao
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
+
+private val isoDate: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+private val mealTypeOptions = listOf("breakfast", "lunch", "dinner", "snack")
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MealsScreen(
+    syncRepository: SyncRepository,
+    syncCacheDao: SyncCacheDao,
+    mealPrepRepository: MealPrepRepository,
+) {
+    val vm: MealsViewModel = viewModel(factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository))
+    val allMeals by vm.allMeals.collectAsStateWithLifecycle()
+    val allPantry by vm.allPantry.collectAsStateWithLifecycle()
+    val mealPrep by vm.mealPrepResult.collectAsStateWithLifecycle()
+    val mealPrepErr by vm.mealPrepError.collectAsStateWithLifecycle()
+    var sectionTab by remember { mutableIntStateOf(0) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val dateStr = remember(selectedDate) { selectedDate.format(isoDate) }
+    val mealsForDay = remember(allMeals, dateStr) { allMeals.filter { it.date == dateStr } }
+
+    var editorTarget by remember { mutableStateOf<MealEntryDto?>(null) }
+    var showAdd by remember { mutableStateOf(false) }
+    var deleteTarget by remember { mutableStateOf<MealEntryDto?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    fun persistAll(updated: List<MealEntryDto>) {
+        busy = true
+        error = null
+        scope.launch {
+            vm.persistMealsAndPush(updated).fold(
+                onSuccess = {
+                    busy = false
+                    showAdd = false
+                    editorTarget = null
+                    deleteTarget = null
+                },
+                onFailure = { e ->
+                    busy = false
+                    error = e.message ?: "Sync failed"
+                },
+            )
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(title = { Text("Meals", style = MaterialTheme.typography.titleLarge) })
+        },
+        floatingActionButton = {
+            if (sectionTab == 0) {
+                FloatingActionButton(
+                    onClick = { showAdd = true },
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add meal")
+                }
+            }
+        },
+    ) { padding ->
+        Column(
+            Modifier
+                .padding(padding)
+                .fillMaxWidth(),
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                IconButton(
+                    onClick = { selectedDate = selectedDate.minusDays(1) },
+                    enabled = !busy,
+                ) {
+                    Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous day")
+                }
+                Text(
+                    dateStr,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+                IconButton(
+                    onClick = { selectedDate = selectedDate.plusDays(1) },
+                    enabled = !busy,
+                ) {
+                    Icon(Icons.Filled.ChevronRight, contentDescription = "Next day")
+                }
+            }
+
+            error?.let {
+                Text(
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
+            if (busy) {
+                Row(
+                    Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.width(20.dp))
+                    Text("Saving…", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            ScrollableTabRow(selectedTabIndex = sectionTab, edgePadding = 8.dp) {
+                Tab(selected = sectionTab == 0, onClick = { sectionTab = 0 }, text = { Text("Meals") })
+                Tab(selected = sectionTab == 1, onClick = { sectionTab = 1 }, text = { Text("Pantry") })
+                Tab(selected = sectionTab == 2, onClick = { sectionTab = 2 }, text = { Text("Meal prep") })
+            }
+
+            when (sectionTab) {
+                0 -> {
+                    if (mealsForDay.isEmpty() && !busy) {
+                        Text(
+                            "No meals for this day. Tap + to log one (same flow as iOS).",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(20.dp),
+                        )
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(mealsForDay, key = { "${it.date}#${it.id}" }) { meal ->
+                                Card(
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                                ) {
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                meal.mealType.replaceFirstChar { it.uppercaseChar() },
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                            Text(meal.name, style = MaterialTheme.typography.titleMedium)
+                                            val m = meal.macros
+                                            Text(
+                                                "${m.calories.roundToInt()} kcal · P ${m.protein.roundToInt()} · C ${m.carbs.roundToInt()} · F ${m.fat.roundToInt()}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { editorTarget = meal },
+                                            enabled = !busy,
+                                        ) {
+                                            Icon(Icons.Filled.Edit, contentDescription = "Edit meal")
+                                        }
+                                        IconButton(
+                                            onClick = { deleteTarget = meal },
+                                            enabled = !busy,
+                                        ) {
+                                            Icon(Icons.Filled.Delete, contentDescription = "Delete meal")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                1 -> PantryTab(
+                    items = allPantry,
+                    busy = busy,
+                    onPersist = { next ->
+                        busy = true
+                        error = null
+                        scope.launch {
+                            vm.persistPantryAndPush(next).fold(
+                                onSuccess = { busy = false },
+                                onFailure = { e ->
+                                    busy = false
+                                    error = e.message ?: "Sync failed"
+                                },
+                            )
+                        }
+                    },
+                )
+                2 -> MealPrepTab(
+                    mealPrep = mealPrep,
+                    mealPrepErr = mealPrepErr,
+                    onGenerate = { prefs -> vm.generateMealPrep(prefs) },
+                    onClearErr = { vm.clearMealPrepError() },
+                )
+            }
+        }
+    }
+
+    if (showAdd) {
+        MealEditorDialog(
+            title = "Add meal",
+            initial = null,
+            defaultDate = dateStr,
+            onDismiss = { showAdd = false },
+            onSave = { draft ->
+                val next = allMeals + draft
+                persistAll(next)
+            },
+        )
+    }
+
+    editorTarget?.let { meal ->
+        MealEditorDialog(
+            title = "Edit meal",
+            initial = meal,
+            defaultDate = dateStr,
+            onDismiss = { editorTarget = null },
+            onSave = { draft ->
+                val next = allMeals.map { if (it.id == meal.id) draft else it }
+                persistAll(next)
+            },
+        )
+    }
+
+    deleteTarget?.let { meal ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete meal?") },
+            text = { Text(meal.name) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val next = allMeals.filterNot { it.id == meal.id }
+                        deleteTarget = null
+                        persistAll(next)
+                    },
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun MealEditorDialog(
+    title: String,
+    initial: MealEntryDto?,
+    defaultDate: String,
+    onDismiss: () -> Unit,
+    onSave: (MealEntryDto) -> Unit,
+) {
+    var dateField by remember(initial, defaultDate) { mutableStateOf(initial?.date ?: defaultDate) }
+    var mealType by remember(initial) { mutableStateOf(initial?.mealType ?: "lunch") }
+    var name by remember(initial) { mutableStateOf(initial?.name ?: "") }
+    var calories by remember(initial) { mutableStateOf(initial?.macros?.calories?.roundToInt() ?: 0) }
+    var protein by remember(initial) { mutableStateOf(initial?.macros?.protein ?: 0.0) }
+    var carbs by remember(initial) { mutableStateOf(initial?.macros?.carbs ?: 0.0) }
+    var fat by remember(initial) { mutableStateOf(initial?.macros?.fat ?: 0.0) }
+    var notes by remember(initial) { mutableStateOf(initial?.notes ?: "") }
+
+    val fallbackId = remember { java.util.UUID.randomUUID().toString() }
+    val id = initial?.id ?: fallbackId
+    val loggedAt = initial?.loggedAt ?: java.time.Instant.now().toString()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = dateField,
+                    onValueChange = { dateField = it },
+                    label = { Text("Date (yyyy-MM-dd)") },
+                    singleLine = true,
+                )
+                Text("Meal type", style = MaterialTheme.typography.labelLarge)
+                mealTypeOptions.forEach { opt ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { mealType = opt },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = mealType == opt,
+                            onClick = { mealType = opt },
+                        )
+                        Text(opt.replaceFirstChar { it.uppercaseChar() })
+                    }
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = false,
+                )
+                OutlinedTextField(
+                    value = calories.toString(),
+                    onValueChange = { calories = it.toIntOrNull() ?: 0 },
+                    label = { Text("Calories") },
+                    singleLine = true,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = protein.toString(),
+                        onValueChange = { protein = it.toDoubleOrNull() ?: 0.0 },
+                        label = { Text("P") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = carbs.toString(),
+                        onValueChange = { carbs = it.toDoubleOrNull() ?: 0.0 },
+                        label = { Text("C") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = fat.toString(),
+                        onValueChange = { fat = it.toDoubleOrNull() ?: 0.0 },
+                        label = { Text("F") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                }
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Notes") },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val d = dateField.trim().ifBlank { defaultDate }
+                    val dto = MealEntryDto(
+                        id = id,
+                        date = d,
+                        mealType = mealType.lowercase(),
+                        name = name.trim(),
+                        macros = MealMacrosDto(
+                            calories = calories.toDouble(),
+                            protein = protein,
+                            carbs = carbs,
+                            fat = fat,
+                        ),
+                        notes = notes.trim().ifBlank { null },
+                        imageUrl = initial?.imageUrl,
+                        loggedAt = loggedAt,
+                    )
+                    onSave(dto)
+                },
+                enabled = name.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+private val pantryCategories = listOf("protein", "carb", "fat", "produce", "dairy", "spice", "other")
+
+@Composable
+private fun PantryTab(
+    items: List<PantryItemDto>,
+    busy: Boolean,
+    onPersist: (List<PantryItemDto>) -> Unit,
+) {
+    var showAdd by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Button(onClick = { showAdd = true }, enabled = !busy) { Text("Add pantry item") }
+        pantryCategories.forEach { cat ->
+            val inCat = items.filter { it.category == cat }
+            if (inCat.isEmpty()) return@forEach
+            Text(cat.replaceFirstChar { it.uppercaseChar() }, style = MaterialTheme.typography.titleSmall)
+            inCat.forEach { item ->
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(item.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = { onPersist(items.filterNot { it.id == item.id }) },
+                        enabled = !busy,
+                    ) { Text("Remove") }
+                }
+            }
+        }
+        if (items.isEmpty()) {
+            Text(
+                "Pantry is empty. Add items for meal prep suggestions (matches iOS).",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (showAdd) {
+        var newName by remember { mutableStateOf("") }
+        var newCat by remember { mutableStateOf("protein") }
+        AlertDialog(
+            onDismissRequest = { showAdd = false },
+            title = { Text("Add item") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Name") })
+                    OutlinedTextField(value = newCat, onValueChange = { newCat = it }, label = { Text("Category") })
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val n = newName.trim()
+                        if (n.isNotEmpty()) {
+                            val cat = newCat.trim().lowercase().ifBlank { "other" }
+                            val id = java.util.UUID.randomUUID().toString()
+                            val at = java.time.Instant.now().toString()
+                            onPersist(items + PantryItemDto(id, n, cat, at, null))
+                            showAdd = false
+                        }
+                    },
+                ) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { showAdd = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+private fun MealPrepTab(
+    mealPrep: MealPrepGenerateResponseDto?,
+    mealPrepErr: String?,
+    onGenerate: (String?) -> Unit,
+    onClearErr: () -> Unit,
+) {
+    var prefs by remember { mutableStateOf("") }
+    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            "Generate a batch-cook plan from your macro targets and pantry (POST /api/meal-prep/generate).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = prefs,
+            onValueChange = { prefs = it },
+            label = { Text("Preferences (optional)") },
+        )
+        Button(onClick = { onGenerate(prefs.trim().ifBlank { null }) }) { Text("Generate plan") }
+        mealPrepErr?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onClearErr) { Text("Dismiss") }
+        }
+        mealPrep?.let { plan ->
+            Text("~${plan.estimatedPrepTime} min prep", style = MaterialTheme.typography.labelLarge)
+            plan.batchInstructions.forEach { line ->
+                Text("· $line", style = MaterialTheme.typography.bodySmall)
+            }
+            Text("Recipes (${plan.recipes.size})", style = MaterialTheme.typography.titleSmall)
+            plan.recipes.forEach { r ->
+                Text(
+                    "${r.name} · ${r.servings} servings · ${r.prepTime + r.cookTime} min",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}
+

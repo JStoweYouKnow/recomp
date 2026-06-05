@@ -25,6 +25,9 @@ struct DailyQuestsCard: View {
                     .onTapGesture {
                         withAnimation { quests[i] = (quests[i].0, !quests[i].1) }
                     }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityValue(quests[i].1 ? "Completed" : "Not completed")
                 }
             }
         } label: {

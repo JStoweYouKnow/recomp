@@ -57,11 +57,11 @@ function TDEEExplainer() {
             </div>
             <div className="flex items-center gap-2">
               <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent-warm)]" />
-              <span><strong className="text-[var(--foreground)]">14 days:</strong> Estimate stabilizes</span>
+              <span><strong className="text-[var(--foreground)]">14–30 days:</strong> Estimate stabilizes — log consistently for best results</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)]" />
-              <span><strong className="text-[var(--foreground)]">30+ days:</strong> High confidence — macro targets auto-adjust</span>
+              <span><strong className="text-[var(--foreground)]">30+ days:</strong> Confidence keeps growing — weigh-ins improve accuracy further</span>
             </div>
           </div>
 
@@ -133,10 +133,15 @@ export function MetabolicModelCard() {
         showToast("Log meals and weight for 7+ days to update your model", "info");
         return;
       }
+      const existingModel = getMetabolicModel();
       const res = await fetch("/api/metabolic/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataPoints, currentTDEE: targets.calories }),
+        body: JSON.stringify({
+          dataPoints,
+          currentTDEE: targets.calories,
+          history: existingModel?.history ?? [],
+        }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);

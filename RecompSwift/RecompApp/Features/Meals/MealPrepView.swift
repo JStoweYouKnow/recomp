@@ -16,6 +16,9 @@ struct MealPrepView: View {
     @State private var errorText: String?
     @State private var showError = false
     @State private var prefsNote = ""
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
+    @State private var pendingReplace = false
 
     var body: some View {
         Group {
@@ -27,7 +30,12 @@ struct MealPrepView: View {
                     }
                     Section {
                         Button {
-                            Task { await generatePlan(replaceExisting: true) }
+                            if aiConsentGiven {
+                                Task { await generatePlan(replaceExisting: true) }
+                            } else {
+                                pendingReplace = true
+                                showAIConsent = true
+                            }
                         } label: {
                             if isGenerating {
                                 ProgressView()
@@ -88,7 +96,12 @@ struct MealPrepView: View {
                         subtitle: "Generate a weekly meal prep plan with grocery list",
                         actionTitle: "Generate Plan"
                     ) {
-                        Task { await generatePlan(replaceExisting: false) }
+                        if aiConsentGiven {
+                            Task { await generatePlan(replaceExisting: false) }
+                        } else {
+                            pendingReplace = false
+                            showAIConsent = true
+                        }
                     }
                 }
             }
@@ -107,6 +120,16 @@ struct MealPrepView: View {
             Button("OK") { errorText = nil }
         } message: {
             Text(errorText ?? "")
+        }
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentView(
+                onAccept: {
+                    aiConsentGiven = true
+                    showAIConsent = false
+                    Task { await generatePlan(replaceExisting: pendingReplace) }
+                },
+                onDecline: { showAIConsent = false }
+            )
         }
     }
 

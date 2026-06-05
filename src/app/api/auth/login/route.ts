@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbVerifyAccount, dbGetProfile } from "@/lib/db";
+import { dbVerifyAccount, dbGetProfile, dbCreateApiToken } from "@/lib/db";
 import { buildSetCookieHeader } from "@/lib/auth";
 import { logInfo, logError } from "@/lib/logger";
+import { hasProAccess } from "@/lib/proAccess";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
@@ -42,12 +43,22 @@ export async function POST(req: NextRequest) {
         logInfo("USER_LOGGED_IN", { route: "auth/login", userId: account.userId });
 
         const profile = await dbGetProfile(account.userId);
+        if (profile && hasProAccess(account.userId)) profile.proAccess = true;
         const cookieHeader = buildSetCookieHeader(account.userId);
+
+        let apiToken: string | undefined;
+        try {
+          apiToken = await dbCreateApiToken(account.userId);
+        } catch {
+          // Non-fatal — client can still authenticate via session cookie
+        }
+
         const response = NextResponse.json({
           success: true,
           authenticated: true,
           userId: account.userId,
           profile,
+          apiToken,
         });
         response.headers.set("Set-Cookie", cookieHeader);
 

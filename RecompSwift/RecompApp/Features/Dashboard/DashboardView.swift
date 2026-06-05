@@ -8,6 +8,7 @@ struct DashboardView: View {
     @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
     @State private var planService = PlanService()
+    @State private var syncError: String?
 
     var body: some View {
         NavigationStack {
@@ -28,8 +29,22 @@ struct DashboardView: View {
             .refreshable {
                 await auth.checkSession()
                 if let engine = syncEngine {
-                    try? await engine.fetchAndApply()
+                    do {
+                        try await engine.fetchAndApply()
+                    } catch {
+                        if !SyncPullErrorFiltering.shouldSuppressUserAlert(for: error) {
+                            syncError = error.localizedDescription
+                        }
+                    }
                 }
+            }
+            .alert("Sync Failed", isPresented: Binding(
+                get: { syncError != nil },
+                set: { if !$0 { syncError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(syncError ?? "")
             }
         }
     }
@@ -52,41 +67,70 @@ struct DashboardView: View {
     private var calorieBudgetSection: some View {
         VStack(spacing: 12) {
             let consumed = mealService.todaysMacros(context: context)
-            let plan = planService.currentPlan(context: context)
-            let target = plan?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
+            let targets = planService.todaysTargets(context: context)
+            let activityAdj = mealService.todaysActivityCalorieAdjustment(context: context)
+            let adjustedCalorieTarget = targets.calories + activityAdj
 
-            CalorieBudgetCard(consumed: consumed.calories, target: target.calories)
-            MacroPillsView(consumed: consumed, target: target)
+            CalorieBudgetCard(
+                consumed: consumed.calories,
+                target: adjustedCalorieTarget,
+                baseCalories: targets.calories,
+                activityAdjustment: activityAdj
+            )
+            MacroPillsView(consumed: consumed, target: targets)
         }
         .padding(.horizontal)
     }
 
     private var todaysPlanSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             if let workout = planService.todaysWorkout(context: context) {
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label(workout.day, systemImage: "dumbbell")
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(LinearGradient.appAccentGradient)
+                            .frame(width: 48, height: 48)
+                        Image(systemName: "dumbbell.fill")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("TODAY'S WORKOUT")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color.appAccent)
+                            .tracking(1)
+                        Text(workout.day)
                             .font(.headline)
                         Text(workout.focus)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("\(workout.exerciseSlotCount) exercises")
-                            .font(.caption)
-                            .foregroundStyle(Color.appAccent)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } label: {
-                    Text("Today's Workout")
-                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(workout.exerciseSlotCount)")
+                            .font(.system(.title2, design: .rounded, weight: .black))
+                            .foregroundStyle(Color.appAccent)
+                        Text("exercises")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+                .padding(14)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18)
+                        .stroke(Color.appAccent.opacity(0.2), lineWidth: 1)
+                )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Today's workout: \(workout.day), \(workout.focus), \(workout.exerciseSlotCount) exercises")
             }
         }
         .padding(.horizontal)
     }
 
     private var widgetGrid: some View {
-        LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 12) {
+        LazyVGrid(columns: [.init(.flexible(), alignment: .top), .init(.flexible(), alignment: .top)], spacing: 12) {
             HydrationWidget()
             FastingWidget()
             BiofeedbackCard()
@@ -108,35 +152,77 @@ struct DashboardView: View {
 
 struct CalorieBudgetCard: View {
     let consumed: Int
+    /// Calorie budget after activity adjustments (same as web `adjustedBudget`).
     let target: Int
+    /// Plan base calories before activity delta; used for the footnote when `activityAdjustment != 0`.
+    var baseCalories: Int? = nil
+    var activityAdjustment: Int = 0
 
     private var remaining: Int { max(target - consumed, 0) }
+    private var isOver: Bool { consumed > target }
     private var progress: Double { min(Double(consumed) / Double(max(target, 1)), 1.0) }
+    private var pctConsumed: Int { Int(progress * 100) }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text("\(remaining) cal remaining")
-                    .font(.headline)
+        VStack(spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isOver ? "Over Budget" : "Remaining")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isOver ? Color.appError : Color.secondary)
+                        .textCase(.uppercase)
+                        .tracking(0.5)
+                    Text(isOver ? "+\(consumed - target)" : "\(remaining)")
+                        .font(.system(size: 42, weight: .black, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(isOver ? Color.appError : Color.primary)
+                        .contentTransition(.numericText())
+                }
                 Spacer()
-                Text("\(consumed) / \(target)")
-                    .font(.subheadline)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("\(pctConsumed)%")
+                        .font(.system(.title3, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundStyle(progress > 0.9 ? Color.appWarm : Color.appAccent)
+                    Text("\(consumed) / \(target) kcal")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let base = baseCalories, activityAdjustment != 0 {
+                Text("\(base) base \(activityAdjustment > 0 ? "+" : "")\(activityAdjustment) activity")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.gray.opacity(0.15))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(.gray.opacity(0.12))
 
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 8)
                         .fill(progress > 0.9 ? LinearGradient.appWarningGradient : LinearGradient.appAccentGradient)
                         .frame(width: geo.size.width * progress)
+                        .animation(.spring(duration: 0.5), value: progress)
                 }
             }
-            .frame(height: 12)
+            .frame(height: 16)
         }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke((isOver ? Color.appError : Color.appAccent).opacity(0.15), lineWidth: 1)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calorie budget")
+        .accessibilityValue(
+            isOver
+            ? "Over budget by \(consumed - target) calories. \(consumed) of \(target) consumed."
+            : "\(remaining) calories remaining. \(consumed) of \(target) consumed, \(pctConsumed) percent."
+        )
     }
 }
