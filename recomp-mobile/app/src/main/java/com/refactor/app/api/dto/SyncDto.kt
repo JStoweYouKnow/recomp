@@ -146,9 +146,26 @@ data class WearableDaySummaryDto(
 )
 
 @Serializable
+data class MetabolicDataPointDto(
+    val date: String,
+    val weightKg: Double = 0.0,
+    val totalIntake: Double = 0.0,
+    val totalExpenditure: Double = 0.0,
+)
+
+@Serializable
+data class MetabolicModelDto(
+    val estimatedTDEE: Int = 0,
+    val confidence: Int = 0,
+    /** Server sends an array of daily samples; UI uses the count (`dataPoints.size`). */
+    val dataPoints: List<MetabolicDataPointDto> = emptyList(),
+)
+
+@Serializable
 data class SyncGetResponse(
     val profile: UserProfileDto,
     val meta: SyncMetaDto? = null,
+    val metabolicModel: MetabolicModelDto? = null,
     val meals: List<MealEntryDto>? = null,
     /** Present when user has a generated plan (`dbGetPlan`). */
     val plan: FitnessPlanDto? = null,

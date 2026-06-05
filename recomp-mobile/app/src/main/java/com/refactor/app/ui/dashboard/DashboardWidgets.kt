@@ -25,18 +25,22 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.SentimentNeutral
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +69,7 @@ import com.refactor.app.api.dto.FastingSessionDto
 import com.refactor.app.api.dto.HydrationEntryDto
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
+import com.refactor.app.api.dto.MetabolicModelDto
 import com.refactor.app.api.dto.UserProfileDto
 import com.refactor.app.api.dto.WorkoutDayDto
 import java.time.Instant
@@ -96,7 +101,9 @@ fun greetingForHour(firstName: String, zone: ZoneId = ZoneId.systemDefault()): S
 fun sumMacrosForDate(meals: List<MealEntryDto>?, date: String): MealMacrosDto {
     var c = 0.0; var p = 0.0; var cb = 0.0; var f = 0.0
     meals?.filter { it.date == date }?.forEach { m ->
-        c += m.macros.calories; p += m.macros.protein; cb += m.macros.carbs; f += m.macros.fat
+        val computedCal = m.macros.protein * 4 + m.macros.carbs * 4 + m.macros.fat * 9
+        c += if (m.macros.calories > 0) m.macros.calories else computedCal
+        p += m.macros.protein; cb += m.macros.carbs; f += m.macros.fat
     }
     return MealMacrosDto(c, p, cb, f)
 }
@@ -210,24 +217,143 @@ fun CalorieBudgetCard(
     }
 }
 
-// ─── Macro Pills ─────────────────────────────────────────────────────────────
+// ─── Macro Rings + Detail Modal ──────────────────────────────────────────────
+
+private data class MacroItem(
+    val label: String,
+    val current: Double,
+    val target: Double,
+    val unit: String,
+    val color: Color,
+) {
+    val progress get() = if (target > 0) (current / target).coerceIn(0.0, 1.0).toFloat() else 0f
+    val pct get() = (progress * 100).roundToInt()
+    val remaining get() = maxOf(target - current, 0.0)
+    val overBy get() = maxOf(current - target, 0.0)
+    val isOver get() = current > target && target > 0
+}
 
 @Composable
-fun MacroPillsRow(consumed: MealMacrosDto, targets: MealMacrosDto, modifier: Modifier = Modifier) {
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-        MacroPill("Cal", consumed.calories.roundToInt(), targets.calories.roundToInt())
-        MacroPill("Pro", consumed.protein.roundToInt(), targets.protein.roundToInt())
-        MacroPill("Carb", consumed.carbs.roundToInt(), targets.carbs.roundToInt())
-        MacroPill("Fat", consumed.fat.roundToInt(), targets.fat.roundToInt())
+private fun MacroRing(item: MacroItem, onClick: () -> Unit) {
+    val animProgress by animateFloatAsState(
+        targetValue = item.progress,
+        animationSpec = tween(400),
+        label = "ring_${item.label}",
+    )
+    val errorColor = MaterialTheme.colorScheme.error
+    val trackColor = item.color.copy(alpha = 0.15f)
+    val fillColor = if (item.isOver) errorColor else item.color
+    val textColor = if (item.isOver) errorColor else MaterialTheme.colorScheme.onSurface
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.size(70.dp)) {
+            Canvas(Modifier.size(70.dp)) {
+                val stroke = 7.dp.toPx()
+                val inset = stroke / 2f
+                val arcSize = Size(size.width - stroke, size.height - stroke)
+                val topLeft = Offset(inset, inset)
+                drawArc(color = trackColor, startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                    topLeft = topLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                if (animProgress > 0f)
+                    drawArc(color = fillColor, startAngle = -90f, sweepAngle = 360f * animProgress, useCenter = false,
+                        topLeft = topLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    item.current.roundToInt().toString(),
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = textColor,
+                )
+                Text(item.unit, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(item.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun MacroPill(label: String, v: Int, t: Int) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-        Text("$v / $t", style = MaterialTheme.typography.bodySmall)
+private fun MacroDetailDialog(item: MacroItem, onDismiss: () -> Unit) {
+    val errorColor = MaterialTheme.colorScheme.error
+    val fillColor = if (item.isOver) errorColor else item.color
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = null,
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.size(48.dp)) {
+                        Canvas(Modifier.size(48.dp)) {
+                            val stroke = 5.dp.toPx()
+                            val inset = stroke / 2f
+                            val arcSize = Size(size.width - stroke, size.height - stroke)
+                            val topLeft = Offset(inset, inset)
+                            drawArc(color = item.color.copy(alpha = 0.2f), startAngle = -90f, sweepAngle = 360f,
+                                useCenter = false, topLeft = topLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                            if (item.progress > 0f)
+                                drawArc(color = fillColor, startAngle = -90f, sweepAngle = 360f * item.progress,
+                                    useCenter = false, topLeft = topLeft, size = arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                        }
+                    }
+                    Column {
+                        Text(item.label, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            if (item.isOver) "Over target" else "${item.pct}% of daily goal",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (item.isOver) errorColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    MacroStatCell("CONSUMED", item.current, item.unit, fillColor)
+                    VerticalDivider(Modifier.height(44.dp))
+                    MacroStatCell("TARGET", item.target, item.unit, MaterialTheme.colorScheme.onSurfaceVariant)
+                    VerticalDivider(Modifier.height(44.dp))
+                    if (item.isOver)
+                        MacroStatCell("OVER BY", item.overBy, item.unit, errorColor)
+                    else
+                        MacroStatCell("REMAINING", item.remaining, item.unit, Color(0xFF4CAF50))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+@Composable
+private fun MacroStatCell(title: String, value: Double, unit: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                if (value >= 10) value.roundToInt().toString() else String.format("%.1f", value),
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                color = color,
+            )
+            Text(unit, style = MaterialTheme.typography.labelSmall, color = color.copy(alpha = 0.7f))
+        }
     }
+}
+
+@Composable
+fun MacroPillsRow(consumed: MealMacrosDto, targets: MealMacrosDto, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    val items = listOf(
+        MacroItem("Cal", consumed.calories, targets.calories, "kcal", Color(0xFFE8A045)),
+        MacroItem("Protein", consumed.protein, targets.protein, "g", primary),
+        MacroItem("Carbs", consumed.carbs, targets.carbs, "g", Color(0xFF7DA86B)),
+        MacroItem("Fat", consumed.fat, targets.fat, "g", Color(0xFFB5613E)),
+    )
+    var selected by remember { mutableStateOf<MacroItem?>(null) }
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+        items.forEach { item -> MacroRing(item) { selected = item } }
+    }
+    selected?.let { MacroDetailDialog(it) { selected = null } }
 }
 
 // ─── Workout Card ────────────────────────────────────────────────────────────
@@ -305,8 +431,10 @@ fun estimateTdee(profile: UserProfileDto): Int? {
 }
 
 @Composable
-fun AdaptiveTdeeCard(profile: UserProfileDto, modifier: Modifier = Modifier) {
-    val tdee = remember(profile) { estimateTdee(profile) }
+fun AdaptiveTdeeCard(profile: UserProfileDto, metabolicModel: MetabolicModelDto?, modifier: Modifier = Modifier) {
+    val formulaTdee = remember(profile) { estimateTdee(profile) }
+    val tdee = metabolicModel?.estimatedTDEE?.takeIf { it > 0 } ?: formulaTdee
+    val isModelBased = metabolicModel?.estimatedTDEE?.let { it > 0 } == true
     Card(
         modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -325,11 +453,19 @@ fun AdaptiveTdeeCard(profile: UserProfileDto, modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Text(
-                    "Formula estimate based on your profile. Log meals + weight data to refine.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (isModelBased) {
+                    Text(
+                        "Last estimate · ${metabolicModel!!.confidence}% confidence (${metabolicModel.dataPoints.size} pts)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "Formula estimate based on your profile. Log meals + weight data to refine.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else {
                 Text(
                     "Complete your profile (weight, height, age) to see your estimated metabolism.",

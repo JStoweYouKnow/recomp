@@ -35,6 +35,8 @@ import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.db.SyncCacheDao
+import com.refactor.app.ui.workouts.WorkoutProgramSchedule
+import java.time.LocalDate
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -159,12 +161,15 @@ private fun DashboardContent(
         targets = targets.copy(calories = baseCal.toDouble()),
     )
 
-    // Today's workout
-    val workoutDay = snap.plan?.workoutPlan?.weeklyPlan?.firstOrNull()
+    // Today's workout — match by day-of-week and program week, same logic as iOS
+    val workoutDay = snap.plan?.let { plan ->
+        WorkoutProgramSchedule.planIndexForDate(plan, LocalDate.now())
+            ?.let { plan.workoutPlan?.weeklyPlan?.getOrNull(it) }
+    }
     TodaysWorkoutHighlightCard(workoutDay)
 
     // Adaptive TDEE
-    AdaptiveTdeeCard(snap.profile)
+    AdaptiveTdeeCard(snap.profile, snap.metabolicModel)
 
     // Coach Check-In
     CoachCheckInCard(message = checkInMessage, loading = checkInLoading, onFetch = onCheckIn)
