@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-join-code"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const body = await req.json();

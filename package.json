@@ -23,6 +23,7 @@
     "@aws-sdk/lib-dynamodb": "^3.987.0",
     "@aws-sdk/s3-request-presigner": "^3.989.0",
     "@mediapipe/tasks-vision": "^0.10.32",
+    "@mendable/firecrawl-js": "^4.23.0",
     "@smithy/node-http-handler": "^4.4.10",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.3",

@@ -246,7 +246,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Path A: server-side HTML + Nova Lite (cheap)
+    // Path A: Firecrawl — renders JS-heavy sites (bodybuilding.com, t-nation.com, etc.)
+    // Returns clean markdown, then Nova extracts the workout from that.
+    if (process.env.FIRECRAWL_API_KEY) {
+      try {
+        const { default: FirecrawlApp } = await import("@mendable/firecrawl-js");
+        const fc = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+        const result = await fc.scrape(trimmed, { formats: ["markdown"] });
+        const md = (result as { markdown?: string }).markdown ?? "";
+        if (md.length >= 100) {
+          const rawLite = await invokeNova(
+            WORKOUT_JSON_SYSTEM,
+            `Extract the workout from this page. Return ONLY a JSON object with day, focus, and exercises array.\n\nPAGE CONTENT:\n${md.slice(0, 14_000)}`,
+            { temperature: 0.2, maxTokens: 2048 }
+          );
+          const parsed = parseModelOutputToWorkout(rawLite);
+          if (parsed.ok) {
+            return attachRateHeaders(NextResponse.json({ workout: parsed.workout, source: "firecrawl+nova-lite" }));
+          }
+          lastFailure = parsed;
+        }
+      } catch (fcErr) {
+        console.warn("parse-url: Firecrawl failed:", fcErr instanceof Error ? fcErr.message : fcErr);
+      }
+    }
+
+    // Path B: server-side HTML + Nova Lite (cheap, works for static sites)
     if (fetched.ok) {
       const textContent = buildPageExcerpt(fetched.text, 14_000);
       if (textContent.length >= 100) {
@@ -279,7 +304,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Path B: web grounding (works when Vercel IP is blocked or page is JS-heavy)
+    // Path C: web grounding (works when Vercel IP is blocked and Firecrawl is unavailable)
     const rawGround = await extractViaWebGrounding(trimmed);
     if (rawGround) {
       const parsedG = parseModelOutputToWorkout(rawGround);

@@ -1,13 +1,20 @@
 import type {
   ActivityLogEntry,
+  BiofeedbackEntry,
+  FastingSession,
   FitnessPlan,
+  HydrationEntry,
   MealEntry,
+  MetabolicModel,
   Milestone,
+  RicoMessage,
+  Supplement,
   UserProfile,
   WearableConnection,
   WearableDaySummary,
   WeeklyReview,
 } from "./types";
+import type { UserMeta } from "./db";
 
 type WorkoutProgressMap = Record<string, string>;
 
@@ -22,6 +29,12 @@ export interface DemoSeedData {
   weeklyReview: WeeklyReview;
   activityLog: ActivityLogEntry[];
   workoutProgress: WorkoutProgressMap;
+  hydration: HydrationEntry[];
+  fastingSessions: FastingSession[];
+  biofeedback: BiofeedbackEntry[];
+  supplements: Supplement[];
+  metabolicModel: MetabolicModel;
+  meta: UserMeta;
 }
 
 function isoDateOffset(daysFromToday: number): string {
@@ -122,15 +135,24 @@ export function buildDemoSeed(): DemoSeedData {
   ];
 
   const wearableConnections: WearableConnection[] = [
-    { provider: "fitbit", connectedAt: isoTimeForDate(d5, 10), label: "Demo Fitbit" },
+    { provider: "fitbit", connectedAt: isoTimeForDate(d6, 10), label: "Demo Fitbit" },
+    { provider: "oura", connectedAt: isoTimeForDate(d6, 10), label: "Demo Oura Ring" },
   ];
 
   const wearableData: WearableDaySummary[] = [
-    { date: d4, provider: "fitbit", steps: 8420, caloriesBurned: 2380, activeMinutes: 51, sleepScore: 80, sleepDuration: 425, heartRateResting: 61, weight: 172, bodyFatPercent: 16.5, muscleMass: 137 },
-    { date: d3, provider: "fitbit", steps: 10210, caloriesBurned: 2520, activeMinutes: 62, sleepScore: 84, sleepDuration: 438, heartRateResting: 60 },
-    { date: d2, provider: "fitbit", steps: 9170, caloriesBurned: 2440, activeMinutes: 57, sleepScore: 82, sleepDuration: 430, heartRateResting: 60, weight: 173, bodyFatPercent: 16.8 },
-    { date: d1, provider: "fitbit", steps: 11140, caloriesBurned: 2610, activeMinutes: 68, sleepScore: 86, sleepDuration: 446, heartRateResting: 59 },
-    { date: today, provider: "fitbit", steps: 6240, caloriesBurned: 2140, activeMinutes: 38, sleepScore: 79, sleepDuration: 410, heartRateResting: 62, weight: 172, bodyFatPercent: 16.2, muscleMass: 138 },
+    // Fitbit — steps, calories, active minutes
+    { date: d4, provider: "fitbit", steps: 8420, caloriesBurned: 2380, activeMinutes: 51, heartRateResting: 61, weight: 172, bodyFatPercent: 16.5, muscleMass: 137 },
+    { date: d3, provider: "fitbit", steps: 10210, caloriesBurned: 2520, activeMinutes: 62, heartRateResting: 60 },
+    { date: d2, provider: "fitbit", steps: 9170, caloriesBurned: 2440, activeMinutes: 57, heartRateResting: 60, weight: 173, bodyFatPercent: 16.8 },
+    { date: d1, provider: "fitbit", steps: 11140, caloriesBurned: 2610, activeMinutes: 68, heartRateResting: 59 },
+    { date: today, provider: "fitbit", steps: 6240, caloriesBurned: 2140, activeMinutes: 38, heartRateResting: 62, weight: 172, bodyFatPercent: 16.2, muscleMass: 138 },
+    // Oura Ring — sleep and HRV focus
+    { date: d4, provider: "oura", sleepScore: 80, sleepDuration: 425, heartRateResting: 61 },
+    { date: d3, provider: "oura", sleepScore: 84, sleepDuration: 438, heartRateResting: 60 },
+    { date: d2, provider: "oura", sleepScore: 82, sleepDuration: 430, heartRateResting: 60 },
+    { date: d1, provider: "oura", sleepScore: 86, sleepDuration: 446, heartRateResting: 59 },
+    { date: today, provider: "oura", sleepScore: 79, sleepDuration: 410, heartRateResting: 62 },
+    // Scale
     { date: d5, provider: "scale", weight: 172, bodyFatPercent: 16.4, muscleMass: 137 },
     { date: d6, provider: "scale", weight: 173, bodyFatPercent: 16.6 },
   ];
@@ -174,6 +196,78 @@ export function buildDemoSeed(): DemoSeedData {
     [`${plan.id}:Thursday:Pull-Up:4:6-8:`]: isoTimeForDate(d1, 19, 5),
   };
 
+  const hydration: HydrationEntry[] = [
+    { id: "h-1", date: d2, time: "08:15", amountMl: 500, source: "water" },
+    { id: "h-2", date: d2, time: "12:00", amountMl: 350, source: "water" },
+    { id: "h-3", date: d2, time: "15:30", amountMl: 400, source: "water" },
+    { id: "h-4", date: d1, time: "07:45", amountMl: 500, source: "water" },
+    { id: "h-5", date: d1, time: "09:00", amountMl: 250, source: "coffee" },
+    { id: "h-6", date: d1, time: "13:00", amountMl: 500, source: "water" },
+    { id: "h-7", date: d1, time: "17:30", amountMl: 600, source: "sports_drink" },
+    { id: "h-8", date: today, time: "08:00", amountMl: 500, source: "water" },
+    { id: "h-9", date: today, time: "10:30", amountMl: 250, source: "coffee" },
+    { id: "h-10", date: today, time: "13:15", amountMl: 400, source: "water" },
+  ];
+
+  const metabolicModel: MetabolicModel = {
+    estimatedTDEE: 2410,
+    confidence: 72,
+    lastUpdated: nowIso,
+    dataPoints: [
+      { date: d6, weightKg: 78.2, totalIntake: 1230, totalExpenditure: 2380 },
+      { date: d5, weightKg: 78.1, totalIntake: 1900, totalExpenditure: 2390 },
+      { date: d4, weightKg: 78.0, totalIntake: 1230, totalExpenditure: 2380 },
+      { date: d3, weightKg: 78.2, totalIntake: 710, totalExpenditure: 2520 },
+      { date: d2, weightKg: 78.5, totalIntake: 1390, totalExpenditure: 2440 },
+      { date: d1, weightKg: 78.3, totalIntake: 1100, totalExpenditure: 2610 },
+      { date: today, weightKg: 78.1, totalIntake: 1250, totalExpenditure: 2140 },
+    ],
+    history: [
+      { date: d6, tdee: 2360, confidence: 55 },
+      { date: d4, tdee: 2380, confidence: 61 },
+      { date: d2, tdee: 2395, confidence: 67 },
+      { date: today, tdee: 2410, confidence: 72 },
+    ],
+  };
+
+  const fastingSessions: FastingSession[] = [
+    { id: "fs-1", startTime: isoTimeForDate(d3, 20, 0), endTime: isoTimeForDate(d2, 12, 0), targetHours: 16, protocol: "16:8" },
+    { id: "fs-2", startTime: isoTimeForDate(d1, 20, 30), endTime: isoTimeForDate(today, 12, 30), targetHours: 16, protocol: "16:8" },
+  ];
+
+  const biofeedback: BiofeedbackEntry[] = [
+    { id: "bf-1", date: d4, time: "08:00", energy: 4, mood: 4, hunger: 3, stress: 2, soreness: 3, notes: "Felt good going into leg day" },
+    { id: "bf-2", date: d3, time: "08:15", energy: 3, mood: 3, hunger: 4, stress: 3, soreness: 4, notes: "Legs sore from yesterday" },
+    { id: "bf-3", date: d2, time: "07:50", energy: 4, mood: 4, hunger: 3, stress: 2, soreness: 2 },
+    { id: "bf-4", date: d1, time: "08:05", energy: 5, mood: 5, hunger: 3, stress: 1, soreness: 2, notes: "Best energy of the week" },
+    { id: "bf-5", date: today, time: "07:45", energy: 4, mood: 4, hunger: 2, stress: 2, soreness: 1 },
+  ];
+
+  const supplements: Supplement[] = [
+    { id: "s-1", name: "Creatine Monohydrate", dosage: "5g", frequency: "daily", timing: "morning", takenToday: true },
+    { id: "s-2", name: "Vitamin D3", dosage: "2000 IU", frequency: "daily", timing: "with_meals", takenToday: true },
+    { id: "s-3", name: "Omega-3 Fish Oil", dosage: "2 capsules", frequency: "daily", timing: "with_meals", takenToday: false },
+    { id: "s-4", name: "Magnesium Glycinate", dosage: "400mg", frequency: "daily", timing: "before_bed", takenToday: false },
+  ];
+
+  const ricoHistory: RicoMessage[] = [
+    { role: "user", content: "How am I doing this week?", at: isoTimeForDate(d3, 20, 5) },
+    { role: "assistant", content: "Really solid week so far. Protein is averaging 172g — a bit below your 180g target, but you've hit it 3 out of 4 days which is good consistency. Wearable data shows your sleep improved mid-week, which lines up with the energy you probably felt during Thursday's pull session. One thing to watch: steps dropped today vs your recent average. If you're feeling flat, it might be worth a short walk before your evening workout rather than skipping the warmup.", at: isoTimeForDate(d3, 20, 5) },
+    { role: "user", content: "What should I eat after training tonight?", at: isoTimeForDate(d1, 17, 42) },
+    { role: "assistant", content: "Post-workout, aim for 40-50g protein and 60-80g carbs within about 90 minutes. Given your dinner plan (beef stir-fry + jasmine rice), that fits well — just make sure the rice portion is generous tonight since you're in a training day. If dinner is more than 2 hours away, a quick bridge snack like Greek yogurt or a protein shake will keep muscle protein synthesis elevated.", at: isoTimeForDate(d1, 17, 43) },
+  ];
+
+  const meta: UserMeta = {
+    xp: 420,
+    hasAdjusted: false,
+    ricoHistory,
+    measurementTargets: {
+      targetWeightLbs: 172,
+      targetBodyFatPercent: 12,
+      targetMuscleMassLbs: 145,
+    },
+  };
+
   return {
     profile,
     plan,
@@ -181,9 +275,15 @@ export function buildDemoSeed(): DemoSeedData {
     wearableConnections,
     wearableData,
     milestones,
-    xp: 420,
+    xp: meta.xp,
     weeklyReview,
     activityLog,
     workoutProgress,
+    hydration,
+    fastingSessions,
+    biofeedback,
+    supplements,
+    metabolicModel,
+    meta,
   };
 }

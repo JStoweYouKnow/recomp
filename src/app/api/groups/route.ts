@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-create"), 5, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const body = await req.json();
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "group-list"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const groups = await dbGetUserGroups(userId);

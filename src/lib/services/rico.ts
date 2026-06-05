@@ -3,7 +3,7 @@
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
-import type { MealEntry, FitnessPlan, Macros } from "../types";
+import type { MealEntry, FitnessPlan } from "../types";
 import { getTodayLocal } from "../date-utils";
 
 const REGION = process.env.AWS_REGION ?? "us-east-1";
@@ -194,6 +194,7 @@ const RICO_TOOLS: ToolConfiguration = {
 };
 
 export interface RicoContext {
+  name?: string;
   streak?: number;
   mealsLogged?: number;
   xp?: number;
@@ -202,6 +203,14 @@ export interface RicoContext {
   biofeedbackSummary?: string | null;
   hydrationSummary?: string | null;
   activeFast?: string | null;
+  /** Today's logged meals so Rico knows what the user has eaten. */
+  recentMeals?: { name: string; calories: number; protein: number; carbs: number; fat: number; mealType: string }[];
+  /** Running macro totals for today. */
+  todayMacros?: { calories: number; protein: number; carbs: number; fat: number };
+  /** Daily targets from the user's plan. */
+  macroTargets?: { calories: number; protein: number; carbs: number; fat: number };
+  /** Latest body weight in lbs. */
+  bodyWeight?: number;
   workoutPlan?: {
     weeklyPlan: {
       day: string;
@@ -211,10 +220,19 @@ export interface RicoContext {
       finishers?: { name: string; sets: string; reps: string; notes?: string }[];
     }[];
   } | null;
+  equipment?: string[];
+  injuries?: string[];
+  dietaryRestrictions?: string[];
+}
+
+export interface RicoHistoryMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface RicoInput {
   message: string;
+  history?: RicoHistoryMessage[];
   context?: RicoContext;
   persona?: string;
 }
@@ -226,20 +244,47 @@ export interface RicoOutput {
 
 /** Invoke Rico and return reply text + optional tool actions. */
 export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
-  const { message, context = {}, persona } = input;
+  const { message, history = [], context = {}, persona } = input;
   const msg = typeof message === "string" ? message.trim() : "";
   if (!msg) throw new Error("Message required");
 
-  const userPrompt = `[Context: ${JSON.stringify(context)}]\n\nUser: ${msg}`;
-
   let systemPrompt = RICO_SYSTEM;
+  if (Object.keys(context).length > 0) {
+    systemPrompt += `\n\n[USER CONTEXT: ${JSON.stringify(context)}]`;
+  }
   if (persona && PERSONA_PROMPTS[persona]) {
     systemPrompt += PERSONA_PROMPTS[persona];
   }
   systemPrompt += getHolidayContext();
 
   const client = new BedrockRuntimeClient({ region: REGION });
-  const messages: Message[] = [{ role: "user", content: [{ text: userPrompt }] }];
+
+  // Build multi-turn conversation from history (last 12 entries = ~6 turns).
+  // The iOS client includes the current user message as the last history entry,
+  // so we drop it to avoid duplication before appending it as the final turn.
+  const trimmed = history
+    .filter((h) => h.role === "user" || h.role === "assistant")
+    .slice(-41) // keep at most 41 so after dropping the last we have 40 (20 turns)
+    .slice(0, -1); // drop the last entry (current user message sent by client)
+
+  // Bedrock requires strictly alternating user/assistant turns.
+  // Collapse any consecutive same-role messages by joining their content.
+  const alternating: Message[] = [];
+  for (const h of trimmed) {
+    const last = alternating[alternating.length - 1];
+    if (last && last.role === h.role) {
+      (last.content as { text: string }[])[0].text += "\n" + h.content;
+    } else {
+      alternating.push({ role: h.role as "user" | "assistant", content: [{ text: h.content }] });
+    }
+  }
+
+  // Ensure history starts with a user turn (Bedrock requirement).
+  if (alternating.length > 0 && alternating[0].role !== "user") {
+    alternating.shift();
+  }
+
+  const messages: Message[] = [...alternating, { role: "user", content: [{ text: msg }] }];
 
   const response = await client.send(
     new ConverseCommand({
@@ -247,7 +292,7 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
       messages,
       system: [{ text: systemPrompt }],
       toolConfig: RICO_TOOLS,
-      inferenceConfig: { temperature: 0.7, maxTokens: 512, topP: 0.9 },
+      inferenceConfig: { temperature: 0.7, maxTokens: 1024, topP: 0.9 },
     })
   );
 
