@@ -26,9 +26,15 @@ public struct Macros: Codable, Hashable, Sendable {
 
     public static let zero = Macros(calories: 0, protein: 0, carbs: 0, fat: 0)
 
+    // Use stored calories when present; fall back to 4/4/9 formula so that a meal
+    // saved without an explicit calorie value doesn't silently drop from the total.
+    private var effectiveCalories: Int {
+        calories > 0 ? calories : Int((proteinCalories + carbCalories + fatCalories).rounded())
+    }
+
     public func adding(_ other: Macros) -> Macros {
         Macros(
-            calories: calories + other.calories,
+            calories: effectiveCalories + other.effectiveCalories,
             protein: protein + other.protein,
             carbs: carbs + other.carbs,
             fat: fat + other.fat

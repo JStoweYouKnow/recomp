@@ -4,6 +4,7 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 import { isJudgeMode } from "@/lib/judgeMode";
 import {
   dbGetProfile,
+  dbSaveProfile,
   dbGetPlan,
   dbGetMeals,
   dbGetMilestones,
@@ -22,7 +23,6 @@ import {
   dbGetBloodWork,
   dbGetMetabolicModel,
   dbSaveMetabolicModel,
-  dbSaveProfile,
   dbSavePlan,
   dbSaveMeal,
   dbDeleteMeal,
@@ -52,7 +52,7 @@ import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
-  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 10, 60_000);
+  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
   try {
@@ -82,28 +82,17 @@ export async function POST(req: NextRequest) {
     const body = JSON.parse(raw);
     const parsed = syncBodySchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.flatten() }, { status: 400 });
+      return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
     const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
-    // iOS sends the full profile on every sync. Upsert it so the GET endpoint
-    // (which returns 404 when no profile row exists) always has a valid record,
-    // even if DynamoDB was unavailable during the original registration.
-    // Wrapped in try/catch so a transient profile-save failure never blocks meal sync.
+    // Always persist the profile so GET /api/data/sync can find it on any device.
+    // Use the server's authenticated userId — never trust the client's profile.id.
     if (profile) {
-      promises.push(
-        (async () => {
-          try {
-            const existing = await dbGetProfile(userId);
-            await dbSaveProfile(userId, { ...(existing ?? {}), ...profile, id: userId } as UserProfile);
-          } catch (e) {
-            console.error("Profile upsert failed during sync:", e);
-          }
-        })()
-      );
+      promises.push(dbSaveProfile(userId, { ...(profile as unknown as Parameters<typeof dbSaveProfile>[1]), id: userId }));
     }
 
     if (metabolicModel) {
@@ -323,7 +312,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No profile found" }, { status: 404 });
     }
 
-    const mealsDeduped = meals.length > 0 ? dedupeMealsByDateAndId(meals) : [];
+    const mealsDeduped = meals.length > 0
+      ? dedupeMealsByDateAndId(meals).map((m) => {
+          if (m.macros.calories > 0) return m;
+          const { protein, carbs, fat } = m.macros;
+          return { ...m, macros: { calories: Math.round(protein * 4 + carbs * 4 + fat * 9), protein, carbs, fat } };
+        })
+      : [];
     const wearableDataRepaired =
       wearableData.length > 0 ? repairWearableScaleRowsForCanonicalLbs(wearableData, profile) : [];
     const payload = {

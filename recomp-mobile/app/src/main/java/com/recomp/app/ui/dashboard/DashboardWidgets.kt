@@ -61,7 +61,8 @@ fun sumMacrosForDate(meals: List<MealEntryDto>?, date: String): MealMacrosDto {
     var cb = 0.0
     var f = 0.0
     meals?.filter { it.date == date }?.forEach { m ->
-        c += m.macros.calories
+        val computedCal = m.macros.protein * 4 + m.macros.carbs * 4 + m.macros.fat * 9
+        c += if (m.macros.calories > 0) m.macros.calories else computedCal
         p += m.macros.protein
         cb += m.macros.carbs
         f += m.macros.fat
