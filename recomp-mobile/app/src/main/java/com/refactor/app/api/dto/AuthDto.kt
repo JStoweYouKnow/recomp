@@ -18,6 +18,8 @@ data class LoginResponse(
     val authenticated: Boolean? = null,
     val userId: String? = null,
     val profile: UserProfileDto? = null,
+    /** Bearer token for `Authorization` on subsequent API calls (mobile auth). */
+    val apiToken: String? = null,
 )
 
 @Serializable

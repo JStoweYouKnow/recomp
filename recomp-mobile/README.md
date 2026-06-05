@@ -24,7 +24,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 
 ## Authentication
 
-The API uses **`X-Refactor-User-Id`** (see `src/lib/auth.ts`). After **`POST /api/auth/login`**, **`userId`** is stored in **`EncryptedSharedPreferences`** (`SessionStore`). **`HttpClient`** adds the header on every request (`createHttpClient`).
+The API uses **`Authorization: Bearer <apiToken>`** (see `src/lib/auth.ts`). After **`POST /api/auth/login`**, the returned **`apiToken`** (and **`userId`** for local display) is stored in **`EncryptedSharedPreferences`** (`SessionStore`). **`HttpClient`** adds the `Authorization` header on every request (`createHttpClient`).
 
 Cold start: **`GET /api/auth/me`**; invalid session clears storage.
 

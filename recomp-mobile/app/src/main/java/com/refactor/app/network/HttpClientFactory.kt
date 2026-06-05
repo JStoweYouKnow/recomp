@@ -30,8 +30,10 @@ fun createHttpClient(sessionStore: SessionStore): HttpClient =
         }
         defaultRequest {
             header("Accept", "application/json")
-            sessionStore.getUserId()?.let { uid ->
-                header(HEADER_USER_ID, uid)
+            // Server auth (`src/lib/auth.ts`) expects `Authorization: Bearer <token>`.
+            // The legacy X-Refactor-User-Id header was removed server-side (impersonation risk).
+            sessionStore.getToken()?.let { token ->
+                header("Authorization", "Bearer $token")
             }
         }
     }

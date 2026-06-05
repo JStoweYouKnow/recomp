@@ -5,8 +5,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
 /**
- * Persists the server **user id** used as session credentials via [HEADER_USER_ID],
- * matching iOS Keychain + [com.refactor.app.network.RefactorHeaders].
+ * Persists the server session credentials: the **API token** sent as
+ * `Authorization: Bearer <token>` (mobile auth, matching `src/lib/auth.ts`) plus the
+ * **user id** kept for local display / group calls.
  */
 class SessionStore(context: Context) {
 
@@ -29,12 +30,21 @@ class SessionStore(context: Context) {
         prefs.edit().putString(KEY_USER_ID, userId.trim()).apply()
     }
 
+    /** Bearer token used for `Authorization` on API requests. */
+    fun getToken(): String? =
+        prefs.getString(KEY_TOKEN, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun setToken(token: String) {
+        prefs.edit().putString(KEY_TOKEN, token.trim()).apply()
+    }
+
     fun clear() {
-        prefs.edit().remove(KEY_USER_ID).apply()
+        prefs.edit().remove(KEY_USER_ID).remove(KEY_TOKEN).apply()
     }
 
     companion object {
         private const val PREFS_NAME = "refactor_session"
         private const val KEY_USER_ID = "user_id"
+        private const val KEY_TOKEN = "api_token"
     }
 }

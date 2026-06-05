@@ -27,6 +27,7 @@ class AuthRepository(
             }
             val body = response.requireSuccess { it.body<LoginResponse>() }
             body.userId?.let { sessionStore.setUserId(it) }
+            body.apiToken?.let { sessionStore.setToken(it) }
             body
         }
 
