@@ -52,14 +52,57 @@ public final class PlanService {
         return plan
     }
 
-    public func adjustPlan(feedback: String, currentPlan: FitnessPlanDTO?) async throws -> AdjustSuggestion {
+    public func adjustPlan(
+        feedback: String,
+        currentPlan: FitnessPlanDTO?,
+        context: ModelContext
+    ) async throws -> AdjustSuggestion {
         isAdjusting = true
         defer { isAdjusting = false }
 
+        let meals = mealsLoggedThisWeek(context: context)
+        let mealDTOs = meals.map {
+            AdjustMealDTO(
+                date: $0.date,
+                name: $0.name,
+                mealType: $0.mealType.rawValue,
+                calories: Double($0.macros.calories),
+                protein: $0.macros.protein,
+                carbs: $0.macros.carbs,
+                fat: $0.macros.fat
+            )
+        }
+
+        // Average across a 7-day window so partial logging still reads as a daily average (matches web behavior).
+        let avgCalories: Double? = meals.isEmpty
+            ? nil
+            : meals.reduce(0.0) { $0 + Double($1.macros.calories) } / 7.0
+        let avgProtein: Double? = meals.isEmpty
+            ? nil
+            : meals.reduce(0.0) { $0 + $1.macros.protein } / 7.0
+
         let response: AdjustResponse = try await api.request(
-            PlanAPI.adjust(feedback: feedback, currentPlan: currentPlan)
+            PlanAPI.adjust(
+                feedback: feedback,
+                currentPlan: currentPlan,
+                mealsThisWeek: mealDTOs,
+                avgDailyCalories: avgCalories,
+                avgDailyProtein: avgProtein
+            )
         )
         return response.suggestion
+    }
+
+    /// `MealEntry` rows logged within the last 7 calendar days (inclusive of today).
+    /// Dates are stored as `yyyy-MM-dd`, so a lexicographic `>=` against the cutoff is a valid date comparison.
+    private func mealsLoggedThisWeek(context: ModelContext) -> [MealEntry] {
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -6, to: .now) ?? .now
+        let cutoff = DateHelpers.dateString(from: cutoffDate)
+        let descriptor = FetchDescriptor<MealEntry>(
+            predicate: #Predicate { $0.date >= cutoff },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
     }
 
     /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.

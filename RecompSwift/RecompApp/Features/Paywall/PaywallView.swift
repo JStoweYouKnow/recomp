@@ -20,20 +20,34 @@ struct PaywallView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                headerSection
-                featuresSection
-                planPickerSection
-                ctaSection
-                footerLinks
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    headerSection
+                    featuresSection
+                    planPickerSection
+                    ctaSection
+                    footerLinks
+                }
             }
-        }
-        .background(Color.recompBackground)
-        .alert("Purchase Error", isPresented: $showError, presenting: errorMessage) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { msg in
-            Text(msg)
+            .background(Color.recompBackground)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .font(.title3)
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+            .alert("Purchase Error", isPresented: $showError, presenting: errorMessage) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { msg in
+                Text(msg)
+            }
         }
     }
 
@@ -47,6 +61,7 @@ struct PaywallView: View {
                     LinearGradient(colors: [.appSage, .appAccent], startPoint: .topLeading, endPoint: .bottomTrailing)
                 )
                 .padding(.top, 40)
+                .accessibilityHidden(true)
 
             Text("Refactor Pro")
                 .font(.system(size: 32, weight: .bold))
@@ -106,12 +121,20 @@ struct PaywallView: View {
                         Text("Could not load pricing")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                        if let err = subscriptions.loadError {
+                            Text(err)
+                                .font(.caption2)
+                                .foregroundStyle(Color.appError)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
                         Button("Retry") {
                             productsTimedOut = false
                             subscriptions.start()
                             scheduleProductTimeout()
                         }
                         .font(.subheadline)
+                        .tint(Color.appAccent)
                     }
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -131,6 +154,19 @@ struct PaywallView: View {
 
     private var ctaSection: some View {
         VStack(spacing: 10) {
+            // Billed amount is the most prominent pricing element per App Store guideline 3.1.2(c)
+            if let product = selectedProduct {
+                VStack(spacing: 3) {
+                    Text("\(product.displayPrice)\(periodSuffix(for: product))")
+                        .font(.title3.weight(.bold))
+                    if selectedProductHasTrial {
+                        Text("After \(selectedTrialPeriodLabel) free trial")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Button {
                 Task { await startPurchase() }
             } label: {
@@ -138,7 +174,7 @@ struct PaywallView: View {
                     if subscriptions.isPurchasing {
                         ProgressView().tint(.white)
                     } else {
-                        Text("Start 7-Day Free Trial")
+                        Text(ctaButtonLabel)
                             .font(.headline)
                     }
                 }
@@ -150,10 +186,10 @@ struct PaywallView: View {
                 .foregroundStyle(.white)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .disabled(subscriptions.isPurchasing)
+            .disabled(subscriptions.isPurchasing || subscriptions.products.isEmpty)
 
-            Text("Then \(selectedPriceDescription) — cancel anytime")
-                .font(.caption)
+            Text("Renews automatically · Cancel anytime")
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 24)
@@ -163,25 +199,65 @@ struct PaywallView: View {
     // MARK: - Footer
 
     private var footerLinks: some View {
-        HStack(spacing: 20) {
-            Button("Restore") {
+        HStack(spacing: 16) {
+            Button("Restore Purchases") {
                 Task { await subscriptions.restorePurchases() }
             }
             Text("·")
-            Link("Privacy Policy", destination: URL(string: "https://getrefactor.app/privacy")!)
+            Link("Privacy Policy", destination: URL(string: "https://refactoryourbody.com/privacy")!)
             Text("·")
-            Link("Terms", destination: URL(string: "https://getrefactor.app/terms")!)
+            Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
         .padding(.bottom, 40)
     }
 
     // MARK: - Helpers
 
-    private var selectedPriceDescription: String {
-        let product = subscriptions.products.first { $0.id == selectedProductID }
-        return product?.displayPrice ?? "—"
+    private var selectedProduct: Product? {
+        subscriptions.products.first { $0.id == selectedProductID }
+    }
+
+    private var selectedProductHasTrial: Bool {
+        selectedProduct?.subscription?.introductoryOffer?.paymentMode == .freeTrial
+    }
+
+    private var selectedTrialPeriodLabel: String {
+        guard let intro = selectedProduct?.subscription?.introductoryOffer,
+              intro.paymentMode == .freeTrial else { return "7-day" }
+        let p = intro.period
+        return "\(p.value)-\(periodUnitLabel(p.unit))"
+    }
+
+    private var ctaButtonLabel: String {
+        guard selectedProductHasTrial else { return "Subscribe Now" }
+        let capitalised = selectedTrialPeriodLabel
+            .prefix(1).uppercased() + selectedTrialPeriodLabel.dropFirst()
+        return "Start \(capitalised) Free Trial"
+    }
+
+    private func periodSuffix(for product: Product) -> String {
+        guard let sub = product.subscription else { return "" }
+        switch sub.subscriptionPeriod.unit {
+        case .year: return "/yr"
+        case .month: return "/mo"
+        case .week: return "/wk"
+        case .day: return "/day"
+        @unknown default: return ""
+        }
+    }
+
+    private func periodUnitLabel(_ unit: Product.SubscriptionPeriod.Unit) -> String {
+        switch unit {
+        case .day: return "day"
+        case .week: return "week"
+        case .month: return "month"
+        case .year: return "year"
+        @unknown default: return "period"
+        }
     }
 
     private func scheduleProductTimeout() {
@@ -222,12 +298,14 @@ private struct FeatureRow: View {
                 .font(.title3)
                 .foregroundStyle(Color.appAccent)
                 .frame(width: 26)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.semibold))
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
         }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -239,7 +317,7 @@ private struct PlanCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     if let badge {
                         Text(badge)
@@ -248,13 +326,23 @@ private struct PlanCard: View {
                     }
                     Text(product.displayName)
                         .font(.subheadline.weight(.semibold))
-                    Text(trialLabel)
+                    Text(subscriptionLengthLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let trial = trialInfoText {
+                        Text(trial)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
-                Text(product.displayPrice)
-                    .font(.headline.weight(.bold))
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(product.displayPrice)
+                        .font(.headline.weight(.bold))
+                    Text(periodSuffix)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(16)
             .background(Color.recompSurface)
@@ -265,13 +353,46 @@ private struct PlanCard: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var trialLabel: String {
-        guard let intro = product.subscription?.introductoryOffer else {
-            return "Then \(product.displayPrice)"
+    private var subscriptionLengthLabel: String {
+        guard let sub = product.subscription else { return "" }
+        let p = sub.subscriptionPeriod
+        switch p.unit {
+        case .day:   return p.value == 1 ? "1-day subscription"    : "\(p.value)-day subscription"
+        case .week:  return p.value == 1 ? "Weekly subscription"   : "\(p.value)-week subscription"
+        case .month: return p.value == 1 ? "Monthly subscription"  : "\(p.value)-month subscription"
+        case .year:  return p.value == 1 ? "Annual subscription (1 year)" : "\(p.value)-year subscription"
+        @unknown default: return ""
         }
-        return "7-day free trial, then \(product.displayPrice)"
-        // ^ intro offer localisation; for production use intro.period.localizedDescription
+    }
+
+    private var periodSuffix: String {
+        guard let sub = product.subscription else { return "" }
+        switch sub.subscriptionPeriod.unit {
+        case .year:  return "/year"
+        case .month: return "/month"
+        case .week:  return "/week"
+        case .day:   return "/day"
+        @unknown default: return ""
+        }
+    }
+
+    private var trialInfoText: String? {
+        guard let intro = product.subscription?.introductoryOffer,
+              intro.paymentMode == .freeTrial else { return nil }
+        let p = intro.period
+        return "\(p.value)-\(unitLabel(p.unit)) free trial included"
+    }
+
+    private func unitLabel(_ unit: Product.SubscriptionPeriod.Unit) -> String {
+        switch unit {
+        case .day: return "day"
+        case .week: return "week"
+        case .month: return "month"
+        case .year: return "year"
+        @unknown default: return "period"
+        }
     }
 }

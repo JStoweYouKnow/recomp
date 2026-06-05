@@ -28,6 +28,15 @@ final class PhoneSessionManager: NSObject, WCSessionDelegate {
         try? WCSession.default.updateApplicationContext(["userId": userId])
     }
 
+    /// Call on logout so the paired watch clears its cached session instead of
+    /// continuing to show the previous account's data.
+    func clearUserId() {
+        guard WCSession.isSupported(),
+              WCSession.default.activationState == .activated
+        else { return }
+        try? WCSession.default.updateApplicationContext(["userId": "", "signedOut": true])
+    }
+
     // MARK: - WCSessionDelegate
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {

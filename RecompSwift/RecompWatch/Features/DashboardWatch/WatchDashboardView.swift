@@ -56,6 +56,7 @@ struct WatchDashboardView: View {
                         Image(systemName: "flame.fill")
                             .foregroundStyle(.orange)
                             .font(.caption2)
+                            .accessibilityHidden(true)
                         Text("\(streakCount) day streak")
                             .font(.caption2)
                     }
@@ -85,10 +86,21 @@ struct WatchDashboardView: View {
             }
         }
         .frame(width: 100, height: 100)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calories remaining")
+        .accessibilityValue("\(remaining) of \(target) calories, \(consumed) consumed")
     }
 
     private func miniRing(current: Double, target: Double, color: Color, label: String) -> some View {
         let progress = min(current / max(target, 1), 1.0)
+        let spokenName: String = {
+            switch label {
+            case "P": return "Protein"
+            case "C": return "Carbs"
+            case "F": return "Fat"
+            default: return label
+            }
+        }()
         return ZStack {
             Circle()
                 .stroke(color.opacity(0.2), lineWidth: 4)
@@ -101,5 +113,8 @@ struct WatchDashboardView: View {
                 .foregroundStyle(color)
         }
         .frame(width: 36, height: 36)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenName)
+        .accessibilityValue("\(Int(current)) of \(Int(target)) grams")
     }
 }

@@ -285,9 +285,9 @@ struct SignUpFormView: View {
 
     private func submit() {
         isSubmitting = true
-        // Server and SwiftData store weight in lbs and height in total inches.
+        // Server stores weight in lbs and height in centimeters.
         let submitWeight = unitSystem == .metric ? weight * 2.20462 : weight
-        let submitHeight = unitSystem == .metric ? heightCm / 2.54 : height
+        let submitHeight = unitSystem == .metric ? heightCm : height * 2.54
         let payload = SignUpPayload(
             name: name,
             email: email,

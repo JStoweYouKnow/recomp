@@ -109,7 +109,10 @@ struct CalorieRingComplication: View {
     let entry: CalorieEntry
 
     var body: some View {
-        let progress = 1.0 - (Double(entry.caloriesRemaining) / Double(max(entry.calorieTarget, 1)))
+        // Fill by calories consumed (matches the phone dashboard ring), derived from
+        // remaining vs target so the two surfaces never disagree.
+        let consumed = max(entry.calorieTarget - entry.caloriesRemaining, 0)
+        let progress = Double(consumed) / Double(max(entry.calorieTarget, 1))
 
         ZStack {
             AccessoryWidgetBackground()

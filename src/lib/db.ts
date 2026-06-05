@@ -711,6 +711,49 @@ export async function dbReleaseUsername(username: string): Promise<void> {
   );
 }
 
+export async function dbDeleteAccount(userId: string, email: string): Promise<void> {
+  const doc = getDocClient();
+
+  // 1. Collect every item stored under USER#{userId} and delete in batches of 25.
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        KeyConditionExpression: "PK = :pk",
+        ExpressionAttributeValues: { ":pk": `USER#${userId}` },
+        ProjectionExpression: "PK, SK",
+        ExclusiveStartKey: lastKey,
+        Limit: 100,
+      })
+    );
+    const items = (res.Items ?? []) as { PK: string; SK: string }[];
+    for (let i = 0; i < items.length; i += 25) {
+      await doc.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [TABLE]: items.slice(i, i + 25).map((item) => ({
+              DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
+            })),
+          },
+        })
+      );
+    }
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  // 2. Delete the email/password credential record.
+  if (email) {
+    const emailKey = email.toLowerCase().trim();
+    await doc.send(
+      new DeleteCommand({ TableName: TABLE, Key: { PK: `ACCOUNT#${emailKey}`, SK: `ACCOUNT#${emailKey}` } })
+    ).catch(() => {});
+    await doc.send(
+      new DeleteCommand({ TableName: TABLE, Key: { PK: `PWRESET#${emailKey}`, SK: `PWRESET#${emailKey}` } })
+    ).catch(() => {});
+  }
+}
+
 // ── Groups ───────────────────────────────────────────────
 export async function dbCreateGroup(group: Group): Promise<void> {
   const doc = getDocClient();
@@ -901,6 +944,14 @@ export async function dbGetGroupMessages(groupId: string, limit = 50): Promise<G
     })
   );
   return (Items ?? []).map((i) => i.data as GroupMessage).reverse();
+}
+
+export async function dbGetGroupMessage(groupId: string, messageId: string, timestamp: string): Promise<GroupMessage | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `GROUP#${groupId}`, SK: `MSG#${timestamp}#${messageId}` } })
+  );
+  return (Item?.data as GroupMessage) ?? null;
 }
 
 export async function dbDeleteGroupMessage(groupId: string, messageId: string, timestamp: string): Promise<void> {
@@ -1347,6 +1398,59 @@ export async function dbVerifyAccount(email: string): Promise<AuthAccount | null
 export async function dbGetUserIdByEmail(email: string): Promise<string | null> {
   const account = await dbVerifyAccount(email);
   return account?.userId ?? null;
+}
+
+// ── Password Reset OTP ───────────────────────────────────────────────────
+const RESET_OTP_TTL_SECONDS = 15 * 60; // 15 minutes
+
+export async function dbCreatePasswordResetToken(email: string): Promise<string> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Math.floor(Date.now() / 1000) + RESET_OTP_TTL_SECONDS;
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}`, data: { code, expiresAt }, ttl: expiresAt },
+    })
+  );
+  return code;
+}
+
+export async function dbVerifyPasswordResetToken(email: string, code: string): Promise<boolean> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}` } })
+  );
+  if (!Item?.data) return false;
+  const { code: stored, expiresAt } = Item.data as { code: string; expiresAt: number };
+  return stored === code && Math.floor(Date.now() / 1000) <= expiresAt;
+}
+
+export async function dbDeletePasswordResetToken(email: string): Promise<void> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}` } }));
+}
+
+export async function dbUpdatePasswordHash(email: string, newHash: string): Promise<boolean> {
+  const account = await dbVerifyAccount(email);
+  if (!account) return false;
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `ACCOUNT#${key}`,
+        SK: `ACCOUNT#${key}`,
+        data: { ...account, passwordHash: newHash },
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+  return true;
 }
 
 // ── Community Food Database ──────────────────────────────────────────────

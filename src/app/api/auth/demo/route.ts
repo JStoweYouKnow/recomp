@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildSetCookieHeader } from "@/lib/auth";
-import { dbGetProfile } from "@/lib/db";
+import { dbGetProfile, dbCreateApiToken } from "@/lib/db";
 import { buildDemoSeed } from "@/lib/demoSeed";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 
@@ -22,10 +22,18 @@ export async function POST(req: NextRequest) {
     profile = buildDemoSeed().profile;
   }
 
+  let apiToken: string | undefined;
+  try {
+    apiToken = await dbCreateApiToken(DEMO_USER_ID);
+  } catch {
+    // Non-fatal — client can still authenticate via session cookie
+  }
+
   const res = NextResponse.json({
     authenticated: true,
     userId: DEMO_USER_ID,
     profile,
+    apiToken,
   });
   res.headers.set("Set-Cookie", buildSetCookieHeader(DEMO_USER_ID));
   return res;

@@ -55,6 +55,7 @@ struct MealsView: View {
                     } label: {
                         Image(systemName: "plus.circle.fill")
                     }
+                    .accessibilityLabel("Add meal")
                 }
             }
             .sheet(isPresented: $showAddMeal) {
@@ -83,7 +84,16 @@ struct MealsView: View {
     }
 
     private func macroPill(_ label: String, value: Int, color: Color) -> some View {
-        HStack(spacing: 4) {
+        let spokenName: String = {
+            switch label {
+            case "Cal": return "Calories"
+            case "P": return "Protein"
+            case "C": return "Carbs"
+            case "F": return "Fat"
+            default: return label
+            }
+        }()
+        return HStack(spacing: 4) {
             Text(label)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(color)
@@ -93,6 +103,9 @@ struct MealsView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(color.opacity(0.1), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spokenName)
+        .accessibilityValue("\(value)")
     }
 
     private var mealListSection: some View {
@@ -153,6 +166,7 @@ struct MealRow: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
 
             Text(meal.name)
@@ -174,5 +188,6 @@ struct MealRow: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
     }
 }

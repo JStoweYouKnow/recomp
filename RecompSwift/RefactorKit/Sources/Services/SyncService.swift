@@ -14,6 +14,10 @@ public actor SyncService: ModelActor {
     private let api: APIClient
     private var syncTask: Task<Void, Never>?
     private var isDirty = false
+    /// Bumped on every `markDirty()`. `syncNow()` captures it before pushing and only
+    /// clears `isDirty` if no new edits arrived during the in-flight request, so changes
+    /// made mid-sync are never silently dropped (actor reentrancy at the `await`).
+    private var dirtyGeneration = 0
     private let iso8601 = ISO8601DateFormatter()
 
     public init(api: APIClient = .shared, modelContainer: ModelContainer) {
@@ -27,6 +31,7 @@ public actor SyncService: ModelActor {
 
     public func markDirty() {
         isDirty = true
+        dirtyGeneration &+= 1
         scheduleSync()
     }
 
@@ -40,7 +45,7 @@ public actor SyncService: ModelActor {
     }
 
     public func syncNow() async {
-        isDirty = false
+        let attemptedGeneration = dirtyGeneration
         do {
             let meals           = (try? modelContext.fetch(FetchDescriptor<MealEntry>())) ?? []
             let milestones      = (try? modelContext.fetch(FetchDescriptor<Milestone>())) ?? []
@@ -123,6 +128,11 @@ public actor SyncService: ModelActor {
                 measurementTargets: measurementTargetsPayload
             )
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
+            // Only clear the dirty flag if no new edits landed while the push was
+            // in flight; otherwise leave it set so the queued resync picks them up.
+            if dirtyGeneration == attemptedGeneration {
+                isDirty = false
+            }
         } catch {
             isDirty = true
             scheduleSync() // auto-retry after failed sync
@@ -138,10 +148,17 @@ public actor SyncService: ModelActor {
         decoder.dateDecodingStrategy = .iso8601
         let response = try decoder.decode(SyncResponseDTO.self, from: data)
 
-        // Full replace for profile and plan so stale demo/old-account records
-        // with different IDs never survive a sync from a new authenticated account.
-        for p in (try? modelContext.fetch(FetchDescriptor<UserProfile>())) ?? [] { modelContext.delete(p) }
-        if let dto = response.profile { upsertProfile(dto) }
+        // Keep the matching profile row's identity stable across pulls (so an
+        // in-memory reference held by AuthService stays valid), but still remove
+        // stale demo/old-account rows with a different ID. When the server returns
+        // no profile, keep the local one rather than wiping it.
+        if let dto = response.profile {
+            let keepId = dto.id
+            for p in (try? modelContext.fetch(FetchDescriptor<UserProfile>())) ?? [] where p.id != keepId {
+                modelContext.delete(p)
+            }
+            upsertProfile(dto)
+        }
 
         for p in (try? modelContext.fetch(FetchDescriptor<FitnessPlan>())) ?? [] { modelContext.delete(p) }
         if let dto = response.plan    { upsertPlan(dto) }
@@ -348,53 +365,10 @@ public actor SyncService: ModelActor {
 
     // MARK: - Upsert helpers
 
+    /// Thin wrapper over the shared `UserProfile.upsert(from:in:)` so the pull path
+    /// and `AuthService` apply server profiles identically (including `proAccess`).
     private func upsertProfile(_ dto: UserProfileDTO) {
-        let id = dto.id
-        var descriptor = FetchDescriptor<UserProfile>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-
-        if let existing = (try? modelContext.fetch(descriptor))?.first {
-            existing.name               = dto.name
-            existing.email              = dto.email
-            existing.avatarDataUrl      = dto.avatarDataUrl
-            existing.age                = dto.age
-            existing.weight             = dto.weight
-            existing.height             = dto.height
-            existing.gender             = Gender(rawValue: dto.gender) ?? existing.gender
-            existing.fitnessLevel       = FitnessLevel(rawValue: dto.fitnessLevel) ?? existing.fitnessLevel
-            existing.goal               = FitnessGoal(rawValue: dto.goal) ?? existing.goal
-            existing.dietaryRestrictions    = dto.dietaryRestrictions ?? existing.dietaryRestrictions
-            existing.injuriesOrLimitations  = dto.injuriesOrLimitations ?? existing.injuriesOrLimitations
-            existing.dailyActivityLevel = ActivityLevel(rawValue: dto.dailyActivityLevel ?? "") ?? existing.dailyActivityLevel
-            existing.unitSystem         = MeasurementSystem(rawValue: dto.unitSystem ?? "") ?? existing.unitSystem
-            existing.workoutLocation    = dto.workoutLocation.flatMap { WorkoutLocation(rawValue: $0) }
-            existing.workoutEquipment   = (dto.workoutEquipment ?? []).compactMap { WorkoutEquipment(rawValue: $0) }
-            existing.workoutDaysPerWeek = dto.workoutDaysPerWeek ?? existing.workoutDaysPerWeek
-            existing.workoutTimeframe   = dto.workoutTimeframe.flatMap { WorkoutTimeframe(rawValue: $0) }
-            existing.lastSyncedAt       = .now
-        } else {
-            modelContext.insert(UserProfile(
-                id:                     dto.id,
-                name:                   dto.name,
-                email:                  dto.email,
-                avatarDataUrl:          dto.avatarDataUrl,
-                age:                    dto.age,
-                weight:                 dto.weight,
-                height:                 dto.height,
-                gender:                 Gender(rawValue: dto.gender) ?? .other,
-                fitnessLevel:           FitnessLevel(rawValue: dto.fitnessLevel) ?? .beginner,
-                goal:                   FitnessGoal(rawValue: dto.goal) ?? .maintain,
-                dietaryRestrictions:    dto.dietaryRestrictions ?? [],
-                injuriesOrLimitations:  dto.injuriesOrLimitations ?? [],
-                dailyActivityLevel:     ActivityLevel(rawValue: dto.dailyActivityLevel ?? "moderate") ?? .moderate,
-                unitSystem:             MeasurementSystem(rawValue: dto.unitSystem ?? "us") ?? .us,
-                workoutLocation:        dto.workoutLocation.flatMap { WorkoutLocation(rawValue: $0) },
-                workoutEquipment:       (dto.workoutEquipment ?? []).compactMap { WorkoutEquipment(rawValue: $0) },
-                workoutDaysPerWeek:     dto.workoutDaysPerWeek ?? 4,
-                workoutTimeframe:       dto.workoutTimeframe.flatMap { WorkoutTimeframe(rawValue: $0) },
-                lastSyncedAt:           .now
-            ))
-        }
+        UserProfile.upsert(from: dto, in: modelContext)
     }
 
     private func upsertPlan(_ dto: FitnessPlanDTO) {

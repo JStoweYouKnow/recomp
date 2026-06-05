@@ -64,6 +64,7 @@ struct CoachChatView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("Chat options")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -109,6 +110,7 @@ struct CoachChatView: View {
                         .foregroundStyle(speechTranscription.isRecording ? Color.appError : Color.appAccent)
                         .symbolEffect(.pulse, isActive: speechTranscription.isRecording)
                 }
+                .accessibilityLabel(speechTranscription.isRecording ? "Stop recording" : "Start voice input")
                 .onChange(of: speechTranscription.isRecording) { wasRecording, isNowRecording in
                     if wasRecording && !isNowRecording {
                         let transcript = speechTranscription.transcript
@@ -145,6 +147,7 @@ struct CoachChatView: View {
                         .font(.title2)
                         .foregroundStyle(messageText.isEmpty ? Color.recompMuted : Color.appAccent)
                 }
+                .accessibilityLabel("Send message")
                 .disabled(messageText.isEmpty || coachService.isResponding)
             }
             .padding(.horizontal)

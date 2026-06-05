@@ -93,6 +93,7 @@ struct WorkoutsView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("Workout options")
                 }
             }
             .sheet(item: $editRoute) { route in
@@ -214,6 +215,7 @@ struct RecoveryCard: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss recovery assessment")
             }
 
             // Score bar
@@ -227,6 +229,9 @@ struct RecoveryCard: View {
                 .clipped()
             }
             .frame(height: 8)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recovery score")
+            .accessibilityValue("\(Int(min(assessment.score, 1.0) * 100)) percent")
 
             Text(assessment.recommendation)
                 .font(.subheadline)
@@ -670,6 +675,7 @@ struct ExerciseRow: View {
                     .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
                 .disabled(isLoadingGif)
             }
 
@@ -729,6 +735,8 @@ struct ExerciseRow: View {
                             .scaleEffect(done ? 1.05 : 1.0)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Set \(setIdx + 1)")
+                        .accessibilityValue(done ? "Completed" : "Not completed")
                     }
                 }
             }

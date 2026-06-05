@@ -22,6 +22,7 @@ public final class SubscriptionService {
     public private(set) var status: Status = .unknown
     public private(set) var products: [Product] = []
     public private(set) var isPurchasing = false
+    public private(set) var loadError: String?
 
     // Set by the app after auth so proAccess overrides can bypass StoreKit.
     public var proAccessOverride = false
@@ -83,11 +84,15 @@ public final class SubscriptionService {
     // MARK: - Private helpers
 
     private func loadProducts() async {
+        loadError = nil
         do {
             let loaded = try await Product.products(for: [Self.monthlyID, Self.annualID])
-            // Show monthly before annual
+            if loaded.isEmpty {
+                loadError = "No products returned for IDs: \(Self.monthlyID), \(Self.annualID)"
+            }
             products = loaded.sorted { $0.id == Self.monthlyID && $1.id == Self.annualID }
         } catch {
+            loadError = error.localizedDescription
             print("[SubscriptionService] Failed to load products: \(error)")
         }
     }

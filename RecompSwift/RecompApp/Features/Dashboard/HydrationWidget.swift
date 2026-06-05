@@ -34,10 +34,14 @@ struct HydrationWidget: View {
                         .foregroundStyle(Color.appAccent)
                 }
                 .frame(width: 50, height: 50)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Water intake")
+                .accessibilityValue("\(totalMl) of \(goalMl) milliliters")
 
                 Text("\(totalMl) ml")
                     .font(.caption.weight(.semibold))
                     .monospacedDigit()
+                    .accessibilityHidden(true)
 
                 HStack(spacing: 6) {
                     adjustButton(-250)
@@ -98,6 +102,7 @@ struct HydrationWidget: View {
                 .foregroundStyle(isSubtract ? Color.red : Color.appAccent)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isSubtract ? "Remove \(-ml) milliliters" : "Add \(ml) milliliters")
         .disabled(wouldGoNegative || (isSubtract && todaysEntries.isEmpty))
     }
 

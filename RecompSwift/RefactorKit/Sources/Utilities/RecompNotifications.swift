@@ -7,6 +7,10 @@ public extension Notification.Name {
     /// Posted on watchOS when WCSession delivers the userId from the paired iPhone,
     /// signalling that a full server pull should be attempted.
     static let recompWatchDidReceiveUserId = Notification.Name("recompWatchDidReceiveUserId")
+    /// Posted by `APIClient` when any request returns HTTP 401, signalling that the
+    /// stored session/token is no longer valid. `AuthService` observes this to clear
+    /// credentials and route back to sign-in (without wiping local data).
+    static let recompSessionExpired = Notification.Name("recompSessionExpired")
     /// Posted by notification action handlers to deep-link into specific tabs.
     static let recompNavigateToMeals = Notification.Name("recompNavigateToMeals")
     static let recompNavigateToWorkouts = Notification.Name("recompNavigateToWorkouts")

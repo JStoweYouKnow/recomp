@@ -4,6 +4,7 @@ import Security
 public struct KeychainService {
     private static let service = "com.refactor.ios"
     private static let userIdKey = "refactor_user_id"
+    private static let apiTokenKey = "refactor_api_token"
 
     public static func save(userId: String) throws {
         let data = Data(userId.utf8)
@@ -22,7 +23,7 @@ public struct KeychainService {
             kSecAttrService as String: service,
             kSecAttrAccount as String: userIdKey,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecAttrAccessGroup as String: "group.com.refactor.ios",
         ]
 
@@ -65,20 +66,74 @@ public struct KeychainService {
         }
     }
 
-    public static func delete() throws {
+    public static func saveApiToken(_ token: String) throws {
+        let data = Data(token.utf8)
         let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiTokenKey,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
+        ]
+        SecItemDelete(query as CFDictionary)
+        let addQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiTokenKey,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
+        ]
+        RecompAppGroupDefaults.shared.set(token, forKey: RecompUserDefaultsKeys.apiToken)
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw KeychainError.unableToSave(status)
+        }
+    }
+
+    public static func loadApiToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiTokenKey,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            guard let data = result as? Data, let token = String(data: data, encoding: .utf8) else {
+                return RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.apiToken)
+            }
+            return token
+        default:
+            return RecompAppGroupDefaults.shared.string(forKey: RecompUserDefaultsKeys.apiToken)
+        }
+    }
+
+    public static func delete() throws {
+        let userIdQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: userIdKey,
             kSecAttrAccessGroup as String: "group.com.refactor.ios",
         ]
-
-        let status = SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(userIdQuery as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.unableToDelete(status)
         }
 
+        let tokenQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: apiTokenKey,
+            kSecAttrAccessGroup as String: "group.com.refactor.ios",
+        ]
+        SecItemDelete(tokenQuery as CFDictionary)
+
         RecompAppGroupDefaults.shared.removeObject(forKey: RecompUserDefaultsKeys.userId)
+        RecompAppGroupDefaults.shared.removeObject(forKey: RecompUserDefaultsKeys.apiToken)
     }
 }
 

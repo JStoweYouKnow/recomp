@@ -95,7 +95,8 @@ struct AdjustView: View {
                             }
                             suggestion = try await planService.adjustPlan(
                                 feedback: feedback,
-                                currentPlan: planDTO
+                                currentPlan: planDTO,
+                                context: context
                             )
                         } catch {
                             errorMessage = error.localizedDescription

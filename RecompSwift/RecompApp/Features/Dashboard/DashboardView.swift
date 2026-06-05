@@ -93,6 +93,7 @@ struct DashboardView: View {
                         Image(systemName: "dumbbell.fill")
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(.white)
+                            .accessibilityHidden(true)
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text("TODAY'S WORKOUT")
@@ -121,6 +122,8 @@ struct DashboardView: View {
                     RoundedRectangle(cornerRadius: 18)
                         .stroke(Color.appAccent.opacity(0.2), lineWidth: 1)
                 )
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Today's workout: \(workout.day), \(workout.focus), \(workout.exerciseSlotCount) exercises")
             }
         }
         .padding(.horizontal)
@@ -213,6 +216,13 @@ struct CalorieBudgetCard: View {
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke((isOver ? Color.appError : Color.appAccent).opacity(0.15), lineWidth: 1)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calorie budget")
+        .accessibilityValue(
+            isOver
+            ? "Over budget by \(consumed - target) calories. \(consumed) of \(target) consumed."
+            : "\(remaining) calories remaining. \(consumed) of \(target) consumed, \(pctConsumed) percent."
         )
     }
 }

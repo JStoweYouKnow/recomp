@@ -54,7 +54,9 @@ export async function POST(req: NextRequest) {
     const res = await fetch(trimmed, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (compatible; RefactorRecipeBot/1.0; +https://github.com/JStoweYouKnow/recomp)",
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       signal: controller.signal,
     });
@@ -182,8 +184,14 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. If we have HTML but missing nutrition, use Nova to extract
-    if (!nutrition && html.length > 500) {
+    // 3. If we have HTML but missing usable nutrition, use Nova to extract.
+    // Check for usable values — schema.org parsing may produce a non-null object with all zeros
+    // when the nutrition block exists but the field names don't match expected keys.
+    const hasUsableNutrition =
+      nutrition !== null &&
+      ((nutrition.calories ?? 0) > 0 || (nutrition.protein ?? 0) > 0 || (nutrition.carbs ?? 0) > 0 || (nutrition.fat ?? 0) > 0);
+    if (!hasUsableNutrition && html.length > 500) {
+      // 3a. Try extracting nutrition from the page text.
       const truncated = html
         .replace(/<script[\s\S]*?<\/script>/gi, "")
         .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -214,18 +222,47 @@ ${truncated}`;
       } catch {
         nutrition = null;
       }
+
+      // 3b. If the page text yielded no nutrition (e.g. paywalled sites like NYT Cooking
+      // that embed the recipe name in JSON-LD but hide nutrition behind a login), fall back
+      // to asking Nova to estimate nutrition from the recipe name alone.
+      const textNutritionUsable =
+        nutrition !== null &&
+        ((nutrition.calories ?? 0) > 0 || (nutrition.protein ?? 0) > 0 || (nutrition.carbs ?? 0) > 0 || (nutrition.fat ?? 0) > 0);
+      if (!textNutritionUsable && name) {
+        try {
+          const namePrompt = `Estimate the nutrition per serving for a recipe called "${name}". Return ONLY a JSON object: {"servings":N,"calories":N,"protein":N,"carbs":N,"fat":N}. Use typical ingredient quantities for this dish. Integer values only.`;
+          const raw2 = await invokeNova(
+            "You are a nutrition estimator. Return only valid JSON with integer values.",
+            namePrompt
+          );
+          const m2 = raw2.match(/\{[\s\S]*\}/);
+          if (m2) {
+            const p2 = JSON.parse(m2[0]);
+            const estimated = {
+              calories: Math.round(Number(p2.calories) || 0),
+              protein:  Math.round(Number(p2.protein)  || 0),
+              carbs:    Math.round(Number(p2.carbs)    || 0),
+              fat:      Math.round(Number(p2.fat)      || 0),
+            };
+            if (estimated.calories > 0 || estimated.protein > 0) {
+              servings = Math.max(1, Math.round(Number(p2.servings) || 1));
+              nutrition = estimated;
+            }
+          }
+        } catch {
+          // estimation failed — leave nutrition as-is
+        }
+      }
     }
 
     const result = {
       name: name || "Recipe",
       imageUrl: imageUrl || undefined,
       servings,
-      macros: nutrition ?? {
-        calories: 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-      },
+      macros: hasUsableNutrition
+        ? nutrition!
+        : (nutrition ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }),
     };
 
     const headers = getRateLimitHeaderValues(rl);

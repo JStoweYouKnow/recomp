@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbSaveProfile, dbCreateAccount } from "@/lib/db";
+import { dbSaveProfile, dbCreateAccount, dbCreateApiToken } from "@/lib/db";
 import { buildSetCookieHeader, getUserId } from "@/lib/auth";
 import { logInfo, logError } from "@/lib/logger";
 import type { UserProfile } from "@/lib/types";
@@ -232,6 +232,13 @@ export async function POST(req: NextRequest) {
       console.error("Register profile persistence warning:", err);
     }
 
+    let apiToken: string | undefined;
+    try {
+      apiToken = await dbCreateApiToken(userId);
+    } catch {
+      // Non-fatal — client can still authenticate via session cookie
+    }
+
     logInfo("User registered", { route: "auth/register", userId, profileSaved });
     const res = NextResponse.json({
       ok: true,
@@ -239,6 +246,7 @@ export async function POST(req: NextRequest) {
       userId,
       profile: normalized,
       profileSaved,
+      apiToken,
       warning: profileSaved ? undefined : "Profile could not be persisted to DynamoDB",
     });
     res.headers.set("Set-Cookie", buildSetCookieHeader(userId));

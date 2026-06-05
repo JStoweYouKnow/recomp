@@ -18,6 +18,8 @@ struct MyProgressView: View {
     @State private var weeklyReview: WeeklyReview?
     @State private var weeklyLoading = false
     @State private var weeklyError: String?
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
 
     private var xp: Int { MacroCalculator.totalXp(from: milestones) }
 
@@ -41,10 +43,23 @@ struct MyProgressView: View {
             }
             .navigationTitle("My Progress")
             .task(id: selectedTab) {
-                if selectedTab == 2 {
+                if selectedTab == 2 && aiConsentGiven {
                     await loadInsights()
                     await loadWeeklyReview()
                 }
+            }
+            .sheet(isPresented: $showAIConsent) {
+                AIConsentView(
+                    onAccept: {
+                        aiConsentGiven = true
+                        showAIConsent = false
+                        Task {
+                            await loadInsights()
+                            await loadWeeklyReview()
+                        }
+                    },
+                    onDecline: { showAIConsent = false }
+                )
             }
         }
     }
@@ -72,23 +87,46 @@ struct MyProgressView: View {
         }
     }
 
+    @ViewBuilder
     private var insightsSection: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                BiofeedbackInsightsView(
-                    insights: insights,
-                    isLoading: insightsLoading,
-                    error: insightsError,
-                    onRefresh: { await loadInsights() }
-                )
-                WeeklyRecapCard(
-                    review: weeklyReview,
-                    isLoading: weeklyLoading,
-                    error: weeklyError,
-                    onGenerate: { await loadWeeklyReview() }
-                )
+        if aiConsentGiven {
+            ScrollView {
+                VStack(spacing: 16) {
+                    BiofeedbackInsightsView(
+                        insights: insights,
+                        isLoading: insightsLoading,
+                        error: insightsError,
+                        onRefresh: { await loadInsights() }
+                    )
+                    WeeklyRecapCard(
+                        review: weeklyReview,
+                        isLoading: weeklyLoading,
+                        error: weeklyError,
+                        onGenerate: { await loadWeeklyReview() }
+                    )
+                }
+                .padding()
             }
-            .padding()
+        } else {
+            VStack(spacing: 16) {
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 44))
+                    .foregroundStyle(Color.appAccent)
+                    .accessibilityHidden(true)
+                Text("AI Insights")
+                    .font(.title3.weight(.semibold))
+                Text("Enable AI features to unlock biofeedback insights and weekly progress reviews.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Button("Enable AI Features") {
+                    showAIConsent = true
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.top, 60)
         }
     }
 
@@ -232,6 +270,9 @@ struct XPLevelView: View {
         }
         .padding()
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Level \(level), \(xp) XP")
+        .accessibilityValue("\(progress.current) of \(progress.needed) XP to next level")
     }
 }
 
@@ -262,6 +303,9 @@ struct BadgesGrid: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(isEarned ? .primary : .secondary)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(badgeLabel(for: type))
+                .accessibilityValue(isEarned ? "Earned" : "Locked")
             }
         }
     }
@@ -712,6 +756,7 @@ struct ProgressPhotosSection: View {
                 .overlay {
                     Image(systemName: "camera")
                         .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
             Text(label)
                 .font(.caption)
@@ -736,6 +781,7 @@ struct BiofeedbackInsightsView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .accessibilityLabel("Refresh insights")
                     .disabled(isLoading)
                 }
                 if isLoading {

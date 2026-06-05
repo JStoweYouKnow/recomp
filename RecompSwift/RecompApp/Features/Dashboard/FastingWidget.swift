@@ -39,6 +39,9 @@ struct FastingWidget: View {
                                 .font(.caption2)
                                 .foregroundStyle(Color.appSlate)
                         }
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Fasting progress")
+                        .accessibilityValue("\(String(format: "%.1f", session.elapsedHours)) hours, \(session.currentPhase.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)")
                     }
 
                     Button("End Fast") {
@@ -54,6 +57,7 @@ struct FastingWidget: View {
                         .font(.title3)
                         .foregroundStyle(Color.appSlate)
                         .padding(.bottom, 4)
+                        .accessibilityHidden(true)
 
                     Button("Start Fast") {
                         let session = FastingSession()

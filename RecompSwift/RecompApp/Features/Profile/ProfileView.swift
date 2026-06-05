@@ -7,12 +7,17 @@ import RefactorKit
 
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SubscriptionService.self) private var subscriptions
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
     @AppStorage("appColorScheme") private var colorSchemePref: String = AppColorScheme.system.rawValue
     @State private var isSyncing = false
     @State private var syncError: String?
     @State private var syncSuccess = false
+    @State private var showDeleteConfirmation = false
+    @State private var isDeletingAccount = false
+    @State private var showPaywall = false
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
 
     var body: some View {
         NavigationStack {
@@ -20,6 +25,8 @@ struct ProfileView: View {
                 if let user = auth.currentUser {
                     profileHeader(user)
                 }
+
+                subscriptionSection
 
                 Section("Appearance") {
                     Picker("Theme", selection: $colorSchemePref) {
@@ -70,6 +77,14 @@ struct ProfileView: View {
                         APITokenView()
                     } label: {
                         Label("Siri Shortcuts / API", systemImage: "link")
+                    }
+
+                    if aiConsentGiven {
+                        Button(role: .destructive) {
+                            aiConsentGiven = false
+                        } label: {
+                            Label("Revoke AI Access", systemImage: "hand.raised.slash")
+                        }
                     }
                 }
 
@@ -136,11 +151,37 @@ struct ProfileView: View {
                     } label: {
                         Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
+
+                    Button(role: .destructive) {
+                        showDeleteConfirmation = true
+                    } label: {
+                        if isDeletingAccount {
+                            HStack {
+                                ProgressView().scaleEffect(0.8)
+                                Text("Deleting account…")
+                            }
+                        } else {
+                            Label("Delete Account", systemImage: "trash")
+                        }
+                    }
+                    .disabled(isDeletingAccount)
                 } header: {
                     Text("Account")
                 } footer: {
-                    Text("Log out to return to the sign-in screen and use a different account.")
+                    Text("Deleting your account permanently removes all data and cannot be undone.")
                         .font(.caption)
+                }
+                .confirmationDialog(
+                    "Delete Account",
+                    isPresented: $showDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Account", role: .destructive) {
+                        Task { await deleteAccount() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This permanently deletes your profile, meals, workouts, and all other data. This cannot be undone.")
                 }
 
                 Section {
@@ -159,7 +200,90 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
         }
+        }
+    }
+
+    @ViewBuilder
+    private var subscriptionSection: some View {
+        if subscriptions.isPremium {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "bolt.fill")
+                        .font(.title3)
+                        .foregroundStyle(Color.appAccent)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Refactor Pro")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Active")
+                            .font(.caption)
+                            .foregroundStyle(Color.appSuccess)
+                    }
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.appSuccess)
+                        .accessibilityHidden(true)
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Refactor Pro subscription active")
+
+                Button {
+                    if let url = URL(string: "itms-apps://apps.apple.com/account/subscriptions") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: {
+                    Label("Manage Subscription", systemImage: "arrow.up.right")
+                }
+            } header: {
+                Text("Subscription")
+            }
+        } else {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "bolt.slash")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Free Plan")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Upgrade for AI coaching, adaptive macros & more")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+
+                Button {
+                    showPaywall = true
+                } label: {
+                    Label("Upgrade to Pro", systemImage: "bolt.fill")
+                        .foregroundStyle(Color.appAccent)
+                        .fontWeight(.semibold)
+                }
+
+                Button {
+                    Task { await subscriptions.restorePurchases() }
+                } label: {
+                    Label("Restore Purchases", systemImage: "arrow.clockwise")
+                }
+            } header: {
+                Text("Subscription")
+            }
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+        try? await auth.deleteAccount()
     }
 
     private func syncNow() async {
@@ -262,6 +386,7 @@ struct WearableConnectionsView: View {
                 Spacer()
                 if connected {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.appSuccess)
+                        .accessibilityLabel("Connected")
                 }
             }
             if HKHealthStore.isHealthDataAvailable() {
@@ -270,7 +395,7 @@ struct WearableConnectionsView: View {
                 } label: {
                     HStack {
                         Label(
-                            connected ? "Sync Now" : "Connect & Sync",
+                            connected ? "Sync Now" : "Continue",
                             systemImage: "arrow.triangle.2.circlepath"
                         )
                         if isSyncingApple { Spacer(); ProgressView().scaleEffect(0.8) }
@@ -298,6 +423,7 @@ struct WearableConnectionsView: View {
                 Spacer()
                 if connected {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.appSuccess)
+                        .accessibilityLabel("Connected")
                 }
             }
             if !connected {
@@ -315,6 +441,7 @@ struct WearableConnectionsView: View {
                 Spacer()
                 if connected {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.appSuccess)
+                        .accessibilityLabel("Connected")
                 }
             }
             if !connected {
@@ -939,6 +1066,8 @@ struct SupplementsView: View {
     @State private var isAnalyzing = false
     @State private var analysisResult: SupplementAnalysisResponse?
     @State private var analysisError: String?
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
 
     var body: some View {
         List {
@@ -969,7 +1098,11 @@ struct SupplementsView: View {
             if !supplements.isEmpty {
                 Section {
                     Button {
-                        Task { await analyze() }
+                        if aiConsentGiven {
+                            Task { await analyze() }
+                        } else {
+                            showAIConsent = true
+                        }
                     } label: {
                         HStack {
                             Label("AI Analysis", systemImage: "sparkles")
@@ -1039,6 +1172,16 @@ struct SupplementsView: View {
             }
         }
         .navigationTitle("Supplements")
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentView(
+                onAccept: {
+                    aiConsentGiven = true
+                    showAIConsent = false
+                    Task { await analyze() }
+                },
+                onDecline: { showAIConsent = false }
+            )
+        }
     }
 
     private func analyze() async {
@@ -1077,6 +1220,9 @@ struct BloodWorkView: View {
     @State private var isUploading = false
     @State private var uploadError: String?
     @State private var result: BloodWorkDTO?
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
+    @State private var pendingPhoto: PhotosPickerItem?
 
     var body: some View {
         Group {
@@ -1099,7 +1245,12 @@ struct BloodWorkView: View {
                     .padding(.horizontal, 32)
                     .onChange(of: selectedPhoto) { _, item in
                         guard let item else { return }
-                        Task { await uploadPhoto(item) }
+                        if aiConsentGiven {
+                            Task { await uploadPhoto(item) }
+                        } else {
+                            pendingPhoto = item
+                            showAIConsent = true
+                        }
                     }
 
                     if isUploading {
@@ -1115,6 +1266,23 @@ struct BloodWorkView: View {
             }
         }
         .navigationTitle("Blood Work")
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentView(
+                onAccept: {
+                    aiConsentGiven = true
+                    showAIConsent = false
+                    if let pending = pendingPhoto {
+                        pendingPhoto = nil
+                        Task { await uploadPhoto(pending) }
+                    }
+                },
+                onDecline: {
+                    showAIConsent = false
+                    pendingPhoto = nil
+                    selectedPhoto = nil
+                }
+            )
+        }
     }
 
     @ViewBuilder
@@ -1138,7 +1306,12 @@ struct BloodWorkView: View {
                 }
                 .onChange(of: selectedPhoto) { _, item in
                     guard let item else { return }
-                    Task { await uploadPhoto(item) }
+                    if aiConsentGiven {
+                        Task { await uploadPhoto(item) }
+                    } else {
+                        pendingPhoto = item
+                        showAIConsent = true
+                    }
                 }
                 if isUploading {
                     HStack { ProgressView(); Text("Analyzing…").font(.caption) }

@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import RefactorKit
 import WatchConnectivity
+import OSLog
 
 @main
 struct RefactorWatchApp: App {
@@ -15,7 +16,8 @@ struct RefactorWatchApp: App {
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
             )
         } catch {
-            print("SwiftData on-disk store failed (watch): \(error). Using in-memory container.")
+            Logger(subsystem: "com.refactor.ios", category: "SwiftData")
+                .error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Using a temporary in-memory store.")
             do {
                 modelContainer = try RefactorSchema.makeContainer(inMemory: true)
             } catch {

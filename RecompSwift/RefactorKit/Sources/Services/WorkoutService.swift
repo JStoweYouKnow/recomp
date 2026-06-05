@@ -96,6 +96,14 @@ public final class WorkoutService {
         }
     }
 
+    /// Clears all workout progress (in-memory + persisted). Call on logout / account switch
+    /// so the next account on a shared device starts clean.
+    public func reset() {
+        progressByDay = [:]
+        webProgressMap = [:]
+        RecompAppGroupDefaults.shared.removeObject(forKey: defaultsKey)
+    }
+
     private func postSyncNotification() {
         NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil)
     }

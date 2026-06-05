@@ -20,6 +20,7 @@ struct BiofeedbackCard: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Color.appSuccess)
                         .font(.title3)
+                        .accessibilityHidden(true)
                     Text("Logged today")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -82,6 +83,7 @@ struct BiofeedbackCard: View {
                 Image(systemName: icon)
                     .font(.system(size: 9))
                     .foregroundStyle(color)
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.secondary)
@@ -99,6 +101,8 @@ struct BiofeedbackCard: View {
                             .frame(height: 10)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Set \(label) to \(i) out of 5")
+                    .accessibilityAddTraits(i <= value.wrappedValue ? .isSelected : [])
                 }
             }
         }

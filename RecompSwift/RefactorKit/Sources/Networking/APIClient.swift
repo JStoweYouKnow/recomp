@@ -8,6 +8,7 @@ public enum APIError: Error, LocalizedError {
     case unauthorized
     case serverError(String)
     case noData
+    case offline
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +19,17 @@ public enum APIError: Error, LocalizedError {
         case .unauthorized: return "Session expired. Please log in again."
         case .serverError(let msg): return msg
         case .noData: return "No data received"
+        case .offline: return "You appear to be offline. Check your connection and try again."
+        }
+    }
+
+    /// True when the failure is a transport/connectivity problem rather than an
+    /// authentication or server-logic failure. Used to avoid signing users out
+    /// (or wiping state) merely because the network is unavailable.
+    public var isConnectivityFailure: Bool {
+        switch self {
+        case .offline, .networkError: return true
+        default: return false
         }
     }
 }
@@ -160,10 +172,11 @@ public actor APIClient {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
-        // Native clients often do not send the httpOnly session cookie reliably; the API
-        // accepts the same user id via header (see recomp `getUserId` + `X-Refactor-User-Id`).
-        if let uid = try? KeychainService.loadUserId(), !uid.isEmpty {
-            request.setValue(uid, forHTTPHeaderField: "X-Refactor-User-Id")
+        // Prefer a verified API token (Bearer) over the session cookie alone.
+        // The previous X-Refactor-User-Id raw-header approach is removed — it accepted
+        // an arbitrary user ID with no verification, allowing trivial account impersonation.
+        if let token = KeychainService.loadApiToken(), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
         return request
@@ -180,10 +193,12 @@ public actor APIClient {
             throw error
         } catch let urlError as URLError where urlError.code == .cannotConnectToHost
                                               || urlError.code == .networkConnectionLost
-                                              || urlError.code == .notConnectedToInternet {
-            let host = request.url?.host ?? "unknown"
-            let port = request.url?.port.map { ":\($0)" } ?? ""
-            throw APIError.serverError("Cannot connect to \(host)\(port). Make sure the server is running.")
+                                              || urlError.code == .notConnectedToInternet
+                                              || urlError.code == .timedOut
+                                              || urlError.code == .dataNotAllowed {
+            // Connectivity failure — distinct from auth/server errors so callers can
+            // keep the user signed in on cached data instead of forcing re-login.
+            throw APIError.offline
         } catch {
             throw APIError.networkError(error)
         }
@@ -193,6 +208,9 @@ public actor APIClient {
         switch response.statusCode {
         case 200...299: return
         case 401:
+            // Signal session expiry app-wide so AuthService can clear credentials and
+            // route to sign-in. Posted for every 401 regardless of body shape.
+            NotificationCenter.default.post(name: .recompSessionExpired, object: nil)
             // Prefer the server's own message before the generic "Session expired" copy.
             if let msg = parseErrorMessage(from: data) {
                 throw APIError.serverError(msg)

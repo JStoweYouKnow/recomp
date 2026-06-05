@@ -9,4 +9,7 @@ public enum RecompUserDefaultsKeys {
     /// Mirrors the authenticated user ID into the shared App Group suite so watchOS
     /// can identify the user without relying on cross-process keychain access.
     public static let userId = "recomp_user_id"
+    /// Mirrors the API token into the shared App Group suite as a fallback for
+    /// watchOS where keychain access-group writes can fail.
+    public static let apiToken = "recomp_api_token"
 }

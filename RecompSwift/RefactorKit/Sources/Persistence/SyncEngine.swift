@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import WidgetKit
 
 public actor SyncEngine {
     private let syncService: SyncService
@@ -61,5 +62,8 @@ public actor SyncEngine {
 
     private func performSync() async {
         await syncService.syncNow()
+        // Refresh watch complications / home-screen widgets that read the shared
+        // App Group store so they reflect freshly synced macros and streaks.
+        WidgetCenter.shared.reloadAllTimelines()
     }
 }

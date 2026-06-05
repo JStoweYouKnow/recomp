@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,16 +8,31 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+fun localProp(key: String): String {
+    val props = Properties()
+    rootProject.file("local.properties").inputStream().use { props.load(it) }
+    return props.getProperty(key, "")
+}
+
 android {
-    namespace = "com.recomp.app"
+    namespace = "com.refactor.app"
     compileSdk = 35
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(localProp("KEYSTORE_PATH"))
+            storePassword = localProp("KEY_STORE_PASSWORD")
+            keyAlias = localProp("KEY_ALIAS")
+            keyPassword = localProp("KEY_PASSWORD")
+        }
+    }
+
     defaultConfig {
-        applicationId = "com.recomp.app"
+        applicationId = "com.refactor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 7
+        versionName = "3.2"
         // Optional: set in `gradle.properties` to enable FCM (`FirebaseMessaging`). Leave empty for CI/local without Firebase.
         val fbAppId = (project.findProperty("FIREBASE_APP_ID") as String?) ?: ""
         val fbApiKey = (project.findProperty("FIREBASE_API_KEY") as String?) ?: ""
@@ -29,17 +46,22 @@ android {
 
     buildTypes {
         debug {
-            // Android emulator → host machine (Next.js / API on localhost:3000)
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000\"")
+            // Use production API for real-device testing. Change to http://10.0.2.2:3000 for emulator + local server.
+            buildConfigField("String", "API_BASE_URL", "\"https://refactor-one.vercel.app\"")
             buildConfigField("String", "ENVIRONMENT", "\"development\"")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            buildConfigField("String", "API_BASE_URL", "\"https://recomp-one.vercel.app\"")
+            ndk {
+                debugSymbolLevel = "FULL"
+            }
+            buildConfigField("String", "API_BASE_URL", "\"https://refactor-one.vercel.app\"")
             buildConfigField("String", "ENVIRONMENT", "\"production\"")
         }
     }
