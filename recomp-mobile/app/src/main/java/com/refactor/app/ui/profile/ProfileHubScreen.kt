@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Devices
@@ -73,7 +74,7 @@ import com.refactor.app.ui.screens.ConfigFootnoteCard
 import kotlinx.coroutines.launch
 
 private enum class ProfileSection {
-    Home, Wearables, Research, Music, Subscription,
+    Home, Edit, Wearables, Research, Music, Subscription,
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,6 +104,11 @@ fun ProfileHubScreen(
     val proAccess = snap?.profile?.proAccess
 
     when (section) {
+        ProfileSection.Edit -> ProfileEditScreen(
+            syncRepository = syncRepository,
+            syncCacheDao = syncCacheDao,
+            onBack = { section = ProfileSection.Home },
+        )
         ProfileSection.Wearables -> SyncWearablesScreen(
             onBack = { section = ProfileSection.Home },
             syncCacheDao = syncCacheDao,
@@ -197,6 +203,12 @@ private fun ProfileHomeScreen(
 
             // Settings
             SectionHeader("Settings")
+            SettingsRow(
+                icon = Icons.Outlined.Edit,
+                label = "Edit profile",
+                onClick = { onNavigate(ProfileSection.Edit) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
             SettingsRow(
                 icon = Icons.Outlined.Star,
                 label = "Subscription",

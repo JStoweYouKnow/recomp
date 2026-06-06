@@ -16,6 +16,7 @@ import com.refactor.app.api.BillingRepository
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.GroupRepository
 import com.refactor.app.api.MealPrepRepository
+import com.refactor.app.api.MealRepository
 import com.refactor.app.api.ResearchRepository
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.WorkoutExtrasRepository
@@ -42,6 +43,7 @@ class MainActivity : FragmentActivity() {
     private val groupRepository by lazy { GroupRepository(httpClient) }
     private val researchRepository by lazy { ResearchRepository(httpClient) }
     private val mealPrepRepository by lazy { MealPrepRepository(httpClient) }
+    private val mealRepository by lazy { MealRepository(httpClient) }
     private val workoutExtrasRepository by lazy { WorkoutExtrasRepository(httpClient) }
     private val themePrefs by lazy { ThemePrefs(applicationContext) }
 
@@ -76,6 +78,7 @@ class MainActivity : FragmentActivity() {
                     groupRepository = groupRepository,
                     researchRepository = researchRepository,
                     mealPrepRepository = mealPrepRepository,
+                    mealRepository = mealRepository,
                     workoutExtrasRepository = workoutExtrasRepository,
                     playBilling = playBilling,
                     themePreference = themePreference,

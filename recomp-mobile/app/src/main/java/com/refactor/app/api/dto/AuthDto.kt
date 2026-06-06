@@ -83,8 +83,11 @@ data class UserProfileDto(
     val injuriesOrLimitations: List<String> = emptyList(),
     val dailyActivityLevel: String? = null,
     val unitSystem: String? = null,
+    val workoutLocation: String? = null,
     val workoutEquipment: List<String> = emptyList(),
     val workoutDaysPerWeek: Int? = null,
+    val workoutTimeframe: String? = null,
+    val avatarDataUrl: String? = null,
     val createdAt: String? = null,
     @SerialName("proAccess") val proAccess: Boolean? = null,
 )

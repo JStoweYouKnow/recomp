@@ -334,3 +334,45 @@ data class CoachCheckInResponseDto(
     val message: String? = null,
     val tone: String? = null,
 )
+
+// ── Meal entry / analysis (parity with iOS AddMealSheet) ─────────────────────
+
+@Serializable
+data class SuggestedMealDto(
+    val name: String,
+    val description: String? = null,
+    val macros: MealMacrosDto,
+    val mealType: String? = null,
+)
+
+@Serializable
+data class MealSuggestResponseDto(
+    val suggestions: List<SuggestedMealDto> = emptyList(),
+)
+
+@Serializable
+data class NutritionLookupResponseDto(
+    val food: String? = null,
+    val name: String? = null,
+    val nutrition: MealMacrosDto? = null,
+    val macros: MealMacrosDto? = null,
+    val found: Boolean? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class RecipeParseResponseDto(
+    val name: String,
+    val servings: Int? = null,
+    val macros: MealMacrosDto,
+)
+
+@Serializable
+data class VoiceParseResponseDto(
+    val name: String? = null,
+    val calories: Double? = null,
+    val protein: Double? = null,
+    val carbs: Double? = null,
+    val fat: Double? = null,
+    val meals: List<SuggestedMealDto>? = null,
+)

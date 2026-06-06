@@ -50,6 +50,7 @@ import com.refactor.app.ui.auth.LoginUiState
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.GroupRepository
 import com.refactor.app.api.MealPrepRepository
+import com.refactor.app.api.MealRepository
 import com.refactor.app.api.ResearchRepository
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.WorkoutExtrasRepository
@@ -84,6 +85,7 @@ fun AppShell(
     groupRepository: GroupRepository,
     researchRepository: ResearchRepository,
     mealPrepRepository: MealPrepRepository,
+    mealRepository: MealRepository,
     workoutExtrasRepository: WorkoutExtrasRepository,
     playBilling: PlayBillingManager,
     themePreference: AppTheme = AppTheme.SYSTEM,
@@ -122,6 +124,7 @@ fun AppShell(
                 groupRepository = groupRepository,
                 researchRepository = researchRepository,
                 mealPrepRepository = mealPrepRepository,
+                mealRepository = mealRepository,
                 workoutExtrasRepository = workoutExtrasRepository,
                 playBilling = playBilling,
                 themePreference = themePreference,
@@ -143,6 +146,7 @@ private fun MainShell(
     groupRepository: GroupRepository,
     researchRepository: ResearchRepository,
     mealPrepRepository: MealPrepRepository,
+    mealRepository: MealRepository,
     workoutExtrasRepository: WorkoutExtrasRepository,
     playBilling: PlayBillingManager,
     themePreference: AppTheme = AppTheme.SYSTEM,
@@ -227,6 +231,7 @@ private fun MainShell(
                         syncRepository = syncRepository,
                         syncCacheDao = syncCacheDao,
                         mealPrepRepository = mealPrepRepository,
+                        mealRepository = mealRepository,
                     )
                     2 -> WorkoutsScreen(
                         syncRepository = syncRepository,

@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.MealPrepRepository
+import com.refactor.app.api.MealRepository
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
@@ -68,6 +69,7 @@ fun MealsScreen(
     syncRepository: SyncRepository,
     syncCacheDao: SyncCacheDao,
     mealPrepRepository: MealPrepRepository,
+    mealRepository: MealRepository,
 ) {
     val vm: MealsViewModel = viewModel(factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository))
     val allMeals by vm.allMeals.collectAsStateWithLifecycle()
@@ -111,8 +113,11 @@ fun MealsScreen(
         },
         floatingActionButton = {
             if (sectionTab == 0) {
+                // Offset above the global Coach-chat FAB from MainShell's outer
+                // Scaffold, which shares this bottom-end slot and would otherwise cover it.
                 FloatingActionButton(
                     onClick = { showAdd = true },
+                    modifier = Modifier.padding(bottom = 72.dp),
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add meal")
                 }
@@ -261,10 +266,11 @@ fun MealsScreen(
     }
 
     if (showAdd) {
-        MealEditorDialog(
-            title = "Add meal",
-            initial = null,
-            defaultDate = dateStr,
+        AddMealSheet(
+            date = dateStr,
+            recentMeals = allMeals,
+            mealRepository = mealRepository,
+            syncCacheDao = syncCacheDao,
             onDismiss = { showAdd = false },
             onSave = { draft ->
                 val next = allMeals + draft
