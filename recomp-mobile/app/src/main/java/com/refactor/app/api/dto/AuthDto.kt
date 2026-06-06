@@ -48,6 +48,12 @@ data class ResetPasswordRequest(
     val newPassword: String,
 )
 
+@Serializable
+data class ClaimAccountRequest(
+    val email: String,
+    val password: String,
+)
+
 /**
  * `/api/auth/login` — mirrors Swift `AuthResponse` + extra `success` from Next route.
  */

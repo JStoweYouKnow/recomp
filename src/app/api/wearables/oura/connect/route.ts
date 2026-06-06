@@ -9,7 +9,7 @@ const OuraConnectSchema = z.object({
 /** Validate Oura token and store in httpOnly cookie for subsequent fetches */
 export async function POST(req: NextRequest) {
   try {
-    const userId = await getUserId();
+    const userId = await getUserId(req.headers);
     if (!userId) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

@@ -43,6 +43,10 @@
         </service>
 
         <receiver
+            android:name=".push.LocalReminderReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".widget.RecompAppWidgetProvider"
             android:exported="false">
             <intent-filter>

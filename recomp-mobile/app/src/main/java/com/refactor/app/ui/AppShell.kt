@@ -49,11 +49,16 @@ import com.refactor.app.ui.auth.AuthUiState
 import com.refactor.app.ui.auth.LoginUiState
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.GroupRepository
+import com.refactor.app.api.HealthExtrasRepository
 import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
 import com.refactor.app.api.ResearchRepository
+import com.refactor.app.api.SocialRepository
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.WearableConnectRepository
 import com.refactor.app.api.WorkoutExtrasRepository
+import com.refactor.app.prefs.AiConsentPrefs
+import com.refactor.app.prefs.NotificationPrefs
 import com.refactor.app.billing.PlayBillingManager
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.SyncCacheDao
@@ -76,6 +81,7 @@ fun AppShell(
     onForgotPassword: (email: String, onSent: () -> Unit) -> Unit,
     onResetPassword: (email: String, code: String, newPassword: String, onDone: () -> Unit) -> Unit,
     onLogout: () -> Unit,
+    onDemo: () -> Unit,
     onDismissLoginError: () -> Unit,
     userId: String,
     syncRepository: SyncRepository,
@@ -87,6 +93,15 @@ fun AppShell(
     mealPrepRepository: MealPrepRepository,
     mealRepository: MealRepository,
     workoutExtrasRepository: WorkoutExtrasRepository,
+    healthExtrasRepository: HealthExtrasRepository,
+    socialRepository: SocialRepository,
+    wearableConnectRepository: WearableConnectRepository,
+    aiConsentPrefs: AiConsentPrefs,
+    notificationPrefs: NotificationPrefs,
+    authRepository: com.refactor.app.api.AuthRepository,
+    userToolsRepository: com.refactor.app.api.UserToolsRepository,
+    musicPrefs: com.refactor.app.prefs.MusicPrefs,
+    coachSchedulePrefs: com.refactor.app.prefs.CoachSchedulePrefs,
     playBilling: PlayBillingManager,
     themePreference: AppTheme = AppTheme.SYSTEM,
     onThemeChange: (AppTheme) -> Unit = {},
@@ -109,6 +124,7 @@ fun AppShell(
                 onRegister = onRegister,
                 onForgot = onForgotPassword,
                 onReset = onResetPassword,
+                onDemo = onDemo,
                 onDismissError = onDismissLoginError,
             )
         }
@@ -126,6 +142,15 @@ fun AppShell(
                 mealPrepRepository = mealPrepRepository,
                 mealRepository = mealRepository,
                 workoutExtrasRepository = workoutExtrasRepository,
+                healthExtrasRepository = healthExtrasRepository,
+                socialRepository = socialRepository,
+                wearableConnectRepository = wearableConnectRepository,
+                aiConsentPrefs = aiConsentPrefs,
+                notificationPrefs = notificationPrefs,
+                authRepository = authRepository,
+                userToolsRepository = userToolsRepository,
+                musicPrefs = musicPrefs,
+                coachSchedulePrefs = coachSchedulePrefs,
                 playBilling = playBilling,
                 themePreference = themePreference,
                 onThemeChange = onThemeChange,
@@ -148,6 +173,15 @@ private fun MainShell(
     mealPrepRepository: MealPrepRepository,
     mealRepository: MealRepository,
     workoutExtrasRepository: WorkoutExtrasRepository,
+    healthExtrasRepository: HealthExtrasRepository,
+    socialRepository: SocialRepository,
+    wearableConnectRepository: WearableConnectRepository,
+    aiConsentPrefs: AiConsentPrefs,
+    notificationPrefs: NotificationPrefs,
+    authRepository: com.refactor.app.api.AuthRepository,
+    userToolsRepository: com.refactor.app.api.UserToolsRepository,
+    musicPrefs: com.refactor.app.prefs.MusicPrefs,
+    coachSchedulePrefs: com.refactor.app.prefs.CoachSchedulePrefs,
     playBilling: PlayBillingManager,
     themePreference: AppTheme = AppTheme.SYSTEM,
     onThemeChange: (AppTheme) -> Unit = {},
@@ -232,6 +266,7 @@ private fun MainShell(
                         syncCacheDao = syncCacheDao,
                         mealPrepRepository = mealPrepRepository,
                         mealRepository = mealRepository,
+                        aiConsentPrefs = aiConsentPrefs,
                     )
                     2 -> WorkoutsScreen(
                         syncRepository = syncRepository,
@@ -250,6 +285,7 @@ private fun MainShell(
                         userDisplayName = userLabel,
                     )
                     else -> ProfileHubScreen(
+                        userId = userId,
                         userDisplayName = userLabel,
                         onLogout = onLogout,
                         biometricEnabled = biometricEnabled,
@@ -263,6 +299,15 @@ private fun MainShell(
                         themePreference = themePreference,
                         onThemeChange = onThemeChange,
                         syncRepository = syncRepository,
+                        healthExtrasRepository = healthExtrasRepository,
+                        socialRepository = socialRepository,
+                        wearableConnectRepository = wearableConnectRepository,
+                        aiConsentPrefs = aiConsentPrefs,
+                        notificationPrefs = notificationPrefs,
+                        authRepository = authRepository,
+                        userToolsRepository = userToolsRepository,
+                        musicPrefs = musicPrefs,
+                        coachSchedulePrefs = coachSchedulePrefs,
                     )
                 }
                 if (coachOpen) {

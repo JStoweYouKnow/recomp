@@ -65,6 +65,27 @@ class AuthViewModel(
         }
     }
 
+    fun demo() {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, loginError = null, info = null) }
+            authRepository.demo().fold(
+                onSuccess = { res ->
+                    val profile = res.profile
+                    if (profile != null && res.userId != null) {
+                        _ui.update {
+                            it.copy(auth = AuthUiState.LoggedIn(profile.name), busy = false, loginError = null)
+                        }
+                    } else {
+                        _ui.update {
+                            it.copy(busy = false, loginError = "Demo sign-in did not return a profile.")
+                        }
+                    }
+                },
+                onFailure = { e -> _ui.update { it.copy(busy = false, loginError = errorMessage(e)) } },
+            )
+        }
+    }
+
     fun login(email: String, password: String) {
         viewModelScope.launch {
             _ui.update { it.copy(busy = true, loginError = null, info = null) }
@@ -149,6 +170,15 @@ class AuthViewModel(
 
     fun logout() {
         authRepository.logout()
+        viewModelScope.launch {
+            runCatching { PushRegistrar.unsubscribe(application) }
+            runCatching { coachMessageDao.clearAll() }
+        }
+        _ui.update { LoginUiState(auth = AuthUiState.LoggedOut) }
+    }
+
+    /** Called after [AuthRepository.deleteAccount] clears the session in Profile. */
+    fun onAccountDeleted() {
         viewModelScope.launch {
             runCatching { PushRegistrar.unsubscribe(application) }
             runCatching { coachMessageDao.clearAll() }

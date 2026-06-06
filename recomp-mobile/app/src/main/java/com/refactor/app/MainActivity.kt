@@ -15,11 +15,20 @@ import com.refactor.app.api.AuthRepository
 import com.refactor.app.api.BillingRepository
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.GroupRepository
+import com.refactor.app.api.HealthExtrasRepository
 import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
 import com.refactor.app.api.ResearchRepository
+import com.refactor.app.api.SocialRepository
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.UserToolsRepository
+import com.refactor.app.api.WearableConnectRepository
 import com.refactor.app.api.WorkoutExtrasRepository
+import com.refactor.app.prefs.AiConsentPrefs
+import com.refactor.app.prefs.CoachSchedulePrefs
+import com.refactor.app.prefs.MusicPrefs
+import com.refactor.app.prefs.NotificationPrefs
+import com.refactor.app.push.LocalReminderScheduler
 import com.refactor.app.network.createHttpClient
 import com.refactor.app.prefs.AppTheme
 import com.refactor.app.prefs.ThemePrefs
@@ -45,10 +54,19 @@ class MainActivity : FragmentActivity() {
     private val mealPrepRepository by lazy { MealPrepRepository(httpClient) }
     private val mealRepository by lazy { MealRepository(httpClient) }
     private val workoutExtrasRepository by lazy { WorkoutExtrasRepository(httpClient) }
+    private val healthExtrasRepository by lazy { HealthExtrasRepository(httpClient) }
+    private val socialRepository by lazy { SocialRepository(httpClient) }
+    private val wearableConnectRepository by lazy { WearableConnectRepository(httpClient) }
+    private val aiConsentPrefs by lazy { AiConsentPrefs(applicationContext) }
+    private val notificationPrefs by lazy { NotificationPrefs(applicationContext) }
+    private val musicPrefs by lazy { MusicPrefs(applicationContext) }
+    private val coachSchedulePrefs by lazy { CoachSchedulePrefs(applicationContext) }
+    private val userToolsRepository by lazy { UserToolsRepository(httpClient) }
     private val themePrefs by lazy { ThemePrefs(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LocalReminderScheduler.rescheduleAll(applicationContext, notificationPrefs)
         enableEdgeToEdge()
         val factory = AuthViewModel.Factory(authRepository, appDb.coachMessageDao(), application)
         setContent {
@@ -69,6 +87,7 @@ class MainActivity : FragmentActivity() {
                     onForgotPassword = viewModel::forgotPassword,
                     onResetPassword = viewModel::resetPassword,
                     onLogout = viewModel::logout,
+                    onDemo = viewModel::demo,
                     onDismissLoginError = viewModel::dismissLoginError,
                     userId = sessionStore.getUserId().orEmpty(),
                     syncRepository = syncRepository,
@@ -80,6 +99,15 @@ class MainActivity : FragmentActivity() {
                     mealPrepRepository = mealPrepRepository,
                     mealRepository = mealRepository,
                     workoutExtrasRepository = workoutExtrasRepository,
+                    healthExtrasRepository = healthExtrasRepository,
+                    socialRepository = socialRepository,
+                    wearableConnectRepository = wearableConnectRepository,
+                    aiConsentPrefs = aiConsentPrefs,
+                    notificationPrefs = notificationPrefs,
+                    authRepository = authRepository,
+                    userToolsRepository = userToolsRepository,
+                    musicPrefs = musicPrefs,
+                    coachSchedulePrefs = coachSchedulePrefs,
                     playBilling = playBilling,
                     themePreference = themePreference,
                     onThemeChange = { theme ->

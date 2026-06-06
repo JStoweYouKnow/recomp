@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings"), 20, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const settings = await dbGetSocialSettings(userId);
@@ -24,7 +24,7 @@ export async function PUT(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "social-settings-update"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
 
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const body = await req.json();

@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.automirrored.outlined.DirectionsRun
@@ -46,6 +47,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -59,7 +61,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -67,6 +71,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.WearableConnectRepository
+import com.refactor.app.api.dto.MeasurementTargetsDto
 import com.refactor.app.api.dto.AdjustSuggestionDto
 import com.refactor.app.api.dto.BiofeedbackInsightsResponseDto
 import com.refactor.app.api.dto.MealMacrosDto
@@ -538,13 +544,50 @@ private fun MacroPill(label: String, value: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SyncWearablesScreen(onBack: () -> Unit, syncCacheDao: SyncCacheDao) {
+fun SyncWearablesScreen(
+    onBack: () -> Unit,
+    syncCacheDao: SyncCacheDao,
+    syncRepository: SyncRepository,
+    wearableConnectRepository: WearableConnectRepository,
+) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     val entity by syncCacheDao.observe().collectAsStateWithLifecycle(initialValue = null)
     val snap = remember(entity) {
         entity?.payloadJson?.let { raw ->
             runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw) }.getOrNull()
         }
     }
+    var showOuraSheet by remember { mutableStateOf(false) }
+    var ouraToken by remember { mutableStateOf("") }
+    var connecting by remember { mutableStateOf(false) }
+    var connectError by remember { mutableStateOf<String?>(null) }
+
+    val connectedProviders = remember(snap) {
+        snap?.wearableConnections.orEmpty().map { it.provider.lowercase() }.toSet()
+    }
+
+    fun markOuraConnected() {
+        scope.launch {
+            val now = java.time.Instant.now().toString()
+            syncRepository.mutateCachedSnapshot { s ->
+                val conns = s.wearableConnections.orEmpty().toMutableList()
+                if (conns.none { it.provider.equals("oura", ignoreCase = true) }) {
+                    conns.add(
+                        com.refactor.app.api.dto.WearableConnectionDto(
+                            provider = "oura",
+                            connectedAt = now,
+                            label = "Oura Ring",
+                        ),
+                    )
+                }
+                s.copy(wearableConnections = conns)
+            }
+            syncRepository.pushCachedSnapshot()
+            syncRepository.fetchSnapshot()
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Wearables", style = MaterialTheme.typography.titleLarge) },
@@ -558,26 +601,60 @@ fun SyncWearablesScreen(onBack: () -> Unit, syncCacheDao: SyncCacheDao) {
             Modifier
                 .padding(20.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (snap == null) {
-                Text("No sync data yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
-                val conns = snap.wearableConnections.orEmpty()
-                val days = snap.wearableData.orEmpty()
-                Text("Connections · ${conns.size}", style = MaterialTheme.typography.titleSmall)
-                if (conns.isEmpty()) {
-                    Text(
-                        "No devices linked in this snapshot.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    conns.forEach { c ->
-                        Text("· ${c.provider} · ${c.label ?: c.connectedAt}")
+            connectError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Oura Ring", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if ("oura" in connectedProviders) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = "Connected", tint = Color(0xFF2E7D32))
+                        }
+                    }
+                    if ("oura" !in connectedProviders) {
+                        Button(onClick = { showOuraSheet = true }, enabled = !connecting) {
+                            Text("Connect with Personal Token")
+                        }
                     }
                 }
-                Text("Day summaries · ${days.size}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 12.dp))
+            }
+
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Fitbit", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        if ("fitbit" in connectedProviders) {
+                            Icon(Icons.Filled.CheckCircle, contentDescription = "Connected", tint = Color(0xFF2E7D32))
+                        }
+                    }
+                    if ("fitbit" !in connectedProviders) {
+                        Button(
+                            onClick = {
+                                ctx.startActivity(
+                                    android.content.Intent(
+                                        android.content.Intent.ACTION_VIEW,
+                                        android.net.Uri.parse(wearableConnectRepository.fitbitAuthUrl()),
+                                    ),
+                                )
+                            },
+                            enabled = !connecting,
+                        ) { Text("Connect via Browser") }
+                        Text(
+                            "Opens Fitbit OAuth in your browser. Sync after authorizing.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            if (snap != null) {
+                val days = snap.wearableData.orEmpty()
+                Text("Day summaries · ${days.size}", style = MaterialTheme.typography.titleSmall)
                 days.take(12).forEach { d ->
                     Text(
                         "${d.date} · ${d.provider}${d.steps?.let { " · ${it} steps" } ?: ""}",
@@ -587,8 +664,56 @@ fun SyncWearablesScreen(onBack: () -> Unit, syncCacheDao: SyncCacheDao) {
                 if (days.size > 12) {
                     Text("+ ${days.size - 12} more…", style = MaterialTheme.typography.labelMedium)
                 }
+            } else {
+                Text("No sync data yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+
+    if (showOuraSheet) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { if (!connecting) showOuraSheet = false },
+            title = { Text("Connect Oura Ring") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Create a Personal Access Token in the Oura Developer Portal, then paste it here.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedTextField(
+                        value = ouraToken,
+                        onValueChange = { ouraToken = it },
+                        label = { Text("Personal Access Token") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            connecting = true
+                            connectError = null
+                            wearableConnectRepository.connectOura(ouraToken).fold(
+                                onSuccess = {
+                                    showOuraSheet = false
+                                    ouraToken = ""
+                                    markOuraConnected()
+                                },
+                                onFailure = { connectError = it.message },
+                            )
+                            connecting = false
+                        }
+                    },
+                    enabled = ouraToken.length >= 20 && !connecting,
+                ) { Text("Connect") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOuraSheet = false }, enabled = !connecting) { Text("Cancel") }
+            },
+        )
     }
 }
 
@@ -795,6 +920,9 @@ private fun BodyTab(snap: SyncGetResponse?, syncRepository: SyncRepository) {
             }
         }
 
+        // Body measurement targets
+        BodyMeasurementTargetsCard(snap, syncRepository)
+
         // Smart Scale Entry
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -901,6 +1029,110 @@ private fun BodyTab(snap: SyncGetResponse?, syncRepository: SyncRepository) {
         }
         Spacer(Modifier.height(8.dp))
     }
+}
+
+@Composable
+private fun BodyMeasurementTargetsCard(snap: SyncGetResponse?, syncRepository: SyncRepository) {
+    val scope = rememberCoroutineScope()
+    val isMetric = snap?.profile?.unitSystem == "metric"
+    val massUnit = if (isMetric) "kg" else "lbs"
+    val targets = snap?.meta?.measurementTargets
+
+    var weightText by rememberSaveable(snap?.meta?.measurementTargets) {
+        mutableStateOf(formatTargetWeight(targets?.targetWeightLbs, isMetric))
+    }
+    var bodyFatText by rememberSaveable(targets?.targetBodyFatPercent) {
+        mutableStateOf(targets?.targetBodyFatPercent?.let { "%.1f".format(it) }.orEmpty())
+    }
+    var muscleText by rememberSaveable(targets?.targetMuscleMassLbs) {
+        mutableStateOf(formatTargetWeight(targets?.targetMuscleMassLbs, isMetric))
+    }
+    var saving by remember { mutableStateOf(false) }
+    var saveMessage by remember { mutableStateOf<String?>(null) }
+
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Body measurement targets", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Set goals for weight, body fat, and muscle. They sync with your account.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TargetField("Goal weight ($massUnit)", weightText) { weightText = it }
+            TargetField("Goal body fat (%)", bodyFatText) { bodyFatText = it }
+            TargetField("Goal muscle mass ($massUnit)", muscleText) { muscleText = it }
+            saveMessage?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            saving = true
+                            saveMessage = null
+                            val weightLbs = parseMassToLbs(weightText, isMetric)
+                            val muscleLbs = parseMassToLbs(muscleText, isMetric)
+                            val bodyFat = bodyFatText.toDoubleOrNull()
+                            val next = MeasurementTargetsDto(
+                                targetWeightLbs = weightLbs,
+                                targetBodyFatPercent = bodyFat,
+                                targetMuscleMassLbs = muscleLbs,
+                            )
+                            syncRepository.mutateCachedSnapshot { s ->
+                                s.copy(meta = (s.meta ?: com.refactor.app.api.dto.SyncMetaDto()).copy(measurementTargets = next))
+                            }.fold(
+                                onSuccess = {
+                                    syncRepository.pushCachedSnapshot()
+                                    saveMessage = "Targets saved"
+                                },
+                                onFailure = { saveMessage = it.message },
+                            )
+                            saving = false
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    enabled = !saving,
+                ) { Text(if (saving) "Saving…" else "Save targets") }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            weightText = ""
+                            bodyFatText = ""
+                            muscleText = ""
+                            syncRepository.mutateCachedSnapshot { s ->
+                                s.copy(meta = (s.meta ?: com.refactor.app.api.dto.SyncMetaDto()).copy(measurementTargets = null))
+                            }
+                            syncRepository.pushCachedSnapshot()
+                            saveMessage = "Targets cleared"
+                        }
+                    },
+                    enabled = !saving,
+                ) { Text("Clear") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetField(label: String, value: String, onChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+    )
+}
+
+private fun formatTargetWeight(lbs: Double?, isMetric: Boolean): String {
+    if (lbs == null) return ""
+    return if (isMetric) "%.1f".format(lbs / 2.20462) else "%.1f".format(lbs)
+}
+
+private fun parseMassToLbs(text: String, isMetric: Boolean): Double? {
+    val v = text.toDoubleOrNull() ?: return null
+    return if (isMetric) v * 2.20462 else v
 }
 
 @Composable

@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.refactor.app.api.MealRepository
 import com.refactor.app.api.SyncJson
+import com.refactor.app.prefs.AiConsentPrefs
+import com.refactor.app.ui.consent.AIConsentDialog
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.SuggestedMealDto
@@ -84,6 +86,7 @@ fun AddMealSheet(
     recentMeals: List<MealEntryDto>,
     mealRepository: MealRepository,
     syncCacheDao: SyncCacheDao,
+    aiConsentPrefs: AiConsentPrefs,
     onDismiss: () -> Unit,
     onSave: (MealEntryDto) -> Unit,
 ) {
@@ -104,6 +107,16 @@ fun AddMealSheet(
     var error by remember { mutableStateOf<String?>(null) }
     var suggestions by remember { mutableStateOf<List<SuggestedMealDto>>(emptyList()) }
     var listening by remember { mutableStateOf(false) }
+    var showAiConsent by remember { mutableStateOf(false) }
+    var pendingAiAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    fun runWithConsent(action: () -> Unit) {
+        if (aiConsentPrefs.isGiven()) action()
+        else {
+            pendingAiAction = action
+            showAiConsent = true
+        }
+    }
 
     val speech = remember(ctx) { SpeechRecognizer.createSpeechRecognizer(ctx) }
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -254,7 +267,7 @@ fun AddMealSheet(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = { pickPhoto.launch("image/*") }, enabled = !analyzing) {
+                    Button(onClick = { runWithConsent { pickPhoto.launch("image/*") } }, enabled = !analyzing) {
                         Text("Choose photo")
                     }
                 }
@@ -262,14 +275,16 @@ fun AddMealSheet(
                     OutlinedTextField(value = foodSearchQuery, onValueChange = { foodSearchQuery = it }, label = { Text("e.g. grilled chicken 200g") }, modifier = Modifier.fillMaxWidth())
                     Button(
                         onClick = {
-                            scope.launch {
-                                analyzing = true
-                                error = null
-                                mealRepository.lookupNutrition(foodSearchQuery).fold(
-                                    onSuccess = { applySuggestion(it); suggestions = listOf(it) },
-                                    onFailure = { error = it.message },
-                                )
-                                analyzing = false
+                            runWithConsent {
+                                scope.launch {
+                                    analyzing = true
+                                    error = null
+                                    mealRepository.lookupNutrition(foodSearchQuery).fold(
+                                        onSuccess = { applySuggestion(it); suggestions = listOf(it) },
+                                        onFailure = { error = it.message },
+                                    )
+                                    analyzing = false
+                                }
                             }
                         },
                         enabled = foodSearchQuery.isNotBlank() && !analyzing,
@@ -301,14 +316,16 @@ fun AddMealSheet(
                     )
                     Button(
                         onClick = {
-                            scope.launch {
-                                analyzing = true
-                                error = null
-                                mealRepository.parseVoiceTranscript(voiceTranscript).fold(
-                                    onSuccess = { suggestions = it },
-                                    onFailure = { error = it.message },
-                                )
-                                analyzing = false
+                            runWithConsent {
+                                scope.launch {
+                                    analyzing = true
+                                    error = null
+                                    mealRepository.parseVoiceTranscript(voiceTranscript).fold(
+                                        onSuccess = { suggestions = it },
+                                        onFailure = { error = it.message },
+                                    )
+                                    analyzing = false
+                                }
                             }
                         },
                         enabled = voiceTranscript.isNotBlank() && !analyzing,
@@ -318,21 +335,23 @@ fun AddMealSheet(
                     OutlinedTextField(value = recipeUrl, onValueChange = { recipeUrl = it }, label = { Text("Recipe URL") }, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                     Button(
                         onClick = {
-                            scope.launch {
-                                analyzing = true
-                                error = null
-                                mealRepository.parseRecipeUrl(recipeUrl).fold(
-                                    onSuccess = { applySuggestion(it) },
-                                    onFailure = { error = it.message },
-                                )
-                                analyzing = false
+                            runWithConsent {
+                                scope.launch {
+                                    analyzing = true
+                                    error = null
+                                    mealRepository.parseRecipeUrl(recipeUrl).fold(
+                                        onSuccess = { applySuggestion(it) },
+                                        onFailure = { error = it.message },
+                                    )
+                                    analyzing = false
+                                }
                             }
                         },
                         enabled = recipeUrl.isNotBlank() && !analyzing,
                     ) { Text("Parse recipe") }
                 }
                 MealInputMode.Suggest -> {
-                    Button(onClick = { runSuggest() }, enabled = !analyzing) { Text("Get suggestions") }
+                    Button(onClick = { runWithConsent { runSuggest() } }, enabled = !analyzing) { Text("Get suggestions") }
                 }
             }
 
@@ -379,6 +398,21 @@ fun AddMealSheet(
             OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional)") }, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showAiConsent) {
+        AIConsentDialog(
+            onAccept = {
+                aiConsentPrefs.setGiven(true)
+                showAiConsent = false
+                pendingAiAction?.invoke()
+                pendingAiAction = null
+            },
+            onDecline = {
+                showAiConsent = false
+                pendingAiAction = null
+            },
+        )
     }
 
     DisposableEffect(speech) {

@@ -4,9 +4,50 @@ import kotlinx.serialization.Serializable
 
 /** Subset of `GET /api/data/sync` — extra keys are ignored by Json config. */
 @Serializable
+data class MeasurementTargetsDto(
+    val targetWeightLbs: Double? = null,
+    val targetBodyFatPercent: Double? = null,
+    val targetMuscleMassLbs: Double? = null,
+)
+
+@Serializable
+data class SupplementDto(
+    val id: String,
+    val name: String,
+    val dosage: String = "",
+    val frequency: String = "daily",
+    val timing: String = "morning",
+    val takenToday: Boolean = false,
+)
+
+@Serializable
+data class BloodWorkMarkerDto(
+    val name: String,
+    val value: Double,
+    val unit: String,
+    val normalRange: BloodWorkRangeDto,
+    val status: String,
+)
+
+@Serializable
+data class BloodWorkRangeDto(
+    val low: Double,
+    val high: Double,
+)
+
+@Serializable
+data class BloodWorkDto(
+    val id: String,
+    val date: String,
+    val markers: List<BloodWorkMarkerDto> = emptyList(),
+    val notes: String? = null,
+)
+
+@Serializable
 data class SyncMetaDto(
     val xp: Int = 0,
     val hasAdjusted: Boolean? = null,
+    val measurementTargets: MeasurementTargetsDto? = null,
 )
 
 @Serializable
@@ -179,4 +220,6 @@ data class SyncGetResponse(
     val biofeedback: List<BiofeedbackEntryDto>? = null,
     val pantry: List<PantryItemDto>? = null,
     val activityLog: List<ActivityLogEntryDto>? = null,
+    val supplements: List<SupplementDto>? = null,
+    val bloodWork: List<BloodWorkDto>? = null,
 )

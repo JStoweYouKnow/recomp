@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
+import com.refactor.app.prefs.AiConsentPrefs
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
@@ -70,6 +71,7 @@ fun MealsScreen(
     syncCacheDao: SyncCacheDao,
     mealPrepRepository: MealPrepRepository,
     mealRepository: MealRepository,
+    aiConsentPrefs: AiConsentPrefs,
 ) {
     val vm: MealsViewModel = viewModel(factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository))
     val allMeals by vm.allMeals.collectAsStateWithLifecycle()
@@ -271,6 +273,7 @@ fun MealsScreen(
             recentMeals = allMeals,
             mealRepository = mealRepository,
             syncCacheDao = syncCacheDao,
+            aiConsentPrefs = aiConsentPrefs,
             onDismiss = { showAdd = false },
             onSave = { draft ->
                 val next = allMeals + draft

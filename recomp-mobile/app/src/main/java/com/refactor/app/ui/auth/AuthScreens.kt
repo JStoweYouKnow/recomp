@@ -58,6 +58,7 @@ fun AuthHost(
     onRegister: (RegisterRequest) -> Unit,
     onForgot: (email: String, onSent: () -> Unit) -> Unit,
     onReset: (email: String, code: String, newPassword: String, onDone: () -> Unit) -> Unit,
+    onDemo: () -> Unit,
     onDismissError: () -> Unit,
 ) {
     var mode by remember { mutableStateOf(AuthMode.Login) }
@@ -76,6 +77,7 @@ fun AuthHost(
             onDismissError = onDismissError,
             onCreateAccount = { switchTo(AuthMode.SignUp) },
             onForgotPassword = { switchTo(AuthMode.Forgot) },
+            onDemo = onDemo,
         )
         AuthMode.SignUp -> SignUpScreen(
             busy = busy,

@@ -25,10 +25,18 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Medication
+import androidx.compose.material.icons.outlined.Biotech
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +48,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -61,9 +70,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.refactor.app.api.AuthRepository
+import com.refactor.app.api.HealthExtrasRepository
 import com.refactor.app.api.ResearchRepository
+import com.refactor.app.api.SocialRepository
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.UserToolsRepository
+import com.refactor.app.api.WearableConnectRepository
+import com.refactor.app.prefs.AiConsentPrefs
+import com.refactor.app.prefs.CoachSchedulePrefs
+import com.refactor.app.prefs.MusicPrefs
+import com.refactor.app.prefs.NotificationPrefs
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.billing.PlayBillingManager
 import com.refactor.app.db.SyncCacheDao
@@ -75,11 +93,16 @@ import kotlinx.coroutines.launch
 
 private enum class ProfileSection {
     Home, Edit, Wearables, Research, Music, Subscription,
+    Supplements, BloodWork, Social, Notifications,
+    Claim, ApiToken, Calendar, CoachSchedule,
 }
+
+private const val DEMO_USER_ID = "demo-user-001"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileHubScreen(
+    userId: String,
     userDisplayName: String,
     onLogout: () -> Unit,
     biometricEnabled: Boolean,
@@ -88,6 +111,15 @@ fun ProfileHubScreen(
     researchRepository: ResearchRepository,
     playBilling: PlayBillingManager,
     syncRepository: SyncRepository,
+    healthExtrasRepository: HealthExtrasRepository,
+    socialRepository: SocialRepository,
+    wearableConnectRepository: WearableConnectRepository,
+    aiConsentPrefs: AiConsentPrefs,
+    notificationPrefs: NotificationPrefs,
+    authRepository: AuthRepository,
+    userToolsRepository: UserToolsRepository,
+    musicPrefs: MusicPrefs,
+    coachSchedulePrefs: CoachSchedulePrefs,
     themePreference: AppTheme = AppTheme.SYSTEM,
     onThemeChange: (AppTheme) -> Unit = {},
 ) {
@@ -112,12 +144,55 @@ fun ProfileHubScreen(
         ProfileSection.Wearables -> SyncWearablesScreen(
             onBack = { section = ProfileSection.Home },
             syncCacheDao = syncCacheDao,
+            syncRepository = syncRepository,
+            wearableConnectRepository = wearableConnectRepository,
+        )
+        ProfileSection.Supplements -> SupplementsScreen(
+            onBack = { section = ProfileSection.Home },
+            syncCacheDao = syncCacheDao,
+            syncRepository = syncRepository,
+            healthExtrasRepository = healthExtrasRepository,
+            aiConsentPrefs = aiConsentPrefs,
+        )
+        ProfileSection.BloodWork -> BloodWorkScreen(
+            onBack = { section = ProfileSection.Home },
+            syncCacheDao = syncCacheDao,
+            syncRepository = syncRepository,
+            healthExtrasRepository = healthExtrasRepository,
+            aiConsentPrefs = aiConsentPrefs,
+        )
+        ProfileSection.Social -> SocialSettingsScreen(
+            onBack = { section = ProfileSection.Home },
+            socialRepository = socialRepository,
+        )
+        ProfileSection.Notifications -> NotificationSettingsScreen(
+            onBack = { section = ProfileSection.Home },
+            notificationPrefs = notificationPrefs,
         )
         ProfileSection.Research -> ResearchScreen(
             researchRepository = researchRepository,
             onBack = { section = ProfileSection.Home },
         )
-        ProfileSection.Music -> MusicSubScreen(onBack = { section = ProfileSection.Home })
+        ProfileSection.Music -> MusicPreferenceScreen(
+            onBack = { section = ProfileSection.Home },
+            musicPrefs = musicPrefs,
+        )
+        ProfileSection.Claim -> ClaimAccountScreen(
+            onBack = { section = ProfileSection.Home },
+            authRepository = authRepository,
+        )
+        ProfileSection.ApiToken -> ApiTokenScreen(
+            onBack = { section = ProfileSection.Home },
+            userToolsRepository = userToolsRepository,
+        )
+        ProfileSection.Calendar -> CalendarFeedScreen(
+            onBack = { section = ProfileSection.Home },
+            userToolsRepository = userToolsRepository,
+        )
+        ProfileSection.CoachSchedule -> CoachScheduleScreen(
+            onBack = { section = ProfileSection.Home },
+            coachSchedulePrefs = coachSchedulePrefs,
+        )
         ProfileSection.Subscription -> SubscriptionSubScreen(
             onBack = { section = ProfileSection.Home },
             proAccess = proAccess,
@@ -127,13 +202,16 @@ fun ProfileHubScreen(
         )
         ProfileSection.Home -> ProfileHomeScreen(
             snap = snap,
+            userId = userId,
             userDisplayName = userDisplayName,
             biometricEnabled = biometricEnabled,
             onBiometricEnabledChange = onBiometricEnabledChange,
             themePreference = themePreference,
             onThemeChange = onThemeChange,
             syncRepository = syncRepository,
+            authRepository = authRepository,
             onLogout = onLogout,
+            aiConsentPrefs = aiConsentPrefs,
             onNavigate = { section = it },
         )
     }
@@ -143,12 +221,15 @@ fun ProfileHubScreen(
 @Composable
 private fun ProfileHomeScreen(
     snap: SyncGetResponse?,
+    userId: String,
     userDisplayName: String,
     biometricEnabled: Boolean,
     onBiometricEnabledChange: (Boolean) -> Unit,
     themePreference: AppTheme,
     onThemeChange: (AppTheme) -> Unit,
     syncRepository: SyncRepository,
+    aiConsentPrefs: AiConsentPrefs,
+    authRepository: AuthRepository,
     onLogout: () -> Unit,
     onNavigate: (ProfileSection) -> Unit,
 ) {
@@ -156,6 +237,9 @@ private fun ProfileHomeScreen(
     val ctx = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     var syncing by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(false) }
+    val isDemo = userId == DEMO_USER_ID
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -222,15 +306,79 @@ private fun ProfileHomeScreen(
             )
             HorizontalDivider(Modifier.padding(start = 56.dp))
             SettingsRow(
+                icon = Icons.Outlined.Person,
+                label = "Social & Privacy",
+                onClick = { onNavigate(ProfileSection.Social) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Notifications,
+                label = "Notifications",
+                onClick = { onNavigate(ProfileSection.Notifications) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Schedule,
+                label = "Ref Schedule",
+                onClick = { onNavigate(ProfileSection.CoachSchedule) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
                 icon = Icons.Outlined.MusicNote,
                 label = "Music",
                 onClick = { onNavigate(ProfileSection.Music) },
             )
             HorizontalDivider(Modifier.padding(start = 56.dp))
             SettingsRow(
+                icon = Icons.Outlined.Key,
+                label = "Siri Shortcuts / API",
+                onClick = { onNavigate(ProfileSection.ApiToken) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
                 icon = Icons.Outlined.Search,
                 label = "Research",
                 onClick = { onNavigate(ProfileSection.Research) },
+            )
+            if (aiConsentPrefs.isGiven()) {
+                HorizontalDivider(Modifier.padding(start = 56.dp))
+                SettingsRow(
+                    icon = Icons.Outlined.Feedback,
+                    label = "Revoke AI Access",
+                    onClick = { aiConsentPrefs.setGiven(false) },
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            SectionHeader("Health")
+            SettingsRow(
+                icon = Icons.Outlined.Medication,
+                label = "Supplements",
+                onClick = { onNavigate(ProfileSection.Supplements) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Biotech,
+                label = "Blood Work",
+                onClick = { onNavigate(ProfileSection.BloodWork) },
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            SectionHeader("Tools")
+            if (isDemo) {
+                SettingsRow(
+                    icon = Icons.Outlined.PersonAdd,
+                    label = "Claim Account",
+                    onClick = { onNavigate(ProfileSection.Claim) },
+                )
+                HorizontalDivider(Modifier.padding(start = 56.dp))
+            }
+            SettingsRow(
+                icon = Icons.Outlined.CalendarMonth,
+                label = "Calendar Feed",
+                onClick = { onNavigate(ProfileSection.Calendar) },
             )
 
             Spacer(Modifier.height(8.dp))
@@ -313,11 +461,66 @@ private fun ProfileHomeScreen(
             ) {
                 Text("Sign Out", color = MaterialTheme.colorScheme.error)
             }
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            TextButton(
+                onClick = { showDeleteConfirm = true },
+                enabled = !deleting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+            ) {
+                Text(if (deleting) "Deleting account…" else "Delete Account", color = MaterialTheme.colorScheme.error)
+            }
+            Text(
+                "Deleting your account permanently removes all data and cannot be undone.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
 
             Spacer(Modifier.height(8.dp))
             ConfigFootnoteCard()
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!deleting) showDeleteConfirm = false },
+            title = { Text("Delete Account") },
+            text = {
+                Text("This permanently deletes your profile, meals, workouts, and all other data. This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            deleting = true
+                            authRepository.deleteAccount().fold(
+                                onSuccess = {
+                                    showDeleteConfirm = false
+                                    onLogout()
+                                },
+                                onFailure = { err ->
+                                    showDeleteConfirm = false
+                                    snackbarHostState.showSnackbar(
+                                        message = err.message ?: "Delete failed",
+                                        duration = SnackbarDuration.Short,
+                                    )
+                                },
+                            )
+                            deleting = false
+                        }
+                    },
+                    enabled = !deleting,
+                ) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }, enabled = !deleting) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
@@ -401,38 +604,6 @@ private fun SettingsRow(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MusicSubScreen(onBack: () -> Unit) {
-    val ctx = LocalContext.current
-    Column(Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = { Text("Music") },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
-            },
-        )
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                "Workout playlists open in your music app. Playlist suggestions appear in the Workouts tab when you tap Get Music.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            TextButton(onClick = {
-                runCatching {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/")))
-                }
-            }) { Text("Open Spotify") }
-            TextButton(onClick = {
-                runCatching {
-                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://music.apple.com/")))
-                }
-            }) { Text("Open Apple Music") }
         }
     }
 }

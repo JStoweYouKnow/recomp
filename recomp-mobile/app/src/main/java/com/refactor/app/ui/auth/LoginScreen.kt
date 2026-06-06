@@ -33,6 +33,7 @@ fun LoginScreen(
     infoMessage: String? = null,
     onCreateAccount: (() -> Unit)? = null,
     onForgotPassword: (() -> Unit)? = null,
+    onDemo: (() -> Unit)? = null,
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -102,6 +103,12 @@ fun LoginScreen(
             Spacer(Modifier.height(4.dp))
             TextButton(onClick = onCreateAccount, enabled = !busy) {
                 Text("Don't have an account? Create one")
+            }
+        }
+        if (onDemo != null) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onDemo, enabled = !busy) {
+                Text("Try demo without signing in")
             }
         }
     }

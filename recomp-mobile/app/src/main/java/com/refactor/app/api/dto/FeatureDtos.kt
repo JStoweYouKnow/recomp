@@ -376,3 +376,58 @@ data class VoiceParseResponseDto(
     val fat: Double? = null,
     val meals: List<SuggestedMealDto>? = null,
 )
+
+// ── P1 health / social ───────────────────────────────────────────────────────
+
+@Serializable
+data class SupplementDeficiencyDto(
+    val nutrient: String,
+    val severity: String,
+    val evidence: String,
+)
+
+@Serializable
+data class SupplementRecommendationDto(
+    val action: String,
+    val priority: String,
+    val reason: String,
+)
+
+@Serializable
+data class SupplementAnalysisResponseDto(
+    val deficiencies: List<SupplementDeficiencyDto> = emptyList(),
+    val recommendations: List<SupplementRecommendationDto> = emptyList(),
+    val interactions: List<String> = emptyList(),
+)
+
+@Serializable
+data class BloodWorkParseResponseDto(
+    val markers: List<BloodWorkMarkerDto> = emptyList(),
+)
+
+@Serializable
+data class SocialSettingsDto(
+    val visibility: String = "badges_only",
+    val username: String? = null,
+)
+
+@Serializable
+data class UsernameCheckResponseDto(
+    val available: Boolean,
+)
+
+// ── P2 account tools ─────────────────────────────────────────────────────────
+
+@Serializable
+data class ApiTokenResponseDto(
+    val token: String,
+    val endpoint: String? = null,
+    val usage: String? = null,
+    val note: String? = null,
+)
+
+@Serializable
+data class CalendarTokenResponseDto(
+    val token: String,
+    val feedUrl: String? = null,
+)

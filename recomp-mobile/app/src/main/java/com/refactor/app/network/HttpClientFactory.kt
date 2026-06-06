@@ -4,6 +4,7 @@ import com.refactor.app.session.SessionStore
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.cookies.HttpCookies
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
@@ -14,6 +15,7 @@ private const val REQUEST_TIMEOUT_MS = 30_000L
 
 fun createHttpClient(sessionStore: SessionStore): HttpClient =
     HttpClient(Android) {
+        install(HttpCookies)
         install(HttpTimeout) {
             requestTimeoutMillis = REQUEST_TIMEOUT_MS
             connectTimeoutMillis = REQUEST_TIMEOUT_MS

@@ -1,6 +1,7 @@
 package com.refactor.app.api
 
 import com.refactor.app.BuildConfig
+import com.refactor.app.api.dto.ClaimAccountRequest
 import com.refactor.app.api.dto.ForgotPasswordRequest
 import com.refactor.app.api.dto.LoginRequest
 import com.refactor.app.api.dto.LoginResponse
@@ -10,6 +11,7 @@ import com.refactor.app.api.dto.ResetPasswordRequest
 import com.refactor.app.session.SessionStore
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -65,6 +67,34 @@ class AuthRepository(
                 setBody(ResetPasswordRequest(email.trim(), code.trim(), newPassword))
             }
             response.ensureSuccessOrThrow()
+        }
+
+    /** `/api/auth/demo` — explore the app without creating an account. */
+    suspend fun demo(): Result<LoginResponse> =
+        runCatching {
+            val response = client.post("$baseUrl/api/auth/demo")
+            val body = response.requireSuccess { it.body<LoginResponse>() }
+            body.userId?.let { sessionStore.setUserId(it) }
+            body.apiToken?.let { sessionStore.setToken(it) }
+            body
+        }
+
+    /** `/api/auth/claim` — link email/password to the current (demo) account. */
+    suspend fun claimAccount(email: String, password: String): Result<Unit> =
+        runCatching {
+            val response = client.post("$baseUrl/api/auth/claim") {
+                contentType(ContentType.Application.Json)
+                setBody(ClaimAccountRequest(email.trim(), password))
+            }
+            response.ensureSuccessOrThrow()
+        }
+
+    /** `DELETE /api/user/account` — permanently deletes the signed-in account. */
+    suspend fun deleteAccount(): Result<Unit> =
+        runCatching {
+            val response = client.delete("$baseUrl/api/user/account")
+            response.ensureSuccessOrThrow()
+            sessionStore.clear()
         }
 
     suspend fun me(): Result<MeResponse> =
