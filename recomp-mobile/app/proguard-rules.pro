@@ -16,6 +16,20 @@
 -keep class kotlinx.coroutines.** { *; }
 -dontwarn io.ktor.**
 
+# ── AndroidX Security Crypto / Tink (EncryptedSharedPreferences) ──────────────
+# SessionStore uses EncryptedSharedPreferences at startup; Tink loads key managers
+# via reflection + shaded protobuf, so R8 must not strip/obfuscate these or the
+# app crashes on launch (release-only).
+-keep class androidx.security.crypto.** { *; }
+-keep class com.google.crypto.tink.** { *; }
+-keep interface com.google.crypto.tink.** { *; }
+-keepclassmembers class * extends com.google.crypto.tink.shaded.protobuf.GeneratedMessageLite {
+    <fields>;
+}
+-dontwarn com.google.crypto.tink.**
+-dontwarn javax.annotation.**
+-dontwarn com.google.errorprone.annotations.**
+
 # ── Room ─────────────────────────────────────────────────────────────────────
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *
