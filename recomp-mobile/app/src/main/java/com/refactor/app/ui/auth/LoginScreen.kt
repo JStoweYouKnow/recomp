@@ -12,6 +12,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,9 @@ fun LoginScreen(
     errorMessage: String?,
     onLogin: (email: String, password: String) -> Unit,
     onDismissError: () -> Unit,
+    infoMessage: String? = null,
+    onCreateAccount: (() -> Unit)? = null,
+    onForgotPassword: (() -> Unit)? = null,
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -42,6 +46,11 @@ fun LoginScreen(
     ) {
         Text("Sign in", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(24.dp))
+
+        infoMessage?.let { msg ->
+            Text(msg, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.height(12.dp))
+        }
 
         OutlinedTextField(
             value = email,
@@ -82,6 +91,18 @@ fun LoginScreen(
             enabled = !busy && email.isNotBlank() && password.isNotBlank(),
         ) {
             Text(if (busy) "Signing in…" else "Sign in")
+        }
+
+        if (onForgotPassword != null) {
+            TextButton(onClick = onForgotPassword, enabled = !busy) {
+                Text("Forgot password?")
+            }
+        }
+        if (onCreateAccount != null) {
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = onCreateAccount, enabled = !busy) {
+                Text("Don't have an account? Create one")
+            }
         }
     }
 }

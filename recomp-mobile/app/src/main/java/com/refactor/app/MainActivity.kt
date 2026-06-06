@@ -63,6 +63,9 @@ class MainActivity : FragmentActivity() {
                 AppShell(
                     loginUi = loginUi,
                     onLogin = viewModel::login,
+                    onRegister = viewModel::register,
+                    onForgotPassword = viewModel::forgotPassword,
+                    onResetPassword = viewModel::resetPassword,
                     onLogout = viewModel::logout,
                     onDismissLoginError = viewModel::dismissLoginError,
                     userId = sessionStore.getUserId().orEmpty(),

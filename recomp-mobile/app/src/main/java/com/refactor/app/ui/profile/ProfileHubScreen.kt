@@ -25,6 +25,7 @@ import androidx.compose.material.icons.outlined.Feedback
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Card
@@ -212,6 +213,12 @@ private fun ProfileHomeScreen(
                 icon = Icons.Outlined.MusicNote,
                 label = "Music",
                 onClick = { onNavigate(ProfileSection.Music) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Search,
+                label = "Research",
+                onClick = { onNavigate(ProfileSection.Research) },
             )
 
             Spacer(Modifier.height(8.dp))

@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.refactor.app.api.AuthRepository
 import com.refactor.app.api.ApiException
+import com.refactor.app.api.dto.RegisterRequest
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.push.PushRegistrar
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,14 +19,16 @@ sealed interface AuthUiState {
     /** Cold start / `GET /api/auth/me` */
     data object CheckingSession : AuthUiState
     data object LoggedOut : AuthUiState
-    /** Login button pressed; keep login form visible with spinner. */
-    data object LoggingIn : AuthUiState
     data class LoggedIn(val displayName: String) : AuthUiState
 }
 
 data class LoginUiState(
     val auth: AuthUiState = AuthUiState.CheckingSession,
+    /** An auth operation (login/register/forgot/reset) is in flight. */
+    val busy: Boolean = false,
     val loginError: String? = null,
+    /** Non-error status text shown on auth screens (e.g. "reset code sent"). */
+    val info: String? = null,
 )
 
 class AuthViewModel(
@@ -64,34 +67,84 @@ class AuthViewModel(
 
     fun login(email: String, password: String) {
         viewModelScope.launch {
-            _ui.update { it.copy(auth = AuthUiState.LoggingIn, loginError = null) }
+            _ui.update { it.copy(busy = true, loginError = null, info = null) }
             authRepository.login(email, password).fold(
                 onSuccess = { res ->
                     val profile = res.profile
                     if (profile != null && res.userId != null) {
                         _ui.update {
-                            it.copy(auth = AuthUiState.LoggedIn(profile.name), loginError = null)
+                            it.copy(auth = AuthUiState.LoggedIn(profile.name), busy = false, loginError = null)
                         }
                     } else {
                         _ui.update {
-                            it.copy(
-                                auth = AuthUiState.LoggedOut,
-                                loginError = "Sign-in did not return a profile.",
-                            )
+                            it.copy(busy = false, loginError = "Sign-in did not return a profile.")
                         }
                     }
                 },
-                onFailure = { e ->
-                    val msg = when (e) {
-                        is ApiException -> e.message
-                        else -> e.message ?: "Network error"
-                    }
-                    _ui.update {
-                        it.copy(auth = AuthUiState.LoggedOut, loginError = msg)
-                    }
-                }
+                onFailure = { e -> _ui.update { it.copy(busy = false, loginError = errorMessage(e)) } }
             )
         }
+    }
+
+    fun register(request: RegisterRequest) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, loginError = null, info = null) }
+            authRepository.register(request).fold(
+                onSuccess = { res ->
+                    val profile = res.profile
+                    if (profile != null && res.userId != null) {
+                        _ui.update {
+                            it.copy(auth = AuthUiState.LoggedIn(profile.name), busy = false, loginError = null)
+                        }
+                    } else {
+                        _ui.update {
+                            it.copy(busy = false, loginError = "Account creation did not return a profile.")
+                        }
+                    }
+                },
+                onFailure = { e -> _ui.update { it.copy(busy = false, loginError = errorMessage(e)) } }
+            )
+        }
+    }
+
+    /** Step 1 of password reset; [onSent] advances the UI to the code-entry step. */
+    fun forgotPassword(email: String, onSent: () -> Unit) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, loginError = null, info = null) }
+            authRepository.forgotPassword(email).fold(
+                onSuccess = {
+                    _ui.update {
+                        it.copy(
+                            busy = false,
+                            info = "If an account exists for that email, a 6-digit code is on its way.",
+                        )
+                    }
+                    onSent()
+                },
+                onFailure = { e -> _ui.update { it.copy(busy = false, loginError = errorMessage(e)) } }
+            )
+        }
+    }
+
+    /** Step 2 of password reset; [onDone] returns the UI to the login screen on success. */
+    fun resetPassword(email: String, code: String, newPassword: String, onDone: () -> Unit) {
+        viewModelScope.launch {
+            _ui.update { it.copy(busy = true, loginError = null, info = null) }
+            authRepository.resetPassword(email, code, newPassword).fold(
+                onSuccess = {
+                    _ui.update {
+                        it.copy(busy = false, info = "Password updated. Sign in with your new password.")
+                    }
+                    onDone()
+                },
+                onFailure = { e -> _ui.update { it.copy(busy = false, loginError = errorMessage(e)) } }
+            )
+        }
+    }
+
+    private fun errorMessage(e: Throwable): String = when (e) {
+        is ApiException -> e.message ?: "Request failed (${e.code})"
+        else -> e.message ?: "Network error"
     }
 
     fun logout() {
@@ -104,7 +157,7 @@ class AuthViewModel(
     }
 
     fun dismissLoginError() {
-        _ui.update { it.copy(loginError = null) }
+        _ui.update { it.copy(loginError = null, info = null) }
     }
 
     class Factory(

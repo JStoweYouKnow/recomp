@@ -43,8 +43,9 @@ import com.refactor.app.prefs.BiometricPrefs
 import com.refactor.app.push.PushRegistrar
 import com.refactor.app.ui.security.BiometricGate
 import kotlinx.coroutines.launch
+import com.refactor.app.api.dto.RegisterRequest
+import com.refactor.app.ui.auth.AuthHost
 import com.refactor.app.ui.auth.AuthUiState
-import com.refactor.app.ui.auth.LoginScreen
 import com.refactor.app.ui.auth.LoginUiState
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.GroupRepository
@@ -70,6 +71,9 @@ private data class RootTab(val label: String, val icon: @Composable () -> Unit)
 fun AppShell(
     loginUi: LoginUiState,
     onLogin: (String, String) -> Unit,
+    onRegister: (RegisterRequest) -> Unit,
+    onForgotPassword: (email: String, onSent: () -> Unit) -> Unit,
+    onResetPassword: (email: String, code: String, newPassword: String, onDone: () -> Unit) -> Unit,
     onLogout: () -> Unit,
     onDismissLoginError: () -> Unit,
     userId: String,
@@ -95,18 +99,14 @@ fun AppShell(
             }
         }
         AuthUiState.LoggedOut -> {
-            LoginScreen(
-                busy = false,
+            AuthHost(
+                busy = loginUi.busy,
                 errorMessage = loginUi.loginError,
+                infoMessage = loginUi.info,
                 onLogin = onLogin,
-                onDismissError = onDismissLoginError,
-            )
-        }
-        AuthUiState.LoggingIn -> {
-            LoginScreen(
-                busy = true,
-                errorMessage = loginUi.loginError,
-                onLogin = onLogin,
+                onRegister = onRegister,
+                onForgot = onForgotPassword,
+                onReset = onResetPassword,
                 onDismissError = onDismissLoginError,
             )
         }
