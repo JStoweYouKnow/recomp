@@ -35,6 +35,57 @@ public final class PlanService {
         return response.suggestion
     }
 
+    public func adjustSchedule(
+        plan: FitnessPlan,
+        action: ScheduleAction? = nil,
+        progress: [String: String] = [:],
+        useAiRecommendation: Bool = false
+    ) async throws -> ScheduleAdjustResponse {
+        isAdjusting = true
+        defer { isAdjusting = false }
+
+        let iso = ISO8601DateFormatter()
+        let dto = FitnessPlanDTO(from: plan, iso8601: iso)
+        return try await api.request(
+            PlanAPI.adjustSchedule(
+                payload: ScheduleAdjustPayload(
+                    plan: dto,
+                    action: action,
+                    workoutProgress: progress.isEmpty ? nil : progress,
+                    useAiRecommendation: useAiRecommendation,
+                    today: DateHelpers.todayString()
+                )
+            )
+        )
+    }
+
+    public func applyScheduleResponse(_ response: ScheduleAdjustResponse, to plan: FitnessPlan) {
+        plan.workoutPlan.weeklyPlan = response.workoutPlan.weeklyPlan
+        plan.workoutPlan.tips = response.workoutPlan.tips
+        plan.workoutPlan.programWeek1Start = response.workoutPlan.programWeek1Start
+        plan.workoutPlan.advancementMode = response.workoutPlan.advancementMode
+        plan.workoutPlan.programWeekOffset = response.workoutPlan.programWeekOffset
+        plan.workoutPlan.pausedUntil = response.workoutPlan.pausedUntil
+        plan.workoutPlan.missedSessions = response.workoutPlan.missedSessions
+        plan.workoutPlan.catchUpBannerDismissedAt = response.workoutPlan.catchUpBannerDismissedAt
+        plan.synced = false
+    }
+
+    public func applyLocalScheduleAction(
+        action: ScheduleAction,
+        to plan: FitnessPlan,
+        progress: [String: String]
+    ) -> String {
+        let result = WorkoutScheduleService.applyScheduleAction(
+            plan: plan,
+            action: action,
+            progress: progress
+        )
+        plan.workoutPlan = result.workoutPlan
+        plan.synced = false
+        return result.summary
+    }
+
     /// Applies AI adjustment targets to the in-memory plan. Caller must `save` the `ModelContext` and trigger sync.
     public func applyAdjustSuggestion(_ suggestion: AdjustSuggestion, to plan: FitnessPlan) {
         if let targets = suggestion.newTargets {
@@ -89,7 +140,12 @@ public final class PlanService {
             workoutPlan: WorkoutPlan(
                 weeklyPlan: dto.workoutPlan.weeklyPlan,
                 tips: dto.workoutPlan.tips,
-                programWeek1Start: dto.workoutPlan.programWeek1Start
+                programWeek1Start: dto.workoutPlan.programWeek1Start,
+                advancementMode: dto.workoutPlan.advancementMode,
+                programWeekOffset: dto.workoutPlan.programWeekOffset,
+                pausedUntil: dto.workoutPlan.pausedUntil,
+                missedSessions: dto.workoutPlan.missedSessions,
+                catchUpBannerDismissedAt: dto.workoutPlan.catchUpBannerDismissedAt
             ),
             reasoning: dto.reasoning
         )

@@ -30,6 +30,26 @@ struct WorkoutsView: View {
                         recoverySection
 
                         if let plan = planService.currentPlan(context: context) {
+                            CatchUpBannerView(
+                                plan: plan,
+                                progress: workoutService.webWorkoutProgressDictionaryForSync(),
+                                planService: planService,
+                                modelContext: context,
+                                onSync: { NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil) }
+                            )
+
+                            CatchUpQueueView(
+                                plan: plan,
+                                planService: planService,
+                                modelContext: context,
+                                onSync: { NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil) },
+                                onOpenDate: { dateStr in
+                                    if let d = DateHelpers.date(from: dateStr) {
+                                        selectedDate = d
+                                    }
+                                }
+                            )
+
                             let items = WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
                             let todayKey = DateHelpers.todayString()
                             ForEach(items) { item in
@@ -64,6 +84,16 @@ struct WorkoutsView: View {
                 if let plan = planService.currentPlan(context: context) {
                     workoutService.migrateWorkoutRowProgressKeysIfNeeded(plan: plan)
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .recompSkipTodayWorkout)) { _ in
+                guard let plan = planService.currentPlan(context: context) else { return }
+                _ = planService.applyLocalScheduleAction(
+                    action: .skipToday,
+                    to: plan,
+                    progress: workoutService.webWorkoutProgressDictionaryForSync()
+                )
+                try? context.save()
+                NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

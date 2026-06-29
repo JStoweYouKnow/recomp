@@ -92,6 +92,24 @@ const fitnessPlanSchema = z.looseObject({
     weeklyPlan: z.array(workoutDaySchema).max(120).optional(),
     tips: z.array(z.string().max(500)).max(20).optional(),
     programWeek1Start: z.string().max(12).optional(),
+    advancementMode: z.enum(["calendar", "completion"]).optional(),
+    programWeekOffset: z.number().min(0).max(52).optional(),
+    pausedUntil: z.string().max(12).optional(),
+    catchUpBannerDismissedAt: z.string().max(50).optional(),
+    missedSessions: z
+      .array(
+        z.object({
+          id: z.string().max(100),
+          planIndex: z.number().min(0).max(200),
+          scheduledDate: z.string().max(12),
+          status: z.enum(["missed", "skipped", "rescheduled"]),
+          rescheduledTo: z.string().max(12).optional(),
+          dayLabel: z.string().max(50).optional(),
+          focus: z.string().max(200).optional(),
+        })
+      )
+      .max(200)
+      .optional(),
   }),
   reasoning: z.string().max(5000).optional(),
 });

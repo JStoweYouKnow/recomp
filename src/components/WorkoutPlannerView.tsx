@@ -13,7 +13,10 @@ import {
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
-import { getTodayLocal, getWeekStart, isTimestampInWeek, mondayWeeksElapsed } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { effectiveProgramWeek, matchDayToDate as scheduleMatchDayToDate } from "@/lib/workout-schedule";
+import { CatchUpBanner } from "./workouts/CatchUpBanner";
+import { CatchUpQueue } from "./workouts/CatchUpQueue";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
@@ -31,10 +34,6 @@ function getGifCache(): Record<string, ExerciseGif> {
 function setGifCache(cache: Record<string, ExerciseGif>) {
   try { localStorage.setItem(EX_CACHE_KEY, JSON.stringify(cache)); } catch { /* quota */ }
 }
-
-/** Map a calendar day-of-week (0=Sun..6=Sat) to common day name prefixes */
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Update weekly plan; clears program week anchor when the plan is short enough for simple weekday matching. */
 function nextWorkoutPlanState(
@@ -142,51 +141,10 @@ export function WorkoutPlannerView({
     }
   }, [exerciseGifs]);
 
-  /**
-   * Try to match a calendar date to a workout day index.
-   * Strategy: match day name ("Monday" → "Monday" / "Mon"), or "Day N" → Nth weekday from Monday.
-   */
   const matchDayToDate = useCallback(
     (date: string): number | null => {
       if (!plan) return null;
-      const d = new Date(date + "T12:00:00");
-      const dow = d.getDay(); // 0=Sun
-      const dayName = WEEKDAY_NAMES[dow].toLowerCase();
-      const shortName = SHORT_WEEKDAY[dow].toLowerCase();
-      const wp = plan.workoutPlan.weeklyPlan;
-      const anchor = plan.workoutPlan.programWeek1Start;
-
-      const weekdayMatches = (planDay: string) =>
-        planDay === dayName ||
-        planDay === shortName ||
-        planDay.startsWith(dayName) ||
-        planDay.startsWith(shortName);
-
-      if (anchor && wp.length > 7) {
-        const selectedWeekStart = getWeekStart(date);
-        const programWeek = mondayWeeksElapsed(anchor, selectedWeekStart) + 1;
-        if (programWeek >= 1) {
-          for (let i = 0; i < wp.length; i++) {
-            const planDay = wp[i].day.toLowerCase().trim();
-            if (!weekdayMatches(planDay)) continue;
-            const wm = planDay.match(/week\s*(\d+)/);
-            if (wm && parseInt(wm[1], 10) === programWeek) return i;
-          }
-        }
-        return null;
-      }
-
-      for (let i = 0; i < wp.length; i++) {
-        const planDay = wp[i].day.toLowerCase().trim();
-        if (weekdayMatches(planDay)) return i;
-      }
-
-      // Fallback: "Day 1" → Monday=0, "Day 2" → Tuesday=1, etc.
-      const mondayBased = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
-      if (mondayBased < wp.length) {
-        return mondayBased;
-      }
-      return null;
+      return scheduleMatchDayToDate(plan, date);
     },
     [plan]
   );
@@ -266,11 +224,11 @@ export function WorkoutPlannerView({
 
   /** Program week index (1-based) for the calendar week being viewed — used to scope completion totals. */
   const viewingProgramWeek = useMemo(() => {
-    const anchor = plan?.workoutPlan.programWeek1Start;
+    if (!plan) return null;
+    const anchor = plan.workoutPlan.programWeek1Start;
     if (!anchor || weeklyPlan.length <= 7) return null;
-    const n = mondayWeeksElapsed(anchor, viewingWeekStart) + 1;
-    return n >= 1 ? n : null;
-  }, [plan?.workoutPlan.programWeek1Start, weeklyPlan.length, viewingWeekStart]);
+    return effectiveProgramWeek(plan, viewingWeekStart, today);
+  }, [plan, weeklyPlan.length, viewingWeekStart, today]);
 
   /** Multi-week PDF plans: only count exercises for sessions in the viewed program week. */
   const weeklyPlanForCompletion = useMemo(() => {
@@ -719,6 +677,25 @@ export function WorkoutPlannerView({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <CatchUpBanner
+        plan={plan}
+        progress={progress}
+        today={today}
+        onUpdatePlan={onUpdatePlan}
+        onSync={() => syncToServer()}
+        showToast={showToast}
+      />
+      <CatchUpQueue
+        plan={plan}
+        progress={progress}
+        onUpdatePlan={onUpdatePlan}
+        onSync={() => syncToServer()}
+        onSelectDate={(date) => {
+          setSelectedDate(date);
+          setCalendarOpen(true);
+        }}
+        showToast={showToast}
+      />
       <datalist id="workout-exercise-names">
         {suggestedExerciseNames.map((name) => (
           <option key={name} value={name} />

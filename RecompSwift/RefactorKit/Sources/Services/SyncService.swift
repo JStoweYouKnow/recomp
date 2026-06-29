@@ -396,7 +396,12 @@ public actor SyncService: ModelActor {
         let workoutPlan = WorkoutPlan(
             weeklyPlan: dto.workoutPlan.weeklyPlan,
             tips:       dto.workoutPlan.tips,
-            programWeek1Start: dto.workoutPlan.programWeek1Start
+            programWeek1Start: dto.workoutPlan.programWeek1Start,
+            advancementMode: dto.workoutPlan.advancementMode,
+            programWeekOffset: dto.workoutPlan.programWeekOffset,
+            pausedUntil: dto.workoutPlan.pausedUntil,
+            missedSessions: dto.workoutPlan.missedSessions,
+            catchUpBannerDismissedAt: dto.workoutPlan.catchUpBannerDismissedAt
         )
 
         if let existing = (try? modelContext.fetch(descriptor))?.first {
@@ -569,7 +574,12 @@ public extension FitnessPlanDTO {
             workoutPlan: PlanWorkoutPlanDTO(
                 weeklyPlan: plan.workoutPlan.weeklyPlan,
                 tips:       plan.workoutPlan.tips,
-                programWeek1Start: plan.workoutPlan.programWeek1Start
+                programWeek1Start: plan.workoutPlan.programWeek1Start,
+                advancementMode: plan.workoutPlan.advancementMode,
+                programWeekOffset: plan.workoutPlan.programWeekOffset,
+                pausedUntil: plan.workoutPlan.pausedUntil,
+                missedSessions: plan.workoutPlan.missedSessions,
+                catchUpBannerDismissedAt: plan.workoutPlan.catchUpBannerDismissedAt
             ),
             reasoning: plan.reasoning
         )

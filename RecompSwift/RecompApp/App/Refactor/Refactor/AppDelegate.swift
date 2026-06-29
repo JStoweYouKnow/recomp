@@ -44,6 +44,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             break
         case ("WORKOUT_REMINDER", "START_WORKOUT"):
             break
+        case ("WORKOUT_REMINDER", "SKIP"):
+            NotificationCenter.default.post(name: .recompSkipTodayWorkout, object: nil)
         case ("HYDRATION_REMINDER", "LOG_WATER"):
             break
         default:
