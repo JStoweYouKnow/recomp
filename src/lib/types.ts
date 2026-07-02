@@ -74,6 +74,39 @@ export interface WorkoutDay {
   finishers?: WorkoutExercise[];
 }
 
+export type AdvancementMode = "calendar" | "completion";
+export type MissedSessionStatus = "missed" | "skipped" | "rescheduled";
+export type ScheduleAction =
+  | "stay_on_week"
+  | "skip_week"
+  | "catch_up"
+  | "repeat_week"
+  | "skip_today"
+  | "reschedule";
+
+/** A workout session that was scheduled but not completed (or explicitly skipped/rescheduled). */
+export interface MissedSession {
+  id: string;
+  planIndex: number;
+  scheduledDate: string;
+  status: MissedSessionStatus;
+  rescheduledTo?: string;
+  dayLabel?: string;
+  focus?: string;
+}
+
+export interface WorkoutScheduleState {
+  /** Calendar = advance by elapsed weeks; completion = advance when program week is fully done. */
+  advancementMode?: AdvancementMode;
+  /** Shifts program week backward (repeat/stay on week). 1 = show previous program week. */
+  programWeekOffset?: number;
+  /** Freeze program week advancement until this date (YYYY-MM-DD), inclusive. */
+  pausedUntil?: string;
+  missedSessions?: MissedSession[];
+  /** ISO timestamp when user last dismissed the catch-up banner. */
+  catchUpBannerDismissedAt?: string;
+}
+
 export interface DietDay {
   day: string;
   meals: {
@@ -99,7 +132,9 @@ export interface FitnessPlan {
     programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
-  };
+    /** Monday YYYY-MM-DD of program week 1; used with multi-week plans so the calendar picks the right session. */
+    programWeek1Start?: string;
+  } & WorkoutScheduleState;
   reasoning?: string;
 }
 

@@ -44,6 +44,8 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             NotificationCenter.default.post(name: .recompNavigateToMeals, object: nil)
         case ("WORKOUT_REMINDER", "START_WORKOUT"):
             NotificationCenter.default.post(name: .recompNavigateToWorkouts, object: nil)
+        case ("WORKOUT_REMINDER", "SKIP"):
+            NotificationCenter.default.post(name: .recompSkipTodayWorkout, object: nil)
         case ("HYDRATION_REMINDER", "LOG_WATER"):
             NotificationCenter.default.post(name: .recompNavigateToDashboard, object: nil)
         case ("COACH_CHECKIN", "REPLY"):

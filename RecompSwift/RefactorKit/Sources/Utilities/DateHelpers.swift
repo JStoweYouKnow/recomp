@@ -73,6 +73,23 @@ public enum DateHelpers {
         return dateString(from: monday)
     }
 
+    /// Whole weeks between two Monday week-start strings (`anchor` ≤ `other` → 0 for same week).
+    public static func mondayWeeksElapsed(from anchorMonday: String, to otherMonday: String) -> Int {
+        guard let a = date(from: anchorMonday), let b = date(from: otherMonday) else { return 0 }
+        let days = Calendar.current.dateComponents([.day], from: a, to: b).day ?? 0
+        return days / 7
+    }
+
+    public static func offsetDate(_ yyyyMmDd: String, by dayDelta: Int) -> String? {
+        guard let d = date(from: yyyyMmDd) else { return nil }
+        guard let shifted = Calendar.current.date(byAdding: .day, value: dayDelta, to: d) else { return nil }
+        return dateString(from: shifted)
+    }
+
+    public static func weekStartMonday(containing yyyyMmDd: String) -> String {
+        mondayWeekStartString(containingCalendarDay: yyyyMmDd)
+    }
+
     public static func streakLength(dates: [String]) -> Int {
         let sorted = dates.sorted().reversed()
         var streak = 0

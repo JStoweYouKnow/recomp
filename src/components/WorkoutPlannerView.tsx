@@ -1,15 +1,22 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { getWorkoutProgress, saveWorkoutProgress, getRecentExerciseNames, saveRecentExerciseNames, getMusicPreference, syncToServer } from "@/lib/storage";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import {
+  flushSync,
+  getWorkoutProgress,
+  saveWorkoutProgress,
+  getRecentExerciseNames,
+  saveRecentExerciseNames,
+  getMusicPreference,
+  syncToServer,
+} from "@/lib/storage";
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
-import {
-  getDisplayedWorkoutPlanIndicesFromRows,
-  planWorkoutDayIndexForWeeklyPlan,
-} from "@/lib/workout-program-schedule";
+import { effectiveProgramWeek, matchDayToDate as scheduleMatchDayToDate } from "@/lib/workout-schedule";
+import { CatchUpBanner } from "./workouts/CatchUpBanner";
+import { CatchUpQueue } from "./workouts/CatchUpQueue";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
@@ -28,9 +35,21 @@ function setGifCache(cache: Record<string, ExerciseGif>) {
   try { localStorage.setItem(EX_CACHE_KEY, JSON.stringify(cache)); } catch { /* quota */ }
 }
 
-/** Map a calendar day-of-week (0=Sun..6=Sat) to common day name prefixes */
-const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const SHORT_WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Update weekly plan; clears program week anchor when the plan is short enough for simple weekday matching. */
+function nextWorkoutPlanState(
+  prev: FitnessPlan["workoutPlan"],
+  weeklyPlan: WorkoutDay[],
+  opts?: { programWeek1Start?: string }
+): FitnessPlan["workoutPlan"] {
+  if (weeklyPlan.length <= 7) {
+    const { programWeek1Start: _a, ...rest } = prev;
+    return { ...rest, weeklyPlan };
+  }
+  if (opts?.programWeek1Start !== undefined) {
+    return { ...prev, weeklyPlan, programWeek1Start: opts.programWeek1Start };
+  }
+  return { ...prev, weeklyPlan };
+}
 
 function extractExerciseNames(weeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"]): string[] {
   const names: string[] = [];
@@ -80,7 +99,11 @@ export function WorkoutPlannerView({
 
   const [workoutImportUrl, setWorkoutImportUrl] = useState("");
   const [workoutImportLoading, setWorkoutImportLoading] = useState(false);
+  const workoutPdfInputRef = useRef<HTMLInputElement>(null);
+  const [workoutPdfFile, setWorkoutPdfFile] = useState<File | null>(null);
   const [importedWorkout, setImportedWorkout] = useState<WorkoutDay | null>(null);
+  const [importedProgram, setImportedProgram] = useState<WorkoutDay[] | null>(null);
+  const [importedProgramTitle, setImportedProgramTitle] = useState<string | null>(null);
   const [showImportPanel, setShowImportPanel] = useState(false);
   const { showToast } = useToast();
 
@@ -118,17 +141,12 @@ export function WorkoutPlannerView({
     }
   }, [exerciseGifs]);
 
-  /**
-   * Calendar date → row index. For multi-week PDF plans, uses `programWeek1Start` + `Week N` labels
-   * (same rules as iOS `WorkoutProgramSchedule.planIndex`), not the first matching weekday in the list.
-   */
   const matchDayToDate = useCallback(
     (date: string): number | null => {
       if (!plan) return null;
-      const wp = editingWeekCopy ?? plan.workoutPlan.weeklyPlan;
-      return planWorkoutDayIndexForWeeklyPlan(wp, plan.workoutPlan.programWeek1Start, date);
+      return scheduleMatchDayToDate(plan, date);
     },
-    [plan, editingWeekCopy]
+    [plan]
   );
 
   // When viewing a future date, don't show exercises as completed (can't have done them yet)
@@ -204,18 +222,62 @@ export function WorkoutPlannerView({
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
 
-  /** Indices for the current program week (PDF-style plans), or all rows for classic weekly plans. */
-  const displayedWorkoutIndices = useMemo(
-    () =>
-      plan
-        ? getDisplayedWorkoutPlanIndicesFromRows(
-            weeklyPlan,
-            plan.workoutPlan.programWeek1Start,
-            viewingDate
-          )
-        : [],
-    [plan, weeklyPlan, viewingDate]
-  );
+  /** Program week index (1-based) for the calendar week being viewed — used to scope completion totals. */
+  const viewingProgramWeek = useMemo(() => {
+    if (!plan) return null;
+    const anchor = plan.workoutPlan.programWeek1Start;
+    if (!anchor || weeklyPlan.length <= 7) return null;
+    return effectiveProgramWeek(plan, viewingWeekStart, today);
+  }, [plan, weeklyPlan.length, viewingWeekStart, today]);
+
+  /** Multi-week PDF plans: only count exercises for sessions in the viewed program week. */
+  const weeklyPlanForCompletion = useMemo(() => {
+    if (viewingProgramWeek == null) return weeklyPlan;
+    const scoped = weeklyPlan.filter((d) => {
+      const m = d.day.match(/Week\s+(\d+)/i);
+      return m && parseInt(m[1], 10) === viewingProgramWeek;
+    });
+    return scoped.length > 0 ? scoped : weeklyPlan;
+  }, [weeklyPlan, viewingProgramWeek]);
+
+  /** Which plan rows to render: calendar picks one day; multi-week plans show only the current program week when calendar is closed. */
+  const workoutDisplayEntries = useMemo(() => {
+    const wp = weeklyPlan;
+    if (!plan) return [] as { day: WorkoutDay; planIndex: number }[];
+
+    if (calendarOpen) {
+      const m = matchDayToDate(selectedDate);
+      if (m === null) return [];
+      const day = wp[m];
+      return day ? [{ day, planIndex: m }] : [];
+    }
+
+    const anchor = plan.workoutPlan.programWeek1Start;
+    if (anchor && wp.length > 7) {
+      const pw = viewingProgramWeek ?? 1;
+      const filtered = wp
+        .map((day, planIndex) => ({ day, planIndex }))
+        .filter(({ day: d }) => {
+          const wm = d.day.match(/Week\s+(\d+)/i);
+          return wm !== null && parseInt(wm[1], 10) === pw;
+        });
+      return filtered.length > 0 ? filtered : wp.map((day, planIndex) => ({ day, planIndex }));
+    }
+
+    return wp.map((day, planIndex) => ({ day, planIndex }));
+  }, [plan, weeklyPlan, calendarOpen, selectedDate, matchDayToDate, viewingProgramWeek]);
+
+  useEffect(() => {
+    if (calendarOpen || !plan) return;
+    const anchor = plan.workoutPlan.programWeek1Start;
+    if (!anchor || weeklyPlan.length <= 7) return;
+    const visible = new Set(workoutDisplayEntries.map((e) => e.planIndex));
+    if (expandedDay !== null && !visible.has(expandedDay)) setExpandedDay(null);
+    if (editingDay !== null && !visible.has(editingDay)) {
+      setEditingWeekCopy(null);
+      setEditingDay(null);
+    }
+  }, [calendarOpen, plan, weeklyPlan.length, workoutDisplayEntries, expandedDay, editingDay]);
 
   /** Extract legacy lookup key from a progress key (handles both week-scoped and legacy formats) */
   const toLegacyLookupKey = useCallback((key: string): string | null => {
@@ -249,31 +311,20 @@ export function WorkoutPlannerView({
     return filtered;
   }, [progress, viewingWeekStart, isViewingFutureDate, toLegacyLookupKey]);
 
-  const totalExercises = useMemo(() => {
-    let sum = 0;
-    for (const idx of displayedWorkoutIndices) {
-      const day = weeklyPlan[idx];
-      if (!day) continue;
-      sum +=
-        (day.warmups?.length ?? 0) +
-        day.exercises.length +
-        (day.finishers?.length ?? 0);
-    }
-    return sum;
-  }, [weeklyPlan, displayedWorkoutIndices]);
-
-  const completedExercises = useMemo(() => {
-    let sum = 0;
-    for (const idx of displayedWorkoutIndices) {
-      const day = weeklyPlan[idx];
-      if (!day) continue;
-      const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
-      const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
-      const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
-      sum += warmupDone + mainDone + finisherDone;
-    }
-    return sum;
-  }, [weeklyPlan, displayedWorkoutIndices, progressThisWeek]);
+  const totalExercises = weeklyPlanForCompletion.reduce(
+    (sum, day) =>
+      sum +
+      (day.warmups?.length ?? 0) +
+      day.exercises.length +
+      (day.finishers?.length ?? 0),
+    0
+  );
+  const completedExercises = weeklyPlanForCompletion.reduce((sum, day) => {
+    const warmupDone = (day.warmups ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "warmup")])).length;
+    const mainDone = day.exercises.filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "main")])).length;
+    const finisherDone = (day.finishers ?? []).filter((ex) => Boolean(progressThisWeek[exerciseKey(day, ex, "finisher")])).length;
+    return sum + warmupDone + mainDone + finisherDone;
+  }, 0);
   const completionPct = totalExercises > 0 ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
   const commitEdit = useCallback(() => {
@@ -282,7 +333,7 @@ export function WorkoutPlannerView({
     if (names.length > 0) saveRecentExerciseNames(names);
     onUpdatePlan({
       ...plan,
-      workoutPlan: { ...plan.workoutPlan, weeklyPlan: editingWeekCopy },
+      workoutPlan: nextWorkoutPlanState(plan.workoutPlan, editingWeekCopy),
     });
     onPlanSaved?.();
     setEditingWeekCopy(null);
@@ -297,11 +348,11 @@ export function WorkoutPlannerView({
     if (editingWeekCopy !== null) {
       setEditingWeekCopy(nextWeeklyPlan);
       if (triggerSync) {
-        onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+        onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, nextWeeklyPlan) });
         onPlanSaved?.();
       }
     } else {
-      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: nextWeeklyPlan } });
+      onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, nextWeeklyPlan) });
       if (triggerSync) onPlanSaved?.();
     }
   };
@@ -404,12 +455,19 @@ export function WorkoutPlannerView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        workout?: WorkoutDay;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Import failed (${res.status})`);
+      }
       if (data.error) throw new Error(data.error);
       if (data.workout) {
         setImportedWorkout(data.workout);
         setShowImportPanel(true);
-        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from web`);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from URL`);
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Could not parse workout URL", "error");
@@ -417,6 +475,59 @@ export function WorkoutPlannerView({
       setWorkoutImportLoading(false);
     }
   }, [workoutImportUrl, showToast]);
+
+  const handleWorkoutPdfImport = useCallback(async () => {
+    const file = workoutPdfFile;
+    if (!file) return;
+    setWorkoutImportLoading(true);
+    setImportedWorkout(null);
+    setImportedProgram(null);
+    setImportedProgramTitle(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/workouts/parse-pdf", {
+        method: "POST",
+        body: fd,
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        code?: string;
+        workout?: WorkoutDay;
+        days?: WorkoutDay[];
+        programTitle?: string;
+        dayCount?: number;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? `Import failed (${res.status})`);
+      }
+      if (data.days && data.days.length > 1) {
+        setImportedProgram(data.days);
+        setImportedProgramTitle(data.programTitle ?? null);
+        setImportedWorkout(null);
+        setShowImportPanel(true);
+        showToast(
+          data.programTitle
+            ? `Parsed “${data.programTitle}”: ${data.days.length} sessions`
+            : `Parsed ${data.days.length} workout sessions from PDF`
+        );
+        setWorkoutPdfFile(null);
+        if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+      } else if (data.workout) {
+        setImportedProgram(null);
+        setImportedProgramTitle(null);
+        setImportedWorkout(data.workout);
+        setShowImportPanel(true);
+        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from PDF`);
+        setWorkoutPdfFile(null);
+        if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Could not parse workout PDF", "error");
+    } finally {
+      setWorkoutImportLoading(false);
+    }
+  }, [workoutPdfFile, showToast]);
 
   const addImportedWorkout = useCallback(
     (targetDayIndex: number | null) => {
@@ -435,15 +546,47 @@ export function WorkoutPlannerView({
       }
       const names = extractExerciseNames(next);
       if (names.length > 0) saveRecentExerciseNames(names);
-      onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+      onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next) });
       onPlanSaved?.();
       setImportedWorkout(null);
       setWorkoutImportUrl("");
+      setWorkoutPdfFile(null);
+      if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
       setShowImportPanel(false);
       showToast("Workout added to plan");
     },
     [plan, weeklyPlan, importedWorkout, onUpdatePlan, onPlanSaved, showToast]
   );
+
+  const applyImportedProgram = useCallback(() => {
+    if (!plan || !importedProgram?.length) return;
+    const week1Start = getWeekStart(getTodayLocal());
+    const next = importedProgram.map((d) => ({
+      ...d,
+      warmups: d.warmups ?? [],
+      exercises: d.exercises ?? [],
+      finishers: d.finishers ?? [],
+    }));
+    const names = extractExerciseNames(next);
+    if (names.length > 0) saveRecentExerciseNames(names);
+    onUpdatePlan({
+      ...plan,
+      workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next, {
+        programWeek1Start: next.length > 7 ? week1Start : undefined,
+      }),
+    });
+    // Large plans were rejected by sync Zod (weeklyPlan max 14); flush immediately so Dynamo/other devices get the full plan before the next GET overwrites local state.
+    void flushSync().catch(() => {});
+    onPlanSaved?.();
+    setImportedProgram(null);
+    setImportedProgramTitle(null);
+    setImportedWorkout(null);
+    setWorkoutImportUrl("");
+    setWorkoutPdfFile(null);
+    if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+    setShowImportPanel(false);
+    showToast(`Workout plan replaced with ${next.length} sessions (week 1 = this calendar week)`);
+  }, [plan, importedProgram, onUpdatePlan, onPlanSaved, showToast]);
 
   /** Get today's or most recent wearable for recovery assessment */
   const getWearableForRecovery = useCallback((): { sleepScore?: number; readinessScore?: number; heartRateResting?: number } | null => {
@@ -534,6 +677,25 @@ export function WorkoutPlannerView({
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <CatchUpBanner
+        plan={plan}
+        progress={progress}
+        today={today}
+        onUpdatePlan={onUpdatePlan}
+        onSync={() => syncToServer()}
+        showToast={showToast}
+      />
+      <CatchUpQueue
+        plan={plan}
+        progress={progress}
+        onUpdatePlan={onUpdatePlan}
+        onSync={() => syncToServer()}
+        onSelectDate={(date) => {
+          setSelectedDate(date);
+          setCalendarOpen(true);
+        }}
+        showToast={showToast}
+      />
       <datalist id="workout-exercise-names">
         {suggestedExerciseNames.map((name) => (
           <option key={name} value={name} />
@@ -542,7 +704,13 @@ export function WorkoutPlannerView({
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="section-title !text-xl">Workout planner</h2>
-          <p className="section-subtitle">Tap a day to expand. Import workouts from the web, or mark exercises done as you go.</p>
+          <p className="section-subtitle">Tap a day to expand. Import workouts from a URL or PDF, or mark exercises done as you go.</p>
+          {plan.workoutPlan.programWeek1Start && weeklyPlan.length > 7 && !calendarOpen && (
+            <p className="text-xs text-[var(--muted)] mt-1 max-w-xl">
+              Showing <span className="font-medium text-[var(--foreground)]">program week {viewingProgramWeek ?? 1}</span> for this calendar week.
+              Use <span className="font-medium text-[var(--foreground)]">Calendar</span> to pick another date.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -569,7 +737,7 @@ export function WorkoutPlannerView({
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
-            Import from web
+            Import workout
           </button>
           <button
             onClick={() => {
@@ -580,7 +748,7 @@ export function WorkoutPlannerView({
               const names = extractExerciseNames(next);
               if (names.length > 0) saveRecentExerciseNames(names);
               setEditingWeekCopy(next);
-              onUpdatePlan({ ...plan, workoutPlan: { ...plan.workoutPlan, weeklyPlan: next } });
+              onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next) });
               onPlanSaved?.();
               setExpandedDay(next.length - 1);
               setEditingDay(next.length - 1);
@@ -592,14 +760,16 @@ export function WorkoutPlannerView({
         </div>
       </div>
 
-      {/* Import from web */}
+      {/* Import from URL or PDF */}
       {showImportPanel && (
         <div className="card p-4 animate-slide-up border border-[var(--accent)]/30">
-          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout from URL</h3>
+          <h3 className="font-semibold text-[var(--foreground)] mb-2">Import workout</h3>
           <p className="text-sm text-[var(--muted)] mb-3">
-            Paste a link to a workout page (fitness blog, YouTube description, program, etc.). We&apos;ll extract the exercises.
+            Paste a workout page URL, or upload a <strong className="text-[var(--foreground)]">text-based PDF</strong>. PDFs are parsed for the{" "}
+            <strong className="text-[var(--foreground)]">full program</strong> when possible (every week/session); otherwise a single workout block. Scanned image PDFs are not supported yet.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <p className="text-xs font-medium text-[var(--foreground)] mb-1.5">From URL</p>
+          <div className="flex flex-col sm:flex-row gap-2 mb-5">
             <input
               type="url"
               placeholder="https://example.com/workout/chest-day"
@@ -613,9 +783,74 @@ export function WorkoutPlannerView({
               disabled={workoutImportLoading || !workoutImportUrl.trim()}
               className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
             >
-              {workoutImportLoading ? "Fetching…" : "Import"}
+              {workoutImportLoading ? "Working…" : "Import from URL"}
             </button>
           </div>
+          <div className="border-t border-[var(--border-soft)] pt-4">
+            <p className="text-xs font-medium text-[var(--foreground)] mb-1.5">From PDF</p>
+            <p className="text-xs text-[var(--muted)] mb-2">Max 8 MB. Encrypted or image-only PDFs may fail.</p>
+            <input
+              ref={workoutPdfInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => setWorkoutPdfFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <button
+                type="button"
+                onClick={() => workoutPdfInputRef.current?.click()}
+                disabled={workoutImportLoading}
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-2 text-sm hover:bg-[var(--background)] disabled:opacity-50 shrink-0"
+              >
+                Choose PDF…
+              </button>
+              <span className="text-xs text-[var(--muted)] truncate min-w-0 flex-1" title={workoutPdfFile?.name}>
+                {workoutPdfFile ? workoutPdfFile.name : "No file selected"}
+              </span>
+              <button
+                type="button"
+                onClick={handleWorkoutPdfImport}
+                disabled={workoutImportLoading || !workoutPdfFile}
+                className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50 shrink-0"
+              >
+                {workoutImportLoading ? "Working…" : "Extract from PDF"}
+              </button>
+            </div>
+          </div>
+          {importedProgram && importedProgram.length > 0 && (
+            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
+              <p className="text-sm font-medium text-[var(--foreground)]">
+                {importedProgramTitle ? `${importedProgramTitle} · ` : ""}
+                {importedProgram.length} sessions ready to import
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                Replaces your current workout list. Calendar matching uses each session&apos;s week number; week 1 is treated as{" "}
+                <strong className="text-[var(--foreground)]">this calendar week</strong> (starting Monday).
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={applyImportedProgram}
+                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
+                >
+                  Replace workout plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImportedProgram(null);
+                    setImportedProgramTitle(null);
+                    setWorkoutPdfFile(null);
+                    if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+                  }}
+                  className="text-xs text-[var(--muted)] hover:underline self-center"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           {importedWorkout && (
             <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
               <p className="text-sm font-medium text-[var(--foreground)]">
@@ -642,7 +877,12 @@ export function WorkoutPlannerView({
               </div>
               <button
                 type="button"
-                onClick={() => { setImportedWorkout(null); setWorkoutImportUrl(""); }}
+                onClick={() => {
+                  setImportedWorkout(null);
+                  setWorkoutImportUrl("");
+                  setWorkoutPdfFile(null);
+                  if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+                }}
                 className="text-xs text-[var(--muted)] hover:underline"
               >
                 Cancel
@@ -700,15 +940,8 @@ export function WorkoutPlannerView({
       </div>
 
       <div className="space-y-3">
-        {weeklyPlan.map((day, dayIndex) => {
-          // Calendar open: single matched day. Closed: current program week only for PDF-style plans.
-          const matchedIdx = calendarOpen ? matchDayToDate(selectedDate) : null;
-          if (calendarOpen) {
-            if (matchedIdx !== null && dayIndex !== matchedIdx) return null;
-            if (matchedIdx === null) return null;
-          } else if (!displayedWorkoutIndices.includes(dayIndex)) {
-            return null;
-          }
+        {workoutDisplayEntries.map(({ day, planIndex }) => {
+          const dayIndex = planIndex;
 
           const total =
             (day.warmups?.length ?? 0) + day.exercises.length + (day.finishers?.length ?? 0);

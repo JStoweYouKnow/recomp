@@ -15,4 +15,6 @@ public extension Notification.Name {
     static let recompNavigateToMeals = Notification.Name("recompNavigateToMeals")
     static let recompNavigateToWorkouts = Notification.Name("recompNavigateToWorkouts")
     static let recompNavigateToDashboard = Notification.Name("recompNavigateToDashboard")
+    /// Posted when user taps "Skip Today" on a workout reminder notification.
+    static let recompSkipTodayWorkout = Notification.Name("recompSkipTodayWorkout")
 }

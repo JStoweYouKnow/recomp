@@ -334,8 +334,10 @@ export async function GET(req: NextRequest) {
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableDataRepaired.length > 0 ? wearableDataRepaired : undefined,
       weeklyReview: weeklyReview ?? undefined,
-      // Always send arrays/maps so native clients can replace local state (including clears).
+      // Always send an array so native clients can replace local rows (including clearing).
       activityLog,
+      // Always include workoutProgress (even empty) so clients can clear stale local entries
+      // when a reset is performed on another device and synced up as an empty map.
       workoutProgress,
       hydration: hydration.length > 0 ? hydration : undefined,
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,

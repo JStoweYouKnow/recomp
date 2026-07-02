@@ -574,7 +574,8 @@ export function saveBloodWork(entries: BloodWork[]): void {
 let _syncTimeout: ReturnType<typeof setTimeout> | null = null;
 const SYNC_DEBOUNCE_MS = 800;
 
-function doSync(): void {
+function buildSyncPayload() {
+  const profile = getProfile();
   const plan = getPlan();
   const meals = getMeals();
   const milestones = getMilestones();
@@ -587,30 +588,70 @@ function doSync(): void {
   const fastingSessions = getFastingSessions();
   const biofeedback = getBiofeedback();
   const pantry = getPantry();
-  const bodyScans = getBodyScans();
   const supplements = getSupplements();
   const bloodWork = getBloodWork();
   const activityLog = getActivityLog();
   const workoutProgress = getWorkoutProgress();
   const metabolicModel = getMetabolicModel();
   const measurementTargets = getMeasurementTargets();
-
   const recentExerciseNames = getRecentExerciseNames();
 
-  fetch("/api/data/sync", {
+  // Strip base64 photo data from body scans — photos are stored in localStorage only.
+  // Including them in the DynamoDB payload bloats it past the 2MB limit and causes
+  // silent 413 failures that prevent all other data from syncing.
+  const bodyScansForSync = getBodyScans().map((scan) => ({
+    ...scan,
+    photos: {
+      front: scan.photos.front?.startsWith("data:") ? undefined : scan.photos.front,
+      side: scan.photos.side?.startsWith("data:") ? undefined : scan.photos.side,
+      back: scan.photos.back?.startsWith("data:") ? undefined : scan.photos.back,
+    },
+  }));
+
+  return {
+    profile: profile ?? undefined,
+    plan, meals, milestones, xp, hasAdjusted, ricoHistory,
+    wearableConnections, wearableData,
+    hydration, fastingSessions, biofeedback, pantry,
+    bodyScans: bodyScansForSync, supplements, bloodWork,
+    activityLog, workoutProgress, recentExerciseNames,
+    metabolicModel: metabolicModel ?? undefined,
+    measurementTargets: measurementTargets ?? undefined,
+  };
+}
+
+async function doSync(): Promise<void> {
+  const res = await fetch("/api/data/sync", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      plan, meals, milestones, xp, hasAdjusted, ricoHistory,
-      wearableConnections, wearableData,
-      hydration, fastingSessions, biofeedback, pantry,
-      bodyScans, supplements, bloodWork,
-      activityLog, workoutProgress, recentExerciseNames,
-      metabolicModel: metabolicModel ?? undefined,
-      measurementTargets: measurementTargets ?? undefined,
-    }),
-  }).catch(() => { });
+    body: JSON.stringify(buildSyncPayload()),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const detail = body?.details ? JSON.stringify(body.details).slice(0, 300) : (body?.error ?? "");
+    throw new Error(`${res.status}: ${detail}`);
+  }
+}
+
+async function doSyncWithRetry(attemptsLeft = 3): Promise<void> {
+  try {
+    await doSync();
+  } catch (err) {
+    const isClientError = err instanceof Error && /^4\d\d:/.test(err.message) && !/^429:/.test(err.message);
+    if (attemptsLeft <= 1 || isClientError) {
+      if (!isClientError) {
+        // All retries exhausted on a server/network error — schedule one last attempt
+        // after 30s so data isn't permanently lost during a brief outage.
+        setTimeout(() => { doSyncWithRetry(1).catch(() => {}); }, 30_000);
+      }
+      return;
+    }
+    // Exponential backoff: 2s, 4s
+    const delay = (4 - attemptsLeft) * 2000;
+    await new Promise((r) => setTimeout(r, delay));
+    return doSyncWithRetry(attemptsLeft - 1);
+  }
 }
 
 /** Persist current localStorage state to DynamoDB (fire-and-forget). Debounced so rapid changes result in a single sync. */
@@ -619,18 +660,18 @@ export function syncToServer(): void {
   if (_syncTimeout) clearTimeout(_syncTimeout);
   _syncTimeout = setTimeout(() => {
     _syncTimeout = null;
-    doSync();
+    doSyncWithRetry().catch(() => { });
   }, SYNC_DEBOUNCE_MS);
 }
 
-/** Flush any pending sync immediately (e.g. before page unload). Call from beforeunload/visibilitychange. */
-export function flushSync(): void {
+/** Flush current localStorage state to DynamoDB immediately (single attempt, no retry). */
+export async function flushSync(): Promise<void> {
   if (typeof window === "undefined") return;
   if (_syncTimeout) {
     clearTimeout(_syncTimeout);
     _syncTimeout = null;
   }
-  doSync();
+  try { await doSync(); } catch { }
 }
 
 // ── Client-side nutrition cache ─────────────────────────────────────────

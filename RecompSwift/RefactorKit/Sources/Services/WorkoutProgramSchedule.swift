@@ -52,7 +52,11 @@ public enum WorkoutProgramSchedule {
                let anchorDay = DateHelpers.date(from: anchor) {
                 let selectedMonday = mondayWeekStart(containing: date)
                 let anchorMonday = mondayWeekStart(containing: anchorDay)
-                let programWeek = mondayWeeksElapsed(anchorMonday: anchorMonday, otherMonday: selectedMonday) + 1
+                let programWeek = WorkoutScheduleService.effectiveProgramWeek(
+                    for: plan,
+                    weekStartMonday: DateHelpers.dateString(from: selectedMonday),
+                    today: DateHelpers.todayString()
+                )
                 if programWeek >= 1 {
                     for i in wp.indices {
                         let pd = wp[i].day.lowercased()
@@ -90,7 +94,11 @@ public enum WorkoutProgramSchedule {
                let anchorDay = DateHelpers.date(from: anchor) {
                 let selectedMonday = mondayWeekStart(containing: selectedDate)
                 let anchorMonday = mondayWeekStart(containing: anchorDay)
-                var programWeek = mondayWeeksElapsed(anchorMonday: anchorMonday, otherMonday: selectedMonday) + 1
+                var programWeek = WorkoutScheduleService.effectiveProgramWeek(
+                    for: plan,
+                    weekStartMonday: DateHelpers.dateString(from: selectedMonday),
+                    today: DateHelpers.todayString()
+                )
                 if programWeek < 1 { programWeek = 1 }
                 let filtered = wp.enumerated().filter { _, day in
                     extractProgramWeek(from: day.day) == programWeek

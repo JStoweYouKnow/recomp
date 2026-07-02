@@ -2,8 +2,34 @@ import Foundation
 import Testing
 import RefactorKit
 
-@Test func refactorKitExists() async throws {
-    #expect(true)
+@Test func workoutSchedule_detectsMissedSessions() async throws {
+    let plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [
+                WorkoutDay(day: "Monday", focus: "Push", exercises: [WorkoutExercise(name: "Bench", sets: "3", reps: "10")]),
+            ],
+            tips: []
+        )
+    )
+    let missed = WorkoutScheduleService.detectMissedSessions(plan: plan, progress: [:], today: "2026-06-30", lookbackDays: 7)
+    #expect(!missed.isEmpty)
+}
+
+@Test func workoutSchedule_stayOnWeekIncrementsOffset() async throws {
+    var plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [WorkoutDay(day: "Monday — Week 1", focus: "Push", exercises: [WorkoutExercise(name: "A", sets: "3", reps: "10")])],
+            tips: [],
+            programWeek1Start: "2026-06-23",
+            programWeekOffset: 0
+        )
+    )
+    let result = WorkoutScheduleService.applyScheduleAction(plan: plan, action: .stayOnWeek, progress: [:], weeksMissed: 1)
+    #expect(result.workoutPlan.programWeekOffset == 1)
 }
 
 @Test func parseSetCount_handlesSetsTimesReps() async throws {

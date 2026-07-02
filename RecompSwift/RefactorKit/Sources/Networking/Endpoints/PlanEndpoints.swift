@@ -9,11 +9,13 @@ public enum PlanAPI: APIEndpoint {
         avgDailyCalories: Double?,
         avgDailyProtein: Double?
     )
+    case adjustSchedule(payload: ScheduleAdjustPayload)
 
     public var path: String {
         switch self {
         case .generate: return "/api/plans/generate"
         case .adjust: return "/api/plans/adjust"
+        case .adjustSchedule: return "/api/plans/adjust-schedule"
         }
     }
 
@@ -33,6 +35,8 @@ public enum PlanAPI: APIEndpoint {
                     avgDailyProtein: avgDailyProtein
                 )
             )
+        case .adjustSchedule(let payload):
+            return AnyEncodable(payload)
         }
     }
 }
@@ -78,6 +82,53 @@ public struct PlanWorkoutPlanDTO: Codable, Sendable {
     public var weeklyPlan: [WorkoutDay]
     public var tips: [String]
     public var programWeek1Start: String?
+    public var advancementMode: AdvancementMode?
+    public var programWeekOffset: Int?
+    public var pausedUntil: String?
+    public var missedSessions: [MissedSession]?
+    public var catchUpBannerDismissedAt: String?
+}
+
+public struct ScheduleAdjustPayload: Encodable, Sendable {
+    public let plan: FitnessPlanDTO
+    public let action: ScheduleAction?
+    public let workoutProgress: [String: String]?
+    public let useAiRecommendation: Bool?
+    public let today: String?
+    public let planIndex: Int?
+    public let scheduledDate: String?
+    public let rescheduledTo: String?
+    public let weeksMissed: Int?
+
+    public init(
+        plan: FitnessPlanDTO,
+        action: ScheduleAction? = nil,
+        workoutProgress: [String: String]? = nil,
+        useAiRecommendation: Bool = false,
+        today: String? = nil,
+        planIndex: Int? = nil,
+        scheduledDate: String? = nil,
+        rescheduledTo: String? = nil,
+        weeksMissed: Int? = nil
+    ) {
+        self.plan = plan
+        self.action = action
+        self.workoutProgress = workoutProgress
+        self.useAiRecommendation = useAiRecommendation
+        self.today = today
+        self.planIndex = planIndex
+        self.scheduledDate = scheduledDate
+        self.rescheduledTo = rescheduledTo
+        self.weeksMissed = weeksMissed
+    }
+}
+
+public struct ScheduleAdjustResponse: Decodable, Sendable {
+    public let action: ScheduleAction
+    public let summary: String
+    public let workoutPlan: PlanWorkoutPlanDTO
+    public let addedMissed: [MissedSession]?
+    public let missedCount: Int?
 }
 
 public struct FitnessPlanDTO: Codable, Sendable {

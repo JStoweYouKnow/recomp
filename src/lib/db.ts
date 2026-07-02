@@ -1453,6 +1453,23 @@ export async function dbUpdatePasswordHash(email: string, newHash: string): Prom
   return true;
 }
 
+/** Overwrite credentials row (e.g. password rotation for an existing email). */
+export async function dbSaveAuthAccount(account: AuthAccount): Promise<void> {
+  const doc = getDocClient();
+  const key = account.email.toLowerCase().trim();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `ACCOUNT#${key}`,
+        SK: `ACCOUNT#${key}`,
+        data: account,
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+}
+
 // ── Community Food Database ──────────────────────────────────────────────
 // Shared food items that grow as users log meals, enabling Lose It-style search.
 // PK: FOOD#<normalized_name>  SK: FOOD  (canonical entry)

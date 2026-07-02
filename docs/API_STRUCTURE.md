@@ -36,7 +36,7 @@ Domain separation and layer organization for the Refactor API.
 | Domain | Routes | Service Module | Responsibility |
 |--------|--------|----------------|----------------|
 | **Auth** | auth/register, auth/demo, auth/me | — | Registration, demo login, session |
-| **Plans** | plans/generate, plans/adjust | — | Plan generation (Nova Lite + extended thinking), adjustment |
+| **Plans** | plans/generate, plans/adjust, plans/adjust-schedule | — | Plan generation (Nova Lite + extended thinking), adjustment, workout schedule catch-up |
 | **Meals** | meals/suggest, meals/analyze-photo, meals/analyze-receipt, … | services/meals.ts | Meal suggestions, photo/receipt analysis |
 | **Body Scan** | body-scan/analyze, body-scan/progress-reel | services/body-scan.ts | Scan analysis, progress reel |
 | **Workouts** | workouts/recovery-adjust | services/workouts.ts | Recovery assessment |

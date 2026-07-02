@@ -105,18 +105,73 @@ public final class PlanService {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    public func adjustSchedule(
+        plan: FitnessPlan,
+        action: ScheduleAction? = nil,
+        progress: [String: String] = [:],
+        useAiRecommendation: Bool = false
+    ) async throws -> ScheduleAdjustResponse {
+        isAdjusting = true
+        defer { isAdjusting = false }
+
+        let iso = ISO8601DateFormatter()
+        let dto = FitnessPlanDTO(from: plan, iso8601: iso)
+        return try await api.request(
+            PlanAPI.adjustSchedule(
+                payload: ScheduleAdjustPayload(
+                    plan: dto,
+                    action: action,
+                    workoutProgress: progress.isEmpty ? nil : progress,
+                    useAiRecommendation: useAiRecommendation,
+                    today: DateHelpers.todayString()
+                )
+            )
+        )
+    }
+
+    public func applyScheduleResponse(_ response: ScheduleAdjustResponse, to plan: FitnessPlan) {
+        plan.workoutPlan.weeklyPlan = response.workoutPlan.weeklyPlan
+        plan.workoutPlan.tips = response.workoutPlan.tips
+        plan.workoutPlan.programWeek1Start = response.workoutPlan.programWeek1Start
+        plan.workoutPlan.advancementMode = response.workoutPlan.advancementMode
+        plan.workoutPlan.programWeekOffset = response.workoutPlan.programWeekOffset
+        plan.workoutPlan.pausedUntil = response.workoutPlan.pausedUntil
+        plan.workoutPlan.missedSessions = response.workoutPlan.missedSessions
+        plan.workoutPlan.catchUpBannerDismissedAt = response.workoutPlan.catchUpBannerDismissedAt
+        plan.synced = false
+    }
+
+    public func applyLocalScheduleAction(
+        action: ScheduleAction,
+        to plan: FitnessPlan,
+        progress: [String: String]
+    ) -> String {
+        let result = WorkoutScheduleService.applyScheduleAction(
+            plan: plan,
+            action: action,
+            progress: progress
+        )
+        plan.workoutPlan = result.workoutPlan
+        plan.synced = false
+        return result.summary
+    }
+
     /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
     public func todaysTargets(context: ModelContext) -> Macros {
+        targets(for: .now, context: context)
+    }
+
+    /// Returns macro targets for a calendar day — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
+    public func targets(for date: Date, context: ModelContext) -> Macros {
         let fallback = Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
         guard let plan = currentPlan(context: context) else { return fallback }
-        if let workout = todaysWorkout(context: context) {
+        if let workout = workout(for: date, context: context) {
             let f = workout.focus.lowercased()
             let isRest = f.contains("rest") || f.contains("recovery") || f.contains("off")
             if isRest, let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
             if !isRest, let t = plan.dietPlan.trainingTargets, t.calories > 0 { return t }
-        } else {
-            // No workout scheduled today — treat as rest day
-            if let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
+        } else if let t = plan.dietPlan.restTargets, t.calories > 0 {
+            return t
         }
         let daily = plan.dietPlan.dailyTargets
         return daily.calories > 0 ? daily : fallback
@@ -163,8 +218,12 @@ public final class PlanService {
     }
 
     public func todaysWorkout(context: ModelContext) -> WorkoutDay? {
+        workout(for: .now, context: context)
+    }
+
+    public func workout(for date: Date, context: ModelContext) -> WorkoutDay? {
         guard let plan = currentPlan(context: context) else { return nil }
-        guard let idx = WorkoutProgramSchedule.planIndex(for: plan, date: .now) else { return nil }
+        guard let idx = WorkoutProgramSchedule.planIndex(for: plan, date: date) else { return nil }
         let weeklyPlan = plan.workoutPlan.weeklyPlan
         guard idx < weeklyPlan.count else { return nil }
         return weeklyPlan[idx]
@@ -192,7 +251,12 @@ public final class PlanService {
             workoutPlan: WorkoutPlan(
                 weeklyPlan: dto.workoutPlan.weeklyPlan,
                 tips: dto.workoutPlan.tips,
-                programWeek1Start: dto.workoutPlan.programWeek1Start
+                programWeek1Start: dto.workoutPlan.programWeek1Start,
+                advancementMode: dto.workoutPlan.advancementMode,
+                programWeekOffset: dto.workoutPlan.programWeekOffset,
+                pausedUntil: dto.workoutPlan.pausedUntil,
+                missedSessions: dto.workoutPlan.missedSessions,
+                catchUpBannerDismissedAt: dto.workoutPlan.catchUpBannerDismissedAt
             ),
             reasoning: dto.reasoning
         )

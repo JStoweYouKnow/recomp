@@ -15,12 +15,13 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
   }
 
   try {
-    const { message, context, persona } = await req.json();
+    const { message, history, context, persona } = await req.json();
     const msg = typeof message === "string" ? message.trim() : "";
     if (!msg) return NextResponse.json({ error: "Message required" }, { status: 400 });
 
     const { reply, actions } = await invokeRico({
       message: msg,
+      history: Array.isArray(history) ? history : undefined,
       context: context ?? undefined,
       persona: typeof persona === "string" ? persona : undefined,
     });
