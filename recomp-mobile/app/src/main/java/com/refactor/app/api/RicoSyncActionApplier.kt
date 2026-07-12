@@ -3,6 +3,7 @@ package com.refactor.app.api
 import com.refactor.app.api.dto.RicoToolActionWire
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -12,8 +13,10 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 
 /**
@@ -30,6 +33,7 @@ internal object RicoSyncActionApplier {
                 "swap_exercise" -> applySwapExercise(current, a.payload)
                 "add_exercise" -> applyAddExercise(current, a.payload)
                 "update_workout_day" -> applyUpdateWorkoutDay(current, a.payload)
+                "adjust_program_start" -> applyAdjustProgramStart(current, a.payload)
                 else -> current
             }
         }
@@ -126,6 +130,22 @@ internal object RicoSyncActionApplier {
             arr.add(newEx)
             dayObj.replaceKey(key, JsonArray(arr))
         }
+    }
+
+    private fun applyAdjustProgramStart(root: JsonObject, payload: JsonObject): JsonObject {
+        val startDate = payload.stringOr("startDate") ?: return root
+        if (!startDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) return root
+        val anchor = runCatching {
+            LocalDate.parse(startDate).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
+        }.getOrNull() ?: return root
+        val plan = root["plan"]?.jsonObject ?: return root
+        val workoutPlan = plan["workoutPlan"]?.jsonObject ?: return root
+        var newWorkoutPlan = workoutPlan.replaceKey("programWeek1Start", JsonPrimitive(anchor))
+        newWorkoutPlan = newWorkoutPlan.replaceKey("programWeekOffset", JsonPrimitive(0))
+        newWorkoutPlan = newWorkoutPlan.replaceKey("missedSessions", JsonArray(emptyList()))
+        newWorkoutPlan = newWorkoutPlan.replaceKey("catchUpBannerDismissedAt", JsonNull)
+        val newPlan = plan.replaceKey("workoutPlan", newWorkoutPlan)
+        return root.replaceTopLevel("plan", newPlan)
     }
 
     private fun applyUpdateWorkoutDay(root: JsonObject, payload: JsonObject): JsonObject {

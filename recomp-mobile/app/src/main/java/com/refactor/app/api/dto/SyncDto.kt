@@ -88,10 +88,50 @@ data class WorkoutDayDto(
 )
 
 @Serializable
+data class ParseWorkoutUrlResponseDto(
+    val workout: WorkoutDayDto,
+    val days: List<WorkoutDayDto>? = null,
+    val programTitle: String? = null,
+    val dayCount: Int? = null,
+    val error: String? = null,
+)
+
+@Serializable
+data class MissedSessionDto(
+    val id: String,
+    val planIndex: Int,
+    val scheduledDate: String,
+    val status: String,
+    val rescheduledTo: String? = null,
+    val dayLabel: String? = null,
+    val focus: String? = null,
+)
+
+@Serializable
 data class WorkoutPlanSectionDto(
     val weeklyPlan: List<WorkoutDayDto>? = null,
     val tips: List<String>? = null,
     val programWeek1Start: String? = null,
+    val advancementMode: String? = null,
+    val programWeekOffset: Int? = null,
+    val pausedUntil: String? = null,
+    val catchUpBannerDismissedAt: String? = null,
+    val missedSessions: List<MissedSessionDto>? = null,
+)
+
+@Serializable
+data class ScheduleAdjustRequestDto(
+    val plan: FitnessPlanDto,
+    val action: String? = null,
+    val workoutProgress: Map<String, String>? = null,
+    val useAiRecommendation: Boolean? = null,
+    val today: String? = null,
+)
+
+@Serializable
+data class ScheduleAdjustResponseDto(
+    val workoutPlan: WorkoutPlanSectionDto,
+    val summary: String,
 )
 
 @Serializable

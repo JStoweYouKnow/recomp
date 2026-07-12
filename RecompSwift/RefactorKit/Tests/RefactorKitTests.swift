@@ -32,6 +32,15 @@ import RefactorKit
     #expect(result.workoutPlan.programWeekOffset == 1)
 }
 
+@Test func workoutImportStart_anchorsSaturdayToNextMonday() async throws {
+    let days = [
+        WorkoutDay(day: "Monday — Week 1", focus: "A", exercises: [WorkoutExercise(name: "Squat", sets: "3", reps: "10")]),
+        WorkoutDay(day: "Wednesday — Week 1", focus: "B", exercises: [WorkoutExercise(name: "Row", sets: "3", reps: "10")]),
+    ]
+    #expect(WorkoutImportStart.inferFirstSessionDate(weeklyPlan: days, today: "2026-07-11") == "2026-07-13")
+    #expect(WorkoutImportStart.inferProgramWeek1Start(weeklyPlan: days, today: "2026-07-11") == "2026-07-13")
+}
+
 @Test func parseSetCount_handlesSetsTimesReps() async throws {
     #expect(WorkoutExercise.parseSetCount(from: "3x10") == 3)
     #expect(WorkoutExercise.parseSetCount(from: "3x10reps") == 3)

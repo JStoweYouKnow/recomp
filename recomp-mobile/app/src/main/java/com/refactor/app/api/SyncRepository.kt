@@ -29,6 +29,10 @@ import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.api.dto.RicoToolActionWire
 import com.refactor.app.api.dto.SavedRecipeDto
 import com.refactor.app.api.dto.WorkoutDayDto
+import com.refactor.app.api.dto.WorkoutPlanSectionDto
+import com.refactor.app.ui.workouts.WorkoutImportStart
+import com.refactor.app.api.dto.ScheduleAdjustRequestDto
+import com.refactor.app.api.dto.ScheduleAdjustResponseDto
 import com.refactor.app.api.dto.ScaleEntryPayloadDto
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.WearableInsightRowDto
@@ -115,6 +119,35 @@ class SyncRepository(
                 ),
             )
         }
+
+    /** AI-assisted or explicit workout schedule adjustment (web `/api/plans/adjust-schedule` parity). */
+    suspend fun adjustWorkoutSchedule(
+        useAiRecommendation: Boolean = false,
+        action: String? = null,
+    ): Result<ScheduleAdjustResponseDto> = runCatching {
+        val entity = syncCacheDao.getOnce() ?: error("No cached snapshot — open Today and refresh first.")
+        val snap = SyncJson.format.decodeFromString<SyncGetResponse>(entity.payloadJson)
+        val plan = snap.plan ?: error("No plan in snapshot")
+        val request = ScheduleAdjustRequestDto(
+            plan = plan,
+            action = action,
+            workoutProgress = snap.workoutProgress,
+            useAiRecommendation = useAiRecommendation,
+            today = LocalDate.now().toString(),
+        )
+        val response = client.post("$baseUrl/api/plans/adjust-schedule") {
+            contentType(ContentType.Application.Json)
+            setBody(SyncJson.format.encodeToString(ScheduleAdjustRequestDto.serializer(), request))
+        }
+        response.ensureSuccessOrThrow()
+        val parsed = SyncJson.format.decodeFromString<ScheduleAdjustResponseDto>(response.bodyAsText())
+        mutateCachedSnapshot { cached ->
+            val p = cached.plan ?: return@mutateCachedSnapshot cached
+            cached.copy(plan = p.copy(workoutPlan = parsed.workoutPlan))
+        }.getOrThrow()
+        pushCachedSnapshot().getOrThrow()
+        parsed
+    }
 
     /** Prepends a Rico-saved recipe into the cached snapshot and pushes (parity with web RicoChat). */
     suspend fun mergeSavedRecipeIntoCache(recipe: SavedRecipeDto): Result<Unit> {
@@ -378,6 +411,13 @@ class SyncRepository(
                     plan = plan.copy(workoutPlan = wp.copy(weeklyPlan = mergedDays))
                     mutateCachedSnapshot { cached -> cached.copy(plan = plan) }.getOrThrow()
                 }
+            }
+
+            if (totalWeeks > 1) {
+                val days = plan.workoutPlan?.weeklyPlan.orEmpty()
+                val anchor = WorkoutImportStart.inferProgramWeek1Start(days)
+                val wp = plan.workoutPlan ?: WorkoutPlanSectionDto()
+                plan = plan.copy(workoutPlan = wp.copy(programWeek1Start = anchor))
             }
 
             mutateCachedSnapshot { cached -> cached.copy(plan = plan) }.getOrThrow()

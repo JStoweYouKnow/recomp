@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 import RefactorKit
 
 struct WorkoutsView: View {
@@ -1077,9 +1078,19 @@ struct WorkoutImportSheet: View {
 
     let plan: FitnessPlan
 
+    private enum ImportTab: String, CaseIterable, Identifiable {
+        case url = "URL"
+        case pdf = "PDF"
+        var id: String { rawValue }
+    }
+
+    @State private var importTab: ImportTab = .url
     @State private var urlText = ""
+    @State private var pdfData: Data?
+    @State private var pdfName: String?
+    @State private var showPdfPicker = false
     @State private var isImporting = false
-    @State private var importedDay: WorkoutDay?
+    @State private var importedResult: WorkoutImportResult?
     @State private var importError: String?
     @State private var mergeTargetIndex: Int? = nil
 
@@ -1087,64 +1098,125 @@ struct WorkoutImportSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("https://…", text: $urlText)
-                        .keyboardType(.URL)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    Button("Import from URL") {
-                        Task { await importWorkout() }
+                    Picker("Source", selection: $importTab) {
+                        ForEach(ImportTab.allCases) { tab in
+                            Text(tab.rawValue).tag(tab)
+                        }
                     }
-                    .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+                    .pickerStyle(.segmented)
+                    .onChange(of: importTab) { _, _ in
+                        importedResult = nil
+                        importError = nil
+                    }
+                }
 
-                    if isImporting {
+                if importTab == .url {
+                    Section {
+                        TextField("https://…", text: $urlText)
+                            .keyboardType(.URL)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                        Button("Import from URL") {
+                            Task { await importFromUrl() }
+                        }
+                        .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isImporting)
+                    } header: {
+                        Text("Paste a URL from a fitness blog, program page, or YouTube description")
+                    }
+                } else {
+                    Section {
+                        Button(pdfName == nil ? "Choose PDF…" : "Change PDF") {
+                            showPdfPicker = true
+                        }
+                        if let pdfName {
+                            Text(pdfName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Extract from PDF") {
+                            Task { await importFromPdf() }
+                        }
+                        .disabled(pdfData == nil || isImporting)
+                    } header: {
+                        Text("Upload a text-based workout program PDF")
+                    }
+                }
+
+                if isImporting {
+                    Section {
                         HStack {
                             ProgressView()
-                            Text("Fetching workout…")
+                            Text(importTab == .pdf ? "Extracting workout…" : "Fetching workout…")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    if let err = importError {
+                }
+                if let err = importError {
+                    Section {
                         Text(err)
                             .font(.caption)
                             .foregroundStyle(Color.appError)
                     }
-                } header: {
-                    Text("Paste a URL from a fitness blog, program page, or YouTube description")
                 }
 
-                if let day = importedDay {
-                    Section("Imported: \(day.day)") {
-                        LabeledContent("Focus", value: day.focus)
-                        LabeledContent("Exercises", value: "\(day.exercises.count)")
-                        ForEach(day.exercises) { ex in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(ex.name).font(.subheadline)
-                                Text("\(ex.sets) × \(ex.reps)")
+                if let result = importedResult {
+                    let programDays = result.days ?? [result.workout]
+                    if result.isFullProgram {
+                        Section("Program ready") {
+                            if let title = result.programTitle {
+                                Text(title).font(.subheadline)
+                            }
+                            Text("\(programDays.count) sessions — week 1 starts \(startLabel(for: programDays))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            ForEach(programDays.prefix(6).indices, id: \.self) { i in
+                                let d = programDays[i]
+                                Text("\(d.day) — \(d.focus) (\(d.exercises.count) exercises)")
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
+                            if programDays.count > 6 {
+                                Text("…and \(programDays.count - 6) more").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Button("Replace workout plan") {
+                                replaceProgram(programDays)
+                            }
+                            .foregroundStyle(Color.appAccent)
                         }
-                    }
-
-                    Section("Add to plan") {
-                        Button("Add as new workout day") {
-                            addAsNewDay(day)
-                        }
-                        .foregroundStyle(Color.appAccent)
-
-                        if !plan.workoutPlan.weeklyPlan.isEmpty {
-                            Picker("Merge into existing day", selection: $mergeTargetIndex) {
-                                Text("Select day").tag(Optional<Int>.none)
-                                ForEach(plan.workoutPlan.weeklyPlan.indices, id: \.self) { i in
-                                    Text(plan.workoutPlan.weeklyPlan[i].day).tag(Optional(i))
+                    } else {
+                        let day = result.workout
+                        Section("Imported: \(day.day)") {
+                            LabeledContent("Focus", value: day.focus)
+                            LabeledContent("Exercises", value: "\(day.exercises.count)")
+                            ForEach(day.exercises) { ex in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(ex.name).font(.subheadline)
+                                    Text("\(ex.sets) × \(ex.reps)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
-                            if let idx = mergeTargetIndex {
-                                Button("Merge into \(plan.workoutPlan.weeklyPlan[idx].day)") {
-                                    mergeIntoDay(day, targetIndex: idx)
+                        }
+
+                        Section("Add to plan") {
+                            Button("Add as new workout day") {
+                                addAsNewDay(day)
+                            }
+                            .foregroundStyle(Color.appAccent)
+
+                            if !plan.workoutPlan.weeklyPlan.isEmpty {
+                                Picker("Merge into existing day", selection: $mergeTargetIndex) {
+                                    Text("Select day").tag(Optional<Int>.none)
+                                    ForEach(plan.workoutPlan.weeklyPlan.indices, id: \.self) { i in
+                                        Text(plan.workoutPlan.weeklyPlan[i].day).tag(Optional(i))
+                                    }
                                 }
-                                .foregroundStyle(Color.appAccent)
+                                if let idx = mergeTargetIndex {
+                                    Button("Merge into \(plan.workoutPlan.weeklyPlan[idx].day)") {
+                                        mergeIntoDay(day, targetIndex: idx)
+                                    }
+                                    .foregroundStyle(Color.appAccent)
+                                }
                             }
                         }
                     }
@@ -1162,22 +1234,80 @@ struct WorkoutImportSheet: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .fileImporter(
+                isPresented: $showPdfPicker,
+                allowedContentTypes: [.pdf],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    guard url.startAccessingSecurityScopedResource() else {
+                        importError = "Could not access PDF file"
+                        return
+                    }
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    do {
+                        pdfData = try Data(contentsOf: url)
+                        pdfName = url.lastPathComponent
+                        importedResult = nil
+                        importError = nil
+                    } catch {
+                        importError = error.localizedDescription
+                    }
+                case .failure(let error):
+                    importError = error.localizedDescription
+                }
+            }
         }
     }
 
-    private func importWorkout() async {
+    private func importFromUrl() async {
         importError = nil
-        importedDay = nil
+        importedResult = nil
         isImporting = true
         defer { isImporting = false }
         do {
-            importedDay = try await WorkoutService.shared.parseWorkoutUrl(
+            importedResult = try await WorkoutService.shared.parseWorkoutImport(
                 urlText.trimmingCharacters(in: .whitespacesAndNewlines)
             )
             mergeTargetIndex = nil
         } catch {
             importError = error.localizedDescription
         }
+    }
+
+    private func importFromPdf() async {
+        guard let pdfData else { return }
+        importError = nil
+        importedResult = nil
+        isImporting = true
+        defer { isImporting = false }
+        do {
+            importedResult = try await WorkoutService.shared.parseWorkoutPdf(
+                pdfData,
+                fileName: pdfName ?? "workout.pdf"
+            )
+            mergeTargetIndex = nil
+        } catch {
+            importError = error.localizedDescription
+        }
+    }
+
+    private func startLabel(for days: [WorkoutDay]) -> String {
+        let anchor = WorkoutImportStart.inferFirstSessionDate(weeklyPlan: days)
+        guard let date = DateHelpers.date(from: anchor) else { return anchor }
+        return date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+    }
+
+    private func replaceProgram(_ days: [WorkoutDay]) {
+        plan.workoutPlan = WorkoutImportStart.workoutPlanAfterImport(
+            weeklyPlan: days,
+            preserving: plan.workoutPlan
+        )
+        try? modelContext.save()
+        Task { await syncEngine?.markDirty() }
+        dismiss()
     }
 
     private func addAsNewDay(_ day: WorkoutDay) {
@@ -1204,7 +1334,12 @@ struct WorkoutImportSheet: View {
         plan.workoutPlan = WorkoutPlan(
             weeklyPlan: weekly,
             tips: plan.workoutPlan.tips,
-            programWeek1Start: plan.workoutPlan.programWeek1Start
+            programWeek1Start: plan.workoutPlan.programWeek1Start,
+            advancementMode: plan.workoutPlan.advancementMode,
+            programWeekOffset: plan.workoutPlan.programWeekOffset,
+            pausedUntil: plan.workoutPlan.pausedUntil,
+            missedSessions: plan.workoutPlan.missedSessions,
+            catchUpBannerDismissedAt: plan.workoutPlan.catchUpBannerDismissedAt
         )
         try? modelContext.save()
         Task { await syncEngine?.markDirty() }

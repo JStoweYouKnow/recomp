@@ -353,6 +353,16 @@ public final class CoachService {
                     reason: payload.reason
                 )
 
+            case .adjustProgramStart(let payload):
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                plan.workoutPlan.programWeek1Start = DateHelpers.mondayWeekStartString(
+                    containingCalendarDay: payload.startDate
+                )
+                plan.workoutPlan.programWeekOffset = 0
+                plan.workoutPlan.missedSessions = []
+                plan.workoutPlan.catchUpBannerDismissedAt = nil
+                plan.synced = false
+
             case .unknown(let actionType):
                 print("[CoachService] Unhandled action type: \(actionType)")
             }

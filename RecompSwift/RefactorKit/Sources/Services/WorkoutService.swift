@@ -660,9 +660,33 @@ public final class WorkoutService {
         )
     }
 
-    /// Fetches a URL, extracts exercises via AI, and returns a `WorkoutDay` ready to insert into a plan.
-    public func parseWorkoutUrl(_ url: String) async throws -> WorkoutDay {
+    /// Fetches a URL and returns a single day or multi-day program (web `/api/workouts/parse-url` parity).
+    public func parseWorkoutImport(_ url: String) async throws -> WorkoutImportResult {
         let response: WorkoutImportResponse = try await api.request(WorkoutAPI.parseUrl(url: url))
-        return response.workout
+        return WorkoutImportResult(
+            workout: response.workout,
+            days: response.days,
+            programTitle: response.programTitle
+        )
+    }
+
+    public func parseWorkoutUrl(_ url: String) async throws -> WorkoutDay {
+        try await parseWorkoutImport(url).workout
+    }
+
+    /// Uploads a text-based workout PDF (web `/api/workouts/parse-pdf` parity).
+    public func parseWorkoutPdf(_ data: Data, fileName: String = "workout.pdf") async throws -> WorkoutImportResult {
+        let response: WorkoutImportResponse = try await api.upload(
+            WorkoutAPI.parsePdf,
+            fileData: data,
+            fieldName: "file",
+            fileName: fileName,
+            mimeType: "application/pdf"
+        )
+        return WorkoutImportResult(
+            workout: response.workout,
+            days: response.days,
+            programTitle: response.programTitle
+        )
     }
 }

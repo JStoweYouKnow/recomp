@@ -1,0 +1,194 @@
+package com.refactor.app.ui.workouts
+
+import com.refactor.app.api.dto.FitnessPlanDto
+import com.refactor.app.api.dto.MissedSessionDto
+import com.refactor.app.api.dto.WorkoutDayDto
+import com.refactor.app.api.dto.WorkoutExerciseDto
+import com.refactor.app.api.dto.WorkoutPlanSectionDto
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
+
+typealias WorkoutProgressMap = Map<String, String>
+
+enum class ScheduleAction(val wire: String) {
+    stay_on_week("stay_on_week"),
+    skip_week("skip_week"),
+    catch_up("catch_up"),
+    repeat_week("repeat_week"),
+}
+
+object WorkoutScheduleService {
+    private val isoDate = DateTimeFormatter.ISO_LOCAL_DATE
+
+    fun today(): String = LocalDate.now().format(isoDate)
+
+    private fun parse(date: String): LocalDate = LocalDate.parse(date, isoDate)
+
+    fun mondayWeekStart(date: String): String {
+        val d = parse(date)
+        val dow = d.dayOfWeek.value
+        val daysFromMonday = if (dow == 7) 6 else dow - 1
+        return d.minusDays(daysFromMonday.toLong()).format(isoDate)
+    }
+
+    fun mondayWeeksElapsed(anchorMonday: String, otherMonday: String): Int {
+        val days = ChronoUnit.DAYS.between(parse(anchorMonday), parse(otherMonday))
+        return (days / 7).toInt()
+    }
+
+    fun offsetDate(date: String, deltaDays: Int): String =
+        parse(date).plusDays(deltaDays.toLong()).format(isoDate)
+
+    fun detectMissedSessions(
+        plan: FitnessPlanDto,
+        progress: WorkoutProgressMap,
+        today: String = today(),
+        lookbackDays: Int = 14,
+    ): List<MissedSessionDto> {
+        val wp = plan.workoutPlan?.weeklyPlan.orEmpty()
+        val known = plan.workoutPlan?.missedSessions.orEmpty().map { it.id }.toSet()
+        val found = mutableListOf<MissedSessionDto>()
+        for (i in 1..lookbackDays) {
+            val dateStr = offsetDate(today, -i)
+            val planIndex = WorkoutProgramSchedule.planIndexForDate(plan, parse(dateStr)) ?: continue
+            val id = sessionId(planIndex, dateStr)
+            if (known.contains(id)) continue
+            if (isWorkoutSessionComplete(plan, planIndex, dateStr, progress)) continue
+            val day = wp[planIndex]
+            found += MissedSessionDto(
+                id = id,
+                planIndex = planIndex,
+                scheduledDate = dateStr,
+                status = "missed",
+                dayLabel = day.day,
+                focus = day.focus,
+            )
+        }
+        return found
+    }
+
+    fun getCatchUpQueue(plan: FitnessPlanDto): List<MissedSessionDto> =
+        plan.workoutPlan?.missedSessions.orEmpty()
+            .filter { it.status == "missed" || (it.status == "rescheduled" && it.rescheduledTo != null) }
+            .sortedBy { it.scheduledDate }
+
+    fun countRecentMissed(
+        plan: FitnessPlanDto,
+        progress: WorkoutProgressMap,
+        days: Int = 7,
+        today: String = today(),
+    ): Int {
+        val detected = detectMissedSessions(plan, progress, today, days)
+        val tracked = plan.workoutPlan?.missedSessions.orEmpty().filter {
+            it.status == "missed" && it.scheduledDate >= offsetDate(today, -days)
+        }
+        return (detected.map { it.id } + tracked.map { it.id }).toSet().size
+    }
+
+    fun shouldShowCatchUpBanner(
+        plan: FitnessPlanDto,
+        progress: WorkoutProgressMap,
+        today: String = today(),
+    ): Boolean {
+        plan.workoutPlan?.catchUpBannerDismissedAt?.take(10)?.let { if (it == today) return false }
+        return countRecentMissed(plan, progress, 7, today) >= 2
+    }
+
+    fun applyScheduleAction(
+        plan: FitnessPlanDto,
+        action: ScheduleAction,
+        progress: WorkoutProgressMap,
+        today: String = today(),
+    ): Pair<FitnessPlanDto, String> {
+        var wp = plan.workoutPlan ?: WorkoutPlanSectionDto()
+        var missed = wp.missedSessions?.toMutableList() ?: mutableListOf()
+        val detected = detectMissedSessions(plan, progress, today)
+        val added = mutableListOf<MissedSessionDto>()
+
+        when (action) {
+            ScheduleAction.stay_on_week, ScheduleAction.repeat_week -> {
+                val weeks = maxOf(1, kotlin.math.ceil(countRecentMissed(plan, progress, 7, today) / 3.0).toInt())
+                wp = wp.copy(programWeekOffset = (wp.programWeekOffset ?: 0) + weeks)
+                detected.forEach { s ->
+                    val entry = s.copy(status = "skipped")
+                    added += entry
+                    missed = upsertMissed(missed, entry)
+                }
+            }
+            ScheduleAction.skip_week -> {
+                detected.forEach { s ->
+                    val entry = s.copy(status = "skipped")
+                    added += entry
+                    missed = upsertMissed(missed, entry)
+                }
+            }
+            ScheduleAction.catch_up -> {
+                detected.forEach { s ->
+                    added += s
+                    missed = upsertMissed(missed, s)
+                }
+                if (wp.advancementMode == null) wp = wp.copy(advancementMode = "calendar")
+            }
+        }
+
+        wp = wp.copy(missedSessions = missed, catchUpBannerDismissedAt = null)
+        val summary = when (action) {
+            ScheduleAction.stay_on_week, ScheduleAction.repeat_week -> "Staying on your current program week."
+            ScheduleAction.skip_week -> "Skipped ${added.size} missed session(s)."
+            ScheduleAction.catch_up ->
+                if (added.isEmpty()) "Catch-up queue is up to date." else "Added ${added.size} session(s) to catch-up."
+        }
+        return plan.copy(workoutPlan = wp) to summary
+    }
+
+    fun dismissCatchUpBanner(plan: FitnessPlanDto, at: String = java.time.Instant.now().toString()): FitnessPlanDto {
+        val wp = plan.workoutPlan ?: return plan
+        return plan.copy(workoutPlan = wp.copy(catchUpBannerDismissedAt = at))
+    }
+
+    private fun isWorkoutSessionComplete(
+        plan: FitnessPlanDto,
+        planIndex: Int,
+        date: String,
+        progress: WorkoutProgressMap,
+    ): Boolean {
+        val day = plan.workoutPlan?.weeklyPlan?.getOrNull(planIndex) ?: return false
+        val items = allExercises(day)
+        if (items.isEmpty()) return false
+        return items.count { (exercise, section) ->
+            val key = exerciseProgressKey(plan.id, day, exercise, section)
+            progress[key]?.take(10) == date
+        } >= items.size
+    }
+
+    private fun sessionId(planIndex: Int, scheduledDate: String) = "$planIndex:$scheduledDate"
+
+    private fun upsertMissed(list: MutableList<MissedSessionDto>, entry: MissedSessionDto): MutableList<MissedSessionDto> {
+        list.removeAll { it.id == entry.id }
+        list.add(entry)
+        return list
+    }
+
+    private fun allExercises(day: WorkoutDayDto): List<Pair<WorkoutExerciseDto, String>> {
+        val out = mutableListOf<Pair<WorkoutExerciseDto, String>>()
+        day.warmups?.forEach { out += it to "warmup" }
+        day.exercises.forEach { out += it to "main" }
+        day.finishers?.forEach { out += it to "finisher" }
+        return out
+    }
+
+    private fun exerciseProgressKey(
+        planId: String,
+        day: WorkoutDayDto,
+        exercise: WorkoutExerciseDto,
+        section: String,
+    ): String {
+        val notes = exercise.notes.orEmpty()
+        return if (section == "main") {
+            "$planId:${day.day}:${exercise.name}:${exercise.sets}:${exercise.reps}:$notes"
+        } else {
+            "$planId:${day.day}:$section:${exercise.name}:${exercise.sets}:${exercise.reps}:$notes"
+        }
+    }
+}

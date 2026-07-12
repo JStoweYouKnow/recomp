@@ -1,6 +1,8 @@
 package com.refactor.app.ui.workouts
 
 import android.app.Application
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
@@ -49,6 +51,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -79,6 +84,7 @@ import com.refactor.app.api.WorkoutExtrasRepository
 import com.refactor.app.api.dto.PlaylistSuggestionDto
 import com.refactor.app.api.dto.RecoveryAssessmentDto
 import com.refactor.app.api.dto.SyncGetResponse
+import com.refactor.app.api.dto.ParseWorkoutUrlResponseDto
 import com.refactor.app.api.dto.WorkoutDayDto
 import com.refactor.app.api.dto.WorkoutExerciseDto
 import com.refactor.app.db.SyncCacheDao
@@ -106,6 +112,7 @@ fun WorkoutsScreen(
 
     val days by vm.workoutDays.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
+    val progressMap by vm.workoutProgressMap.collectAsStateWithLifecycle()
     val planId = plan?.id.orEmpty()
     val progressUiEpoch by vm.progressUiEpoch.collectAsStateWithLifecycle()
 
@@ -147,7 +154,7 @@ fun WorkoutsScreen(
                     DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                         if (planId.isNotBlank()) {
                             DropdownMenuItem(
-                                text = { Text("Import from URL") },
+                                text = { Text("Import workout") },
                                 leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
                                 onClick = { showMenu = false; showImportSheet = true },
                             )
@@ -184,6 +191,28 @@ fun WorkoutsScreen(
                 .padding(bottom = if (restTimer != null) 112.dp else 16.dp),
         ) {
             Spacer(Modifier.height(12.dp))
+
+            plan?.let { currentPlan ->
+                CatchUpBanner(
+                    plan = currentPlan,
+                    progress = progressMap,
+                    onApplyAction = { action ->
+                        vm.applyScheduleAction(action).getOrNull()
+                    },
+                    onDismiss = {
+                        vm.dismissCatchUpBanner()
+                    },
+                    onAskCoach = {
+                        vm.askCoachForSchedule().getOrNull()
+                    },
+                )
+                CatchUpQueue(
+                    plan = currentPlan,
+                    onOpenDate = { dateStr ->
+                        runCatching { LocalDate.parse(dateStr) }.getOrNull()?.let { selectedDate = it }
+                    },
+                )
+            }
 
             // Recovery section
             todaysBiofeedback?.let { bf ->
@@ -325,6 +354,16 @@ fun WorkoutsScreen(
                 scope.launch {
                     val newList = days + importedDay
                     vm.persistWeeklyPlanAndPush(newList).fold(
+                        onSuccess = { busy = false },
+                        onFailure = { busy = false },
+                    )
+                }
+            },
+            onReplaceProgram = { programDays ->
+                showImportSheet = false
+                busy = true
+                scope.launch {
+                    vm.replaceWorkoutProgramAndPush(programDays).fold(
                         onSuccess = { busy = false },
                         onFailure = { busy = false },
                     )
@@ -998,17 +1037,47 @@ private fun NoWorkoutForDay(date: LocalDate) {
 
 // ─── Import Dialog ───────────────────────────────────────────────────────────
 
+private enum class WorkoutImportTab { Url, Pdf }
+
 @Composable
 private fun WorkoutImportDialog(
     workoutExtrasRepository: WorkoutExtrasRepository,
     onDismiss: () -> Unit,
     onImport: (WorkoutDayDto) -> Unit,
+    onReplaceProgram: (List<WorkoutDayDto>) -> Unit,
 ) {
+    val context = LocalContext.current
+    var tab by remember { mutableStateOf(WorkoutImportTab.Url) }
     var urlText by remember { mutableStateOf("") }
+    var pdfName by remember { mutableStateOf<String?>(null) }
+    var pdfBytes by remember { mutableStateOf<ByteArray?>(null) }
     var isImporting by remember { mutableStateOf(false) }
-    var importedDay by remember { mutableStateOf<WorkoutDayDto?>(null) }
+    var imported by remember { mutableStateOf<ParseWorkoutUrlResponseDto?>(null) }
     var importError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            importError = null
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: error("Could not read PDF")
+            }.fold(
+                onSuccess = { bytes ->
+                    pdfBytes = bytes
+                    pdfName = uri.lastPathSegment ?: "workout.pdf"
+                    imported = null
+                },
+                onFailure = { importError = it.message ?: "Could not read PDF" },
+            )
+        }
+    }
+
+    fun resetPreview() {
+        imported = null
+        importError = null
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(shape = RoundedCornerShape(16.dp)) {
@@ -1018,58 +1087,130 @@ private fun WorkoutImportDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text("Import from URL", style = MaterialTheme.typography.titleMedium)
+                Text("Import workout", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "Paste a URL from a fitness blog, program page, or YouTube description.",
+                    "Paste a program URL or upload a text-based PDF. Multi-day programs import all sessions when detected.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
-                    value = urlText,
-                    onValueChange = { urlText = it },
-                    label = { Text("URL") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = tab == WorkoutImportTab.Url,
+                        onClick = { tab = WorkoutImportTab.Url; resetPreview() },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                    ) { Text("URL") }
+                    SegmentedButton(
+                        selected = tab == WorkoutImportTab.Pdf,
+                        onClick = { tab = WorkoutImportTab.Pdf; resetPreview() },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                    ) { Text("PDF") }
+                }
+                when (tab) {
+                    WorkoutImportTab.Url -> {
+                        OutlinedTextField(
+                            value = urlText,
+                            onValueChange = { urlText = it; resetPreview() },
+                            label = { Text("URL") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+                    WorkoutImportTab.Pdf -> {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(onClick = { pickPdf.launch("application/pdf") }) {
+                                Text(if (pdfName != null) "Change PDF" else "Choose PDF")
+                            }
+                            pdfName?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
+                }
                 importError?.let {
                     Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }
-                importedDay?.let { day ->
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text("Imported: ${day.day}", style = MaterialTheme.typography.labelLarge)
-                            Text(day.focus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${day.exercises.size} exercises", style = MaterialTheme.typography.bodySmall)
+                imported?.let { result ->
+                    val programDays = result.days?.takeIf { it.size > 1 }
+                    if (programDays != null) {
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                result.programTitle?.let {
+                                    Text(it, style = MaterialTheme.typography.labelLarge)
+                                }
+                                Text(
+                                    "${programDays.size} sessions — first session ${formatFirstSessionPreview(programDays)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    } else {
+                        val day = result.workout
+                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("Imported: ${day.day}", style = MaterialTheme.typography.labelLarge)
+                                Text(day.focus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${day.exercises.size} exercises", style = MaterialTheme.typography.bodySmall)
+                            }
                         }
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    if (importedDay != null) {
-                        Button(
-                            onClick = { importedDay?.let { onImport(it) } },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("Add to Plan") }
-                    } else {
+                    imported?.let { result ->
+                        val programDays = result.days?.takeIf { it.size > 1 }
+                        if (programDays != null) {
+                            Button(
+                                onClick = { onReplaceProgram(programDays) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Replace Plan") }
+                        } else {
+                            Button(
+                                onClick = { onImport(result.workout) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Add to Plan") }
+                        }
+                    } ?: run {
+                        val canImport = when (tab) {
+                            WorkoutImportTab.Url -> urlText.isNotBlank()
+                            WorkoutImportTab.Pdf -> pdfBytes != null
+                        }
                         Button(
                             onClick = {
                                 isImporting = true
                                 importError = null
                                 scope.launch {
-                                    workoutExtrasRepository.parseWorkoutUrl(urlText.trim()).fold(
-                                        onSuccess = { importedDay = it },
+                                    val parseResult = when (tab) {
+                                        WorkoutImportTab.Url ->
+                                            workoutExtrasRepository.parseWorkoutUrl(urlText.trim())
+                                        WorkoutImportTab.Pdf ->
+                                            workoutExtrasRepository.parseWorkoutPdf(
+                                                pdfBytes ?: ByteArray(0),
+                                                pdfName ?: "workout.pdf",
+                                            )
+                                    }
+                                    parseResult.fold(
+                                        onSuccess = { imported = it },
                                         onFailure = { importError = it.message ?: "Import failed" },
                                     )
                                     isImporting = false
                                 }
                             },
-                            enabled = urlText.isNotBlank() && !isImporting,
+                            enabled = canImport && !isImporting,
                             modifier = Modifier.weight(1f),
                         ) {
                             if (isImporting) {
                                 CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
                             } else {
-                                Text("Import")
+                                Text(if (tab == WorkoutImportTab.Pdf) "Extract from PDF" else "Import")
                             }
                         }
                     }

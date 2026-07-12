@@ -40,6 +40,15 @@ class WorkoutsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val workoutProgressMap = syncCacheDao.observe()
+        .map { entity ->
+            val raw = entity?.payloadJson ?: return@map emptyMap<String, String>()
+            runCatching {
+                SyncJson.format.decodeFromString<SyncGetResponse>(raw).workoutProgress.orEmpty()
+            }.getOrElse { emptyMap() }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
     val workoutProgressEntries = syncCacheDao.observe()
         .map { entity ->
             val raw = entity?.payloadJson ?: return@map emptyList<Pair<String, String>>()
@@ -122,16 +131,61 @@ class WorkoutsViewModel(
         return syncRepository.pushCachedSnapshot().map { markedComplete }
     }
 
-    suspend fun persistWeeklyPlanAndPush(days: List<WorkoutDayDto>): Result<Unit> {
+    suspend fun persistWeeklyPlanAndPush(days: List<WorkoutDayDto>): Result<Unit> =
+        persistWorkoutPlanAndPush(days, replaceProgramAnchor = false)
+
+    suspend fun replaceWorkoutProgramAndPush(days: List<WorkoutDayDto>): Result<Unit> =
+        persistWorkoutPlanAndPush(days, replaceProgramAnchor = true)
+
+    private suspend fun persistWorkoutPlanAndPush(
+        days: List<WorkoutDayDto>,
+        replaceProgramAnchor: Boolean,
+    ): Result<Unit> {
         val local = syncRepository.mutateCachedSnapshot { snap ->
             val plan = snap.plan ?: return@mutateCachedSnapshot snap
             val wp = plan.workoutPlan ?: WorkoutPlanSectionDto()
-            val newPlan = plan.copy(workoutPlan = wp.copy(weeklyPlan = days))
+            val newWp = if (replaceProgramAnchor) {
+                wp.copy(
+                    weeklyPlan = days,
+                    programWeek1Start = WorkoutImportStart.inferProgramWeek1Start(days),
+                    programWeekOffset = 0,
+                    missedSessions = emptyList(),
+                    catchUpBannerDismissedAt = null,
+                )
+            } else {
+                wp.copy(weeklyPlan = days)
+            }
+            val newPlan = plan.copy(workoutPlan = newWp)
             snap.copy(plan = newPlan)
         }
         if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
         return syncRepository.pushCachedSnapshot()
     }
+
+    suspend fun applyScheduleAction(action: ScheduleAction): Result<String> {
+        val progress = workoutProgressMap.value
+        var summary = ""
+        val local = syncRepository.mutateCachedSnapshot { snap ->
+            val plan = snap.plan ?: return@mutateCachedSnapshot snap
+            val (updated, actionSummary) = WorkoutScheduleService.applyScheduleAction(plan, action, progress)
+            summary = actionSummary
+            snap.copy(plan = updated)
+        }
+        if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
+        return syncRepository.pushCachedSnapshot().map { summary }
+    }
+
+    suspend fun dismissCatchUpBanner(): Result<Unit> {
+        val local = syncRepository.mutateCachedSnapshot { snap ->
+            val plan = snap.plan ?: return@mutateCachedSnapshot snap
+            snap.copy(plan = WorkoutScheduleService.dismissCatchUpBanner(plan))
+        }
+        if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
+        return syncRepository.pushCachedSnapshot()
+    }
+
+    suspend fun askCoachForSchedule(): Result<String> =
+        syncRepository.adjustWorkoutSchedule(useAiRecommendation = true).map { it.summary }
 
     class Factory(
         private val application: Application,

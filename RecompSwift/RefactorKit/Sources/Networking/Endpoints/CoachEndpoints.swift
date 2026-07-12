@@ -199,6 +199,7 @@ public enum RicoAction: Decodable, Sendable {
     case addExercise(AddExercisePayload)
     case updateWorkoutDay(UpdateWorkoutDayPayload)
     case regeneratePlan(RegeneratePlanPayload)
+    case adjustProgramStart(AdjustProgramStartPayload)
     case unknown(String)
 
     enum CodingKeys: String, CodingKey {
@@ -222,6 +223,8 @@ public enum RicoAction: Decodable, Sendable {
         case "regenerate_plan":
             let payload = (try? container.decode(RegeneratePlanPayload.self, forKey: .payload)) ?? RegeneratePlanPayload()
             self = .regeneratePlan(payload)
+        case "adjust_program_start":
+            self = .adjustProgramStart(try container.decode(AdjustProgramStartPayload.self, forKey: .payload))
         default:
             self = .unknown(type)
         }
@@ -308,6 +311,10 @@ public struct ExerciseEntryPayload: Decodable, Sendable {
     public let sets: String
     public let reps: String
     public let notes: String?
+}
+
+public struct AdjustProgramStartPayload: Decodable, Sendable {
+    public let startDate: String
 }
 
 public struct RegeneratePlanPayload: Decodable, Sendable {

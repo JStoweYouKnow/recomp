@@ -107,7 +107,7 @@ public actor APIClient {
 
     public func upload<T: Decodable>(
         _ endpoint: APIEndpoint,
-        imageData: Data,
+        fileData: Data,
         fieldName: String = "image",
         fileName: String = "photo.jpg",
         mimeType: String = "image/jpeg"
@@ -121,13 +121,30 @@ public actor APIClient {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
-        body.append(imageData)
+        body.append(fileData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
         let (data, response) = try await perform(request)
         try validateResponse(response, data: data)
         return try decode(data)
+    }
+
+    /// Backward-compatible alias for image uploads.
+    public func upload<T: Decodable>(
+        _ endpoint: APIEndpoint,
+        imageData: Data,
+        fieldName: String = "image",
+        fileName: String = "photo.jpg",
+        mimeType: String = "image/jpeg"
+    ) async throws -> T {
+        try await upload(
+            endpoint,
+            fileData: imageData,
+            fieldName: fieldName,
+            fileName: fileName,
+            mimeType: mimeType
+        )
     }
 
     public func stream(_ endpoint: APIEndpoint) -> AsyncThrowingStream<Data, Error> {

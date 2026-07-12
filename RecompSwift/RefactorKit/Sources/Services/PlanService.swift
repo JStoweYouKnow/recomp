@@ -89,6 +89,13 @@ public final class PlanService {
             try? context.save()
         }
 
+        plan.workoutPlan = WorkoutImportStart.workoutPlanAfterImport(
+            weeklyPlan: plan.workoutPlan.weeklyPlan,
+            preserving: plan.workoutPlan
+        )
+        plan.synced = false
+        try? context.save()
+
         return plan
     }
 

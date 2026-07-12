@@ -14,14 +14,19 @@ import com.refactor.app.api.dto.ResearchResponseDto
 import com.refactor.app.api.dto.BiofeedbackEntryDto
 import com.refactor.app.api.dto.MusicSuggestResponseDto
 import com.refactor.app.api.dto.RecoveryAssessmentDto
+import com.refactor.app.api.dto.ParseWorkoutUrlResponseDto
 import com.refactor.app.api.dto.WorkoutDayDto
 import io.ktor.client.HttpClient
+import io.ktor.client.request.forms.MultiPartFormDataContent
+import io.ktor.client.request.forms.formData
 import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -268,13 +273,38 @@ class WorkoutExtrasRepository(
         SyncJson.format.decodeFromString<MusicSuggestResponseDto>(r.bodyAsText())
     }
 
-    suspend fun parseWorkoutUrl(url: String): Result<WorkoutDayDto> = runCatching {
+    suspend fun parseWorkoutUrl(url: String): Result<ParseWorkoutUrlResponseDto> = runCatching {
         val body = buildJsonObject { put("url", url) }
         val r = client.post("$baseUrl/api/workouts/parse-url") {
             contentType(ContentType.Application.Json)
             setBody(SyncJson.format.encodeToString(JsonObject.serializer(), body))
         }
         r.ensureSuccessOrThrow()
-        SyncJson.format.decodeFromString<WorkoutDayDto>(r.bodyAsText())
+        SyncJson.format.decodeFromString<ParseWorkoutUrlResponseDto>(r.bodyAsText())
     }
+
+    suspend fun parseWorkoutPdf(pdfBytes: ByteArray, fileName: String = "workout.pdf"): Result<ParseWorkoutUrlResponseDto> =
+        runCatching {
+            val r = client.post("$baseUrl/api/workouts/parse-pdf") {
+                setBody(
+                    MultiPartFormDataContent(
+                        formData {
+                            append(
+                                "file",
+                                pdfBytes,
+                                Headers.build {
+                                    append(HttpHeaders.ContentType, "application/pdf")
+                                    append(
+                                        HttpHeaders.ContentDisposition,
+                                        "form-data; name=\"file\"; filename=\"$fileName\"",
+                                    )
+                                },
+                            )
+                        },
+                    ),
+                )
+            }
+            r.ensureSuccessOrThrow()
+            SyncJson.format.decodeFromString<ParseWorkoutUrlResponseDto>(r.bodyAsText())
+        }
 }

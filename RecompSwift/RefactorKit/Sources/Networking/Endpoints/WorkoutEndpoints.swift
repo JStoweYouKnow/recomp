@@ -5,6 +5,7 @@ public enum WorkoutAPI: APIEndpoint {
     case exerciseGif(id: String)
     case recoveryAdjust(payload: RecoveryPayload)
     case parseUrl(url: String)
+    case parsePdf
 
     public var path: String {
         switch self {
@@ -12,13 +13,14 @@ public enum WorkoutAPI: APIEndpoint {
         case .exerciseGif: return "/api/exercises/gif"
         case .recoveryAdjust: return "/api/workouts/recovery-adjust"
         case .parseUrl: return "/api/workouts/parse-url"
+        case .parsePdf: return "/api/workouts/parse-pdf"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .exerciseSearch, .exerciseGif: return .GET
-        case .recoveryAdjust, .parseUrl: return .POST
+        case .recoveryAdjust, .parseUrl, .parsePdf: return .POST
         }
     }
 
@@ -47,6 +49,19 @@ public enum WorkoutAPI: APIEndpoint {
 
 public struct WorkoutImportResponse: Decodable {
     public let workout: WorkoutDay
+    public let days: [WorkoutDay]?
+    public let programTitle: String?
+    public let dayCount: Int?
+}
+
+public struct WorkoutImportResult: Sendable {
+    public let workout: WorkoutDay
+    public let days: [WorkoutDay]?
+    public let programTitle: String?
+
+    public var isFullProgram: Bool {
+        (days?.count ?? 0) > 1
+    }
 }
 
 public struct RecoveryPayload: Encodable {
