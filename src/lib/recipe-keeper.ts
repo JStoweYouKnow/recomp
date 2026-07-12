@@ -9,7 +9,7 @@ export function parseRecipeKeeperExport(raw: string): CookingAppRecipe[] | null 
     return null;
   }
 
-  const list: unknown[] = Array.isArray(parsed)
+  const list: unknown[] | null = Array.isArray(parsed)
     ? parsed
     : parsed && typeof parsed === "object" && Array.isArray((parsed as { recipes?: unknown[] }).recipes)
       ? (parsed as { recipes: unknown[] }).recipes

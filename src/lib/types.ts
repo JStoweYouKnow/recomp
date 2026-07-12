@@ -132,8 +132,6 @@ export interface FitnessPlan {
     programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
-    /** Monday YYYY-MM-DD of program week 1; used with multi-week plans so the calendar picks the right session. */
-    programWeek1Start?: string;
   } & WorkoutScheduleState;
   reasoning?: string;
 }

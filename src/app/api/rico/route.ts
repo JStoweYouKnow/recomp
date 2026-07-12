@@ -45,6 +45,7 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
           const ctx = (context ?? {}) as {
             macroTargets?: { calories: number; protein: number; carbs: number; fat: number };
             todayMacros?: { calories: number; protein: number; carbs: number; fat: number };
+            remainingMacros?: { calories: number; protein: number; carbs: number; fat: number };
             goal?: string;
             savedRecipes?: CookingAppRecipe[];
           };

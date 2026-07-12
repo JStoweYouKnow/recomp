@@ -61,29 +61,30 @@ export async function discoverRecipes(params: {
     }>;
   };
 
-  return (data.hits ?? [])
-    .map((hit, i) => {
-      const r = hit.recipe;
-      if (!r?.label || !r.url) return null;
-      const nutrients = r.totalNutrients ?? {};
-      const servings = 1;
-      const calories = Math.round((r.calories ?? nutrients.ENERC_KCAL?.quantity ?? 0) / servings);
-      const protein = Math.round((nutrients.PROCNT?.quantity ?? 0) / servings);
-      const carbs = Math.round((nutrients.CHOCDF?.quantity ?? 0) / servings);
-      const fat = Math.round((nutrients.FAT?.quantity ?? 0) / servings);
-      const uri = r.uri ?? `edamam-${i}`;
-      const id = uri.replace(/^recipe_/, "").slice(0, 80) || `edamam-${i}`;
-      return {
-        id: `edamam_${id}`,
-        name: r.label,
-        calories,
-        protein,
-        carbs,
-        fat,
-        recipeUrl: r.url,
-        source: "edamam" as const,
-        imageUrl: r.image,
-      };
-    })
-    .filter((x): x is DiscoveredRecipe => x !== null && x.calories > 0);
+  const recipes: DiscoveredRecipe[] = [];
+  for (let i = 0; i < (data.hits ?? []).length; i++) {
+    const r = data.hits![i]?.recipe;
+    if (!r?.label || !r.url) continue;
+    const nutrients = r.totalNutrients ?? {};
+    const servings = 1;
+    const calories = Math.round((r.calories ?? nutrients.ENERC_KCAL?.quantity ?? 0) / servings);
+    if (calories <= 0) continue;
+    const protein = Math.round((nutrients.PROCNT?.quantity ?? 0) / servings);
+    const carbs = Math.round((nutrients.CHOCDF?.quantity ?? 0) / servings);
+    const fat = Math.round((nutrients.FAT?.quantity ?? 0) / servings);
+    const uri = r.uri ?? `edamam-${i}`;
+    const id = uri.replace(/^recipe_/, "").slice(0, 80) || `edamam-${i}`;
+    recipes.push({
+      id: `edamam_${id}`,
+      name: r.label,
+      calories,
+      protein,
+      carbs,
+      fat,
+      recipeUrl: r.url,
+      source: "edamam",
+      imageUrl: r.image,
+    });
+  }
+  return recipes;
 }
