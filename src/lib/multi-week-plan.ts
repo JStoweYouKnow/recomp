@@ -1,4 +1,5 @@
-import { getTodayLocal, getWeekStart } from "./date-utils";
+import { getWeekStart } from "./date-utils";
+import { inferFirstSessionDate } from "./workout-import-start";
 import type { FitnessPlan, WorkoutDay } from "./types";
 
 export const MAX_PROGRAM_WEEKS = 12;
@@ -50,11 +51,10 @@ export function extractWeek1TrainingTemplate(weeklyPlan: WorkoutDay[]): WorkoutD
 
 export function applyMultiWeekProgramMetadata(plan: FitnessPlan, totalWeeks: number): FitnessPlan {
   if (totalWeeks <= 1) return plan;
-  const anchor = getWeekStart(getTodayLocal());
-  plan.workoutPlan.programWeek1Start = anchor;
   plan.workoutPlan.programWeekOffset = 0;
   plan.workoutPlan.advancementMode = plan.workoutPlan.advancementMode ?? "calendar";
   plan.workoutPlan.weeklyPlan = labelWorkoutDaysForWeek(plan.workoutPlan.weeklyPlan, 1);
+  plan.workoutPlan.programWeek1Start = getWeekStart(inferFirstSessionDate(plan.workoutPlan.weeklyPlan));
   return plan;
 }
 

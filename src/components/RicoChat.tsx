@@ -26,6 +26,7 @@ import {
 import type { RicoMessage, WorkoutExercise, CookingAppRecipe } from "@/lib/types";
 import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import { parseRegeneratePlanPayload } from "@/lib/multi-week-plan";
+import { getWeekStart } from "@/lib/date-utils";
 import type { AudioRecorder, StreamingRecorder } from "@/lib/audio-utils";
 
 function formatRecipeSuggestions(
@@ -125,6 +126,15 @@ function processRicoActions(actions: { type: string; payload: Record<string, unk
     } else if (act.type === "regenerate_plan") {
       regeneratePlan = true;
       regeneratePlanOptions = parseRegeneratePlanPayload(act.payload);
+    } else if (act.type === "adjust_program_start") {
+      const p = act.payload as { startDate?: string };
+      const plan = getPlan();
+      if (plan && typeof p.startDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.startDate)) {
+        plan.workoutPlan.programWeek1Start = getWeekStart(p.startDate);
+        plan.workoutPlan.programWeekOffset = 0;
+        savePlan(plan);
+        changed = true;
+      }
     }
   }
   if (changed) {

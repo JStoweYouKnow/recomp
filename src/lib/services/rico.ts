@@ -38,6 +38,7 @@ You have access to tools! You are an AGENT, not just a chatbot.
 6. If the user asks to build a brand-new workout program from scratch, regenerate their full training plan, start over with a new split, or rebuild their meal and workout plan entirely, use the 'regenerate_plan' tool. Use this for full program rebuilds — not for small edits to one day (use update_workout_day, swap_exercise, or add_exercise instead). When they specify a duration (e.g. "12-week program", "8 week plan") set programWeeks (1–12). When they specify frequency (e.g. "4 days per week") set workoutDaysPerWeek (2–7).
 7. If the user asks what to cook, which saved recipe fits their macros, or wants dinner ideas from their recipe library, use the 'suggest_recipes' tool. Pass mealType when they mention breakfast/lunch/dinner/snack.
 8. If the user shares a recipe URL to save (or asks to save a recipe link), use the 'save_recipe_from_url' tool with the URL.
+9. If the user asks to change when their imported or multi-week program starts (e.g. "start my program next Monday", "push week 1 to June 20"), use the 'adjust_program_start' tool with startDate as YYYY-MM-DD (any day in the week they want as program week 1).
 Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "Swapped Bench Press for Dumbbell Press on Monday!").
 
 MACRO ESTIMATION GUIDELINES (for log_meal – accuracy matters, be realistic not generous):
@@ -278,6 +279,25 @@ const RICO_TOOLS: ToolConfiguration = {
         },
       },
     },
+    {
+      toolSpec: {
+        name: "adjust_program_start",
+        description:
+          "Sets program week 1 to start on a specific calendar week. Use when the user wants to shift an imported or multi-week workout plan to a different Monday/week anchor.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              startDate: {
+                type: "string",
+                description: "Any date (YYYY-MM-DD) in the week that should become program week 1",
+              },
+            },
+            required: ["startDate"],
+          },
+        },
+      },
+    },
   ],
 };
 
@@ -421,6 +441,8 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
       replyText = "Here are recipes that fit your remaining macros today:";
     } else if (a.type === "save_recipe_from_url") {
       replyText = "Saved that recipe to your library!";
+    } else if (a.type === "adjust_program_start") {
+      replyText = `Program week 1 now starts the week of ${(a.payload as { startDate?: string }).startDate ?? "that date"}.`;
     }
   }
 

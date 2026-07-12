@@ -14,6 +14,7 @@ import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, Reco
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
 import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { formatProgramStartLabel, inferFirstSessionDate, inferProgramWeek1Start } from "@/lib/workout-import-start";
 import { effectiveProgramWeek, matchDayToDate as scheduleMatchDayToDate } from "@/lib/workout-schedule";
 import { CatchUpBanner } from "./workouts/CatchUpBanner";
 import { CatchUpQueue } from "./workouts/CatchUpQueue";
@@ -46,7 +47,13 @@ function nextWorkoutPlanState(
     return { ...rest, weeklyPlan };
   }
   if (opts?.programWeek1Start !== undefined) {
-    return { ...prev, weeklyPlan, programWeek1Start: opts.programWeek1Start };
+    return {
+      ...prev,
+      weeklyPlan,
+      programWeek1Start: opts.programWeek1Start,
+      programWeekOffset: 0,
+      missedSessions: [],
+    };
   }
   return { ...prev, weeklyPlan };
 }
@@ -589,7 +596,7 @@ export function WorkoutPlannerView({
 
   const applyImportedProgram = useCallback(() => {
     if (!plan || !importedProgram?.length) return;
-    const week1Start = getWeekStart(getTodayLocal());
+    const week1Start = inferProgramWeek1Start(importedProgram);
     const next = importedProgram.map((d) => ({
       ...d,
       warmups: d.warmups ?? [],
@@ -601,7 +608,7 @@ export function WorkoutPlannerView({
     onUpdatePlan({
       ...plan,
       workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next, {
-        programWeek1Start: next.length > 7 ? week1Start : undefined,
+        programWeek1Start: week1Start,
       }),
     });
     // Large plans were rejected by sync Zod (weeklyPlan max 14); flush immediately so Dynamo/other devices get the full plan before the next GET overwrites local state.
@@ -614,7 +621,11 @@ export function WorkoutPlannerView({
     setWorkoutPdfFile(null);
     if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
     setShowImportPanel(false);
-    showToast(`Workout plan replaced with ${next.length} sessions (week 1 = this calendar week)`);
+    showToast(
+      week1Start
+        ? `Workout plan replaced with ${next.length} sessions (starts ${formatProgramStartLabel(week1Start)})`
+        : `Workout plan replaced with ${next.length} sessions`
+    );
   }, [plan, importedProgram, onUpdatePlan, onPlanSaved, showToast]);
 
   /** Get today's or most recent wearable for recovery assessment */
@@ -911,8 +922,14 @@ export function WorkoutPlannerView({
                 {importedProgram.length} sessions ready to import
               </p>
               <p className="text-xs text-[var(--muted)]">
-                Replaces your current workout list. Calendar matching uses each session&apos;s week number; week 1 is treated as{" "}
-                <strong className="text-[var(--foreground)]">this calendar week</strong> (starting Monday).
+                Replaces your current workout list. Week 1 aligns with the{" "}
+                <strong className="text-[var(--foreground)]">next session in the plan</strong>
+                {importedProgram[0]?.day
+                  ? ` (starting ${formatProgramStartLabel(
+                      getWeekStart(inferFirstSessionDate(importedProgram))
+                    )})`
+                  : ""}
+                . Ask The Ref to change the start date if you need a different week.
               </p>
               <ul className="text-xs text-[var(--muted)] space-y-1 max-h-32 overflow-y-auto">
                 {importedProgram.slice(0, 8).map((d, i) => (
