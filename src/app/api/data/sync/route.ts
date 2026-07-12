@@ -36,6 +36,8 @@ import {
   dbSaveFastingSession,
   dbSaveBiofeedbackEntry,
   dbSavePantry,
+  dbGetSavedRecipes,
+  dbSaveSavedRecipes,
   dbSaveBodyScan,
   dbSaveSupplements,
   dbSaveBloodWork,
@@ -49,7 +51,7 @@ import {
   type WearableInbound,
 } from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
@@ -85,7 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
-    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, savedRecipes, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -236,6 +238,10 @@ export async function POST(req: NextRequest) {
       promises.push(dbSavePantry(userId, pantry as PantryItem[]));
     }
 
+    if (savedRecipes && savedRecipes.length > 0) {
+      promises.push(dbSaveSavedRecipes(userId, savedRecipes as CookingAppRecipe[]));
+    }
+
     if (bodyScans && bodyScans.length > 0) {
       for (const scan of bodyScans) promises.push(dbSaveBodyScan(userId, scan as BodyScan));
     }
@@ -283,6 +289,7 @@ export async function GET(req: NextRequest) {
       fastingSessions,
       biofeedback,
       pantry,
+      savedRecipes,
       bodyScans,
       supplements,
       bloodWork,
@@ -302,6 +309,7 @@ export async function GET(req: NextRequest) {
       dbGetFastingSessions(userId).catch(() => []),
       dbGetBiofeedback(userId).catch(() => []),
       dbGetPantry(userId).catch(() => []),
+      dbGetSavedRecipes(userId).catch(() => []),
       dbGetBodyScans(userId).catch(() => []),
       dbGetSupplements(userId).catch(() => []),
       dbGetBloodWork(userId).catch(() => []),
@@ -343,6 +351,7 @@ export async function GET(req: NextRequest) {
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,
       pantry: pantry.length > 0 ? pantry : undefined,
+      savedRecipes: savedRecipes.length > 0 ? savedRecipes : undefined,
       bodyScans: bodyScans.length > 0 ? bodyScans : undefined,
       supplements: supplements.length > 0 ? supplements : undefined,
       bloodWork: bloodWork.length > 0 ? bloodWork : undefined,

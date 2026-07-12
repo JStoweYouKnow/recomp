@@ -71,6 +71,19 @@ public final class MealService {
         return try await api.request(MealAPI.parseRecipeUrl(url: url))
     }
 
+    public func saveRecipeFromUrl(_ url: String) async throws -> RecipeSaveResponse {
+        isLoading = true
+        defer { isLoading = false }
+        return try await api.request(MealAPI.saveRecipeFromUrl(url: url))
+    }
+
+    public func suggestRecipes(payload: RecipeSuggestPayload) async throws -> [ScoredRecipeSuggestion] {
+        isLoading = true
+        defer { isLoading = false }
+        let response: RecipeSuggestResponse = try await api.request(MealAPI.recipeSuggest(payload: payload))
+        return response.suggestions
+    }
+
     /// Parses a natural-language meal description via `POST /api/voice/parse` (same contract as iOS voice logging).
     public func parseVoiceMeals(transcript: String) async throws -> [SuggestedMeal] {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)

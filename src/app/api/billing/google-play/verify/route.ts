@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
+import { dbSavePlaySubscription } from "@/lib/db";
+import { verifyPlaySubscription } from "@/lib/googlePlayVerify";
+import { logInfo, logError } from "@/lib/logger";
 
 type Body = {
   packageName?: string;
@@ -7,11 +10,6 @@ type Body = {
   purchaseToken?: string;
 };
 
-/**
- * Records a Play subscription purchase for the signed-in user.
- * Full entitlement verification uses the Google Play Developer API (service account);
- * set `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` when you are ready to verify server-side.
- */
 export async function POST(req: NextRequest) {
   const userId = await getUserId(req.headers);
   if (!userId) {
@@ -32,27 +30,38 @@ export async function POST(req: NextRequest) {
   if (!packageName || !subscriptionId || !purchaseToken) {
     return NextResponse.json(
       { error: "Missing packageName, subscriptionId, or purchaseToken" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
-  const hasVerifier = Boolean(process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?.trim());
-
-  if (hasVerifier) {
-    // Wire androidpublisher.subscriptionsv2.get(packageName, token) or purchases.products.get
-    // when you add `googleapis` + grant the service account Finance permissions in Play Console.
-    return NextResponse.json({
-      ok: true,
-      verified: false,
-      message:
-        "GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is set but server verification is not implemented in this route yet.",
-    });
+  if (!process.env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON?.trim()) {
+    logError("GOOGLE_PLAY_SERVICE_ACCOUNT_JSON not set", null, { route: "billing/google-play/verify" });
+    return NextResponse.json({ error: "Server billing configuration missing" }, { status: 503 });
   }
 
-  return NextResponse.json({
-    ok: true,
-    verified: false,
-    message:
-      "Purchase recorded for user (configure GOOGLE_PLAY_SERVICE_ACCOUNT_JSON + androidpublisher to verify and grant Pro).",
-  });
+  try {
+    const result = await verifyPlaySubscription(packageName, subscriptionId, purchaseToken);
+
+    if (!result.valid) {
+      logInfo("Play purchase invalid or expired", { userId, subscriptionState: result.subscriptionState, expiryTime: result.expiryTime });
+      return NextResponse.json({ ok: false, error: "Subscription is not active", subscriptionState: result.subscriptionState }, { status: 402 });
+    }
+
+    await dbSavePlaySubscription(userId, {
+      purchaseToken,
+      subscriptionId: result.productId,
+      packageName,
+      expiryTime: result.expiryTime,
+      subscriptionState: result.subscriptionState,
+      autoRenewing: result.autoRenewing,
+      verifiedAt: new Date().toISOString(),
+    });
+
+    logInfo("Play subscription verified and saved", { userId, productId: result.productId, expiryTime: result.expiryTime });
+
+    return NextResponse.json({ ok: true, verified: true, expiryTime: result.expiryTime, autoRenewing: result.autoRenewing });
+  } catch (err) {
+    logError("Play subscription verification failed", err, { route: "billing/google-play/verify", userId });
+    return NextResponse.json({ error: "Verification failed", detail: (err as Error).message }, { status: 500 });
+  }
 }

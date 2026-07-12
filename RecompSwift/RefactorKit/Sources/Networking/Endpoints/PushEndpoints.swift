@@ -219,6 +219,23 @@ public struct PantryItemDTO: Codable, Sendable {
     public var expiresAt: String?
 }
 
+// MARK: - SavedRecipe DTO
+
+public struct SavedRecipeDTO: Codable, Sendable {
+    public var id: String
+    public var name: String
+    public var description: String?
+    public var calories: Int
+    public var protein: Int
+    public var carbs: Int
+    public var fat: Int
+    public var recipeUrl: String?
+    public var source: String?
+    public var mealTypes: [String]?
+    public var servings: Int?
+    public var addedAt: String
+}
+
 // MARK: - Wearable DTOs
 
 public struct WearableConnectionDTO: Codable, Sendable {
@@ -327,6 +344,7 @@ public struct SyncPayload: Encodable, Sendable {
     public let bloodWork: [BloodWorkDTO]?
     public let bodyScans: [BodyScanDTO]?
     public let pantry: [PantryItemDTO]?
+    public let savedRecipes: [SavedRecipeDTO]?
     public let activityLog: [ActivityLogEntryDTO]?
     public let workoutProgress: [String: String]?
     public let wearableConnections: [WearableConnectionDTO]?
@@ -350,6 +368,7 @@ public struct SyncPayload: Encodable, Sendable {
         bloodWork: [BloodWorkDTO]? = nil,
         bodyScans: [BodyScanDTO]? = nil,
         pantry: [PantryItemDTO]? = nil,
+        savedRecipes: [SavedRecipeDTO]? = nil,
         activityLog: [ActivityLogEntryDTO]? = nil,
         workoutProgress: [String: String]? = nil,
         wearableConnections: [WearableConnectionDTO]? = nil,
@@ -372,6 +391,7 @@ public struct SyncPayload: Encodable, Sendable {
         self.bloodWork = bloodWork
         self.bodyScans = bodyScans
         self.pantry = pantry
+        self.savedRecipes = savedRecipes
         self.activityLog = activityLog
         self.workoutProgress = workoutProgress
         self.wearableConnections = wearableConnections
@@ -397,6 +417,7 @@ public struct SyncResponseDTO: Decodable, Sendable {
     public let bloodWork: [BloodWorkDTO]?
     public let bodyScans: [BodyScanDTO]?
     public let pantry: [PantryItemDTO]?
+    public let savedRecipes: [SavedRecipeDTO]?
     public let wearableConnections: [WearableConnectionDTO]?
     public let wearableData: [WearableDaySummaryDTO]?
     /// Always an array in current API; missing key decodes as `[]` for older responses.
@@ -407,7 +428,7 @@ public struct SyncResponseDTO: Decodable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case profile, plan, meals, milestones, hydration, fastingSessions, biofeedback
-        case supplements, bloodWork, bodyScans, pantry, wearableConnections, wearableData
+        case supplements, bloodWork, bodyScans, pantry, savedRecipes, wearableConnections, wearableData
         case activityLog, metabolicModel, workoutProgress, meta
     }
 
@@ -424,6 +445,7 @@ public struct SyncResponseDTO: Decodable, Sendable {
         bloodWork = try c.decodeIfPresent([BloodWorkDTO].self, forKey: .bloodWork)
         bodyScans = try c.decodeIfPresent([BodyScanDTO].self, forKey: .bodyScans)
         pantry = try c.decodeIfPresent([PantryItemDTO].self, forKey: .pantry)
+        savedRecipes = try c.decodeIfPresent([SavedRecipeDTO].self, forKey: .savedRecipes)
         wearableConnections = try c.decodeIfPresent([WearableConnectionDTO].self, forKey: .wearableConnections)
         wearableData = try c.decodeIfPresent([WearableDaySummaryDTO].self, forKey: .wearableData)
         activityLog = try c.decodeIfPresent([ActivityLogEntryDTO].self, forKey: .activityLog) ?? []
@@ -590,6 +612,12 @@ public struct MetabolicModelResponse: Decodable, Sendable {
         self.message = message
         self.history = history
     }
+}
+
+// MARK: - Macros calculate (POST /api/macros/calculate)
+
+public struct MacrosCalculateResponse: Decodable, Sendable {
+    public let macros: Macros
 }
 
 // MARK: - Meal prep generate (POST /api/meal-prep/generate)

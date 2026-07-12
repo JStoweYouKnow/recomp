@@ -20,6 +20,63 @@ public struct WorkoutExercise: Codable, Identifiable, Hashable, Sendable {
         Self.parseSetCount(from: sets)
     }
 
+    /// Rest duration in seconds parsed from `notes` (e.g. `"rest: 60s"`, `"90 sec rest"`). Defaults to 60.
+    public var restSeconds: Int {
+        Self.parseRestSeconds(from: notes)
+    }
+
+    /// Human-readable rest label from notes, e.g. `"60s"`, for display badges.
+    public var restDisplayLabel: String? {
+        Self.parseRestDisplayLabel(from: notes)
+    }
+
+    public static func parseRestSeconds(from notes: String?, defaultSeconds: Int = 60) -> Int {
+        parseRestComponents(from: notes).map { toSeconds(value: $0.value, unit: $0.unit) } ?? defaultSeconds
+    }
+
+    public static func parseRestDisplayLabel(from notes: String?) -> String? {
+        guard let parts = parseRestComponents(from: notes) else { return nil }
+        if let unit = parts.unit, unit.hasPrefix("min") || unit == "m" {
+            return "\(parts.value) min"
+        }
+        return "\(parts.value)s"
+    }
+
+    private static func parseRestComponents(from notes: String?) -> (value: Int, unit: String?)? {
+        guard let notes = notes?.trimmingCharacters(in: .whitespacesAndNewlines), !notes.isEmpty else {
+            return nil
+        }
+        let lowered = notes.lowercased()
+        let patterns: [(String, Int)] = [
+            (#"rest[:\s]+(\d+)(?:\s*[-–]\s*\d+)?\s*(sec(?:onds?)?|s|min(?:utes?)?|m)?"#, 1),
+            (#"(\d+)(?:\s*[-–]\s*\d+)?\s*(sec(?:onds?)?|s|min(?:utes?)?|m)\s+rest"#, 1),
+            (#"^(\d+)\s*s(?:ec(?:onds?)?)?$"#, 1),
+        ]
+        for (pattern, group) in patterns {
+            if let value = firstCaptureInt(pattern: pattern, in: lowered, group: group) {
+                let unit = captureGroup(pattern: pattern, in: lowered, group: group + 1)
+                return (value, unit)
+            }
+        }
+        return nil
+    }
+
+    private static func captureGroup(pattern: String, in string: String, group: Int) -> String? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        let range = NSRange(string.startIndex..., in: string)
+        guard let m = re.firstMatch(in: string, options: [], range: range),
+              group < m.numberOfRanges,
+              let r = Range(m.range(at: group), in: string) else { return nil }
+        let raw = String(string[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return raw.isEmpty ? nil : raw
+    }
+
+    private static func toSeconds(value: Int, unit: String?) -> Int {
+        guard let unit, !unit.isEmpty else { return value }
+        if unit.hasPrefix("min") || unit == "m" { return value * 60 }
+        return value
+    }
+
     public static func parseSetCount(from raw: String, default defaultCount: Int = 3, maxSets: Int = 12) -> Int {
         let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty else { return defaultCount }

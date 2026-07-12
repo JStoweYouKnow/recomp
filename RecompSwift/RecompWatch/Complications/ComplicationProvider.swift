@@ -54,37 +54,17 @@ struct RefactorComplicationProvider: TimelineProvider {
         }
     }
 
-    /// Reads the App Group SwiftData store (same as iOS / Watch app).
+    /// Reads the App Group SwiftData store and phone-pushed snapshot (same as watch dashboard).
     @MainActor
     private static func buildEntryFromSharedStore() -> CalorieEntry {
         do {
             let container = try RefactorSchema.makeContainer(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
             let ctx = ModelContext(container)
-            let today = DateHelpers.todayString()
-
-            let mealDescriptor = FetchDescriptor<MealEntry>(
-                predicate: #Predicate { $0.date == today }
-            )
-            let meals = (try? ctx.fetch(mealDescriptor)) ?? []
-            let consumed = meals.reduce(Macros.zero) { $0.adding($1.macros) }
-
-            var planDescriptor = FetchDescriptor<FitnessPlan>(
-                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
-            )
-            planDescriptor.fetchLimit = 1
-            let plan = try? ctx.fetch(planDescriptor).first
-            let targets = plan?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-
-            let activityDescriptor = FetchDescriptor<ActivityLogEntry>(
-                predicate: #Predicate { $0.date == today }
-            )
-            let activities = (try? ctx.fetch(activityDescriptor)) ?? []
-            let activityAdj = activities.reduce(0) { $0 + $1.calorieAdjustment }
-            let adjustedCalorieTarget = targets.calories + activityAdj
-
-            let allMealDescriptor = FetchDescriptor<MealEntry>()
-            let allMeals = (try? ctx.fetch(allMealDescriptor)) ?? []
-            let streak = DateHelpers.streakLength(dates: Array(Set(allMeals.map(\.date))))
+            let metrics = WatchDashboardMetricsResolver.resolve(context: ctx)
+            let consumed = metrics.consumed
+            let targets = metrics.targets
+            let adjustedCalorieTarget = metrics.adjustedCalorieTarget
+            let streak = streakFromSharedStore(context: ctx)
 
             let remaining = max(adjustedCalorieTarget - consumed.calories, 0)
             return CalorieEntry(
@@ -101,6 +81,23 @@ struct RefactorComplicationProvider: TimelineProvider {
             )
         } catch {
             return Self.fallbackEntry
+        }
+    }
+
+    @MainActor
+    private static func streakFromSharedStore(context: ModelContext? = nil) -> Int {
+        do {
+            let ctx: ModelContext
+            if let context {
+                ctx = context
+            } else {
+                let container = try RefactorSchema.makeContainer(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
+                ctx = ModelContext(container)
+            }
+            let allMeals = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
+            return DateHelpers.streakLength(dates: Array(Set(allMeals.map(\.date))))
+        } catch {
+            return 0
         }
     }
 }

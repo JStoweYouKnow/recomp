@@ -12,6 +12,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { z } from "zod";
+import { applyMultiWeekProgramMetadata, clampProgramWeeks } from "@/lib/multi-week-plan";
 
 /** Allow plan generation (extended thinking) to complete within Vercel Hobby 60s limit */
 export const maxDuration = 60;
@@ -475,6 +476,8 @@ const PlanRequestSchema = z.object({
     .optional(),
   currentBodyFatPercent: z.number().min(0).max(70).optional(),
   currentMuscleMassLbs: z.number().min(0).max(500).optional(),
+  /** Multi-week program length (1 = single week). Week 1 is generated here; weeks 2+ via /api/plans/generate-workouts. */
+  programWeeks: z.number().int().min(1).max(12).optional(),
 });
 
 type PlanRequestValidated = z.infer<typeof PlanRequestSchema>;
@@ -561,6 +564,7 @@ export const POST = withRequestLogging("/api/plans/generate", async function POS
     }
     const incoming = incomingParsed.data;
     const learnedTDEE = incoming.learnedTDEE;
+    const programWeeks = clampProgramWeeks(incoming.programWeeks ?? 1);
     const profile: UserProfile = {
       id: userId,
       name: incoming.name,
@@ -663,6 +667,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
 
     if (raw === timeoutToken) {
       const fallbackPlan = buildStarterPlan(profile, userId, macroInputs);
+      if (programWeeks > 1) applyMultiWeekProgramMetadata(fallbackPlan, programWeeks);
       logInfo("Plan generation timeout fallback", { route: "plans/generate", userId, timeoutMs: PLAN_TIMEOUT_MS });
       return NextResponse.json({
         ...fallbackPlan,
@@ -691,6 +696,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
     } catch (parseErr) {
       logError("Plan JSON parse failed, using starter plan", parseErr, { route: "plans/generate", userId, rawLength: raw.length });
       const fallbackPlan = buildStarterPlan(profile, userId, macroInputs);
+      if (programWeeks > 1) applyMultiWeekProgramMetadata(fallbackPlan, programWeeks);
       return NextResponse.json({
         ...fallbackPlan,
         source: "fallback-parse",
@@ -733,7 +739,11 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
       },
     };
 
-    logInfo("Plan generated", { route: "plans/generate", userId });
+    if (programWeeks > 1) {
+      applyMultiWeekProgramMetadata(plan, programWeeks);
+    }
+
+    logInfo("Plan generated", { route: "plans/generate", userId, programWeeks });
     const res = NextResponse.json(plan);
     const headers = getRateLimitHeaderValues(rl);
     res.headers.set("X-RateLimit-Limit", headers.limit);

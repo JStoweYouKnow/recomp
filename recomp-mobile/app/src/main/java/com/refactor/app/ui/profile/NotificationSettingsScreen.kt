@@ -127,7 +127,7 @@ fun NotificationSettingsScreen(
             ReminderToggle("Hydration Reminders (3 pm daily)", hydrationOn, togglesEnabled) {
                 update(LocalReminderScheduler.Kind.HYDRATION, it) { hydrationOn = it }
             }
-            ReminderToggle("Coach Check-Ins (8 pm daily)", coachOn, togglesEnabled) {
+            ReminderToggle("Ref Check-Ins (8 pm daily)", coachOn, togglesEnabled) {
                 update(LocalReminderScheduler.Kind.COACH, it) { coachOn = it }
             }
         }

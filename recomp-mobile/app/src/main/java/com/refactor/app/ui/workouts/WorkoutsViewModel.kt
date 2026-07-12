@@ -21,7 +21,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import java.time.LocalDate
 
 class WorkoutsViewModel(
     application: Application,
@@ -97,27 +96,30 @@ class WorkoutsViewModel(
 
     suspend fun toggleSetAndSync(
         planId: String,
+        progressDayKey: String,
         day: WorkoutDayDto,
         globalSlot: Int,
         exercise: WorkoutExerciseDto,
         setIndex: Int,
-    ): Result<Unit> {
+    ): Result<Boolean> {
         if (planId.isBlank()) return Result.failure(IllegalStateException("No plan id"))
-        val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(day.day, LocalDate.now())
         val section = day.sectionForGlobalSlot(globalSlot)
+        val rowKey = WorkoutWebProgress.localRowSetProgressKey(planId, day.day, section, exercise, globalSlot)
+        val wasComplete = progressStore.rowSetTags(progressDayKey, rowKey).contains("set_$setIndex")
         progressStore.toggleSetTag(planId, progressDayKey, day.day, section, exercise, globalSlot, setIndex)
         _progressUiEpoch.value++
+        val markedComplete = !wasComplete
 
         val entity = syncCacheDao.getOnce() ?: return Result.failure(IllegalStateException("No cached snapshot"))
         val snap = runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(entity.payloadJson) }.getOrNull()
             ?: return Result.failure(IllegalStateException("Bad snapshot"))
         val merged = progressStore.mergedForPush(snap.plan)
         val prev = snap.workoutProgress.orEmpty()
-        if (merged == prev) return Result.success(Unit)
+        if (merged == prev) return Result.success(markedComplete)
 
         val local = syncRepository.mutateCachedSnapshot { it.copy(workoutProgress = merged) }
         if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
-        return syncRepository.pushCachedSnapshot()
+        return syncRepository.pushCachedSnapshot().map { markedComplete }
     }
 
     suspend fun persistWeeklyPlanAndPush(days: List<WorkoutDayDto>): Result<Unit> {

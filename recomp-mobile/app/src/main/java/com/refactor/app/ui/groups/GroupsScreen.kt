@@ -20,8 +20,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -33,9 +35,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.refactor.app.ui.legal.LegalUrls
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.GroupRepository
@@ -62,6 +68,7 @@ fun GroupsScreen(
     var showCreate by remember { mutableStateOf(false) }
     var showJoin by remember { mutableStateOf(false) }
     var showCreateChallenge by remember { mutableStateOf(false) }
+    var showSprintConfirm by remember { mutableStateOf(false) }
 
     if (detail != null) {
         GroupDetailScreen(
@@ -81,7 +88,8 @@ fun GroupsScreen(
                 TextButton(onClick = { showJoin = true }, enabled = !busy) { Text("Join code") }
                 TextButton(onClick = { showCreate = true }, enabled = !busy) { Text("New") }
                 if (tab == 2) {
-                    TextButton(onClick = { showCreateChallenge = true }, enabled = !busy) { Text("Challenge") }
+                    TextButton(onClick = { showSprintConfirm = true }, enabled = !busy) { Text("Sprint") }
+                    TextButton(onClick = { showCreateChallenge = true }, enabled = !busy) { Text("Custom") }
                 }
             },
         )
@@ -150,6 +158,17 @@ fun GroupsScreen(
             },
         )
     }
+    if (showSprintConfirm) {
+        SprintConfirmDialog(
+            onDismiss = { showSprintConfirm = false },
+            onConfirm = { metric ->
+                val start = java.time.LocalDate.now().toString()
+                val end = java.time.LocalDate.now().plusDays(7).toString()
+                vm.createChallenge("7-Day Sprint", metric, if (metric == "steps") 70000.0 else 700.0, start, end, userDisplayName)
+                showSprintConfirm = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -186,6 +205,8 @@ private fun DiscoverGroupRow(g: GroupDto, onOpen: () -> Unit) {
 @Composable
 private fun ChallengeRow(c: ChallengeDto, userId: String, onJoin: () -> Unit) {
     val joined = userId.isNotBlank() && c.participants.any { it.userId == userId }
+    val myProgress = c.participants.firstOrNull { it.userId == userId }?.progress ?: 0.0
+    val progressFraction = if (c.target > 0) (myProgress / c.target).coerceIn(0.0, 1.0).toFloat() else 0f
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
@@ -193,12 +214,58 @@ private fun ChallengeRow(c: ChallengeDto, userId: String, onJoin: () -> Unit) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(c.title, style = MaterialTheme.typography.titleMedium)
             Text(c.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
-            Text("${c.metric} → ${c.target} · ${c.status}", style = MaterialTheme.typography.labelSmall)
-            OutlinedButton(onClick = onJoin, enabled = !joined) {
-                Text(if (joined) "Joined" else "Join")
+            Text("${c.metric} · ends ${c.endDate} · ${c.status}", style = MaterialTheme.typography.labelSmall)
+            if (joined && c.status == "active") {
+                LinearProgressIndicator(
+                    progress = { progressFraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "${myProgress.toInt()} / ${c.target.toInt()}",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            } else {
+                OutlinedButton(onClick = onJoin, enabled = !joined && c.status != "completed") {
+                    Text(if (joined) "Joined" else "Join")
+                }
             }
         }
     }
+}
+
+@Composable
+private fun SprintConfirmDialog(onDismiss: () -> Unit, onConfirm: (metric: String) -> Unit) {
+    var metric by remember { mutableStateOf("xp_gained") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Start a 7-Day Sprint") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("A 7-day challenge starting today. Pick what you're competing on:", style = MaterialTheme.typography.bodyMedium)
+                listOf(
+                    "xp_gained" to "XP earned (overall effort)",
+                    "meal_streak" to "Meal logging streak",
+                    "steps" to "Total steps (70k target)",
+                    "macro_accuracy" to "Macro accuracy",
+                ).forEach { (value, label) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { metric = value }
+                            .padding(vertical = 4.dp),
+                    ) {
+                        RadioButton(selected = metric == value, onClick = { metric = value })
+                        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(metric) }) { Text("Start Sprint") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -293,6 +360,7 @@ private fun GroupDetailScreen(
 ) {
     var sub by remember { mutableIntStateOf(0) }
     var draft by remember { mutableStateOf("") }
+    val ctx = LocalContext.current
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(ui.group.name) },
@@ -340,6 +408,23 @@ private fun GroupDetailScreen(
                         },
                         enabled = !busy && draft.isNotBlank(),
                     ) { Text("Send") }
+                }
+                TextButton(
+                    onClick = {
+                        val subject = Uri.encode("Report group content: ${ui.group.name}")
+                        val body = Uri.encode(
+                            "Group ID: ${ui.group.id}\n" +
+                                "Please describe the message or behavior you are reporting:\n\n",
+                        )
+                        ctx.startActivity(
+                            Intent(Intent.ACTION_SENDTO).apply {
+                                data = Uri.parse("mailto:${LegalUrls.SUPPORT_EMAIL}?subject=$subject&body=$body")
+                            },
+                        )
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) {
+                    Text("Report content", style = MaterialTheme.typography.labelMedium)
                 }
             }
             1 -> LazyColumn(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

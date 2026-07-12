@@ -5,7 +5,7 @@ import RefactorKit
 struct MealsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
-    @State private var mealService = MealService()
+    @State private var planService = PlanService()
     @State private var selectedDate = Date.now
     @State private var showAddMeal = false
     @State private var selectedTab = 0
@@ -35,6 +35,7 @@ struct MealsView: View {
                     Text("Meals").tag(0)
                     Text("Pantry").tag(1)
                     Text("Meal Prep").tag(2)
+                    Text("Recipes").tag(3)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -44,6 +45,7 @@ struct MealsView: View {
                 case 0: mealListSection
                 case 1: PantryView()
                 case 2: MealPrepView()
+                case 3: SavedRecipesView()
                 default: mealListSection
                 }
             }
@@ -68,44 +70,19 @@ struct MealsView: View {
                 guard let engine = syncEngine else { return }
                 try? await engine.fetchAndApply()
             }
+            .task {
+                guard let engine = syncEngine else { return }
+                try? await engine.fetchAndApply()
+            }
         }
     }
 
     private var macroSummary: some View {
         let consumed = mealsForDate.reduce(Macros.zero) { $0.adding($1.macros) }
-        return HStack(spacing: 16) {
-            macroPill("Cal", value: consumed.calories, color: .appWarm)
-            macroPill("P", value: Int(consumed.protein), color: .appAccent)
-            macroPill("C", value: Int(consumed.carbs), color: .appSage)
-            macroPill("F", value: Int(consumed.fat), color: .appTerracotta)
-        }
-        .padding(.horizontal)
-        .padding(.bottom, 8)
-    }
-
-    private func macroPill(_ label: String, value: Int, color: Color) -> some View {
-        let spokenName: String = {
-            switch label {
-            case "Cal": return "Calories"
-            case "P": return "Protein"
-            case "C": return "Carbs"
-            case "F": return "Fat"
-            default: return label
-            }
-        }()
-        return HStack(spacing: 4) {
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(color)
-            Text("\(value)")
-                .font(.caption.weight(.medium))
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 4)
-        .background(color.opacity(0.1), in: Capsule())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spokenName)
-        .accessibilityValue("\(value)")
+        let targets = planService.targets(for: selectedDate, context: context)
+        return MacroPillsView(consumed: consumed, target: targets)
+            .padding(.horizontal)
+            .padding(.bottom, 8)
     }
 
     private var mealListSection: some View {

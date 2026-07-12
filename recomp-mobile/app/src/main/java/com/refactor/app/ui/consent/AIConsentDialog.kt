@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.refactor.app.ui.legal.LegalUrls
 
 @Composable
 fun AIConsentDialog(
@@ -60,9 +61,14 @@ fun AIConsentDialog(
                 )
                 TextButton(
                     onClick = {
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://refactoryourbody.com/privacy")))
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.PRIVACY)))
                     },
-                ) { Text("View Privacy Policy") }
+                ) { Text("Privacy Policy") }
+                TextButton(
+                    onClick = {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.TERMS)))
+                    },
+                ) { Text("Terms of Service") }
             }
         },
         confirmButton = {

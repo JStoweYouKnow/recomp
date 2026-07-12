@@ -70,8 +70,11 @@ import com.refactor.app.api.dto.HydrationEntryDto
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.MetabolicModelDto
+import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.UserProfileDto
 import com.refactor.app.api.dto.WorkoutDayDto
+import com.refactor.app.ui.legal.MedicalDisclaimerText
+import com.refactor.app.ui.workouts.WorkoutProgramSchedule
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -106,6 +109,34 @@ fun sumMacrosForDate(meals: List<MealEntryDto>?, date: String): MealMacrosDto {
         p += m.macros.protein; cb += m.macros.carbs; f += m.macros.fat
     }
     return MealMacrosDto(c, p, cb, f)
+}
+
+fun defaultMacroTargets(): MealMacrosDto =
+    MealMacrosDto(calories = 2000.0, protein = 150.0, carbs = 200.0, fat = 65.0)
+
+/** Matches iOS `PlanService.todaysTargets` — training/rest split by today's workout. */
+fun todaysMacroTargets(snap: SyncGetResponse, date: LocalDate = LocalDate.now()): MealMacrosDto {
+    val fallback = defaultMacroTargets()
+    val plan = snap.plan ?: return fallback
+    val diet = plan.dietPlan ?: return fallback
+
+    val workoutDay = WorkoutProgramSchedule.planIndexForDate(plan, date)
+        ?.let { idx -> plan.workoutPlan?.weeklyPlan?.getOrNull(idx) }
+
+    if (workoutDay != null) {
+        val focus = workoutDay.focus.lowercase()
+        val isRest = focus.contains("rest") || focus.contains("recovery") || focus.contains("off")
+        if (isRest) {
+            diet.restTargets?.takeIf { it.calories > 0 }?.let { return it }
+        } else {
+            diet.trainingTargets?.takeIf { it.calories > 0 }?.let { return it }
+        }
+    } else {
+        diet.restTargets?.takeIf { it.calories > 0 }?.let { return it }
+    }
+
+    val daily = diet.dailyTargets ?: MealMacrosDto()
+    return if (daily.calories > 0) daily else fallback
 }
 
 fun activityCalorieAdjustmentForDate(log: List<com.refactor.app.api.dto.ActivityLogEntryDto>?, date: String): Int =
@@ -431,7 +462,14 @@ fun estimateTdee(profile: UserProfileDto): Int? {
 }
 
 @Composable
-fun AdaptiveTdeeCard(profile: UserProfileDto, metabolicModel: MetabolicModelDto?, modifier: Modifier = Modifier) {
+fun AdaptiveTdeeCard(
+    profile: UserProfileDto,
+    metabolicModel: MetabolicModelDto?,
+    modifier: Modifier = Modifier,
+    applyingTargets: Boolean = false,
+    /** When set (and a model estimate exists), shows "Apply to macro targets"; called with the estimated TDEE. */
+    onApplyToTargets: ((Int) -> Unit)? = null,
+) {
     val formulaTdee = remember(profile) { estimateTdee(profile) }
     val tdee = metabolicModel?.estimatedTDEE?.takeIf { it > 0 } ?: formulaTdee
     val isModelBased = metabolicModel?.estimatedTDEE?.let { it > 0 } == true
@@ -459,6 +497,18 @@ fun AdaptiveTdeeCard(profile: UserProfileDto, metabolicModel: MetabolicModelDto?
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (onApplyToTargets != null) {
+                        FilledTonalButton(
+                            onClick = { onApplyToTargets(tdee) },
+                            enabled = !applyingTargets,
+                        ) {
+                            if (applyingTargets) {
+                                CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text("Apply to macro targets")
+                        }
+                    }
                 } else {
                     Text(
                         "Formula estimate based on your profile. Log meals + weight data to refine.",
@@ -518,6 +568,7 @@ fun CoachCheckInCard(
                 }
                 Text(if (message != null) "Refresh check-in" else "Get check-in")
             }
+            MedicalDisclaimerText()
         }
     }
 }

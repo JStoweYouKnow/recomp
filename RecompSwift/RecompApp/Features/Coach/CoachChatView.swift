@@ -7,9 +7,11 @@ struct CoachChatView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.syncEngine) private var syncEngine
     @State private var coachService = CoachService()
+    @State private var planService = PlanService()
     @State private var messageText = ""
     @State private var scrollProxy: ScrollViewProxy?
     @State private var sendError: String?
+    @State private var isRegeneratingPlan = false
     @State private var speechTranscription = MealSpeechTranscription()
     @FocusState private var isInputFocused: Bool
 
@@ -82,6 +84,23 @@ struct CoachChatView: View {
             } message: {
                 Text(sendError ?? "")
             }
+            .overlay {
+                if isRegeneratingPlan || planService.isGenerating {
+                    ZStack {
+                        Color.black.opacity(0.35).ignoresSafeArea()
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Building your new plan…")
+                                .font(.subheadline.weight(.medium))
+                            Text("This can take up to a minute.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                }
+            }
         }
     }
 
@@ -133,7 +152,15 @@ struct CoachChatView: View {
                     Task {
                         do {
                             try await coachService.sendMessage(text, context: context)
-                            await syncEngine?.markDirty()
+                            if coachService.shouldRegeneratePlan {
+                                isRegeneratingPlan = true
+                                defer { isRegeneratingPlan = false }
+                                try await planService.regeneratePlan(
+                                    context: context,
+                                    options: coachService.pendingRegenerateOptions
+                                )
+                            }
+                            await syncEngine?.syncNow()
                         } catch {
                             sendError =
                                 (error as? LocalizedError)?.errorDescription

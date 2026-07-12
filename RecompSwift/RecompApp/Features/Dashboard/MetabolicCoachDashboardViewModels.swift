@@ -11,8 +11,10 @@ final class MetabolicModelDashboardViewModel {
     private let planService = PlanService()
 
     var isUpdating = false
+    var isApplyingTargets = false
     var errorText: String?
     var resultSummary: String?
+    var appliedTargetsSummary: String?
     var unitDebugSummary: String?
 
     private static let minReasonableTDEE = 1200.0
@@ -120,6 +122,50 @@ final class MetabolicModelDashboardViewModel {
                 resultSummary =
                     "Estimated TDEE \(Int(safeTDEE)) kcal/day · \(model.confidence)% confidence"
             }
+            await syncEngine?.markDirty()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    /// The TDEE estimate the card is currently showing — SwiftData row first, then the on-device cache.
+    func currentEstimatedTDEE(metabolicModels: [MetabolicModel]) -> Double? {
+        if let m = metabolicModels.first, m.confidence >= 20 {
+            return clampTDEE(m.estimatedTDEE)
+        }
+        if let cached = MetabolicModelStorage.load(), cached.confidence >= 20 {
+            return clampTDEE(cached.estimatedTDEE)
+        }
+        return nil
+    }
+
+    /// Recalculates macro targets from the suggested TDEE and writes them into the current plan.
+    func applyToMacroTargets(
+        context: ModelContext,
+        metabolicModels: [MetabolicModel],
+        profile: UserProfileDTO?,
+        syncEngine: SyncEngine?
+    ) async {
+        guard let tdee = currentEstimatedTDEE(metabolicModels: metabolicModels) else {
+            errorText = "Update the model first."
+            return
+        }
+        guard let profile else {
+            errorText = "Profile unavailable — sign in again."
+            return
+        }
+        isApplyingTargets = true
+        errorText = nil
+        appliedTargetsSummary = nil
+        defer { isApplyingTargets = false }
+        do {
+            guard let macros = try await planService.applyLearnedTDEEToTargets(tdee, profile: profile, context: context) else {
+                errorText = "Generate a plan first."
+                return
+            }
+            appliedTargetsSummary =
+                "Targets updated: \(macros.calories) kcal · " +
+                "P \(Int(macros.protein))g · C \(Int(macros.carbs))g · F \(Int(macros.fat))g"
             await syncEngine?.markDirty()
         } catch {
             errorText = error.localizedDescription

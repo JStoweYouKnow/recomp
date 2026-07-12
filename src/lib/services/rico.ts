@@ -35,6 +35,9 @@ You have access to tools! You are an AGENT, not just a chatbot.
 3. If the user asks to swap/replace an exercise (e.g. "swap bench press for dumbbell press", "replace squats with leg press", "I can't do pull-ups, give me an alternative"), use the 'swap_exercise' tool. Pick the correct day from their plan context. ALWAYS check context.injuries and context.equipment before choosing a replacement—only suggest exercises the user can actually do.
 4. If the user asks to add an exercise to a workout day (e.g. "add face pulls to my upper body day", "throw in some calf raises on leg day"), use the 'add_exercise' tool.
 5. If the user asks to change a whole workout day's focus, restructure it, or remove exercises (e.g. "make Monday a push day", "remove all finishers from Tuesday", "change Wednesday to cardio only"), use the 'update_workout_day' tool.
+6. If the user asks to build a brand-new workout program from scratch, regenerate their full training plan, start over with a new split, or rebuild their meal and workout plan entirely, use the 'regenerate_plan' tool. Use this for full program rebuilds — not for small edits to one day (use update_workout_day, swap_exercise, or add_exercise instead). When they specify a duration (e.g. "12-week program", "8 week plan") set programWeeks (1–12). When they specify frequency (e.g. "4 days per week") set workoutDaysPerWeek (2–7).
+7. If the user asks what to cook, which saved recipe fits their macros, or wants dinner ideas from their recipe library, use the 'suggest_recipes' tool. Pass mealType when they mention breakfast/lunch/dinner/snack.
+8. If the user shares a recipe URL to save (or asks to save a recipe link), use the 'save_recipe_from_url' tool with the URL.
 Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "Swapped Bench Press for Dumbbell Press on Monday!").
 
 MACRO ESTIMATION GUIDELINES (for log_meal – accuracy matters, be realistic not generous):
@@ -208,6 +211,73 @@ const RICO_TOOLS: ToolConfiguration = {
         },
       },
     },
+    {
+      toolSpec: {
+        name: "regenerate_plan",
+        description:
+          "Triggers a full AI regeneration of the user's diet and workout plan from their profile. Use when they want a brand-new program, complete workout rebuild, or fresh training split — not for editing a single day.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              reason: {
+                type: "string",
+                description: "Brief summary of why they want a new plan (e.g. 'switching to 4-day upper/lower', 'bored with current program')",
+              },
+              programWeeks: {
+                type: "number",
+                description: "Total program length in weeks (1–12). Use when user asks for a multi-week block (e.g. 8-week hypertrophy, 12-week strength). Default 1.",
+              },
+              workoutDaysPerWeek: {
+                type: "number",
+                description: "Training days per week (2–7). Use when user specifies frequency (e.g. '4-day split'). Omit to keep profile default.",
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
+        name: "suggest_recipes",
+        description:
+          "Ranks the user's saved recipes (and curated picks) against today's remaining macros. Use when they ask what to cook or which saved recipe fits their goals.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              mealType: {
+                type: "string",
+                description: "breakfast, lunch, dinner, or snack — when the user specifies a meal slot",
+              },
+              query: {
+                type: "string",
+                description: "Optional search hint (e.g. 'chicken', 'quick', 'high protein')",
+              },
+              includeDiscover: {
+                type: "boolean",
+                description: "Whether to include third-party recipe discovery (default true)",
+              },
+            },
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
+        name: "save_recipe_from_url",
+        description: "Parses a recipe URL and saves it to the user's synced recipe library.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              url: { type: "string", description: "Full http(s) recipe URL" },
+            },
+            required: ["url"],
+          },
+        },
+      },
+    },
   ],
 };
 
@@ -241,6 +311,14 @@ export interface RicoContext {
   equipment?: string[];
   injuries?: string[];
   dietaryRestrictions?: string[];
+  /** Count of synced saved recipes */
+  savedRecipeCount?: number;
+  /** Preview of saved recipe names for context */
+  savedRecipeNames?: string[];
+  /** Remaining macros today (targets minus logged) */
+  remainingMacros?: { calories: number; protein: number; carbs: number; fat: number };
+  /** Saved recipes for server-side ranking (cap ~30 in client) */
+  savedRecipes?: { id: string; name: string; calories: number; protein: number; carbs: number; fat: number; recipeUrl?: string; source?: string }[];
 }
 
 export interface RicoHistoryMessage {
@@ -333,6 +411,17 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
     else if (a.type === "swap_exercise") replyText = `Done! Swapped ${(a.payload as { oldExerciseName?: string }).oldExerciseName ?? "that exercise"} for ${(a.payload as { newExerciseName?: string }).newExerciseName ?? "the new one"}.`;
     else if (a.type === "add_exercise") replyText = `Added ${(a.payload as { exerciseName?: string }).exerciseName ?? "the exercise"} to your ${(a.payload as { day?: string }).day ?? ""} workout!`;
     else if (a.type === "update_workout_day") replyText = `Updated your ${(a.payload as { day?: string }).day ?? ""} workout to ${(a.payload as { focus?: string }).focus ?? "the new focus"}!`;
+    else if (a.type === "regenerate_plan") {
+      const weeks = (a.payload as { programWeeks?: number }).programWeeks;
+      replyText =
+        weeks && weeks > 1
+          ? `On it — I'm building your ${weeks}-week program week by week. This may take a few minutes.`
+          : "On it — I'm building you a fresh workout and meal plan. This can take up to a minute.";
+    } else if (a.type === "suggest_recipes") {
+      replyText = "Here are recipes that fit your remaining macros today:";
+    } else if (a.type === "save_recipe_from_url") {
+      replyText = "Saved that recipe to your library!";
+    }
   }
 
   return { reply: replyText.trim(), actions };

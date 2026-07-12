@@ -5,6 +5,14 @@
     "src/app/api/plans/generate/route.ts": { "maxDuration": 60 },
     "src/app/api/agent/weekly-review/route.ts": { "maxDuration": 60 },
     "src/app/api/workouts/parse-pdf/route.ts": { "maxDuration": 120 },
-    "src/app/api/workouts/parse-url/route.ts": { "maxDuration": 120 }
-  }
+    "src/app/api/workouts/parse-url/route.ts": { "maxDuration": 120 },
+    "src/app/api/cron/coach-checkin/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/challenge-lifecycle/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/weekly-digest/route.ts": { "maxDuration": 300 }
+  },
+  "crons": [
+    { "path": "/api/cron/coach-checkin", "schedule": "0 * * * *" },
+    { "path": "/api/cron/challenge-lifecycle", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/weekly-digest", "schedule": "0 20 * * 0" }
+  ]
 }

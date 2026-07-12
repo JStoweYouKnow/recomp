@@ -165,6 +165,23 @@ data class MusicSuggestResponseDto(
     val suggestions: List<PlaylistSuggestionDto> = emptyList(),
 )
 
+/** POST /api/macros/calculate — recalculates macro targets server-side (same calculator as plan generation). */
+@Serializable
+data class MacrosCalculatePayloadDto(
+    val weightKg: Double? = null,
+    val heightCm: Double? = null,
+    val age: Int? = null,
+    val gender: String? = null,
+    val dailyActivityLevel: String? = null,
+    val goal: String? = null,
+    val learnedTDEE: Double? = null,
+)
+
+@Serializable
+data class MacrosCalculateResponseDto(
+    val macros: MealMacrosDto = MealMacrosDto(),
+)
+
 @Serializable
 data class AdjustMacrosDto(
     val calories: Int = 0,

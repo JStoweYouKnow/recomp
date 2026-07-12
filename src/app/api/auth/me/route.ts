@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ authenticated: false, profile: null });
     }
     const profile = await dbGetProfile(userId);
-    if (profile && hasProAccess(userId)) profile.proAccess = true;
+    if (profile && await hasProAccess(userId)) profile.proAccess = true;
     logInfo("Auth check: authenticated", { route: "auth/me", userId });
 
     // Always return a fresh API token so mobile clients that authenticated via

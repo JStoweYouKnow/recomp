@@ -3,7 +3,7 @@ import WatchConnectivity
 import RefactorKit
 
 /// Receives the userId pushed from the paired iPhone and stores it so the watch
-/// SyncEngine can authenticate API requests via `X-Refactor-User-Id`.
+/// SyncEngine can authenticate API requests via Bearer token + App Group userId.
 final class WatchSessionManager: NSObject, WCSessionDelegate {
     static let shared = WatchSessionManager()
 
@@ -21,7 +21,6 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
 
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         guard activationState == .activated else { return }
-        // Apply any context that arrived while the watch app was not running.
         applyContext(session.receivedApplicationContext)
     }
 
@@ -31,15 +30,26 @@ final class WatchSessionManager: NSObject, WCSessionDelegate {
 
     private func applyContext(_ context: [String: Any]) {
         if (context["signedOut"] as? Bool) == true {
-            // Phone signed out — drop the watch's cached credentials so it stops
-            // syncing and displaying the previous account.
             try? KeychainService.delete()
             RecompAppGroupDefaults.shared.removeObject(forKey: RecompUserDefaultsKeys.userId)
             return
         }
-        guard let userId = context["userId"] as? String, !userId.isEmpty else { return }
-        RecompAppGroupDefaults.shared.set(userId, forKey: RecompUserDefaultsKeys.userId)
-        // Signal the watch app to do a full pull from the server now that we have a userId.
-        NotificationCenter.default.post(name: .recompWatchDidReceiveUserId, object: nil)
+
+        if let token = context["apiToken"] as? String, !token.isEmpty {
+            RecompAppGroupDefaults.shared.set(token, forKey: RecompUserDefaultsKeys.apiToken)
+            try? KeychainService.saveApiToken(token)
+        }
+
+        if let userId = context["userId"] as? String, !userId.isEmpty {
+            RecompAppGroupDefaults.shared.set(userId, forKey: RecompUserDefaultsKeys.userId)
+        }
+
+        if let snapshot = WatchDashboardSnapshotStore.from(context: context) {
+            WatchDashboardSnapshotStore.save(snapshot)
+        }
+
+        let shouldRefresh = context["userId"] != nil || context["syncAt"] != nil || context["snapshotDate"] != nil
+        guard shouldRefresh else { return }
+        NotificationCenter.default.post(name: .recompWatchShouldRefresh, object: nil)
     }
 }

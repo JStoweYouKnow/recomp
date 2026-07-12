@@ -499,6 +499,84 @@ public final class WorkoutService {
         return completedExerciseCount(for: day, dayKey: dayKey, planIndex: planIndex, planId: planId) >= total
     }
 
+    /// Calendar days with any logged set progress (for dot indicators). Excludes future dates.
+    public func calendarDatesWithProgress(onOrBefore today: String = DateHelpers.todayString()) -> Set<String> {
+        var dates = Set(progressByDay.keys.filter { !$0.isEmpty && $0 <= today })
+        for ts in webProgressMap.values {
+            let day = String(ts.prefix(10))
+            if day <= today { dates.insert(day) }
+        }
+        return dates
+    }
+
+    /// Mark or clear every exercise row on a session (web "Mark all complete" parity).
+    public func setDayCompletion(
+        day: WorkoutDay,
+        dayKey: String,
+        planIndex: Int,
+        planId: String,
+        complete: Bool
+    ) {
+        for pair in day.enumeratedExerciseSlots() {
+            let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: pair.globalSlot)
+            let ctx = WorkoutSetProgressContext(
+                planId: planId,
+                planIndex: planIndex,
+                globalSlot: pair.globalSlot,
+                section: section,
+                workoutDay: day,
+                progressDayKey: dayKey
+            )
+            if complete {
+                markAllSets(
+                    planId: planId,
+                    dayLabel: day.day,
+                    section: section,
+                    exercise: pair.exercise,
+                    globalSlot: pair.globalSlot,
+                    dayKey: dayKey,
+                    setCount: pair.exercise.effectiveSetCount
+                )
+            } else {
+                clearAllSets(
+                    planId: planId,
+                    dayLabel: day.day,
+                    section: section,
+                    exercise: pair.exercise,
+                    globalSlot: pair.globalSlot,
+                    dayKey: dayKey
+                )
+            }
+            refreshWebProgressKeys(context: ctx, exercise: pair.exercise)
+        }
+        persistToDefaults()
+        postSyncNotification()
+    }
+
+    private func clearAllSets(
+        planId: String,
+        dayLabel: String,
+        section: String,
+        exercise: WorkoutExercise,
+        globalSlot: Int,
+        dayKey: String
+    ) {
+        let sk = WorkoutWebProgress.localRowSetProgressKey(
+            planId: planId,
+            dayLabel: dayLabel,
+            section: section,
+            exercise: exercise,
+            globalSlot: globalSlot
+        )
+        var dayMap = progressByDay[dayKey] ?? [:]
+        dayMap.removeValue(forKey: sk)
+        if dayMap.isEmpty {
+            progressByDay.removeValue(forKey: dayKey)
+        } else {
+            progressByDay[dayKey] = dayMap
+        }
+    }
+
     // MARK: - API
 
     /// Search for an exercise by name. The server returns a **single** best-match object

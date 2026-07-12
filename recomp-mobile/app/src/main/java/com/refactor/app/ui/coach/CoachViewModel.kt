@@ -7,6 +7,7 @@ import com.refactor.app.api.ApiException
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.RicoContextFactory
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.CoachMessageEntity
 import com.refactor.app.db.SyncCacheDao
@@ -52,6 +53,9 @@ class CoachViewModel(
     private val _lastPushNote = MutableStateFlow<String?>(null)
     val lastPushNote: StateFlow<String?> = _lastPushNote.asStateFlow()
 
+    private val _regeneratingPlan = MutableStateFlow(false)
+    val regeneratingPlan: StateFlow<Boolean> = _regeneratingPlan.asStateFlow()
+
     fun dismissError() {
         _error.value = null
     }
@@ -78,20 +82,44 @@ class CoachViewModel(
             _busy.value = true
             coachRepository.chat(trimmed, ctx).fold(
                 onSuccess = { res ->
+                    val needsRegenerate = res.actions.any { it.type == "regenerate_plan" }
                     val applied = if (res.actions.isNotEmpty()) {
-                        syncRepository.applyRicoActionsToCache(res.actions).getOrElse { false }
+                        syncRepository.applyRicoActionsToCache(
+                            res.actions.filter { it.type != "regenerate_plan" },
+                        ).getOrElse { false }
                     } else {
                         false
+                    }
+                    if (needsRegenerate) {
+                        val regenAction = res.actions.firstOrNull { it.type == "regenerate_plan" }
+                        val regenOptions = regenAction?.let { RegeneratePlanOptions.fromPayload(it.payload) }
+                            ?: RegeneratePlanOptions()
+                        _regeneratingPlan.value = true
+                        syncRepository.regeneratePlan(regenOptions).fold(
+                            onSuccess = {
+                                val weeks = regenOptions.programWeeks ?: 1
+                                _lastPushNote.value =
+                                    if (weeks > 1) "Your $weeks-week program is ready and synced."
+                                    else "Your new plan is ready and synced."
+                            },
+                            onFailure = { e ->
+                                _error.value = when (e) {
+                                    is ApiException -> e.message
+                                    else -> e.message ?: "Could not regenerate plan"
+                                }
+                            },
+                        )
+                        _regeneratingPlan.value = false
                     }
                     val assistantText = buildString {
                         append(res.reply.trim())
                         if (res.actions.isNotEmpty()) {
                             if (isNotEmpty()) append("\n\n")
                             append(
-                                if (applied) {
-                                    "Applied ${res.actions.size} change(s) to your offline snapshot."
-                                } else {
-                                    "Could not apply all coach actions (missing plan, day, or exercise in cache)."
+                                when {
+                                    needsRegenerate -> "Started building your new plan."
+                                    applied -> "Applied ${res.actions.size} change(s) to your offline snapshot."
+                                    else -> "Ref couldn't apply all changes (missing plan, day, or exercise in cache)."
                                 },
                             )
                         }
@@ -121,7 +149,7 @@ class CoachViewModel(
                     coachMessageDao.deleteById(userId)
                     _error.value = when (e) {
                         is ApiException -> e.message
-                        else -> e.message ?: "Couldn’t reach coach"
+                        else -> e.message ?: "Ref couldn't respond"
                     }
                 },
             )

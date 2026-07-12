@@ -152,6 +152,22 @@ data class PantryItemDto(
 )
 
 @Serializable
+data class SavedRecipeDto(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int,
+    val fat: Int,
+    val recipeUrl: String? = null,
+    val source: String? = null,
+    val mealTypes: List<String>? = null,
+    val servings: Int? = null,
+    val addedAt: String,
+)
+
+@Serializable
 data class ActivityLogEntryDto(
     val id: String,
     val date: String,
@@ -219,6 +235,7 @@ data class SyncGetResponse(
     val fastingSessions: List<FastingSessionDto>? = null,
     val biofeedback: List<BiofeedbackEntryDto>? = null,
     val pantry: List<PantryItemDto>? = null,
+    val savedRecipes: List<SavedRecipeDto>? = null,
     val activityLog: List<ActivityLogEntryDto>? = null,
     val supplements: List<SupplementDto>? = null,
     val bloodWork: List<BloodWorkDto>? = null,

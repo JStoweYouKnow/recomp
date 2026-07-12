@@ -159,7 +159,7 @@ struct RootView: View {
                 try? await engine.fetchAndApply()
                 auth.refreshCurrentUserFromStore()
                 subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
-                PhoneSessionManager.shared.pushUserId()
+                pushWatchDashboard(from: modelContext)
             }
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
@@ -183,7 +183,7 @@ struct RootView: View {
                 try? await engine.fetchAndApply()
                 auth.refreshCurrentUserFromStore()
                 subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
-                PhoneSessionManager.shared.pushUserId()
+                pushWatchDashboard(from: modelContext)
             }
         }
         .onChange(of: scenePhase) { _, phase in
@@ -191,11 +191,15 @@ struct RootView: View {
             Task {
                 try? await engine.fetchAndApply()
                 auth.refreshCurrentUserFromStore()
+                pushWatchDashboard(from: modelContext)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompScheduleDataSync)) { _ in
             guard let engine = syncEngine else { return }
             Task { await engine.scheduleFetchAndApply() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompPhoneDidSync)) { _ in
+            pushWatchDashboard(from: modelContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToMeals)) { _ in
             coordinator.navigate(to: .meals)
@@ -206,11 +210,42 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToDashboard)) { _ in
             coordinator.navigate(to: .dashboard)
         }
+        .onOpenURL { url in
+            handleIncomingURL(url)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompSaveRecipeURL)) { _ in
+            coordinator.navigate(to: .meals)
+        }
+    }
+
+    private func handleIncomingURL(_ url: URL) {
+        var recipeURL: String?
+        if url.scheme == "https" || url.scheme == "http" {
+            recipeURL = url.absoluteString
+        } else if url.scheme == "refactor", url.host == "save-recipe" {
+            recipeURL = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?
+                .first(where: { $0.name == "url" })?
+                .value
+        }
+        guard let recipeURL, !recipeURL.isEmpty else { return }
+        RecompAppGroupDefaults.shared.set(recipeURL, forKey: RecompUserDefaultsKeys.pendingRecipeSaveURL)
+        NotificationCenter.default.post(
+            name: .recompSaveRecipeURL,
+            object: nil,
+            userInfo: ["url": recipeURL]
+        )
+        coordinator.navigate(to: .meals)
     }
 
     private func showPaywallIfNeeded() {
         guard auth.isAuthenticated, !auth.isDemo, subscriptions.status == .notPurchased else { return }
         showPaywall = true
+    }
+
+    private func pushWatchDashboard(from context: ModelContext) {
+        WatchDashboardSnapshotPublisher.publish(from: context)
+        PhoneSessionManager.shared.pushDataRefresh()
     }
 }
 

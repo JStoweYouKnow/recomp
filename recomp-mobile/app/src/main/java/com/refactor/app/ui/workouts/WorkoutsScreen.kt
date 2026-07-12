@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,6 +82,7 @@ import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.WorkoutDayDto
 import com.refactor.app.api.dto.WorkoutExerciseDto
 import com.refactor.app.db.SyncCacheDao
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -124,6 +128,7 @@ fun WorkoutsScreen(
     var showImportSheet by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var restTimer by remember { mutableStateOf<RestTimerState?>(null) }
     val scope = rememberCoroutineScope()
 
     val selectedPlanIndex = remember(days, selectedDate, plan) {
@@ -172,10 +177,11 @@ fun WorkoutsScreen(
 
         HorizontalDivider()
 
+        Box(Modifier.weight(1f, fill = false)) {
         Column(
             Modifier
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 16.dp),
+                .padding(bottom = if (restTimer != null) 112.dp else 16.dp),
         ) {
             Spacer(Modifier.height(12.dp))
 
@@ -238,11 +244,29 @@ fun WorkoutsScreen(
                                 )
                             },
                             onToggleSet = { ex, globalSlot, setIdx ->
+                                val day = selectedDay ?: return@WorkoutDayCard
                                 if (planId.isNotBlank()) {
+                                    val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
+                                        day.day, selectedDate,
+                                    )
                                     busy = true
                                     scope.launch {
-                                        vm.toggleSetAndSync(planId, selectedDay, globalSlot, ex, setIdx).fold(
-                                            onSuccess = { busy = false },
+                                        vm.toggleSetAndSync(
+                                            planId, progressDayKey, day, globalSlot, ex, setIdx,
+                                        ).fold(
+                                            onSuccess = { markedComplete ->
+                                                busy = false
+                                                if (markedComplete && setIdx < ex.effectiveSetCount() - 1) {
+                                                    val seconds = ex.restSeconds()
+                                                    restTimer = RestTimerState(
+                                                        exerciseName = ex.name,
+                                                        endEpochMs = System.currentTimeMillis() + seconds * 1000L,
+                                                        totalSeconds = seconds,
+                                                    )
+                                                } else if (!markedComplete) {
+                                                    restTimer = null
+                                                }
+                                            },
                                             onFailure = { busy = false },
                                         )
                                     }
@@ -255,6 +279,19 @@ fun WorkoutsScreen(
                         )
                     }
                 }
+            }
+        }
+
+            restTimer?.let { timer ->
+                RestTimerBanner(
+                    state = timer,
+                    onSkip = { restTimer = null },
+                    onAdd15 = { restTimer = timer.extend(15) },
+                    onFinished = { restTimer = null },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                )
             }
         }
     }
@@ -620,7 +657,19 @@ private fun ExerciseRow(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                exercise.notes?.takeIf { it.isNotBlank() }?.let {
+                exercise.restDisplayLabel()?.let { restLabel ->
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                    ) {
+                        Text(
+                            "$restLabel rest",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        )
+                    }
+                } ?: exercise.notes?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         it,
                         style = MaterialTheme.typography.bodySmall,
@@ -1028,4 +1077,90 @@ private fun WorkoutImportDialog(
             }
         }
     }
+}
+
+// ─── Rest Timer ──────────────────────────────────────────────────────────────
+
+@Composable
+private fun RestTimerBanner(
+    state: RestTimerState,
+    onSkip: () -> Unit,
+    onAdd15: () -> Unit,
+    onFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var remaining by remember(state.endEpochMs) { mutableStateOf(state.remainingSeconds()) }
+    LaunchedEffect(state.endEpochMs) {
+        while (true) {
+            val secondsLeft = state.remainingSeconds()
+            remaining = secondsLeft
+            if (secondsLeft <= 0) {
+                onFinished()
+                break
+            }
+            delay(1000)
+        }
+    }
+
+    if (remaining <= 0) return
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Rest",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        state.exerciseName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
+                Text(
+                    formatRestCountdown(remaining),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            LinearProgressIndicator(
+                progress = { remaining.toFloat() / state.totalSeconds.coerceAtLeast(1) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(50)),
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onSkip, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                    Text("Skip", style = MaterialTheme.typography.labelMedium)
+                }
+                OutlinedButton(onClick = onAdd15, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                    Text("+15s", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+private fun formatRestCountdown(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return if (m > 0) String.format("%d:%02d", m, s) else "${s}s"
 }

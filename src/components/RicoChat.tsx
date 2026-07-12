@@ -13,7 +13,9 @@ import {
   getMeals,
   getPlan,
   savePlan,
-  syncToServer
+  syncToServer,
+  getSavedRecipes,
+  saveSavedRecipes,
 } from "@/lib/storage";
 import {
   startRecording,
@@ -21,12 +23,31 @@ import {
   playAudioResponse,
   isAudioSupported,
 } from "@/lib/audio-utils";
-import type { RicoMessage, WorkoutExercise } from "@/lib/types";
+import type { RicoMessage, WorkoutExercise, CookingAppRecipe } from "@/lib/types";
+import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
+import { parseRegeneratePlanPayload } from "@/lib/multi-week-plan";
 import type { AudioRecorder, StreamingRecorder } from "@/lib/audio-utils";
 
-/** Process Rico tool-call actions, mutate localStorage, return true if anything changed. */
-function processRicoActions(actions: { type: string; payload: Record<string, unknown> }[]): boolean {
+function formatRecipeSuggestions(
+  suggestions: Array<{ name: string; calories: number; protein: number; fitScore: number; fitReason: string; recipeUrl?: string }>
+): string {
+  if (!suggestions.length) return "";
+  const lines = suggestions.map(
+    (s, i) =>
+      `${i + 1}. **${s.name}** (${s.calories} cal, ${s.protein}g P, score ${s.fitScore}) — ${s.fitReason}${s.recipeUrl ? ` [link](${s.recipeUrl})` : ""}`
+  );
+  return `\n\n${lines.join("\n")}`;
+}
+
+/** Process Rico tool-call actions, mutate localStorage. Returns flags for sync + full plan regeneration. */
+function processRicoActions(actions: { type: string; payload: Record<string, unknown> }[]): {
+  changed: boolean;
+  regeneratePlan: boolean;
+  regeneratePlanOptions?: RegeneratePlanOptions;
+} {
   let changed = false;
+  let regeneratePlan = false;
+  let regeneratePlanOptions: RegeneratePlanOptions | undefined;
   for (const act of actions) {
     if (act.type === "update_macros") {
       const current = getMeasurementTargets();
@@ -101,13 +122,16 @@ function processRicoActions(actions: { type: string; payload: Record<string, unk
           changed = true;
         }
       }
+    } else if (act.type === "regenerate_plan") {
+      regeneratePlan = true;
+      regeneratePlanOptions = parseRegeneratePlanPayload(act.payload);
     }
   }
   if (changed) {
     syncToServer();
     window.dispatchEvent(new Event("userDataUpdated"));
   }
-  return changed;
+  return { changed, regeneratePlan, regeneratePlanOptions };
 }
 
 export function RicoChat({
@@ -115,11 +139,29 @@ export function RicoChat({
   context,
   isOpen,
   onClose,
+  onRegeneratePlan,
 }: {
   userName: string;
-  context: { streak?: number; mealsLogged?: number; xp?: number; goal?: string; recentMilestones?: string[]; biofeedbackSummary?: string | null; hydrationSummary?: string | null; activeFast?: string | null; workoutPlan?: { weeklyPlan: { day: string; focus: string; warmups?: { name: string; sets: string; reps: string; notes?: string }[]; exercises: { name: string; sets: string; reps: string; notes?: string }[]; finishers?: { name: string; sets: string; reps: string; notes?: string }[] }[] } | null };
+  context: {
+    streak?: number;
+    mealsLogged?: number;
+    xp?: number;
+    goal?: string;
+    recentMilestones?: string[];
+    biofeedbackSummary?: string | null;
+    hydrationSummary?: string | null;
+    activeFast?: string | null;
+    workoutPlan?: { weeklyPlan: { day: string; focus: string; warmups?: { name: string; sets: string; reps: string; notes?: string }[]; exercises: { name: string; sets: string; reps: string; notes?: string }[]; finishers?: { name: string; sets: string; reps: string; notes?: string }[] }[] } | null;
+    macroTargets?: { calories: number; protein: number; carbs: number; fat: number };
+    todayMacros?: { calories: number; protein: number; carbs: number; fat: number };
+    remainingMacros?: { calories: number; protein: number; carbs: number; fat: number };
+    savedRecipeCount?: number;
+    savedRecipeNames?: string[];
+    savedRecipes?: CookingAppRecipe[];
+  };
   isOpen: boolean;
   onClose: () => void;
+  onRegeneratePlan?: (options?: RegeneratePlanOptions) => Promise<void>;
 }) {
   const [messages, setMessages] = useState<RicoMessage[]>([]);
   const [input, setInput] = useState("");
@@ -242,11 +284,30 @@ export function RicoChat({
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
+
+      let reply = data.reply as string;
+      if (Array.isArray(data.recipeSuggestions) && data.recipeSuggestions.length > 0) {
+        reply += formatRecipeSuggestions(data.recipeSuggestions);
+      }
+      if (data.recipeSaved) {
+        const saved = data.recipeSaved as CookingAppRecipe;
+        const existing = getSavedRecipes();
+        const next = [
+          saved,
+          ...existing.filter((r) => (r.recipeUrl ?? "").toLowerCase() !== (saved.recipeUrl ?? "").toLowerCase()),
+        ];
+        saveSavedRecipes(next);
+        syncToServer();
+      }
+
+      addMessage({ role: "assistant", content: reply, at: new Date().toISOString() });
 
       // Execute AI Agent tool calls
       if (data.actions && Array.isArray(data.actions)) {
-        processRicoActions(data.actions);
+        const { regeneratePlan, regeneratePlanOptions } = processRicoActions(data.actions);
+        if (regeneratePlan && onRegeneratePlan) {
+          void onRegeneratePlan(regeneratePlanOptions);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -441,7 +502,10 @@ export function RicoChat({
                         if (data.error) throw new Error(data.error);
                         addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
                         if (data.actions?.length) {
-                          processRicoActions(data.actions);
+                          const { regeneratePlan, regeneratePlanOptions } = processRicoActions(data.actions);
+                          if (regeneratePlan && onRegeneratePlan) {
+                            void onRegeneratePlan(regeneratePlanOptions);
+                          }
                         }
                       } catch (e) {
                         console.error(e);

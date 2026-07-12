@@ -16,16 +16,25 @@ import com.refactor.app.api.dto.CoachCheckInBioDto
 import com.refactor.app.api.dto.CoachCheckInRequestDto
 import com.refactor.app.api.dto.CoachCheckInResponseDto
 import com.refactor.app.api.dto.FastingSessionDto
+import com.refactor.app.api.dto.FitnessPlanDto
 import com.refactor.app.api.dto.HydrationEntryDto
+import com.refactor.app.api.dto.MacrosCalculatePayloadDto
+import com.refactor.app.api.dto.MacrosCalculateResponseDto
 import com.refactor.app.api.dto.MealInsightRowDto
 import com.refactor.app.api.dto.MealMacrosDto
+import com.refactor.app.api.dto.GenerateWorkoutsProfileDto
+import com.refactor.app.api.dto.GenerateWorkoutsRequestDto
+import com.refactor.app.api.dto.GenerateWorkoutsResponseDto
+import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.api.dto.RicoToolActionWire
+import com.refactor.app.api.dto.WorkoutDayDto
 import com.refactor.app.api.dto.ScaleEntryPayloadDto
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.WearableInsightRowDto
 import com.refactor.app.api.dto.WeeklyReviewDto
 import com.refactor.app.api.dto.WeeklyReviewPayloadDto
 import com.refactor.app.api.dto.WeeklyReviewTargetsDto
+import com.refactor.app.api.dto.UserProfileDto
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.db.SyncCacheEntity
@@ -43,6 +52,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.jsonObject
 
 class SyncRepository(
@@ -245,6 +255,166 @@ class SyncRepository(
             )
         }
         snap.copy(plan = updatedPlan)
+    }
+
+    /**
+     * POST `/api/macros/calculate` with the adaptive-TDEE estimate, then saves the recalculated
+     * targets (base + ±200 kcal / ±50g carb training/rest split) into the cached plan and pushes.
+     * Mirrors web `MetabolicModelCard` "Apply to macro targets" and iOS `applyLearnedTDEEToTargets`.
+     */
+    suspend fun applyTdeeToMacroTargets(estimatedTdee: Int): Result<MealMacrosDto> = runCatching {
+        val snap = syncCacheDao.getOnce()?.payloadJson?.let {
+            SyncJson.format.decodeFromString<SyncGetResponse>(it)
+        } ?: error("No cached snapshot — refresh sync first.")
+        if (snap.plan?.dietPlan == null) error("Generate a plan first.")
+        val profile = snap.profile
+        val body = SyncJson.format.encodeToString(
+            MacrosCalculatePayloadDto.serializer(),
+            MacrosCalculatePayloadDto(
+                weightKg = profile.weight.takeIf { it > 0 }?.div(2.2046),
+                heightCm = profile.height.takeIf { it > 0 },
+                age = profile.age.takeIf { it > 0 },
+                gender = profile.gender,
+                dailyActivityLevel = profile.dailyActivityLevel,
+                goal = profile.goal,
+                learnedTDEE = estimatedTdee.toDouble().coerceIn(1200.0, 5000.0),
+            ),
+        )
+        val response = client.post("$baseUrl/api/macros/calculate") {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+        response.ensureSuccessOrThrow()
+        val macros = SyncJson.format
+            .decodeFromString<MacrosCalculateResponseDto>(response.bodyAsText())
+            .macros
+        val training = MealMacrosDto(
+            calories = macros.calories + 200,
+            protein = macros.protein,
+            carbs = macros.carbs + 50,
+            fat = macros.fat,
+        )
+        val rest = MealMacrosDto(
+            calories = maxOf(0.0, macros.calories - 200),
+            protein = macros.protein,
+            carbs = maxOf(0.0, macros.carbs - 50),
+            fat = macros.fat,
+        )
+        saveMacroTargets(macros, training, rest).getOrThrow()
+        pushCachedSnapshot().getOrThrow()
+        macros
+    }
+
+    /**
+     * POST `/api/plans/generate` (+ chunked `/api/plans/generate-workouts` for multi-week programs).
+     */
+    suspend fun regeneratePlan(options: RegeneratePlanOptions = RegeneratePlanOptions()): Result<FitnessPlanDto> =
+        runCatching {
+            val snap = syncCacheDao.getOnce()?.payloadJson?.let {
+                SyncJson.format.decodeFromString<SyncGetResponse>(it)
+            } ?: error("No cached snapshot — pull sync first.")
+
+            val totalWeeks = (options.programWeeks ?: 1).coerceIn(1, 12)
+            val daysPerWeek = (options.workoutDaysPerWeek ?: snap.profile.workoutDaysPerWeek ?: 4).coerceIn(2, 7)
+
+            val week1Body = buildPlanGenerateRequestBody(snap, totalWeeks, daysPerWeek)
+            val week1Response = client.post("$baseUrl/api/plans/generate") {
+                contentType(ContentType.Application.Json)
+                setBody(week1Body)
+            }
+            week1Response.ensureSuccessOrThrow()
+            var plan = SyncJson.format.decodeFromString<FitnessPlanDto>(week1Response.bodyAsText())
+
+            if (totalWeeks > 1) {
+                val template = extractWeek1TrainingTemplate(plan.workoutPlan?.weeklyPlan.orEmpty())
+                if (template.isEmpty()) error("Week 1 has no training days to extend.")
+                val profile = snap.profile
+                val profileSlice = GenerateWorkoutsProfileDto(
+                    name = profile.name,
+                    goal = profile.goal,
+                    fitnessLevel = profile.fitnessLevel,
+                    workoutLocation = profile.workoutLocation,
+                    workoutEquipment = profile.workoutEquipment,
+                    injuriesOrLimitations = profile.injuriesOrLimitations,
+                    workoutDaysPerWeek = daysPerWeek,
+                )
+                for ((fromWeek, toWeek) in chunkWeekRanges(totalWeeks)) {
+                    val chunkBody = SyncJson.format.encodeToString(
+                        GenerateWorkoutsRequestDto.serializer(),
+                        GenerateWorkoutsRequestDto(
+                            fromWeek = fromWeek,
+                            toWeek = toWeek,
+                            programWeeks = totalWeeks,
+                            workoutDaysPerWeek = daysPerWeek,
+                            week1Template = template,
+                            reason = options.reason,
+                            profile = profileSlice,
+                        ),
+                    )
+                    val chunkResponse = client.post("$baseUrl/api/plans/generate-workouts") {
+                        contentType(ContentType.Application.Json)
+                        setBody(chunkBody)
+                    }
+                    chunkResponse.ensureSuccessOrThrow()
+                    val chunk = SyncJson.format.decodeFromString<GenerateWorkoutsResponseDto>(chunkResponse.bodyAsText())
+                    if (chunk.error != null) error(chunk.error)
+                    val mergedDays = plan.workoutPlan?.weeklyPlan.orEmpty() + chunk.workoutDays
+                    val wp = plan.workoutPlan ?: com.refactor.app.api.dto.WorkoutPlanSectionDto()
+                    plan = plan.copy(workoutPlan = wp.copy(weeklyPlan = mergedDays))
+                    mutateCachedSnapshot { cached -> cached.copy(plan = plan) }.getOrThrow()
+                }
+            }
+
+            mutateCachedSnapshot { cached -> cached.copy(plan = plan) }.getOrThrow()
+            pushCachedSnapshot().getOrThrow()
+            plan
+        }
+
+    private fun extractWeek1TrainingTemplate(days: List<WorkoutDayDto>): List<WorkoutDayDto> =
+        days.filter { day ->
+            val focus = day.focus.lowercase()
+            val isRecovery =
+                "recovery" in focus || "mobility" in focus || "rest" in focus || "off day" in focus
+            day.exercises.isNotEmpty() && !isRecovery
+        }
+
+    private fun chunkWeekRanges(totalWeeks: Int, chunkSize: Int = 2): List<Pair<Int, Int>> {
+        val ranges = mutableListOf<Pair<Int, Int>>()
+        var from = 2
+        while (from <= totalWeeks) {
+            val to = minOf(from + chunkSize - 1, totalWeeks)
+            ranges.add(from to to)
+            from = to + 1
+        }
+        return ranges
+    }
+
+    private fun buildPlanGenerateRequestBody(
+        snap: SyncGetResponse,
+        programWeeks: Int? = null,
+        workoutDaysPerWeek: Int? = null,
+    ): String {
+        val profile = snap.profile.copy(
+            workoutDaysPerWeek = workoutDaysPerWeek ?: snap.profile.workoutDaysPerWeek,
+        )
+        val base = SyncJson.format.encodeToJsonElement(UserProfileDto.serializer(), profile).jsonObject
+        val enriched = buildJsonObject {
+            base.forEach { (k, v) -> put(k, v) }
+            programWeeks?.takeIf { it > 1 }?.let { put("programWeeks", JsonPrimitive(it)) }
+            snap.metabolicModel?.takeIf { it.confidence >= 70 }?.estimatedTDEE?.let { tdee ->
+                put("learnedTDEE", JsonPrimitive(tdee.toDouble()))
+            }
+            snap.meta?.measurementTargets?.let { mt ->
+                put(
+                    "measurementTargets",
+                    SyncJson.format.encodeToJsonElement(
+                        com.refactor.app.api.dto.MeasurementTargetsDto.serializer(),
+                        mt,
+                    ),
+                )
+            }
+        }
+        return SyncJson.format.encodeToString(JsonElement.serializer(), enriched)
     }
 
     /** POST /api/biofeedback/insights — builds payload from cached biofeedback + meals + wearables. */

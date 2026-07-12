@@ -12,4 +12,7 @@ public enum RecompUserDefaultsKeys {
     /// Mirrors the API token into the shared App Group suite as a fallback for
     /// watchOS where keychain access-group writes can fail.
     public static let apiToken = "recomp_api_token"
+    public static let savedRecipesJSON = "recomp_sync_saved_recipes_json"
+    /// Pending recipe URL from Share / deep link (Phase 2).
+    public static let pendingRecipeSaveURL = "recomp_pending_recipe_save_url"
 }

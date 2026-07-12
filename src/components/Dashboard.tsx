@@ -18,6 +18,12 @@ import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
 import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
 import { DuelCard } from "./dashboard/DuelCard";
+import {
+  PlanGenerateOptions,
+  defaultWorkoutDaysPerWeek,
+  planOptionsFromState,
+} from "./dashboard/PlanGenerateOptions";
+import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
@@ -63,13 +69,26 @@ export function Dashboard({
   wearableData?: WearableDaySummary[];
   onProfileUpdate: (p: UserProfile) => void;
   onPlanUpdate: (p: FitnessPlan) => void;
-  onRegeneratePlan: () => void;
+  onRegeneratePlan: (options?: RegeneratePlanOptions) => void;
   planRegenerating: boolean;
   planLoadingMessage?: string;
   onReset: () => void;
   onNavigateToMeals?: () => void;
   onNavigateToWorkouts?: () => void;
 }) {
+  const [programWeeks, setProgramWeeks] = useState(1);
+  const [workoutDaysPerWeek, setWorkoutDaysPerWeek] = useState(() =>
+    defaultWorkoutDaysPerWeek(profile.workoutDaysPerWeek)
+  );
+
+  useEffect(() => {
+    setWorkoutDaysPerWeek(defaultWorkoutDaysPerWeek(profile.workoutDaysPerWeek));
+  }, [profile.workoutDaysPerWeek]);
+
+  const runRegenerate = useCallback(() => {
+    onRegeneratePlan(planOptionsFromState(programWeeks, workoutDaysPerWeek));
+  }, [onRegeneratePlan, programWeeks, workoutDaysPerWeek]);
+
   const unitSystem = profile.unitSystem ?? "us";
   // Prefer most recent weight from wearables when available
   const displayWeightLbs = useMemo(() => {
@@ -381,8 +400,45 @@ export function Dashboard({
         <div className="card p-8 text-center animate-fade-in border-dashed border-2 border-[var(--border-soft)]">
           <h3 className="card-section-title mb-2">No plan yet</h3>
           <p className="text-sm text-[var(--muted)] mb-4">Your personalized plan couldn’t be created or hasn’t loaded. Generate one now.</p>
-          <button type="button" onClick={onRegeneratePlan} disabled={planRegenerating} className="btn-primary px-6 py-2.5">
+          <PlanGenerateOptions
+            programWeeks={programWeeks}
+            workoutDaysPerWeek={workoutDaysPerWeek}
+            onProgramWeeksChange={setProgramWeeks}
+            onWorkoutDaysPerWeekChange={setWorkoutDaysPerWeek}
+            disabled={planRegenerating}
+          />
+          <button
+            type="button"
+            onClick={runRegenerate}
+            disabled={planRegenerating}
+            className="btn-primary px-6 py-2.5 mt-5"
+          >
             Generate my plan
+          </button>
+        </div>
+      )}
+
+      {plan && !planRegenerating && (
+        <div className="card p-5 animate-fade-in">
+          <h3 className="card-section-title mb-1">Regenerate program</h3>
+          <p className="text-sm text-[var(--muted)] mb-4">
+            Build a fresh meal and workout plan. Replaces your current program.
+          </p>
+          <PlanGenerateOptions
+            programWeeks={programWeeks}
+            workoutDaysPerWeek={workoutDaysPerWeek}
+            onProgramWeeksChange={setProgramWeeks}
+            onWorkoutDaysPerWeekChange={setWorkoutDaysPerWeek}
+            disabled={planRegenerating}
+            compact
+          />
+          <button
+            type="button"
+            onClick={runRegenerate}
+            disabled={planRegenerating}
+            className="btn-secondary px-5 py-2 mt-4 w-full sm:w-auto"
+          >
+            Regenerate plan
           </button>
         </div>
       )}
@@ -428,7 +484,7 @@ export function Dashboard({
           todayMealCount={meals.filter((m) => m.date === today).length}
           workoutCompleted={workoutCompletedToday}
         />
-        <MetabolicModelCard />
+        <MetabolicModelCard onPlanUpdate={onPlanUpdate} />
       </div>
 
       {/* ── How are you feeling & Coach check-in (paired) ── */}

@@ -7,8 +7,12 @@ import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-r
 
 const Schema = z.object({ email: z.string().email() });
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL ?? "Refactor <noreply@refactoryourbody.com>";
+
+function resendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY?.trim();
+  return key ? new Resend(key) : null;
+}
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "forgot-password"), 3, 60_000);
@@ -29,6 +33,12 @@ export async function POST(req: NextRequest) {
     }
 
     const code = await dbCreatePasswordResetToken(email);
+
+    const resend = resendClient();
+    if (!resend) {
+      logError("forgot-password: RESEND_API_KEY not configured", undefined, { route: "auth/forgot-password" });
+      return NextResponse.json({ error: "Email service unavailable" }, { status: 503 });
+    }
 
     await resend.emails.send({
       from: FROM,

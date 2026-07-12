@@ -7,6 +7,8 @@ import Observation
 public final class CoachService {
     public private(set) var messages: [CoachMessage] = []
     public private(set) var isResponding = false
+    public private(set) var shouldRegeneratePlan = false
+    public private(set) var pendingRegenerateOptions = RegeneratePlanOptions.default
 
     private let api: APIClient
 
@@ -31,6 +33,8 @@ public final class CoachService {
 
         isResponding = true
         defer { isResponding = false }
+        shouldRegeneratePlan = false
+        pendingRegenerateOptions = .default
 
         let historyDTOs = messages.map { msg in
             CoachMessageDTO(
@@ -275,6 +279,14 @@ public final class CoachService {
                     programWeek1Start: plan.workoutPlan.programWeek1Start
                 )
                 plan.synced = false
+
+            case .regeneratePlan(let payload):
+                shouldRegeneratePlan = true
+                pendingRegenerateOptions = RegeneratePlanOptions(
+                    programWeeks: payload.programWeeks,
+                    workoutDaysPerWeek: payload.workoutDaysPerWeek,
+                    reason: payload.reason
+                )
 
             case .unknown(let actionType):
                 print("[CoachService] Unhandled action type: \(actionType)")

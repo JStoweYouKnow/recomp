@@ -6,6 +6,7 @@ import com.refactor.app.db.AppDatabase
 import com.refactor.app.push.FirebaseBootstrap
 import com.refactor.app.push.RefactorNotifications
 import com.refactor.app.sync.SyncScheduler
+import com.refactor.app.workers.CoachCheckInWorker
 
 class RefactorAndroidApp : Application() {
 
@@ -20,5 +21,6 @@ class RefactorAndroidApp : Application() {
         FirebaseBootstrap.init(this)
         RefactorNotifications.ensurePushChannel(this)
         SyncScheduler.schedule(this)
+        CoachCheckInWorker.schedule(this)
     }
 }

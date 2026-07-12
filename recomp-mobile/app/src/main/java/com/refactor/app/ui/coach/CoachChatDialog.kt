@@ -47,6 +47,7 @@ import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.SyncCacheDao
+import com.refactor.app.ui.legal.MedicalDisclaimerText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,6 +68,7 @@ fun CoachChatDialog(
     )
     val lines by vm.lines.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
+    val regeneratingPlan by vm.regeneratingPlan.collectAsStateWithLifecycle()
     val err by vm.error.collectAsStateWithLifecycle()
     val pushNote by vm.lastPushNote.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
@@ -88,7 +90,7 @@ fun CoachChatDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = Modifier.fillMaxWidth(),
-        title = { Text("Coach (Rico)") },
+        title = { Text("Ref") },
         text = {
             Surface(shape = MaterialTheme.shapes.medium) {
                 Column(
@@ -107,6 +109,19 @@ fun CoachChatDialog(
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
+                    if (regeneratingPlan) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(strokeWidth = 2.dp)
+                            Text(
+                                "Building your new plan… (multi-week programs may take a few minutes)",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                    MedicalDisclaimerText()
                     LazyColumn(
                         Modifier
                             .fillMaxWidth()
@@ -138,7 +153,7 @@ fun CoachChatDialog(
                             onValueChange = { draft = it },
                             modifier = Modifier.weight(1f),
                             placeholder = { Text("Message…") },
-                            enabled = !busy,
+                            enabled = !busy && !regeneratingPlan,
                             singleLine = false,
                             maxLines = 4,
                         )
@@ -159,7 +174,7 @@ fun CoachChatDialog(
                                     else -> Unit
                                 }
                             },
-                            enabled = !busy,
+                            enabled = !busy && !regeneratingPlan,
                         ) {
                             Icon(Icons.Filled.Mic, contentDescription = "Speech to text")
                         }
@@ -168,7 +183,7 @@ fun CoachChatDialog(
                                 vm.send(draft.trim())
                                 draft = ""
                             },
-                            enabled = !busy && draft.isNotBlank(),
+                            enabled = !busy && !regeneratingPlan && draft.isNotBlank(),
                         ) {
                             if (busy) {
                                 CircularProgressIndicator(Modifier.padding(8.dp), strokeWidth = 2.dp)

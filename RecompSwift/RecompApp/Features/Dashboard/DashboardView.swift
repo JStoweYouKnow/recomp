@@ -9,12 +9,36 @@ struct DashboardView: View {
     @State private var mealService = MealService()
     @State private var planService = PlanService()
     @State private var syncError: String?
+    @State private var regenerateError: String?
+    @State private var showRegenerateSheet = false
+    @State private var programWeeks = 1
+    @State private var workoutDaysPerWeek = 4
+
+    @Query(sort: \FitnessPlan.createdAt, order: .reverse)
+    private var plans: [FitnessPlan]
+
+    @Query private var profiles: [UserProfile]
+
+    private var hasPlan: Bool { !plans.isEmpty }
+    private var profileDaysPerWeek: Int {
+        let d = profiles.first?.workoutDaysPerWeek ?? 4
+        return min(7, max(2, d))
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
                     greetingSection
+
+                    if !hasPlan && !planService.isGenerating {
+                        noPlanSection
+                    }
+
+                    if planService.isGenerating {
+                        planGeneratingSection
+                    }
+
                     calorieBudgetSection
                     todaysPlanSection
                     MetabolicModelDashboardCard()
@@ -26,6 +50,40 @@ struct DashboardView: View {
                 .padding(.vertical)
             }
             .navigationTitle("Dashboard")
+            .onAppear {
+                workoutDaysPerWeek = profileDaysPerWeek
+            }
+            .onChange(of: profileDaysPerWeek) { _, newValue in
+                workoutDaysPerWeek = newValue
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if hasPlan {
+                        Button {
+                            showRegenerateSheet = true
+                        } label: {
+                            if planService.isGenerating {
+                                ProgressView()
+                            } else {
+                                Label("Regenerate Plan", systemImage: "arrow.clockwise")
+                            }
+                        }
+                        .disabled(planService.isGenerating)
+                    }
+                }
+            }
+            .sheet(isPresented: $showRegenerateSheet) {
+                RegeneratePlanSheet(
+                    programWeeks: $programWeeks,
+                    workoutDaysPerWeek: $workoutDaysPerWeek,
+                    isGenerating: planService.isGenerating,
+                    onGenerate: {
+                        showRegenerateSheet = false
+                        Task { await regeneratePlan() }
+                    }
+                )
+                .presentationDetents([.medium])
+            }
             .refreshable {
                 await auth.checkSession()
                 if let engine = syncEngine {
@@ -46,6 +104,69 @@ struct DashboardView: View {
             } message: {
                 Text(syncError ?? "")
             }
+            .alert("Couldn't regenerate plan", isPresented: Binding(
+                get: { regenerateError != nil },
+                set: { if !$0 { regenerateError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(regenerateError ?? "")
+            }
+        }
+    }
+
+    private var noPlanSection: some View {
+        VStack(spacing: 12) {
+            Text("No plan yet")
+                .font(.headline)
+            Text("Generate a personalized meal and workout plan from your profile.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            PlanGenerateOptionsView(
+                programWeeks: $programWeeks,
+                workoutDaysPerWeek: $workoutDaysPerWeek
+            )
+            Button("Generate my plan") {
+                Task { await regeneratePlan() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal)
+    }
+
+    private var planGeneratingSection: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+            Text("Creating your plan…")
+                .font(.headline)
+            Text(programWeeks > 1
+                 ? "Building your \(programWeeks)-week program. This may take a few minutes."
+                 : "This can take up to a minute.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal)
+    }
+
+    private func regeneratePlan() async {
+        regenerateError = nil
+        let options = RegeneratePlanOptions(
+            programWeeks: programWeeks > 1 ? programWeeks : nil,
+            workoutDaysPerWeek: workoutDaysPerWeek,
+            reason: nil
+        )
+        do {
+            _ = try await planService.regeneratePlan(context: context, options: options)
+            await syncEngine?.syncNow()
+        } catch {
+            regenerateError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -146,6 +267,100 @@ struct DashboardView: View {
         case 0..<12: return "Good morning, \(name)"
         case 12..<17: return "Good afternoon, \(name)"
         default: return "Good evening, \(name)"
+        }
+    }
+}
+
+private struct PlanGenerateOptionsView: View {
+    @Binding var programWeeks: Int
+    @Binding var workoutDaysPerWeek: Int
+
+    private let weekOptions = [1, 4, 8, 12]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Program length")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                HStack(spacing: 8) {
+                    ForEach(weekOptions, id: \.self) { weeks in
+                        Button {
+                            programWeeks = weeks
+                        } label: {
+                            Text(weeks == 1 ? "1 wk" : "\(weeks) wks")
+                                .font(.subheadline.weight(.medium))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    programWeeks == weeks ? Color.appAccent : Color.gray.opacity(0.12),
+                                    in: Capsule()
+                                )
+                                .foregroundStyle(programWeeks == weeks ? Color.white : Color.primary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if programWeeks > 1 {
+                    Text("Multi-week programs build in chunks and may take a few minutes.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Training days per week")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                Picker("Training days", selection: $workoutDaysPerWeek) {
+                    ForEach(2...7, id: \.self) { d in
+                        Text("\(d) days").tag(d)
+                    }
+                }
+                .pickerStyle(.menu)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct RegeneratePlanSheet: View {
+    @Binding var programWeeks: Int
+    @Binding var workoutDaysPerWeek: Int
+    let isGenerating: Bool
+    let onGenerate: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Build a fresh meal and workout plan. This replaces your current program.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                PlanGenerateOptionsView(
+                    programWeeks: $programWeeks,
+                    workoutDaysPerWeek: $workoutDaysPerWeek
+                )
+                Spacer()
+                Button {
+                    onGenerate()
+                } label: {
+                    Text(isGenerating ? "Generating…" : "Regenerate plan")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isGenerating)
+            }
+            .padding()
+            .navigationTitle("Regenerate program")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }

@@ -2,6 +2,7 @@ import Foundation
 
 public enum PlanAPI: APIEndpoint {
     case generate(profile: UserProfileDTO)
+    case generateWorkouts(GenerateWorkoutsRequest)
     case adjust(
         feedback: String,
         currentPlan: FitnessPlanDTO?,
@@ -14,6 +15,7 @@ public enum PlanAPI: APIEndpoint {
     public var path: String {
         switch self {
         case .generate: return "/api/plans/generate"
+        case .generateWorkouts: return "/api/plans/generate-workouts"
         case .adjust: return "/api/plans/adjust"
         case .adjustSchedule: return "/api/plans/adjust-schedule"
         }
@@ -25,6 +27,8 @@ public enum PlanAPI: APIEndpoint {
         switch self {
         case .generate(let profile):
             return AnyEncodable(profile)
+        case .generateWorkouts(let payload):
+            return AnyEncodable(payload)
         case .adjust(let feedback, let currentPlan, let mealsThisWeek, let avgDailyCalories, let avgDailyProtein):
             return AnyEncodable(
                 AdjustPayload(
@@ -39,6 +43,30 @@ public enum PlanAPI: APIEndpoint {
             return AnyEncodable(payload)
         }
     }
+}
+
+public struct GenerateWorkoutsProfile: Encodable, Sendable {
+    public let name: String
+    public let goal: String
+    public let fitnessLevel: String
+    public let workoutLocation: String?
+    public let workoutEquipment: [String]?
+    public let injuriesOrLimitations: [String]?
+    public let workoutDaysPerWeek: Int
+}
+
+public struct GenerateWorkoutsRequest: Encodable, Sendable {
+    public let fromWeek: Int
+    public let toWeek: Int
+    public let programWeeks: Int
+    public let workoutDaysPerWeek: Int
+    public let week1Template: [WorkoutDay]
+    public let reason: String?
+    public let profile: GenerateWorkoutsProfile
+}
+
+public struct GenerateWorkoutsResponse: Decodable, Sendable {
+    public let workoutDays: [WorkoutDay]
 }
 
 public struct AdjustMealDTO: Encodable, Sendable {

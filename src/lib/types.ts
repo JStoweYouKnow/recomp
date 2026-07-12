@@ -406,7 +406,7 @@ export interface GroupMemberProgress {
   updatedAt: string;
 }
 
-/** Saved recipe from a cooking app or import — used to improve meal suggestions (gourmet options within calorie budget) */
+/** Saved recipe from a cooking app, URL, or import — synced across devices */
 export interface CookingAppRecipe {
   id: string;
   name: string;
@@ -415,9 +415,15 @@ export interface CookingAppRecipe {
   protein: number;
   carbs: number;
   fat: number;
-  source?: string; // e.g. "whisk", "import"
+  recipeUrl?: string;
+  source?: string; // e.g. "whisk", "import", "recipekeeper", "edamam", "url"
+  mealTypes?: ("breakfast" | "lunch" | "dinner" | "snack")[];
+  servings?: number;
   addedAt: string;
 }
+
+/** Alias for synced recipe library (same shape as CookingAppRecipe) */
+export type SavedRecipe = CookingAppRecipe;
 
 // ── Hydration Tracking ──────────────────────────────────
 export interface HydrationEntry {

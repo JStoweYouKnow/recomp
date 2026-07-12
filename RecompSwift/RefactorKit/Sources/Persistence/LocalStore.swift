@@ -42,6 +42,8 @@ public enum LocalStore {
             RecompUserDefaultsKeys.remoteMetaXp,
             RecompUserDefaultsKeys.ricoHistoryJSON,
             RecompUserDefaultsKeys.measurementTargetsJSON,
+            RecompUserDefaultsKeys.savedRecipesJSON,
+            RecompUserDefaultsKeys.pendingRecipeSaveURL,
         ] {
             defaults.removeObject(forKey: key)
         }

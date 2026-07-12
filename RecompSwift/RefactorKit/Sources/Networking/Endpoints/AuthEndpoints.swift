@@ -96,6 +96,8 @@ public struct UserProfileDTO: Codable, Sendable {
     public var measurementTargets: MeasurementTargetsDTO?
     public var currentBodyFatPercent: Double?
     public var currentMuscleMassLbs: Double?
+    /** Set only for `/api/plans/generate` — not persisted on profile rows. */
+    public var programWeeks: Int?
 
     public init(
         id: String,
@@ -121,7 +123,8 @@ public struct UserProfileDTO: Codable, Sendable {
         learnedTDEE: Double? = nil,
         measurementTargets: MeasurementTargetsDTO? = nil,
         currentBodyFatPercent: Double? = nil,
-        currentMuscleMassLbs: Double? = nil
+        currentMuscleMassLbs: Double? = nil,
+        programWeeks: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -147,5 +150,6 @@ public struct UserProfileDTO: Codable, Sendable {
         self.measurementTargets = measurementTargets
         self.currentBodyFatPercent = currentBodyFatPercent
         self.currentMuscleMassLbs = currentMuscleMassLbs
+        self.programWeeks = programWeeks
     }
 }

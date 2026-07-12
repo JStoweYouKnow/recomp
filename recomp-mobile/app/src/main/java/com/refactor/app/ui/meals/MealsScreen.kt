@@ -34,7 +34,9 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +57,9 @@ import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.MealPrepGenerateResponseDto
 import com.refactor.app.api.dto.PantryItemDto
 import com.refactor.app.db.SyncCacheDao
+import com.refactor.app.ui.dashboard.MacroPillsRow
+import com.refactor.app.ui.dashboard.sumMacrosForDate
+import com.refactor.app.ui.dashboard.todaysMacroTargets
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
@@ -75,6 +80,7 @@ fun MealsScreen(
 ) {
     val vm: MealsViewModel = viewModel(factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository))
     val allMeals by vm.allMeals.collectAsStateWithLifecycle()
+    val syncSnapshot by vm.snapshot.collectAsStateWithLifecycle()
     val allPantry by vm.allPantry.collectAsStateWithLifecycle()
     val mealPrep by vm.mealPrepResult.collectAsStateWithLifecycle()
     val mealPrepErr by vm.mealPrepError.collectAsStateWithLifecycle()
@@ -87,8 +93,15 @@ fun MealsScreen(
     var showAdd by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<MealEntryDto?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        isRefreshing = true
+        vm.refreshSnapshot()
+        isRefreshing = false
+    }
 
     fun persistAll(updated: List<MealEntryDto>) {
         busy = true
@@ -157,6 +170,18 @@ fun MealsScreen(
                 }
             }
 
+            syncSnapshot?.let { snap ->
+                val consumed = sumMacrosForDate(snap.meals, dateStr)
+                val targets = todaysMacroTargets(snap, selectedDate)
+                MacroPillsRow(
+                    consumed = consumed,
+                    targets = targets,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
+
             error?.let {
                 Text(
                     it,
@@ -185,54 +210,65 @@ fun MealsScreen(
 
             when (sectionTab) {
                 0 -> {
-                    if (mealsForDay.isEmpty() && !busy) {
-                        Text(
-                            "No meals for this day. Tap + to log one (same flow as iOS).",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(20.dp),
-                        )
-                    } else {
-                        LazyColumn(
-                            contentPadding = PaddingValues(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            items(mealsForDay, key = { "${it.date}#${it.id}" }) { meal ->
-                                Card(
-                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-                                ) {
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                    PullToRefreshBox(
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            isRefreshing = true
+                            scope.launch {
+                                vm.refreshSnapshot()
+                                isRefreshing = false
+                            }
+                        },
+                    ) {
+                        if (mealsForDay.isEmpty() && !busy) {
+                            Text(
+                                "No meals for this day. Tap + to log one (same flow as iOS).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(20.dp),
+                            )
+                        } else {
+                            LazyColumn(
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                items(mealsForDay, key = { "${it.date}#${it.id}" }) { meal ->
+                                    Card(
+                                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
                                     ) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(
-                                                meal.mealType.replaceFirstChar { it.uppercaseChar() },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary,
-                                            )
-                                            Text(meal.name, style = MaterialTheme.typography.titleMedium)
-                                            val m = meal.macros
-                                            Text(
-                                                "${m.calories.roundToInt()} kcal · P ${m.protein.roundToInt()} · C ${m.carbs.roundToInt()} · F ${m.fat.roundToInt()}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { editorTarget = meal },
-                                            enabled = !busy,
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
-                                            Icon(Icons.Filled.Edit, contentDescription = "Edit meal")
-                                        }
-                                        IconButton(
-                                            onClick = { deleteTarget = meal },
-                                            enabled = !busy,
-                                        ) {
-                                            Icon(Icons.Filled.Delete, contentDescription = "Delete meal")
+                                            Column(Modifier.weight(1f)) {
+                                                Text(
+                                                    meal.mealType.replaceFirstChar { it.uppercaseChar() },
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
+                                                Text(meal.name, style = MaterialTheme.typography.titleMedium)
+                                                val m = meal.macros
+                                                Text(
+                                                    "${m.calories.roundToInt()} kcal · P ${m.protein.roundToInt()} · C ${m.carbs.roundToInt()} · F ${m.fat.roundToInt()}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { editorTarget = meal },
+                                                enabled = !busy,
+                                            ) {
+                                                Icon(Icons.Filled.Edit, contentDescription = "Edit meal")
+                                            }
+                                            IconButton(
+                                                onClick = { deleteTarget = meal },
+                                                enabled = !busy,
+                                            ) {
+                                                Icon(Icons.Filled.Delete, contentDescription = "Delete meal")
+                                            }
                                         }
                                     }
                                 }

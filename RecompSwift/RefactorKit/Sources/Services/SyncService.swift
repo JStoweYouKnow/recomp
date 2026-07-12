@@ -104,6 +104,27 @@ public actor SyncService: ModelActor {
             }
             let workoutPayload: [String: String]? = workoutMerged.isEmpty ? nil : workoutMerged
 
+            let savedRecipeDTOs: [SavedRecipeDTO]? = {
+                let records = SavedRecipesStorage.load()
+                guard !records.isEmpty else { return nil }
+                return records.map { r in
+                    SavedRecipeDTO(
+                        id: r.id,
+                        name: r.name,
+                        description: r.description,
+                        calories: r.calories,
+                        protein: r.protein,
+                        carbs: r.carbs,
+                        fat: r.fat,
+                        recipeUrl: r.recipeUrl,
+                        source: r.source,
+                        mealTypes: r.mealTypes,
+                        servings: r.servings,
+                        addedAt: r.addedAt
+                    )
+                }
+            }()
+
             let payload = SyncPayload(
                 profile: profileDTO,
                 meals: mealDTOs.isEmpty ? nil : mealDTOs,
@@ -116,6 +137,7 @@ public actor SyncService: ModelActor {
                 bloodWork: bloodWorkDTOs.isEmpty ? nil : bloodWorkDTOs,
                 bodyScans: bodyScanDTOs.isEmpty ? nil : bodyScanDTOs,
                 pantry: pantryDTOs.isEmpty ? nil : pantryDTOs,
+                savedRecipes: savedRecipeDTOs,
                 activityLog: activityLogDTOs.isEmpty ? nil : activityLogDTOs,
                 workoutProgress: workoutPayload,
                 wearableConnections: wearableConnDTOs.isEmpty ? nil : wearableConnDTOs,
@@ -251,6 +273,26 @@ public actor SyncService: ModelActor {
                     modelContext.insert(item)
                 }
             }
+        }
+
+        if let savedRecipeDTOs = response.savedRecipes {
+            let records = savedRecipeDTOs.map { dto in
+                SavedRecipeRecord(
+                    id: dto.id,
+                    name: dto.name,
+                    description: dto.description,
+                    calories: dto.calories,
+                    protein: dto.protein,
+                    carbs: dto.carbs,
+                    fat: dto.fat,
+                    recipeUrl: dto.recipeUrl,
+                    source: dto.source,
+                    mealTypes: dto.mealTypes,
+                    servings: dto.servings,
+                    addedAt: dto.addedAt
+                )
+            }
+            SavedRecipesStorage.save(records)
         }
 
         if let wearableConnectionDTOs = response.wearableConnections {

@@ -2,53 +2,37 @@ import SwiftUI
 import SwiftData
 import RefactorKit
 
-/// Mirrors iOS `DashboardView` calorie budget: today’s meals from the shared SwiftData store
-/// and targets from the current `FitnessPlan` (same defaults when no plan).
+/// Mirrors iOS `DashboardView` calorie budget. Uses a phone-pushed snapshot when the
+/// local App Group store is behind, otherwise SwiftData (same targets/consumed logic as iPhone).
 struct WatchDashboardView: View {
+    @Environment(\.modelContext) private var context
+
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
     private var allMeals: [MealEntry]
 
-    @Query(sort: \FitnessPlan.createdAt, order: .reverse)
-    private var allPlans: [FitnessPlan]
-
-    @Query
-    private var activityLogEntries: [ActivityLogEntry]
-
-    private var todayKey: String { DateHelpers.todayString() }
-
-    private var consumed: Macros {
-        allMeals
-            .filter { $0.date == todayKey }
-            .reduce(Macros.zero) { $0.adding($1.macros) }
-    }
-
-    private var targets: Macros {
-        allPlans.first?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-    }
+    @State private var refreshToken = 0
 
     private var streakCount: Int {
         DateHelpers.streakLength(dates: Array(Set(allMeals.map(\.date))))
     }
 
     var body: some View {
-        let c = consumed
-        let t = targets
-        let activityAdj = activityLogEntries
-            .filter { $0.date == todayKey }
-            .reduce(0) { $0 + $1.calorieAdjustment }
-        let adjustedCalorieTarget = t.calories + activityAdj
+        let metrics = WatchDashboardMetricsResolver.resolve(context: context)
+        let consumed = metrics.consumed
+        let targets = metrics.targets
+        let adjustedCalorieTarget = metrics.adjustedCalorieTarget
 
         ScrollView {
             VStack(spacing: 12) {
                 Text("Refactor")
                     .font(.headline)
 
-                calorieRing(consumed: c.calories, target: adjustedCalorieTarget)
+                calorieRing(consumed: consumed.calories, target: adjustedCalorieTarget)
 
                 HStack(spacing: 10) {
-                    miniRing(current: c.protein, target: t.protein, color: .red, label: "P")
-                    miniRing(current: c.carbs, target: t.carbs, color: .green, label: "C")
-                    miniRing(current: c.fat, target: t.fat, color: .orange, label: "F")
+                    miniRing(current: consumed.protein, target: targets.protein, color: .red, label: "P")
+                    miniRing(current: consumed.carbs, target: targets.carbs, color: .green, label: "C")
+                    miniRing(current: consumed.fat, target: targets.fat, color: .orange, label: "F")
                 }
 
                 if streakCount > 0 {
@@ -63,6 +47,13 @@ struct WatchDashboardView: View {
                 }
             }
             .padding()
+        }
+        .id(refreshToken)
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchDashboardSnapshotUpdated)) { _ in
+            refreshToken &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchShouldRefresh)) { _ in
+            refreshToken &+= 1
         }
     }
 

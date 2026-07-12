@@ -724,7 +724,7 @@ private val knownMilestones: List<Pair<String, String>> = listOf(
     "scale_entry" to "Weigh-In",
     "workout_done" to "Workout Logged",
     "plan_generated" to "Plan Created",
-    "coach_chat" to "Chatted With Coach",
+    "coach_chat" to "Chatted With Ref",
     "biofeedback_logged" to "Biofeedback Logged",
     "30_day_streak" to "30-Day Streak",
     "100_workouts" to "100 Workouts",

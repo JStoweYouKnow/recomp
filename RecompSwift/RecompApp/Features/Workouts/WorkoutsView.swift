@@ -12,6 +12,7 @@ struct WorkoutsView: View {
     @State private var recoveryError: String?
     @State private var editRoute: WorkoutDayEditRoute?
     @State private var showImportSheet = false
+    @State private var restTimer: RestTimerState?
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var allPlans: [FitnessPlan]
@@ -25,14 +26,33 @@ struct WorkoutsView: View {
         biofeedbackEntries.first { $0.date == DateHelpers.todayString() }
     }
 
+    private var isSelectedDateFuture: Bool {
+        Calendar.current.startOfDay(for: selectedDate) > Calendar.current.startOfDay(for: .now)
+    }
+
+    private var isSelectedDatePast: Bool {
+        Calendar.current.startOfDay(for: selectedDate) < Calendar.current.startOfDay(for: .now)
+    }
+
+    private var workoutProgressDotDates: Set<String> {
+        workoutService.calendarDatesWithProgress()
+    }
+
+    private func selectedWorkoutItem(plan: FitnessPlan) -> WorkoutPlanDisplayItem? {
+        guard let idx = WorkoutProgramSchedule.planIndex(for: plan, date: selectedDate) else { return nil }
+        return WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
+            .first { $0.planIndex == idx }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                CalendarStripView(selectedDate: $selectedDate)
+                CalendarStripView(selectedDate: $selectedDate, dotDates: workoutProgressDotDates)
                     .padding(.horizontal)
                     .padding(.top, 8)
                     .padding(.bottom, 4)
 
+                ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(spacing: 16) {
                         recoverySection
@@ -58,13 +78,22 @@ struct WorkoutsView: View {
                                 }
                             )
 
-                            let items = WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
-                            let todayKey = DateHelpers.todayString()
-                            ForEach(items) { item in
+                            if let item = selectedWorkoutItem(plan: plan) {
                                 let progressKey = WorkoutProgramSchedule.progressDayKey(
                                     for: item.day,
                                     weekContaining: selectedDate
                                 )
+                                let todayKey = DateHelpers.todayString()
+                                let allDone = workoutService.isWorkoutDayFullyComplete(
+                                    item.day,
+                                    dayKey: progressKey,
+                                    planIndex: item.planIndex,
+                                    planId: plan.id
+                                )
+                                let isMissed = isSelectedDatePast
+                                    && item.day.exerciseSlotCount > 0
+                                    && !allDone
+
                                 WorkoutDayCard(
                                     planId: plan.id,
                                     day: item.day,
@@ -72,11 +101,27 @@ struct WorkoutsView: View {
                                     progressDayKey: progressKey,
                                     planIndex: item.planIndex,
                                     isToday: progressKey == todayKey,
+                                    isMissed: isMissed,
+                                    setsDisabled: isSelectedDateFuture,
                                     recoveryModifier: recoveryModifier(for: item.day),
                                     onEdit: {
                                         editRoute = WorkoutDayEditRoute(planIndex: item.planIndex)
+                                    },
+                                    onStartRestTimer: { exerciseName, seconds in
+                                        withAnimation(.spring(duration: 0.3)) {
+                                            restTimer = RestTimerState(
+                                                exerciseName: exerciseName,
+                                                endDate: .now.addingTimeInterval(TimeInterval(seconds)),
+                                                totalSeconds: seconds
+                                            )
+                                        }
+                                    },
+                                    onCancelRestTimer: {
+                                        withAnimation { restTimer = nil }
                                     }
                                 )
+                            } else {
+                                RestDayWorkoutState(selectedDate: selectedDate)
                             }
                         } else {
                             EmptyStateView(
@@ -90,6 +135,23 @@ struct WorkoutsView: View {
                     .padding(.vertical)
                 }
                 .scrollDismissesKeyboard(.interactively)
+
+                    if let restTimer {
+                        RestTimerBanner(
+                            state: restTimer,
+                            onSkip: { withAnimation { self.restTimer = nil } },
+                            onAdd15: {
+                                withAnimation {
+                                    self.restTimer?.extend(by: 15)
+                                }
+                            },
+                            onFinished: { withAnimation { self.restTimer = nil } }
+                        )
+                        .padding(.horizontal)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
             }
             .navigationTitle("Workouts")
             .onAppear {
@@ -216,6 +278,19 @@ private struct WorkoutDayEditRoute: Identifiable, Hashable {
     var id: Int { planIndex }
 }
 
+private struct RestDayWorkoutState: View {
+    let selectedDate: Date
+
+    var body: some View {
+        EmptyStateView(
+            icon: "figure.walk",
+            title: "Rest Day",
+            subtitle: "No workout scheduled for \(DateHelpers.dayOfWeekShort(selectedDate))."
+        )
+        .padding(.top, 24)
+    }
+}
+
 // MARK: - Recovery Card
 
 struct RecoveryCard: View {
@@ -328,8 +403,12 @@ struct WorkoutDayCard: View {
     let progressDayKey: String
     let planIndex: Int
     var isToday: Bool = false
+    var isMissed: Bool = false
+    var setsDisabled: Bool = false
     var recoveryModifier: Double? = nil
     var onEdit: (() -> Void)? = nil
+    var onStartRestTimer: ((String, Int) -> Void)? = nil
+    var onCancelRestTimer: (() -> Void)? = nil
 
     @State private var isExpanded: Bool
     @State private var gifData: [String: Data] = [:]
@@ -347,8 +426,12 @@ struct WorkoutDayCard: View {
         progressDayKey: String,
         planIndex: Int,
         isToday: Bool = false,
+        isMissed: Bool = false,
+        setsDisabled: Bool = false,
         recoveryModifier: Double? = nil,
-        onEdit: (() -> Void)? = nil
+        onEdit: (() -> Void)? = nil,
+        onStartRestTimer: ((String, Int) -> Void)? = nil,
+        onCancelRestTimer: (() -> Void)? = nil
     ) {
         self.planId = planId
         self.day = day
@@ -356,9 +439,17 @@ struct WorkoutDayCard: View {
         self.progressDayKey = progressDayKey
         self.planIndex = planIndex
         self.isToday = isToday
+        self.isMissed = isMissed
+        self.setsDisabled = setsDisabled
         self.recoveryModifier = recoveryModifier
         self.onEdit = onEdit
-        _isExpanded = State(initialValue: isToday)
+        self.onStartRestTimer = onStartRestTimer
+        self.onCancelRestTimer = onCancelRestTimer
+        _isExpanded = State(initialValue: isToday || isMissed)
+    }
+
+    private var allExercisesComplete: Bool {
+        totalExercises > 0 && completedExercises == totalExercises
     }
 
     /// Matches web planner header: completed / total **exercises** (rows), not sum of sets.
@@ -382,9 +473,19 @@ struct WorkoutDayCard: View {
                                 .frame(width: 8, height: 8)
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(day.day)
-                                .font(.headline)
-                                .foregroundStyle(isToday ? Color.appAccent : Color.primary)
+                            HStack(spacing: 6) {
+                                Text(day.day)
+                                    .font(.headline)
+                                    .foregroundStyle(isToday ? Color.appAccent : Color.primary)
+                                if isMissed {
+                                    Text("Missed")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(Color.appWarm)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.appWarm.opacity(0.15), in: Capsule())
+                                }
+                            }
                             Text(day.focus)
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -438,6 +539,36 @@ struct WorkoutDayCard: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 0) {
+                    if totalExercises > 0 {
+                        HStack(spacing: 8) {
+                            Button {
+                                withAnimation {
+                                    workoutService.setDayCompletion(
+                                        day: day,
+                                        dayKey: progressDayKey,
+                                        planIndex: planIndex,
+                                        planId: planId,
+                                        complete: !allExercisesComplete
+                                    )
+                                }
+                            } label: {
+                                Text(allExercisesComplete ? "Clear completion" : "Mark all complete")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(setsDisabled)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+
+                            if setsDisabled {
+                                Text("Future workouts can't be marked complete")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+
                     if let warmups = day.warmups, !warmups.isEmpty {
                         exerciseSection("Warm-up", exercises: warmups, color: .appWarm, sectionKey: "warmup", baseGlobalSlot: 0)
                     }
@@ -480,6 +611,12 @@ struct WorkoutDayCard: View {
             }
         }
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            if isMissed {
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.appWarm.opacity(0.45), lineWidth: 1.5)
+            }
+        }
         .padding(.horizontal)
     }
 
@@ -517,10 +654,13 @@ struct WorkoutDayCard: View {
                     planIndex: planIndex,
                     globalSlot: globalSlot,
                     webContext: webCtx,
+                    setsDisabled: setsDisabled,
                     gifData: gifData["\(globalSlot)-\(exercise.name)"],
                     isLoadingGif: loadingGifs.contains("\(globalSlot)-\(exercise.name)"),
                     gifError: gifErrors["\(globalSlot)-\(exercise.name)"],
-                    onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) }
+                    onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) },
+                    onStartRestTimer: onStartRestTimer,
+                    onCancelRestTimer: onCancelRestTimer
                 )
             }
         }
@@ -659,10 +799,13 @@ struct ExerciseRow: View {
     let planIndex: Int
     let globalSlot: Int
     let webContext: WorkoutSetProgressContext
+    var setsDisabled: Bool = false
     let gifData: Data?
     let isLoadingGif: Bool
     let gifError: String?
     let onLoadGif: () async -> Void
+    var onStartRestTimer: ((String, Int) -> Void)? = nil
+    var onCancelRestTimer: (() -> Void)? = nil
 
     @State private var showGif = false
 
@@ -677,7 +820,14 @@ struct ExerciseRow: View {
                     Text("\(exercise.sets) × \(exercise.reps)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    if let notes = exercise.notes, !notes.isEmpty {
+                    if let restLabel = exercise.restDisplayLabel {
+                        Text("\(restLabel) rest")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.appSlate)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.appSlate.opacity(0.12), in: Capsule())
+                    } else if let notes = exercise.notes, !notes.isEmpty {
                         Text(notes)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -725,6 +875,7 @@ struct ExerciseRow: View {
                             exercise: exercise
                         )
                         Button {
+                            guard !setsDisabled else { return }
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                                 if done {
                                     workoutService.unmarkSetComplete(
@@ -736,6 +887,7 @@ struct ExerciseRow: View {
                                         webContext: webContext,
                                         exerciseForWeb: exercise
                                     )
+                                    onCancelRestTimer?()
                                 } else {
                                     workoutService.markSetComplete(
                                         exerciseName: exercise.name,
@@ -746,6 +898,9 @@ struct ExerciseRow: View {
                                         webContext: webContext,
                                         exerciseForWeb: exercise
                                     )
+                                    if setIdx < numSets - 1 {
+                                        onStartRestTimer?(exercise.name, exercise.restSeconds)
+                                    }
                                 }
                             }
                         } label: {
@@ -767,12 +922,15 @@ struct ExerciseRow: View {
                             .scaleEffect(done ? 1.05 : 1.0)
                         }
                         .buttonStyle(.plain)
+                        .disabled(setsDisabled)
+                        .opacity(setsDisabled ? 0.45 : 1)
                         .accessibilityLabel("Set \(setIdx + 1)")
                         .accessibilityValue(done ? "Completed" : "Not completed")
                     }
                 }
             }
             .frame(minHeight: 36)
+            .allowsHitTesting(!setsDisabled)
 
             // GIF display — WKWebView so animated GIFs play correctly
             if showGif, let data = gifData {
@@ -795,6 +953,86 @@ struct ExerciseRow: View {
             }
         }
         Divider().padding(.leading)
+    }
+}
+
+// MARK: - Rest Timer
+
+struct RestTimerState: Equatable {
+    var exerciseName: String
+    var endDate: Date
+    var totalSeconds: Int
+
+    mutating func extend(by seconds: Int) {
+        endDate = endDate.addingTimeInterval(TimeInterval(seconds))
+        totalSeconds += seconds
+    }
+}
+
+struct RestTimerBanner: View {
+    let state: RestTimerState
+    let onSkip: () -> Void
+    let onAdd15: () -> Void
+    let onFinished: () -> Void
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let remaining = max(0, Int(ceil(state.endDate.timeIntervalSince(context.date))))
+            if remaining > 0 {
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Rest")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(state.exerciseName)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Text(formatCountdown(remaining))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.appAccent)
+                            .contentTransition(.numericText())
+                    }
+
+                    GeometryReader { geo in
+                        let progress = Double(remaining) / Double(max(1, state.totalSeconds))
+                        Capsule()
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.appAccent)
+                                    .frame(width: geo.size.width * progress)
+                            }
+                    }
+                    .frame(height: 6)
+
+                    HStack(spacing: 10) {
+                        Button("Skip", action: onSkip)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Button("+15s", action: onAdd15)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Spacer()
+                    }
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+            } else {
+                Color.clear
+                    .onAppear { onFinished() }
+            }
+        }
+    }
+
+    private func formatCountdown(_ seconds: Int) -> String {
+        let m = seconds / 60
+        let s = seconds % 60
+        return m > 0 ? String(format: "%d:%02d", m, s) : "\(s)s"
     }
 }
 

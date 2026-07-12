@@ -8,6 +8,7 @@ import {
   getRequestIp,
 } from "@/lib/server-rate-limit";
 import { withRequestLogging } from "@/lib/logger";
+import { detectRecipeKeeperFormat, parseRecipeKeeperExport } from "@/lib/recipe-keeper";
 
 /**
  * Cooking App Data Import
@@ -101,6 +102,23 @@ export const POST = withRequestLogging("/api/cooking/import", async function POS
         : file.name.endsWith(".json")
           ? "JSON"
           : "TEXT";
+
+      if (detectRecipeKeeperFormat(rawData, file.name)) {
+        const recipes = parseRecipeKeeperExport(rawData);
+        if (recipes?.length) {
+          const res = NextResponse.json({
+            imported: recipes.length,
+            meals: [],
+            recipes,
+            format: "recipekeeper",
+          });
+          const headers = getRateLimitHeaderValues(rl);
+          res.headers.set("X-RateLimit-Limit", headers.limit);
+          res.headers.set("X-RateLimit-Remaining", headers.remaining);
+          res.headers.set("X-RateLimit-Reset", headers.reset);
+          return res;
+        }
+      }
     } else {
       // Direct JSON body
       const body = await req.json();
@@ -112,6 +130,23 @@ export const POST = withRequestLogging("/api/cooking/import", async function POS
       }
       rawData = body.data;
       sourceFormat = body.format ?? "AUTO";
+
+      if (detectRecipeKeeperFormat(rawData)) {
+        const recipes = parseRecipeKeeperExport(rawData);
+        if (recipes?.length) {
+          const res = NextResponse.json({
+            imported: recipes.length,
+            meals: [],
+            recipes,
+            format: "recipekeeper",
+          });
+          const headers = getRateLimitHeaderValues(rl);
+          res.headers.set("X-RateLimit-Limit", headers.limit);
+          res.headers.set("X-RateLimit-Remaining", headers.remaining);
+          res.headers.set("X-RateLimit-Reset", headers.reset);
+          return res;
+        }
+      }
     }
 
     if (!rawData.trim()) {

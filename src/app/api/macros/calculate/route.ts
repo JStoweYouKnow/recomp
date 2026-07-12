@@ -9,6 +9,8 @@ export async function POST(req: NextRequest) {
     const {
       weightKg,
       heightCm,
+      weight,
+      height,
       age,
       gender,
       dailyActivityLevel,
@@ -31,8 +33,9 @@ export async function POST(req: NextRequest) {
         : undefined;
 
     const macros = calculateMacros({
-      weightKg: Number(weightKg) || 70,
-      heightCm: Number(heightCm) || 170,
+      // Mobile clients send the same `weight`/`height` profile fields they pass to /api/plans/generate
+      weightKg: Number(weightKg ?? weight) || 70,
+      heightCm: Number(heightCm ?? height) || 170,
       age: Number(age) || 30,
       gender:
         gender === "female" ? "female" : gender === "male" ? "male" : gender === "other" ? "other" : "male",

@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import RefactorKit
 import WatchConnectivity
+import WidgetKit
 import OSLog
 
 @main
@@ -60,8 +61,11 @@ struct WatchTabView: View {
             guard let engine = syncEngine else { return }
             Task { await engine.scheduleFetchAndApply() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .recompWatchDidReceiveUserId)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchShouldRefresh)) { _ in
             Task { await refreshFromServerIfSignedIn() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompWatchDashboardSnapshotUpdated)) { _ in
+            WidgetCenter.shared.reloadAllTimelines()
         }
     }
 

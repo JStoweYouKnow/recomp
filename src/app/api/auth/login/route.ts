@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         logInfo("USER_LOGGED_IN", { route: "auth/login", userId: account.userId });
 
         const profile = await dbGetProfile(account.userId);
-        if (profile && hasProAccess(account.userId)) profile.proAccess = true;
+        if (profile && await hasProAccess(account.userId)) profile.proAccess = true;
         const cookieHeader = buildSetCookieHeader(account.userId);
 
         let apiToken: string | undefined;

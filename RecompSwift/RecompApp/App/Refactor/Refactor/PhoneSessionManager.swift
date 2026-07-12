@@ -19,13 +19,37 @@ final class PhoneSessionManager: NSObject, WCSessionDelegate {
 
     /// Call after every successful sign-in or session check.
     func pushUserId() {
+        pushSessionContext(snapshot: WatchDashboardSnapshotStore.load())
+    }
+
+    /// Call after iPhone sync completes so the watch pulls fresh meals/macros from the server.
+    func pushDataRefresh(snapshot: WatchDashboardSnapshot? = WatchDashboardSnapshotStore.load()) {
+        pushSessionContext(snapshot: snapshot)
+    }
+
+    private func pushSessionContext(snapshot: WatchDashboardSnapshot?) {
         guard WCSession.isSupported(),
               WCSession.default.activationState == .activated,
               WCSession.default.isWatchAppInstalled,
               let userId = try? KeychainService.loadUserId(),
               !userId.isEmpty
         else { return }
-        try? WCSession.default.updateApplicationContext(["userId": userId])
+
+        let token = KeychainService.loadApiToken()
+        let payload: [String: Any]
+        if let snapshot {
+            payload = snapshot.wcsContextPayload(userId: userId, apiToken: token)
+        } else {
+            var base: [String: Any] = [
+                "userId": userId,
+                "syncAt": Date().timeIntervalSince1970,
+            ]
+            if let token, !token.isEmpty {
+                base["apiToken"] = token
+            }
+            payload = base
+        }
+        try? WCSession.default.updateApplicationContext(payload)
     }
 
     /// Call on logout so the paired watch clears its cached session instead of

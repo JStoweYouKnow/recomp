@@ -232,7 +232,7 @@ private fun MainShell(
         Scaffold(
             floatingActionButton = {
                 FloatingActionButton(onClick = { coachOpen = true }) {
-                    Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = "Coach chat")
+                    Icon(Icons.AutoMirrored.Rounded.Chat, contentDescription = "Ref chat")
                 }
             },
             bottomBar = {

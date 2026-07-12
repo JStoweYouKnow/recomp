@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   activityLog: "recomp_activity_log",
   shoppingList: "recomp_shopping_list",
   cookingAppRecipes: "recomp_cooking_app_recipes",
+  savedRecipes: "recomp_saved_recipes",
   recentMealTemplates: "recomp_recent_meal_templates",
   recentExerciseNames: "recomp_recent_exercise_names",
   nutritionCache: "recomp_nutrition_cache",
@@ -260,17 +261,34 @@ export function saveCookingAppConnections(connections: CookingAppConnection[]): 
   localStorage.setItem(STORAGE_KEYS.cookingApps, JSON.stringify(connections));
 }
 
-/* ── Cooking app recipe library (for gourmet meal suggestions) ───────────── */
+/* ── Saved recipe library (synced across devices) ───────────── */
+
+export function getSavedRecipes(): CookingAppRecipe[] {
+  if (typeof window === "undefined") return [];
+  const synced = safeParse<CookingAppRecipe[]>(localStorage.getItem(STORAGE_KEYS.savedRecipes), []);
+  if (Array.isArray(synced) && synced.length > 0) return synced;
+  const legacy = safeParse<CookingAppRecipe[]>(localStorage.getItem(STORAGE_KEYS.cookingAppRecipes), []);
+  if (Array.isArray(legacy) && legacy.length > 0) {
+    localStorage.setItem(STORAGE_KEYS.savedRecipes, JSON.stringify(legacy));
+    return legacy;
+  }
+  return [];
+}
+
+export function saveSavedRecipes(recipes: CookingAppRecipe[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.savedRecipes, JSON.stringify(recipes));
+  localStorage.setItem(STORAGE_KEYS.cookingAppRecipes, JSON.stringify(recipes));
+}
+
+/* ── Cooking app recipe library (legacy alias) ───────────── */
 
 export function getCookingAppRecipes(): CookingAppRecipe[] {
-  if (typeof window === "undefined") return [];
-  const parsed = safeParse<CookingAppRecipe[]>(localStorage.getItem(STORAGE_KEYS.cookingAppRecipes), []);
-  return Array.isArray(parsed) ? parsed : [];
+  return getSavedRecipes();
 }
 
 export function saveCookingAppRecipes(recipes: CookingAppRecipe[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEYS.cookingAppRecipes, JSON.stringify(recipes));
+  saveSavedRecipes(recipes);
 }
 
 /* ── Recent meal templates (quick-fill when logging) ───────── */
@@ -588,6 +606,7 @@ function buildSyncPayload() {
   const fastingSessions = getFastingSessions();
   const biofeedback = getBiofeedback();
   const pantry = getPantry();
+  const savedRecipes = getSavedRecipes();
   const supplements = getSupplements();
   const bloodWork = getBloodWork();
   const activityLog = getActivityLog();
@@ -612,7 +631,7 @@ function buildSyncPayload() {
     profile: profile ?? undefined,
     plan, meals, milestones, xp, hasAdjusted, ricoHistory,
     wearableConnections, wearableData,
-    hydration, fastingSessions, biofeedback, pantry,
+    hydration, fastingSessions, biofeedback, pantry, savedRecipes,
     bodyScans: bodyScansForSync, supplements, bloodWork,
     activityLog, workoutProgress, recentExerciseNames,
     metabolicModel: metabolicModel ?? undefined,

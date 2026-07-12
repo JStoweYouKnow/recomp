@@ -7,6 +7,7 @@ import {
   QueryCommand,
   DeleteCommand,
   BatchWriteCommand,
+  ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type {
   UserProfile,
@@ -27,6 +28,7 @@ import type {
   BiofeedbackEntry,
   MetabolicModel,
   PantryItem,
+  CookingAppRecipe,
   MealPrepPlan,
   CoachSchedule,
   Challenge,
@@ -1193,6 +1195,24 @@ export async function dbSavePantry(userId: string, items: PantryItem[]): Promise
   );
 }
 
+export async function dbGetSavedRecipes(userId: string): Promise<CookingAppRecipe[]> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "SAVED_RECIPES" } })
+  );
+  return Item ? (Item.data as CookingAppRecipe[]) : [];
+}
+
+export async function dbSaveSavedRecipes(userId: string, recipes: CookingAppRecipe[]): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "SAVED_RECIPES", data: recipes, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
 // ── Meal Prep ───────────────────────────────────────────
 export async function dbGetMealPrepPlan(userId: string, weekStart: string): Promise<MealPrepPlan | null> {
   const doc = getDocClient();
@@ -1718,4 +1738,79 @@ export async function dbGetPopularExercises(limit = 50): Promise<CommunityExerci
   } catch {
     return [];
   }
+}
+
+// ── Play Store subscriptions ─────────────────────────────────────────────────
+
+export type PlaySubscriptionRecord = {
+  purchaseToken: string;
+  subscriptionId: string;
+  packageName: string;
+  expiryTime: string;       // ISO timestamp from lineItems[0].expiryTime
+  subscriptionState: string;
+  autoRenewing: boolean;
+  verifiedAt: string;
+};
+
+export async function dbSavePlaySubscription(userId: string, record: PlaySubscriptionRecord): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "PLAY_SUB", data: record, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+export async function dbGetPlaySubscription(userId: string): Promise<PlaySubscriptionRecord | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "PLAY_SUB" } })
+  );
+  return Item ? (Item.data as PlaySubscriptionRecord) : null;
+}
+
+// ── Admin Scans (cron use only — full table scan) ────────
+
+export async function dbScanUsersWithCoachSchedules(): Promise<Array<{ userId: string; schedule: CoachSchedule }>> {
+  const doc = getDocClient();
+  const results: Array<{ userId: string; schedule: CoachSchedule }> = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const { Items, LastEvaluatedKey } = await doc.send(
+      new ScanCommand({
+        TableName: TABLE,
+        FilterExpression: "SK = :sk",
+        ExpressionAttributeValues: { ":sk": "COACH_SCHEDULE" },
+        ExclusiveStartKey,
+      })
+    );
+    for (const item of Items ?? []) {
+      const userId = (item.PK as string).replace("USER#", "");
+      results.push({ userId, schedule: item.data as CoachSchedule });
+    }
+    ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ExclusiveStartKey);
+  return results;
+}
+
+export async function dbScanAllChallenges(): Promise<Challenge[]> {
+  const doc = getDocClient();
+  const results: Challenge[] = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const { Items, LastEvaluatedKey } = await doc.send(
+      new ScanCommand({
+        TableName: TABLE,
+        FilterExpression: "SK = :sk AND begins_with(PK, :pk)",
+        ExpressionAttributeValues: { ":sk": "META", ":pk": "CHALLENGE#" },
+        ExclusiveStartKey,
+      })
+    );
+    for (const item of Items ?? []) {
+      results.push(item.data as Challenge);
+    }
+    ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ExclusiveStartKey);
+  return results;
 }

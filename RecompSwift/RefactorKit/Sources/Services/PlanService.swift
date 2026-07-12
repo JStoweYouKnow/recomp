@@ -2,6 +2,20 @@ import Foundation
 import SwiftData
 import Observation
 
+public struct RegeneratePlanOptions: Sendable {
+    public var programWeeks: Int?
+    public var workoutDaysPerWeek: Int?
+    public var reason: String?
+
+    public init(programWeeks: Int? = nil, workoutDaysPerWeek: Int? = nil, reason: String? = nil) {
+        self.programWeeks = programWeeks
+        self.workoutDaysPerWeek = workoutDaysPerWeek
+        self.reason = reason
+    }
+
+    public static let `default` = RegeneratePlanOptions()
+}
+
 @MainActor
 @Observable
 public final class PlanService {
@@ -17,13 +31,97 @@ public final class PlanService {
         self.api = api
     }
 
-    public func generatePlan(profile: UserProfileDTO, context: ModelContext) async throws -> FitnessPlan {
+    public func generatePlan(
+        profile: UserProfileDTO,
+        context: ModelContext,
+        options: RegeneratePlanOptions = .default
+    ) async throws -> FitnessPlan {
         isGenerating = true
         defer { isGenerating = false }
 
+        let totalWeeks = Self.clampProgramWeeks(options.programWeeks ?? 1)
+        let daysPerWeek = Self.clampWorkoutDaysPerWeek(
+            options.workoutDaysPerWeek ?? profile.workoutDaysPerWeek ?? 4
+        )
+
+        var requestProfile = enrichedProfileForGeneration(profile, context: context)
+        requestProfile.workoutDaysPerWeek = daysPerWeek
+        requestProfile.programWeeks = totalWeeks > 1 ? totalWeeks : nil
+
+        let dto: FitnessPlanDTO = try await api.request(PlanAPI.generate(profile: requestProfile))
+        var plan = mapPlan(dto)
+        plan.synced = false
+        context.insert(plan)
+        try? context.save()
+
+        if totalWeeks <= 1 { return plan }
+
+        let template = Self.extractWeek1TrainingTemplate(plan.workoutPlan.weeklyPlan)
+        guard !template.isEmpty else {
+            throw PlanServiceError.missingTrainingDays
+        }
+
+        for range in Self.chunkWeekRanges(totalWeeks: totalWeeks) {
+            let profileSlice = GenerateWorkoutsProfile(
+                name: profile.name,
+                goal: profile.goal,
+                fitnessLevel: profile.fitnessLevel,
+                workoutLocation: profile.workoutLocation,
+                workoutEquipment: profile.workoutEquipment,
+                injuriesOrLimitations: profile.injuriesOrLimitations,
+                workoutDaysPerWeek: daysPerWeek
+            )
+            let chunk: GenerateWorkoutsResponse = try await api.request(
+                PlanAPI.generateWorkouts(
+                    GenerateWorkoutsRequest(
+                        fromWeek: range.from,
+                        toWeek: range.to,
+                        programWeeks: totalWeeks,
+                        workoutDaysPerWeek: daysPerWeek,
+                        week1Template: template,
+                        reason: options.reason,
+                        profile: profileSlice
+                    )
+                )
+            )
+            plan.workoutPlan.weeklyPlan.append(contentsOf: chunk.workoutDays)
+            plan.synced = false
+            try? context.save()
+        }
+
+        return plan
+    }
+
+    public func generatePlan(profile: UserProfileDTO, context: ModelContext) async throws -> FitnessPlan {
+        try await generatePlan(profile: profile, context: context, options: .default)
+    }
+
+    /// Replaces any existing plan with a freshly AI-generated diet + workout plan (web dashboard parity).
+    public func regeneratePlan(
+        context: ModelContext,
+        options: RegeneratePlanOptions = .default
+    ) async throws -> FitnessPlan {
+        guard let profile = currentProfile(context: context) else {
+            throw PlanServiceError.missingProfile
+        }
+        let iso = ISO8601DateFormatter()
+        var profileDTO = profile.toDTO(createdAtISO: iso.string(from: profile.createdAt))
+        if let days = options.workoutDaysPerWeek {
+            profileDTO.workoutDaysPerWeek = days
+        }
+
+        let existing = (try? context.fetch(FetchDescriptor<FitnessPlan>())) ?? []
+        for plan in existing {
+            context.delete(plan)
+        }
+        try? context.save()
+
+        return try await generatePlan(profile: profileDTO, context: context, options: options)
+    }
+
+    private func enrichedProfileForGeneration(_ profile: UserProfileDTO, context: ModelContext) -> UserProfileDTO {
         var requestProfile = profile
 
-        // Match web behavior: only pass learned TDEE when confidence is high enough.
         if let model = highestConfidenceMetabolicModel(context: context), model.confidence >= 70 {
             requestProfile.learnedTDEE = clampTDEE(model.estimatedTDEE)
         } else if let cached = MetabolicModelStorage.load(), cached.confidence >= 70 {
@@ -44,12 +142,11 @@ public final class PlanService {
         let latestComposition = latestBodyComposition(context: context)
         requestProfile.currentBodyFatPercent = latestComposition.currentBodyFatPercent
         requestProfile.currentMuscleMassLbs = latestComposition.currentMuscleMassLbs
+        return requestProfile
+    }
 
-        let dto: FitnessPlanDTO = try await api.request(PlanAPI.generate(profile: requestProfile))
-        let plan = mapPlan(dto)
-        context.insert(plan)
-        try? context.save()
-        return plan
+    private func currentProfile(context: ModelContext) -> UserProfile? {
+        (try? context.fetch(FetchDescriptor<UserProfile>()))?.first
     }
 
     public func adjustPlan(
@@ -156,11 +253,6 @@ public final class PlanService {
         return result.summary
     }
 
-    /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
-    public func todaysTargets(context: ModelContext) -> Macros {
-        targets(for: .now, context: context)
-    }
-
     /// Returns macro targets for a calendar day — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
     public func targets(for date: Date, context: ModelContext) -> Macros {
         let fallback = Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
@@ -177,24 +269,68 @@ public final class PlanService {
         return daily.calories > 0 ? daily : fallback
     }
 
+    /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
+    public func todaysTargets(context: ModelContext) -> Macros {
+        targets(for: .now, context: context)
+    }
+
+    /// Sets `dailyTargets` and re-derives the training/rest split (±200 kcal / ±50g carbs) from the new base.
+    public func applyBaseTargets(_ targets: Macros, to plan: FitnessPlan) {
+        plan.dietPlan.dailyTargets = targets
+        let carbSwing: Double = 50
+        plan.dietPlan.trainingTargets = Macros(
+            calories: targets.calories + 200,
+            protein: targets.protein,
+            carbs: targets.carbs + carbSwing,
+            fat: targets.fat
+        )
+        plan.dietPlan.restTargets = Macros(
+            calories: targets.calories - 200,
+            protein: targets.protein,
+            carbs: max(0, targets.carbs - carbSwing),
+            fat: targets.fat
+        )
+        plan.synced = false
+    }
+
+    /// Recalculates macro targets from a learned/adaptive TDEE via `/api/macros/calculate`
+    /// (same calculator the server uses for plan generation) and applies them to the current
+    /// plan. Returns the new base targets, or `nil` when no plan exists yet.
+    /// Caller triggers sync after a successful apply.
+    public func applyLearnedTDEEToTargets(
+        _ estimatedTDEE: Double,
+        profile: UserProfileDTO,
+        context: ModelContext
+    ) async throws -> Macros? {
+        guard let plan = currentPlan(context: context) else { return nil }
+
+        var requestProfile = profile
+        requestProfile.learnedTDEE = clampTDEE(estimatedTDEE)
+
+        if let targets = MeasurementTargetsStorage.load() {
+            let hasAnyTarget = targets.targetWeightLbs != nil || targets.targetBodyFatPercent != nil || targets.targetMuscleMassLbs != nil
+            if hasAnyTarget {
+                requestProfile.measurementTargets = MeasurementTargetsDTO(
+                    targetWeightLbs: targets.targetWeightLbs,
+                    targetBodyFatPercent: targets.targetBodyFatPercent,
+                    targetMuscleMassLbs: targets.targetMuscleMassLbs
+                )
+            }
+        }
+        let latestComposition = latestBodyComposition(context: context)
+        requestProfile.currentBodyFatPercent = latestComposition.currentBodyFatPercent
+        requestProfile.currentMuscleMassLbs = latestComposition.currentMuscleMassLbs
+
+        let response: MacrosCalculateResponse = try await api.request(MiscAPI.macrosCalculate(profile: requestProfile))
+        applyBaseTargets(response.macros, to: plan)
+        try? context.save()
+        return response.macros
+    }
+
     /// Applies AI adjustment targets to the in-memory plan. Caller must `save` the `ModelContext` and trigger sync.
     public func applyAdjustSuggestion(_ suggestion: AdjustSuggestion, to plan: FitnessPlan) {
         if let targets = suggestion.newTargets {
-            plan.dietPlan.dailyTargets = targets
-            // Re-derive training/rest split from the new base
-            let carbSwing: Double = 50
-            plan.dietPlan.trainingTargets = Macros(
-                calories: targets.calories + 200,
-                protein: targets.protein,
-                carbs: targets.carbs + carbSwing,
-                fat: targets.fat
-            )
-            plan.dietPlan.restTargets = Macros(
-                calories: targets.calories - 200,
-                protein: targets.protein,
-                carbs: max(0, targets.carbs - carbSwing),
-                fat: targets.fat
-            )
+            applyBaseTargets(targets, to: plan)
         }
         let note: String
         if let changes = suggestion.changes, !changes.isEmpty {
@@ -278,5 +414,53 @@ public final class PlanService {
 
     private func clampTDEE(_ value: Double) -> Double {
         min(max(value, Self.minReasonableTDEE), Self.maxReasonableTDEE)
+    }
+
+    private static let maxProgramWeeks = 12
+    private static let weeksPerChunk = 2
+
+    private static func clampProgramWeeks(_ weeks: Int) -> Int {
+        min(maxProgramWeeks, max(1, weeks))
+    }
+
+    private static func clampWorkoutDaysPerWeek(_ days: Int) -> Int {
+        min(7, max(2, days))
+    }
+
+    private static func extractWeek1TrainingTemplate(_ weeklyPlan: [WorkoutDay]) -> [WorkoutDay] {
+        weeklyPlan.filter { day in
+            let focus = day.focus.lowercased()
+            let isRecovery =
+                focus.contains("recovery") ||
+                focus.contains("mobility") ||
+                focus.contains("rest") ||
+                focus.contains("off day")
+            return !day.exercises.isEmpty && !isRecovery
+        }
+    }
+
+    private static func chunkWeekRanges(totalWeeks: Int) -> [(from: Int, to: Int)] {
+        var ranges: [(from: Int, to: Int)] = []
+        var from = 2
+        while from <= totalWeeks {
+            let to = min(from + weeksPerChunk - 1, totalWeeks)
+            ranges.append((from, to))
+            from = to + 1
+        }
+        return ranges
+    }
+}
+
+public enum PlanServiceError: LocalizedError, Sendable {
+    case missingProfile
+    case missingTrainingDays
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingProfile:
+            return "Complete your profile before generating a plan."
+        case .missingTrainingDays:
+            return "Week 1 has no training days to extend into a multi-week program."
+        }
     }
 }

@@ -180,6 +180,7 @@ public enum RicoAction: Decodable, Sendable {
     case swapExercise(SwapExercisePayload)
     case addExercise(AddExercisePayload)
     case updateWorkoutDay(UpdateWorkoutDayPayload)
+    case regeneratePlan(RegeneratePlanPayload)
     case unknown(String)
 
     enum CodingKeys: String, CodingKey {
@@ -200,6 +201,9 @@ public enum RicoAction: Decodable, Sendable {
             self = .addExercise(try container.decode(AddExercisePayload.self, forKey: .payload))
         case "update_workout_day":
             self = .updateWorkoutDay(try container.decode(UpdateWorkoutDayPayload.self, forKey: .payload))
+        case "regenerate_plan":
+            let payload = (try? container.decode(RegeneratePlanPayload.self, forKey: .payload)) ?? RegeneratePlanPayload()
+            self = .regeneratePlan(payload)
         default:
             self = .unknown(type)
         }
@@ -286,6 +290,18 @@ public struct ExerciseEntryPayload: Decodable, Sendable {
     public let sets: String
     public let reps: String
     public let notes: String?
+}
+
+public struct RegeneratePlanPayload: Decodable, Sendable {
+    public let reason: String?
+    public let programWeeks: Int?
+    public let workoutDaysPerWeek: Int?
+
+    public init(reason: String? = nil, programWeeks: Int? = nil, workoutDaysPerWeek: Int? = nil) {
+        self.reason = reason
+        self.programWeeks = programWeeks
+        self.workoutDaysPerWeek = workoutDaysPerWeek
+    }
 }
 
 public struct CoachCheckInRequest: Encodable, Sendable {

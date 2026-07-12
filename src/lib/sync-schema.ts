@@ -214,6 +214,21 @@ const pantryItemSchema = z.object({
   expiresAt: z.string().max(50).optional(),
 });
 
+const savedRecipeSchema = z.object({
+  id: z.string().max(100),
+  name: z.string().max(500),
+  description: z.string().max(2000).optional(),
+  calories: z.number().min(0).max(5000),
+  protein: z.number().min(0).max(500),
+  carbs: z.number().min(0).max(1000),
+  fat: z.number().min(0).max(500),
+  recipeUrl: z.string().max(2000).optional(),
+  source: z.string().max(50).optional(),
+  mealTypes: z.array(z.enum(["breakfast", "lunch", "dinner", "snack"])).max(4).optional(),
+  servings: z.number().min(1).max(100).optional(),
+  addedAt: z.string().max(50),
+});
+
 const bodyScanSchema = z.object({
   id: z.string().max(100),
   date: z.string().max(20),
@@ -317,6 +332,7 @@ export const syncBodySchema = z.object({
   fastingSessions: z.array(fastingSessionSchema).max(500).optional(),
   biofeedback: z.array(biofeedbackEntrySchema).max(2000).optional(),
   pantry: z.array(pantryItemSchema).max(500).optional(),
+  savedRecipes: z.array(savedRecipeSchema).max(500).optional(),
   bodyScans: z.array(bodyScanSchema).max(200).optional(),
   supplements: z.array(supplementSchema).max(100).optional(),
   bloodWork: z.array(bloodWorkSchema).max(100).optional(),

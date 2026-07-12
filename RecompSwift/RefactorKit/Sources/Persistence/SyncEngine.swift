@@ -65,5 +65,8 @@ public actor SyncEngine {
         // Refresh watch complications / home-screen widgets that read the shared
         // App Group store so they reflect freshly synced macros and streaks.
         WidgetCenter.shared.reloadAllTimelines()
+        #if os(iOS)
+        NotificationCenter.default.post(name: .recompPhoneDidSync, object: nil)
+        #endif
     }
 }

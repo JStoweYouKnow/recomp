@@ -5,8 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.refactor.app.api.ApiException
-import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.SyncJson
+import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.UserProfileDto
 import com.refactor.app.db.SyncCacheDao
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 sealed interface DashboardUiState {
     data object Loading : DashboardUiState
@@ -64,6 +66,12 @@ class DashboardViewModel(
     private val _uploadFeedback = MutableStateFlow<UploadFeedback?>(null)
     val uploadFeedback: StateFlow<UploadFeedback?> = _uploadFeedback.asStateFlow()
 
+    private val _applyingTdeeTargets = MutableStateFlow(false)
+    val applyingTdeeTargets: StateFlow<Boolean> = _applyingTdeeTargets.asStateFlow()
+
+    private val _regeneratingPlan = MutableStateFlow(false)
+    val regeneratingPlan: StateFlow<Boolean> = _regeneratingPlan.asStateFlow()
+
     private val _checkInMessage = MutableStateFlow<String?>(null)
     val checkInMessage: StateFlow<String?> = _checkInMessage.asStateFlow()
 
@@ -93,6 +101,59 @@ class DashboardViewModel(
     fun logBiofeedback(energy: Int, mood: Int, hunger: Int, stress: Int, soreness: Int) {
         viewModelScope.launch {
             syncRepository.logBiofeedback(energy, mood, hunger, stress, soreness)
+        }
+    }
+
+    /** Recalculates macro targets from the adaptive-TDEE estimate and saves them into the plan. */
+    fun applyTdeeToTargets(estimatedTdee: Int) {
+        viewModelScope.launch {
+            if (_applyingTdeeTargets.value) return@launch
+            _applyingTdeeTargets.value = true
+            syncRepository.applyTdeeToMacroTargets(estimatedTdee).fold(
+                onSuccess = { macros ->
+                    _uploadFeedback.value = UploadFeedback(
+                        "Macro targets updated to ${macros.calories.roundToInt()} kcal/day",
+                        isError = false,
+                    )
+                },
+                onFailure = { e ->
+                    _uploadFeedback.value = UploadFeedback(
+                        message = when (e) {
+                            is ApiException -> e.message ?: "Could not update targets"
+                            else -> e.message ?: "Could not update targets"
+                        },
+                        isError = true,
+                    )
+                },
+            )
+            _applyingTdeeTargets.value = false
+        }
+    }
+
+    fun regeneratePlan(options: RegeneratePlanOptions = RegeneratePlanOptions()) {
+        viewModelScope.launch {
+            if (_regeneratingPlan.value) return@launch
+            _regeneratingPlan.value = true
+            syncRepository.regeneratePlan(options).fold(
+                onSuccess = {
+                    val weeks = options.programWeeks ?: 1
+                    _uploadFeedback.value = UploadFeedback(
+                        if (weeks > 1) "Your $weeks-week program has been regenerated."
+                        else "Your workout plan has been regenerated.",
+                        isError = false,
+                    )
+                },
+                onFailure = { e ->
+                    _uploadFeedback.value = UploadFeedback(
+                        message = when (e) {
+                            is ApiException -> e.message ?: "Could not regenerate plan"
+                            else -> e.message ?: "Could not regenerate plan"
+                        },
+                        isError = true,
+                    )
+                },
+            )
+            _regeneratingPlan.value = false
         }
     }
 

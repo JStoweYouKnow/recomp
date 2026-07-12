@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useToast } from "@/components/Toast";
-import type { MetabolicModel, MetabolicDataPoint } from "@/lib/types";
-import { getMetabolicModel, saveMetabolicModel, getMeals, getWearableData, getProfile, getPlan } from "@/lib/storage";
+import type { FitnessPlan, MetabolicModel, MetabolicDataPoint } from "@/lib/types";
+import { getMetabolicModel, saveMetabolicModel, getMeals, getWearableData, getProfile, getPlan, savePlan, getMeasurementTargets } from "@/lib/storage";
 import { syncToServer } from "@/lib/storage";
+import { calculateMacros, splitTrainingRestTargets } from "@/lib/macro-calculator";
 
 const lbsToKg = (lbs: number) => lbs * 0.45359237;
 
@@ -75,10 +76,11 @@ function TDEEExplainer() {
   );
 }
 
-export function MetabolicModelCard() {
+export function MetabolicModelCard({ onPlanUpdate }: { onPlanUpdate?: (plan: FitnessPlan) => void } = {}) {
   const { showToast } = useToast();
   const [model, setModel] = useState<MetabolicModel | null>(() => getMetabolicModel());
   const [loading, setLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleUpdate = async () => {
@@ -166,6 +168,66 @@ export function MetabolicModelCard() {
     }
   };
 
+  const handleApplyToTargets = () => {
+    const current = model ?? getMetabolicModel();
+    if (!current) return;
+    const profile = getProfile();
+    const plan = getPlan();
+    if (!profile) {
+      showToast("Complete your profile first", "info");
+      return;
+    }
+    if (!plan) {
+      showToast("Generate a plan first", "info");
+      return;
+    }
+    setApplying(true);
+    setError(null);
+    try {
+      // Same inputs as plan generation (buildPlanGenerateBody → macroInputsFromRequest)
+      const targets = getMeasurementTargets() ?? undefined;
+      const hasTargets =
+        !!targets &&
+        (targets.targetWeightLbs != null ||
+          targets.targetBodyFatPercent != null ||
+          targets.targetMuscleMassLbs != null);
+      const sorted = [...getWearableData()].sort((a, b) => b.date.localeCompare(a.date));
+      const currentBodyFatPercent = sorted.find((d) => d.bodyFatPercent != null)?.bodyFatPercent;
+      const currentMuscleMassLbs = sorted.find((d) => d.muscleMass != null)?.muscleMass;
+      const learnedTDEE = Math.max(1200, Math.min(5000, Math.round(current.estimatedTDEE)));
+      const macros = calculateMacros({
+        weightKg: profile.weight,
+        heightCm: profile.height,
+        age: profile.age,
+        gender: profile.gender === "female" ? "female" : profile.gender === "male" ? "male" : "other",
+        dailyActivityLevel: profile.dailyActivityLevel ?? "moderate",
+        goal: profile.goal,
+        learnedTDEE,
+        measurementTargets: hasTargets ? targets : undefined,
+        currentBodyFatPercent,
+        currentMuscleMassLbs,
+      });
+      const { trainingTargets, restTargets } = splitTrainingRestTargets(macros);
+      const updated: FitnessPlan = {
+        ...plan,
+        dietPlan: { ...plan.dietPlan, dailyTargets: macros, trainingTargets, restTargets },
+      };
+      if (onPlanUpdate) {
+        onPlanUpdate(updated); // Home saves + syncs and refreshes dashboard state
+      } else {
+        savePlan(updated);
+        syncToServer();
+      }
+      showToast(`Macro targets updated to ${macros.calories} kcal/day`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not update targets. Try again.";
+      setError(msg);
+      showToast(msg, "error");
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const displayModel = model ?? getMetabolicModel();
 
   if (!displayModel || displayModel.confidence < 20) {
@@ -209,14 +271,24 @@ export function MetabolicModelCard() {
         Based on {displayModel.dataPoints.length} data points. Used for macro calculations when available.
       </p>
       <TDEEExplainer />
-      <button
-        type="button"
-        onClick={handleUpdate}
-        disabled={loading}
-        className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
-      >
-        {loading ? "Updating…" : "Refresh model"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleUpdate}
+          disabled={loading || applying}
+          className="text-xs text-[var(--accent)] hover:underline disabled:opacity-50"
+        >
+          {loading ? "Updating…" : "Refresh model"}
+        </button>
+        <button
+          type="button"
+          onClick={handleApplyToTargets}
+          disabled={loading || applying}
+          className="btn-secondary text-xs py-1.5 disabled:opacity-50"
+        >
+          {applying ? "Applying…" : "Apply to macro targets"}
+        </button>
+      </div>
     </div>
   );
 }

@@ -9,10 +9,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.refactor.app.BuildConfig
 import com.refactor.app.config.AppConfig
 
 @Composable
 fun ConfigFootnoteCard() {
+    if (!BuildConfig.DEBUG) return
     Card(
         modifier = Modifier
             .fillMaxWidth()

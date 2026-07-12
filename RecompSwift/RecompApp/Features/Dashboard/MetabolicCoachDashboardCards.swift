@@ -56,23 +56,47 @@ struct MetabolicModelDashboardCard: View {
                         .font(.caption)
                 }
 
-                Button {
-                    if aiConsentGiven {
-                        Task { await refreshModel() }
-                    } else {
-                        showAIConsent = true
+                if let appliedSummary = vm.appliedTargetsSummary {
+                    Text(appliedSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        if aiConsentGiven {
+                            Task { await refreshModel() }
+                        } else {
+                            showAIConsent = true
+                        }
+                    } label: {
+                        if vm.isUpdating {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(vm.resultSummary == nil ? "Update model" : "Refresh model")
+                                .font(.caption.weight(.semibold))
+                        }
                     }
-                } label: {
-                    if vm.isUpdating {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text(vm.resultSummary == nil ? "Update model" : "Refresh model")
-                            .font(.caption.weight(.semibold))
+                    .buttonStyle(.bordered)
+                    .disabled(vm.isUpdating || vm.isApplyingTargets)
+
+                    if vm.currentEstimatedTDEE(metabolicModels: metabolicModels) != nil {
+                        Button {
+                            Task { await applyToTargets() }
+                        } label: {
+                            if vm.isApplyingTargets {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Apply to macro targets")
+                                    .font(.caption.weight(.semibold))
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(vm.isUpdating || vm.isApplyingTargets)
                     }
                 }
-                .buttonStyle(.bordered)
-                .disabled(vm.isUpdating)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -97,6 +121,15 @@ struct MetabolicModelDashboardCard: View {
             meals: meals,
             wearables: wearables,
             profileWeight: auth.currentUser?.weight,
+            syncEngine: syncEngine
+        )
+    }
+
+    private func applyToTargets() async {
+        await vm.applyToMacroTargets(
+            context: context,
+            metabolicModels: metabolicModels,
+            profile: auth.currentUser?.toDTO(),
             syncEngine: syncEngine
         )
     }

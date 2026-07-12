@@ -34,7 +34,9 @@ import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Medication
 import androidx.compose.material.icons.outlined.Biotech
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.Policy
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material3.Card
@@ -88,7 +90,9 @@ import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.prefs.AppTheme
 import com.refactor.app.ui.more.SyncWearablesScreen
 import com.refactor.app.ui.research.ResearchScreen
+import com.refactor.app.ui.legal.LegalUrls
 import com.refactor.app.ui.screens.ConfigFootnoteCard
+import com.refactor.app.util.PlayStoreLinks
 import kotlinx.coroutines.launch
 
 private enum class ProfileSection {
@@ -212,6 +216,7 @@ fun ProfileHubScreen(
             authRepository = authRepository,
             onLogout = onLogout,
             aiConsentPrefs = aiConsentPrefs,
+            showSubscriptionEntry = billingState.configured || proAccess == true,
             onNavigate = { section = it },
         )
     }
@@ -231,6 +236,7 @@ private fun ProfileHomeScreen(
     aiConsentPrefs: AiConsentPrefs,
     authRepository: AuthRepository,
     onLogout: () -> Unit,
+    showSubscriptionEntry: Boolean,
     onNavigate: (ProfileSection) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -293,12 +299,14 @@ private fun ProfileHomeScreen(
                 onClick = { onNavigate(ProfileSection.Edit) },
             )
             HorizontalDivider(Modifier.padding(start = 56.dp))
-            SettingsRow(
-                icon = Icons.Outlined.Star,
-                label = "Subscription",
-                onClick = { onNavigate(ProfileSection.Subscription) },
-            )
-            HorizontalDivider(Modifier.padding(start = 56.dp))
+            if (showSubscriptionEntry) {
+                SettingsRow(
+                    icon = Icons.Outlined.Star,
+                    label = "Subscription",
+                    onClick = { onNavigate(ProfileSection.Subscription) },
+                )
+                HorizontalDivider(Modifier.padding(start = 56.dp))
+            }
             SettingsRow(
                 icon = Icons.Outlined.Devices,
                 label = "Wearables",
@@ -331,7 +339,7 @@ private fun ProfileHomeScreen(
             HorizontalDivider(Modifier.padding(start = 56.dp))
             SettingsRow(
                 icon = Icons.Outlined.Key,
-                label = "Siri Shortcuts / API",
+                label = "API token",
                 onClick = { onNavigate(ProfileSection.ApiToken) },
             )
             HorizontalDivider(Modifier.padding(start = 56.dp))
@@ -479,6 +487,25 @@ private fun ProfileHomeScreen(
             )
 
             Spacer(Modifier.height(8.dp))
+
+            SectionHeader("Legal")
+            SettingsRow(
+                icon = Icons.Outlined.Policy,
+                label = "Privacy Policy",
+                onClick = {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.PRIVACY)))
+                },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Description,
+                label = "Terms of Service",
+                onClick = {
+                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.TERMS)))
+                },
+            )
+
+            Spacer(Modifier.height(8.dp))
             ConfigFootnoteCard()
             Spacer(Modifier.height(16.dp))
         }
@@ -617,6 +644,7 @@ private fun SubscriptionSubScreen(
     activity: Activity?,
     playBilling: PlayBillingManager,
 ) {
+    val ctx = LocalContext.current
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Subscription") },
@@ -641,16 +669,27 @@ private fun SubscriptionSubScreen(
                     hasPro && serverPro && playActive -> "Pro via server profile and an active Google Play subscription."
                     hasPro && serverPro -> "Pro via server profile (App Store, web, or admin grant)."
                     hasPro && playActive -> "Active Google Play subscription detected. Pull sync on Today if server profile hasn't updated yet."
-                    else -> "No Pro on this account. Subscribe below to unlock all features."
+                    else -> if (billingState.configured) {
+                        "No Pro on this account. Subscribe below to unlock all features."
+                    } else {
+                        "No Pro on this account. Subscribe on the web to unlock all features."
+                    }
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (!billingState.configured) {
                 Text(
-                    "Play Billing is not configured. Add PLAY_SUBSCRIPTION_ID to gradle.properties.",
+                    "Google Play subscriptions are not offered in this Android build yet. " +
+                        "You can manage Pro at ${LegalUrls.WEBSITE}.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                TextButton(
+                    onClick = {
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(LegalUrls.WEBSITE)))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Open refactoryourbody.com") }
             } else {
                 if (!billingState.connected) {
                     Row(
@@ -677,6 +716,20 @@ private fun SubscriptionSubScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Restore purchases")
+                    }
+                    if (playActive) {
+                        TextButton(
+                            onClick = {
+                                PlayStoreLinks.openManageSubscriptions(
+                                    ctx,
+                                    ctx.packageName,
+                                    billingState.activePurchase?.products?.firstOrNull(),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Manage subscription")
+                        }
                     }
                 }
                 billingState.lastError?.let { err ->

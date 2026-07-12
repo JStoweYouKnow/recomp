@@ -54,6 +54,8 @@ import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.prefs.AiConsentPrefs
 import com.refactor.app.ui.consent.AIConsentDialog
+import com.refactor.app.ui.legal.LegalUrls
+import com.refactor.app.ui.legal.MedicalDisclaimerText
 import java.time.LocalDate
 import java.util.UUID
 import kotlinx.coroutines.launch
@@ -207,7 +209,7 @@ fun SupplementsScreen(
                         result.interactions.forEach { Text("· $it", style = MaterialTheme.typography.bodySmall) }
                     }
                     Text(
-                        "Not medical advice. Discuss with a healthcare provider.",
+                        LegalUrls.MEDICAL_DISCLAIMER,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -310,6 +312,7 @@ fun BloodWorkScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             val entries = snap?.bloodWork.orEmpty()
+            MedicalDisclaimerText()
             if (entries.isEmpty()) {
                 Text(
                     "Upload a photo of your lab results for AI analysis.",

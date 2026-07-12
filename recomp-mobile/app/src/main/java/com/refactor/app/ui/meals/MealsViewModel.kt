@@ -43,6 +43,13 @@ class MealsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val snapshot = syncCacheDao.observe()
+        .map { entity ->
+            val raw = entity?.payloadJson ?: return@map null
+            runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw) }.getOrNull()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
     val allPantry = syncCacheDao.observe()
         .map { entity ->
             val raw = entity?.payloadJson ?: return@map emptyList()
@@ -96,6 +103,9 @@ class MealsViewModel(
         if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
         return syncRepository.pushCachedSnapshot()
     }
+
+    /** Pulls a fresh snapshot from the server so the Room cache is current before any mutation. */
+    suspend fun refreshSnapshot(): Result<Unit> = syncRepository.fetchSnapshot().map {}
 
     class Factory(
         private val dao: SyncCacheDao,
