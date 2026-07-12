@@ -11,6 +11,24 @@ data class RicoChatRequest(
 )
 
 @Serializable
+data class RicoMealSummaryDto(
+    val name: String,
+    val mealType: String,
+    val calories: Double,
+    val protein: Double,
+    val carbs: Double,
+    val fat: Double,
+)
+
+@Serializable
+data class RicoMacroSummaryDto(
+    val calories: Double = 0.0,
+    val protein: Double = 0.0,
+    val carbs: Double = 0.0,
+    val fat: Double = 0.0,
+)
+
+@Serializable
 data class RicoContextDto(
     val name: String? = null,
     val goal: String? = null,
@@ -21,6 +39,13 @@ data class RicoContextDto(
     val equipment: List<String>? = null,
     val injuries: List<String>? = null,
     val dietaryRestrictions: List<String>? = null,
+    val recentMeals: List<RicoMealSummaryDto>? = null,
+    val todayMacros: RicoMacroSummaryDto? = null,
+    val macroTargets: RicoMacroSummaryDto? = null,
+    val remainingMacros: RicoMacroSummaryDto? = null,
+    val savedRecipeCount: Int? = null,
+    val savedRecipeNames: List<String>? = null,
+    val savedRecipes: List<SavedRecipeDto>? = null,
 )
 
 @Serializable
@@ -49,6 +74,8 @@ data class RicoExerciseDto(
 data class CoachChatResponse(
     val reply: String = "",
     val actions: List<RicoToolActionWire> = emptyList(),
+    val recipeSuggestions: List<ScoredRecipeSuggestionDto>? = null,
+    val recipeSaved: SavedRecipeDto? = null,
 )
 
 @Serializable

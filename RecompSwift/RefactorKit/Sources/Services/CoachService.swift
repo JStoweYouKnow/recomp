@@ -57,9 +57,33 @@ public final class CoachService {
             throw error
         }
 
-        let assistantMessage = CoachMessage(role: .assistant, content: response.reply)
+        var replyText = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let suggestions = response.recipeSuggestions, !suggestions.isEmpty {
+            replyText += Self.formatRecipeSuggestions(suggestions)
+        }
+
+        let assistantMessage = CoachMessage(role: .assistant, content: replyText)
         context.insert(assistantMessage)
         messages.append(assistantMessage)
+
+        if let saved = response.recipeSaved {
+            let record = SavedRecipeRecord(
+                id: saved.id,
+                name: saved.name,
+                description: saved.description,
+                calories: saved.calories,
+                protein: saved.protein,
+                carbs: saved.carbs,
+                fat: saved.fat,
+                recipeUrl: saved.recipeUrl,
+                source: saved.source,
+                mealTypes: saved.mealTypes,
+                servings: saved.servings,
+                addedAt: saved.addedAt
+            )
+            SavedRecipesStorage.append(record)
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+        }
 
         if !response.actions.isEmpty {
             applyActions(response.actions, modelContext: context)
@@ -132,6 +156,34 @@ public final class CoachService {
             return RicoMacroSummary(calories: Double(t.calories), protein: t.protein, carbs: t.carbs, fat: t.fat)
         }
 
+        let remainingMacros: RicoMacroSummary? = {
+            guard let targets = macroTargets, let consumed = todayMacros else { return nil }
+            return RicoMacroSummary(
+                calories: max(0, targets.calories - consumed.calories),
+                protein: max(0, targets.protein - consumed.protein),
+                carbs: max(0, targets.carbs - consumed.carbs),
+                fat: max(0, targets.fat - consumed.fat)
+            )
+        }()
+
+        let savedRecords = SavedRecipesStorage.load()
+        let savedRecipeDTOs: [SavedRecipeDTO]? = savedRecords.isEmpty ? nil : savedRecords.prefix(30).map {
+            SavedRecipeDTO(
+                id: $0.id,
+                name: $0.name,
+                description: $0.description,
+                calories: $0.calories,
+                protein: $0.protein,
+                carbs: $0.carbs,
+                fat: $0.fat,
+                recipeUrl: $0.recipeUrl,
+                source: $0.source,
+                mealTypes: $0.mealTypes,
+                servings: $0.servings,
+                addedAt: $0.addedAt
+            )
+        }
+
         let weightDescriptor = FetchDescriptor<WearableDaySummary>(
             sortBy: [SortDescriptor(\.date, order: .reverse)]
         )
@@ -149,8 +201,21 @@ public final class CoachService {
             recentMeals: recentMeals,
             todayMacros: todayMacros,
             macroTargets: macroTargets,
+            remainingMacros: remainingMacros,
+            savedRecipeCount: savedRecords.isEmpty ? nil : savedRecords.count,
+            savedRecipeNames: savedRecords.isEmpty ? nil : savedRecords.prefix(8).map(\.name),
+            savedRecipes: savedRecipeDTOs,
             bodyWeight: latestWeight
         )
+    }
+
+    private static func formatRecipeSuggestions(_ suggestions: [ScoredRecipeSuggestion]) -> String {
+        guard !suggestions.isEmpty else { return "" }
+        let lines = suggestions.enumerated().map { index, s in
+            let link = s.recipeUrl.map { " \($0)" } ?? ""
+            return "\(index + 1). \(s.name) (\(s.calories) cal, \(s.protein)g P, score \(s.fitScore)) — \(s.fitReason)\(link)"
+        }
+        return "\n\n" + lines.joined(separator: "\n")
     }
 
     private func toExercisePayload(_ ex: WorkoutExercise) -> RicoExercisePayload {

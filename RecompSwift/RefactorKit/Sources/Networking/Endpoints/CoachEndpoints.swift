@@ -43,9 +43,11 @@ public struct CoachChatResponse: Decodable {
     public let reply: String
     /// Tool actions Rico returned — each entry is decoded best-effort so one malformed action does not break meal logging / chat.
     public let actions: [RicoAction]
+    public let recipeSuggestions: [ScoredRecipeSuggestion]?
+    public let recipeSaved: SavedRecipeDTO?
 
     enum CodingKeys: String, CodingKey {
-        case reply, actions
+        case reply, actions, recipeSuggestions, recipeSaved
     }
 
     private struct LooseRicoElement: Decodable {
@@ -73,6 +75,8 @@ public struct CoachChatResponse: Decodable {
             if let a = wrap.value { out.append(a) }
         }
         actions = out
+        recipeSuggestions = try c.decodeIfPresent([ScoredRecipeSuggestion].self, forKey: .recipeSuggestions)
+        recipeSaved = try c.decodeIfPresent(SavedRecipeDTO.self, forKey: .recipeSaved)
     }
 }
 
@@ -90,6 +94,10 @@ public struct RicoContextPayload: Encodable, Sendable {
     public let recentMeals: [RicoMealSummary]?
     public let todayMacros: RicoMacroSummary?
     public let macroTargets: RicoMacroSummary?
+    public let remainingMacros: RicoMacroSummary?
+    public let savedRecipeCount: Int?
+    public let savedRecipeNames: [String]?
+    public let savedRecipes: [SavedRecipeDTO]?
     public let bodyWeight: Double?
 
     public init(
@@ -104,6 +112,10 @@ public struct RicoContextPayload: Encodable, Sendable {
         recentMeals: [RicoMealSummary]? = nil,
         todayMacros: RicoMacroSummary? = nil,
         macroTargets: RicoMacroSummary? = nil,
+        remainingMacros: RicoMacroSummary? = nil,
+        savedRecipeCount: Int? = nil,
+        savedRecipeNames: [String]? = nil,
+        savedRecipes: [SavedRecipeDTO]? = nil,
         bodyWeight: Double? = nil
     ) {
         self.name = name
@@ -117,6 +129,10 @@ public struct RicoContextPayload: Encodable, Sendable {
         self.recentMeals = recentMeals
         self.todayMacros = todayMacros
         self.macroTargets = macroTargets
+        self.remainingMacros = remainingMacros
+        self.savedRecipeCount = savedRecipeCount
+        self.savedRecipeNames = savedRecipeNames
+        self.savedRecipes = savedRecipes
         self.bodyWeight = bodyWeight
     }
 }

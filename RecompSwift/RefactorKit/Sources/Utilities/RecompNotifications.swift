@@ -24,6 +24,8 @@ public extension Notification.Name {
     static let recompNavigateToDashboard = Notification.Name("recompNavigateToDashboard")
     /// Posted when a recipe URL should be saved (Share sheet / deep link).
     static let recompSaveRecipeURL = Notification.Name("recompSaveRecipeURL")
+    /// Posted after saved-recipes change outside SwiftData (e.g. Rico save) to debounce push sync.
+    static let recompSchedulePushSync = Notification.Name("recompSchedulePushSync")
     /// Posted when user taps "Skip Today" on a workout reminder notification.
     static let recompSkipTodayWorkout = Notification.Name("recompSkipTodayWorkout")
 }

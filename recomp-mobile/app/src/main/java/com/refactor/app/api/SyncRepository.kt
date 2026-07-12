@@ -27,6 +27,7 @@ import com.refactor.app.api.dto.GenerateWorkoutsRequestDto
 import com.refactor.app.api.dto.GenerateWorkoutsResponseDto
 import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.api.dto.RicoToolActionWire
+import com.refactor.app.api.dto.SavedRecipeDto
 import com.refactor.app.api.dto.WorkoutDayDto
 import com.refactor.app.api.dto.ScaleEntryPayloadDto
 import com.refactor.app.api.dto.SyncGetResponse
@@ -114,6 +115,20 @@ class SyncRepository(
                 ),
             )
         }
+
+    /** Prepends a Rico-saved recipe into the cached snapshot and pushes (parity with web RicoChat). */
+    suspend fun mergeSavedRecipeIntoCache(recipe: SavedRecipeDto): Result<Unit> {
+        val local = mutateCachedSnapshot { snap ->
+            val existing = snap.savedRecipes.orEmpty()
+            val deduped = existing.filter {
+                (it.recipeUrl ?: "").lowercase() != (recipe.recipeUrl ?: "").lowercase() ||
+                    (recipe.recipeUrl ?: "").isEmpty()
+            }
+            snap.copy(savedRecipes = (listOf(recipe) + deduped).take(500))
+        }
+        if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
+        return pushCachedSnapshot()
+    }
 
     /**
      * Merges Rico tool actions into the cached GET JSON (iOS/web parity) and persists to Room.

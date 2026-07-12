@@ -5,6 +5,11 @@ import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.MealSuggestResponseDto
 import com.refactor.app.api.dto.NutritionLookupResponseDto
 import com.refactor.app.api.dto.RecipeParseResponseDto
+import com.refactor.app.api.dto.RecipeSaveResponseDto
+import com.refactor.app.api.dto.RecipeSuggestRequestDto
+import com.refactor.app.api.dto.RecipeSuggestResponseDto
+import com.refactor.app.api.dto.SavedRecipeDto
+import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
 import com.refactor.app.api.dto.SuggestedMealDto
 import com.refactor.app.api.dto.VoiceParseResponseDto
 import io.ktor.client.HttpClient
@@ -131,6 +136,24 @@ class MealRepository(
         }
         response.ensureSuccessOrThrow()
         SyncJson.format.decodeFromString<MealSuggestResponseDto>(response.bodyAsText()).suggestions
+    }
+
+    suspend fun suggestRecipes(request: RecipeSuggestRequestDto): Result<List<ScoredRecipeSuggestionDto>> = runCatching {
+        val response = client.post("$baseUrl/api/recipes/suggest") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+        response.ensureSuccessOrThrow()
+        SyncJson.format.decodeFromString<RecipeSuggestResponseDto>(response.bodyAsText()).suggestions
+    }
+
+    suspend fun saveRecipeFromUrl(url: String): Result<SavedRecipeDto> = runCatching {
+        val response = client.post("$baseUrl/api/recipes/save-from-url") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("url", url.trim()) })
+        }
+        response.ensureSuccessOrThrow()
+        SyncJson.format.decodeFromString<RecipeSaveResponseDto>(response.bodyAsText()).recipe
     }
 
     private suspend fun uploadImage(

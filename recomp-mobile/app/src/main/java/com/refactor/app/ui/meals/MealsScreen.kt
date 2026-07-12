@@ -56,6 +56,8 @@ import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.MealPrepGenerateResponseDto
 import com.refactor.app.api.dto.PantryItemDto
+import com.refactor.app.api.dto.SavedRecipeDto
+import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
 import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.ui.dashboard.MacroPillsRow
 import com.refactor.app.ui.dashboard.sumMacrosForDate
@@ -78,12 +80,18 @@ fun MealsScreen(
     mealRepository: MealRepository,
     aiConsentPrefs: AiConsentPrefs,
 ) {
-    val vm: MealsViewModel = viewModel(factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository))
+    val vm: MealsViewModel = viewModel(
+        factory = MealsViewModel.Factory(syncCacheDao, syncRepository, mealPrepRepository, mealRepository),
+    )
     val allMeals by vm.allMeals.collectAsStateWithLifecycle()
     val syncSnapshot by vm.snapshot.collectAsStateWithLifecycle()
     val allPantry by vm.allPantry.collectAsStateWithLifecycle()
     val mealPrep by vm.mealPrepResult.collectAsStateWithLifecycle()
     val mealPrepErr by vm.mealPrepError.collectAsStateWithLifecycle()
+    val savedRecipes by vm.allSavedRecipes.collectAsStateWithLifecycle()
+    val recipeSuggestions by vm.recipeSuggestions.collectAsStateWithLifecycle()
+    val recipeStatus by vm.recipeStatus.collectAsStateWithLifecycle()
+    val recipeBusy by vm.recipeBusy.collectAsStateWithLifecycle()
     var sectionTab by remember { mutableIntStateOf(0) }
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     val dateStr = remember(selectedDate) { selectedDate.format(isoDate) }
@@ -206,6 +214,7 @@ fun MealsScreen(
                 Tab(selected = sectionTab == 0, onClick = { sectionTab = 0 }, text = { Text("Meals") })
                 Tab(selected = sectionTab == 1, onClick = { sectionTab = 1 }, text = { Text("Pantry") })
                 Tab(selected = sectionTab == 2, onClick = { sectionTab = 2 }, text = { Text("Meal prep") })
+                Tab(selected = sectionTab == 3, onClick = { sectionTab = 3 }, text = { Text("Recipes") })
             }
 
             when (sectionTab) {
@@ -298,6 +307,15 @@ fun MealsScreen(
                     mealPrepErr = mealPrepErr,
                     onGenerate = { prefs -> vm.generateMealPrep(prefs) },
                     onClearErr = { vm.clearMealPrepError() },
+                )
+                3 -> SavedRecipesTab(
+                    recipes = savedRecipes,
+                    suggestions = recipeSuggestions,
+                    status = recipeStatus,
+                    busy = recipeBusy || busy,
+                    onSuggest = { vm.suggestRecipes() },
+                    onSaveUrl = { url -> vm.saveRecipeFromUrl(url) },
+                    onClearStatus = { vm.clearRecipeStatus() },
                 )
             }
         }
@@ -574,6 +592,114 @@ private fun MealPrepTab(
                     "${r.name} · ${r.servings} servings · ${r.prepTime + r.cookTime} min",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedRecipesTab(
+    recipes: List<SavedRecipeDto>,
+    suggestions: List<ScoredRecipeSuggestionDto>,
+    status: String?,
+    busy: Boolean,
+    onSuggest: () -> Unit,
+    onSaveUrl: (String) -> Unit,
+    onClearStatus: () -> Unit,
+) {
+    var urlInput by remember { mutableStateOf("") }
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                "Save recipes from URLs and ask Ref what fits your remaining macros (parity with iOS/web).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        item {
+            OutlinedTextField(
+                value = urlInput,
+                onValueChange = { urlInput = it },
+                label = { Text("Recipe URL") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        }
+        item {
+            Button(
+                onClick = {
+                    onSaveUrl(urlInput)
+                    urlInput = ""
+                },
+                enabled = !busy && urlInput.trim().isNotEmpty(),
+            ) {
+                Text(if (busy) "Saving…" else "Save recipe")
+            }
+        }
+        item {
+            Button(onClick = onSuggest, enabled = !busy) {
+                Text(if (busy) "Ranking…" else "Ask Ref what to cook")
+            }
+        }
+        status?.let { msg ->
+            item {
+                Text(msg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = onClearStatus) { Text("Dismiss") }
+            }
+        }
+        if (suggestions.isNotEmpty()) {
+            item {
+                Text("Top picks for today", style = MaterialTheme.typography.titleSmall)
+            }
+            items(suggestions, key = { "${it.id}#${it.name}" }) { s ->
+                Card(
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(s.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "${s.calories} cal · ${s.protein}g P · score ${s.fitScore}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(s.fitReason, style = MaterialTheme.typography.bodySmall)
+                        s.recipeUrl?.let { link ->
+                            Text(link, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Text("Library (${recipes.size})", style = MaterialTheme.typography.titleSmall)
+        }
+        if (recipes.isEmpty()) {
+            item {
+                Text(
+                    "No saved recipes yet. Paste a URL above or sync from the web app.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            items(recipes, key = { it.id }) { r ->
+                Card(
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(r.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "${r.calories} cal · ${r.protein}g P",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
         }
     }

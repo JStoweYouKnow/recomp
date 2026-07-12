@@ -198,6 +198,10 @@ struct RootView: View {
             guard let engine = syncEngine else { return }
             Task { await engine.scheduleFetchAndApply() }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .recompSchedulePushSync)) { _ in
+            guard let engine = syncEngine else { return }
+            Task { await engine.scheduleSync() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .recompPhoneDidSync)) { _ in
             pushWatchDashboard(from: modelContext)
         }

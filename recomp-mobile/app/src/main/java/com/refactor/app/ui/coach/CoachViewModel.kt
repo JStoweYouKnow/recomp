@@ -8,6 +8,7 @@ import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.RicoContextFactory
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.RegeneratePlanOptions
+import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.CoachMessageEntity
 import com.refactor.app.db.SyncCacheDao
@@ -82,13 +83,26 @@ class CoachViewModel(
             _busy.value = true
             coachRepository.chat(trimmed, ctx).fold(
                 onSuccess = { res ->
+                    val serverHandledActions = setOf("regenerate_plan", "suggest_recipes", "save_recipe_from_url")
                     val needsRegenerate = res.actions.any { it.type == "regenerate_plan" }
-                    val applied = if (res.actions.isNotEmpty()) {
-                        syncRepository.applyRicoActionsToCache(
-                            res.actions.filter { it.type != "regenerate_plan" },
-                        ).getOrElse { false }
+                    val localActions = res.actions.filter { it.type !in serverHandledActions }
+                    val applied = if (localActions.isNotEmpty()) {
+                        syncRepository.applyRicoActionsToCache(localActions).getOrElse { false }
                     } else {
                         false
+                    }
+                    if (res.recipeSaved != null) {
+                        syncRepository.mergeSavedRecipeIntoCache(res.recipeSaved).fold(
+                            onSuccess = {
+                                _lastPushNote.value = "Saved recipe to your library."
+                            },
+                            onFailure = { e ->
+                                _lastPushNote.value = when (e) {
+                                    is ApiException -> "Recipe saved on server — ${e.message ?: "sync later from Today."}"
+                                    else -> "Recipe saved on server — upload from Today when connected."
+                                }
+                            },
+                        )
                     }
                     if (needsRegenerate) {
                         val regenAction = res.actions.firstOrNull { it.type == "regenerate_plan" }
@@ -113,12 +127,16 @@ class CoachViewModel(
                     }
                     val assistantText = buildString {
                         append(res.reply.trim())
-                        if (res.actions.isNotEmpty()) {
+                        res.recipeSuggestions?.takeIf { it.isNotEmpty() }?.let { list ->
+                            if (isNotEmpty()) append("\n\n")
+                            append(formatRecipeSuggestions(list))
+                        }
+                        if (localActions.isNotEmpty() || needsRegenerate) {
                             if (isNotEmpty()) append("\n\n")
                             append(
                                 when {
                                     needsRegenerate -> "Started building your new plan."
-                                    applied -> "Applied ${res.actions.size} change(s) to your offline snapshot."
+                                    applied -> "Applied ${localActions.size} change(s) to your offline snapshot."
                                     else -> "Ref couldn't apply all changes (missing plan, day, or exercise in cache)."
                                 },
                             )
@@ -156,6 +174,12 @@ class CoachViewModel(
             _busy.value = false
         }
     }
+
+    private fun formatRecipeSuggestions(suggestions: List<ScoredRecipeSuggestionDto>): String =
+        suggestions.mapIndexed { index, s ->
+            val link = s.recipeUrl?.let { " $it" } ?: ""
+            "${index + 1}. ${s.name} (${s.calories} cal, ${s.protein}g P, score ${s.fitScore}) — ${s.fitReason}$link"
+        }.joinToString("\n")
 
     class Factory(
         private val coachRepository: CoachRepository,

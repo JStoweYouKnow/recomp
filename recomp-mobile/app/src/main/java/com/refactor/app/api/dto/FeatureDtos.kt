@@ -448,3 +448,39 @@ data class CalendarTokenResponseDto(
     val token: String,
     val feedUrl: String? = null,
 )
+
+// ── Recipes ──────────────────────────────────────────────────────────────────
+
+@Serializable
+data class ScoredRecipeSuggestionDto(
+    val id: String = "",
+    val name: String,
+    val calories: Int,
+    val protein: Int,
+    val carbs: Int = 0,
+    val fat: Int = 0,
+    val recipeUrl: String? = null,
+    val source: String? = null,
+    val fitScore: Int,
+    val fitReason: String,
+)
+
+@Serializable
+data class RecipeSuggestRequestDto(
+    val macroTargets: MealMacrosDto,
+    val todayMacros: MealMacrosDto,
+    val goal: String? = null,
+    val mealType: String? = null,
+    val includeDiscover: Boolean = true,
+)
+
+@Serializable
+data class RecipeSuggestResponseDto(
+    val suggestions: List<ScoredRecipeSuggestionDto> = emptyList(),
+)
+
+@Serializable
+data class RecipeSaveResponseDto(
+    val recipe: SavedRecipeDto,
+    val savedCount: Int = 0,
+)

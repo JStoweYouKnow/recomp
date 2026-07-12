@@ -2,11 +2,14 @@ package com.refactor.app.api
 
 import com.refactor.app.api.dto.RicoContextDto
 import com.refactor.app.api.dto.RicoExerciseDto
+import com.refactor.app.api.dto.RicoMacroSummaryDto
+import com.refactor.app.api.dto.RicoMealSummaryDto
 import com.refactor.app.api.dto.RicoWorkoutDayDto
 import com.refactor.app.api.dto.RicoWorkoutPlanDto
 import com.refactor.app.api.dto.SyncGetResponse
 import java.time.LocalDate
 import java.time.format.DateTimeParseException
+import kotlin.math.max
 
 internal object RicoContextFactory {
 
@@ -17,7 +20,8 @@ internal object RicoContextFactory {
         val profile = snap.profile
         val meals = snap.meals.orEmpty()
         val today = LocalDate.now().toString()
-        val mealsLogged = meals.count { normalizeMealDate(it.date) == today }
+        val todayMeals = meals.filter { normalizeMealDate(it.date) == today }
+        val mealsLogged = todayMeals.size
         val streak = streakLength(meals.map { it.date })
         val wp = snap.plan?.workoutPlan?.weeklyPlan?.let { days ->
             RicoWorkoutPlanDto(
@@ -32,6 +36,50 @@ internal object RicoContextFactory {
                 },
             )
         }
+
+        val recentMeals = todayMeals.takeIf { it.isNotEmpty() }?.map { m ->
+            RicoMealSummaryDto(
+                name = m.name,
+                mealType = m.mealType,
+                calories = m.macros.calories,
+                protein = m.macros.protein,
+                carbs = m.macros.carbs,
+                fat = m.macros.fat,
+            )
+        }
+
+        val todayMacros = todayMeals.takeIf { it.isNotEmpty() }?.let {
+            RicoMacroSummaryDto(
+                calories = it.sumOf { meal -> meal.macros.calories },
+                protein = it.sumOf { meal -> meal.macros.protein },
+                carbs = it.sumOf { meal -> meal.macros.carbs },
+                fat = it.sumOf { meal -> meal.macros.fat },
+            )
+        }
+
+        val macroTargets = snap.plan?.dietPlan?.dailyTargets?.let { t ->
+            RicoMacroSummaryDto(
+                calories = t.calories,
+                protein = t.protein,
+                carbs = t.carbs,
+                fat = t.fat,
+            )
+        }
+
+        val remainingMacros = if (macroTargets != null && todayMacros != null) {
+            RicoMacroSummaryDto(
+                calories = max(0.0, macroTargets.calories - todayMacros.calories),
+                protein = max(0.0, macroTargets.protein - todayMacros.protein),
+                carbs = max(0.0, macroTargets.carbs - todayMacros.carbs),
+                fat = max(0.0, macroTargets.fat - todayMacros.fat),
+            )
+        } else {
+            null
+        }
+
+        val saved = snap.savedRecipes.orEmpty()
+        val savedRecipes = saved.take(30).takeIf { it.isNotEmpty() }
+
         return RicoContextDto(
             name = profile.name,
             goal = profile.goal,
@@ -42,6 +90,13 @@ internal object RicoContextFactory {
             equipment = profile.workoutEquipment.takeIf { it.isNotEmpty() },
             injuries = profile.injuriesOrLimitations.takeIf { it.isNotEmpty() },
             dietaryRestrictions = profile.dietaryRestrictions.takeIf { it.isNotEmpty() },
+            recentMeals = recentMeals,
+            todayMacros = todayMacros,
+            macroTargets = macroTargets,
+            remainingMacros = remainingMacros,
+            savedRecipeCount = saved.takeIf { it.isNotEmpty() }?.size,
+            savedRecipeNames = saved.take(8).map { it.name }.takeIf { it.isNotEmpty() },
+            savedRecipes = savedRecipes,
         )
     }
 
