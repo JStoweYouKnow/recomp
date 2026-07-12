@@ -1,65 +1,87 @@
-# Recomp Mobile
+# RefactorAndroid (native Kotlin)
 
-React Native (Expo) iOS app for Recomp — AI-powered body recomposition.
+Single-module Android app (**Jetpack Compose**) with the same **`applicationId`** as the legacy Expo config: **`com.recomp.app`**.
 
-## Setup
+## Requirements
 
-1. **Install dependencies** (from repo root or recomp-mobile):
+- JDK **17**
+- Android SDK **35** (Android Studio)
 
-   ```bash
-   cd recomp-mobile
-   npm install
-   ```
+## Open & run
 
-   If you hit npm cache errors, try: `npm cache clean --force` then `npm install`.
+1. Open **`recomp-mobile`** in Android Studio, sync Gradle, run **app**.
+2. Or from a terminal:
 
-2. **Start the web API** (required for auth and plan generation):
+```bash
+cd recomp-mobile
+printf 'sdk.dir=%s/Library/Android/sdk\n' "$HOME" > local.properties
+./gradlew :app:assembleDebug
+```
 
-   ```bash
-   cd ../recomp
-   npm run dev
-   ```
+**`sdk.dir` errors:** fix `local.properties` to your SDK path (often `~/Library/Android/sdk` on macOS).
 
-3. **Configure API URL** (optional):
+APK: `app/build/outputs/apk/debug/app-debug.apk`
 
-   For a physical device, set your machine's LAN IP in `src/lib/config.ts` or use `EXPO_PUBLIC_API_URL` in `.env`:
+## Authentication
 
-   ```
-   EXPO_PUBLIC_API_URL=http://192.168.1.x:3000
-   ```
+The API uses **`Authorization: Bearer <apiToken>`** (see `src/lib/auth.ts`). After **`POST /api/auth/login`**, the returned **`apiToken`** (and **`userId`** for local display) is stored in **`EncryptedSharedPreferences`** (`SessionStore`). **`HttpClient`** adds the `Authorization` header on every request (`createHttpClient`).
 
-   Simulator can use `http://localhost:3000`.
+Cold start: **`GET /api/auth/me`**; invalid session clears storage.
 
-4. **Run the app**:
+## Sync (Room + `GET /api/data/sync`)
 
-   ```bash
-   npm run ios
-   ```
+Successful sync GETs are stored as **raw JSON** in **`sync_cache`**. **`ignoreUnknownKeys`** keeps the client tolerant of new server fields.
 
-## Phase 0 (complete)
+The client decodes a growing slice of the payload, including **`profile`**, **`meta`** (xp, hasAdjusted, ricoHistory), **`meals`**, **`plan`** (workout + **`dietPlan.dailyTargets`**), **`workoutProgress`**, **`milestones`**, wearables, **`hydration`**, **`fastingSessions`**, **`biofeedback`**, **`pantry`**, **`activityLog`**, and more—aligned with `src/lib/sync-schema.ts`.
 
-- [x] Expo project scaffold
-- [x] Design tokens (theme.ts)
-- [x] Core components (Button, Card, Input, Badge)
-- [x] API client with `X-Recomp-User-Id` header
-- [x] Auth store (Zustand + SecureStore)
-- [x] Navigation (Auth stack → Main tabs)
-- [x] Onboarding screen (form)
+**Upload:** **`POST /api/data/sync`** rebuilds the body from cache (`buildSyncPushPayload`). **Today** and flows that call **`pushCachedSnapshot()`** surface results via Snackbar where implemented.
 
-## Phase 1 (complete)
+**503:** Sync GET can return **503** when Dynamo is not configured locally; use a deployed API or full stack.
 
-- [x] Data store (plan, meals, activityLog, workoutProgress) + AsyncStorage
-- [x] Sync to server (`/api/data/sync`)
-- [x] Plan generation after onboarding
-- [x] TodayAtAGlance component (budget bar, macros, mini cards)
-- [x] Calendar component (week view, date select)
-- [x] Dashboard screen
-- [x] Meals screen (list + calendar filter)
-- [x] Workouts screen (day view + exercise list)
-- [x] Profile screen (read-only)
-- [x] More tab (Adjust, Wearables, Milestones placeholders)
-- [x] Demo mode banner
+## Navigation (iOS `MainTabView` parity)
 
-## Backend
+Bottom tabs (**7**), same order as iOS shell:
 
-The web API (`recomp`) accepts `X-Recomp-User-Id` for mobile clients. Cookie auth remains for web.
+| Tab | Screen |
+|-----|--------|
+| **Today** | Dashboard: greeting, calorie budget + macros, workout highlight, hydration / fasting / biofeedback widgets, daily quests, sync refresh + upload |
+| **Meals** | Segmented **Meals · Pantry · Meal prep** — logged meals (edit/push), pantry CRUD (sync `pantry[]`), meal prep **`POST /api/meal-prep/generate`** |
+| **Training** | Weekly plan from sync, **per-set completion** (web/iOS `workoutProgress` keys), progress summary card, **recovery** (`POST /api/workouts/recovery-adjust`), **exercise GIF** search |
+| **Adjust** | Plan adjustment copy + refresh (sync-backed) |
+| **Progress** | Milestones from sync |
+| **Groups** | Mine / Discover / Challenges, detail (chat, leaderboard, members), create / join / leave — same REST routes as iOS `GroupAPI` |
+| **Profile** | Hub: biometric toggle, synced profile, wearables, research, music (opens Spotify), subscription (**`proAccess`** + **Google Play Billing** when `PLAY_SUBSCRIPTION_ID` is set), **Sign out** |
+
+**FAB:** Coach chat → **`POST /api/rico`** with Rico context from cache; tool actions merge via **`RicoSyncActionApplier`**; coach history can be merged into snapshot before push.
+
+## API base URL (`BuildConfig`)
+
+| Build type | `API_BASE_URL` | Use case |
+|------------|----------------|----------|
+| debug | `http://10.0.2.2:3000` | Emulator → host :3000 |
+| release | `https://recomp-one.vercel.app` | Production |
+
+## Push, widget, biometrics, speech
+
+- **WorkManager:** periodic sync when logged in.
+- **FCM:** `POST /api/push/subscribe-fcm` when Firebase Gradle fields are set (`gradle.properties` / `google-services.json`); server needs **`FIREBASE_SERVICE_ACCOUNT_JSON`** for delivery.
+- **Widget:** `RecompAppWidgetProvider` from last snapshot.
+- **Biometrics:** **Profile** hub toggle + **`BiometricGate`** after backgrounding.
+- **Speech:** Coach mic via **SpeechRecognizer**.
+
+## CI
+
+Root **`/.github/workflows/ci.yml`** runs **`:app:compileDebugKotlin`** with web checks.
+
+## Known gaps vs iOS (non-exhaustive)
+
+- **Workout set completion / `workoutProgress` keys:** Android Training tab uses the same **`WorkoutWebProgress`** key rules as iOS/web; per-set checkboxes update **`workoutProgress`** and **`pushCachedSnapshot()`** when all sets for a row are done (local prefs mirror iOS `WorkoutService` merge behavior).
+- **Google Play Billing:** integrated (Billing Library 7.x, Profile → Subscription). Set **`PLAY_SUBSCRIPTION_ID`** in `gradle.properties` to your Play Console subscription SKU. Server verify: **`POST /api/billing/google-play/verify`** (extend with Google Play Developer API when ready).
+- **Profile “power user” tools:** notifications, API tokens, supplements, blood work, calendar feed, etc. from iOS **ProfileView** are not all ported—only the hub entries above.
+
+## Recommended next implementation order
+
+1. **Server-side Play verification** — implement `androidpublisher` in `src/app/api/billing/google-play/verify/route.ts` and persist Pro entitlements (today the route authenticates and accepts the payload only).
+2. **Remaining ProfileView surfaces** — pick by usage (notifications, tokens, health sections).
+
+Gradle `rootProject.name` is **RefactorAndroid**; module is **`:app`**.

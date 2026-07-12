@@ -4,26 +4,36 @@ import RefactorKit
 
 struct BiofeedbackCard: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @State private var energy = 3
     @State private var mood = 3
     @State private var hunger = 3
     @State private var stress = 3
     @State private var soreness = 3
     @State private var hasLogged = false
+    @State private var saveError: String?
 
     var body: some View {
         GroupBox {
             if hasLogged {
-                VStack(spacing: 4) {
+                VStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(Color.appSuccess)
                         .font(.title3)
+                        .accessibilityHidden(true)
                     Text("Logged today")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    Button("Update") {
+                        energy = 3; mood = 3; hunger = 3; stress = 3; soreness = 3
+                        hasLogged = false
+                    }
+                    .font(.caption2)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             } else {
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     feedbackRow("Energy", value: $energy, icon: "bolt.fill", color: Color.appWarm)
                     feedbackRow("Mood", value: $mood, icon: "face.smiling", color: Color.appSuccess)
                     feedbackRow("Hunger", value: $hunger, icon: "fork.knife", color: Color.appTerracotta)
@@ -41,33 +51,60 @@ struct BiofeedbackCard: View {
                             soreness: soreness
                         )
                         context.insert(entry)
+                        do { try context.save() } catch { saveError = error.localizedDescription }
+                        Task { await syncEngine?.markDirty() }
                         hasLogged = true
                     }
-                    .font(.caption.weight(.medium))
+                    .font(.caption.weight(.semibold))
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
+                    .tint(Color.appAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 2)
                 }
             }
         } label: {
             Label("Biofeedback", systemImage: "heart.text.square")
                 .font(.caption.weight(.medium))
         }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
     private func feedbackRow(_ label: String, value: Binding<Int>, icon: String, color: Color) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
-                .foregroundStyle(color)
-                .frame(width: 14)
-            Text("\(value.wrappedValue)")
-                .font(.system(size: 10, design: .rounded).weight(.medium))
-                .frame(width: 14)
-            Slider(value: Binding(
-                get: { Double(value.wrappedValue) },
-                set: { value.wrappedValue = Int($0) }
-            ), in: 1...5, step: 1)
-            .tint(color)
+        VStack(spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 9))
+                    .foregroundStyle(color)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            HStack(spacing: 5) {
+                ForEach(1...5, id: \.self) { i in
+                    Button {
+                        withAnimation(.spring(duration: 0.15)) {
+                            value.wrappedValue = i
+                        }
+                    } label: {
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(i <= value.wrappedValue ? color : color.opacity(0.12))
+                            .frame(height: 10)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Set \(label) to \(i) out of 5")
+                    .accessibilityAddTraits(i <= value.wrappedValue ? .isSelected : [])
+                }
+            }
         }
     }
 }

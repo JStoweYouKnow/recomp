@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getUserId } from "@/lib/auth";
 import { dbGetMeta, dbSetCalendarToken } from "@/lib/db";
 import { randomUUID } from "crypto";
 
-export async function POST() {
-  const userId = await getUserId();
+export async function POST(req: NextRequest) {
+  const userId = await getUserId(req.headers);
   if (!userId) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }

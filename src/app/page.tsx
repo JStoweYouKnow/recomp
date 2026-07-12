@@ -3,16 +3,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
-  getWearableData, saveWearableData, getWearableConnections, saveWearableConnections,
+  getWearableData, saveWearableData, mergeWearableIncoming, getWearableConnections, saveWearableConnections,
   getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
   syncToServer, flushSync, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
   getBiofeedback, getHydration, getActiveFastingSession,
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
-  saveMetabolicModel, saveMeasurementTargets,
+  saveMetabolicModel, saveMeasurementTargets, getMetabolicModel, getMeasurementTargets,
+  getSavedRecipes, saveSavedRecipes,
 } from "@/lib/storage";
-import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary } from "@/lib/types";
+import { remainingMacros } from "@/lib/recipe-fit";
+import type { UserProfile, FitnessPlan, MealEntry, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
+import { generatePlanWithOptions } from "@/lib/plan-orchestrator";
+import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
 import { computeMilestones, getBadgeInfo } from "@/lib/milestones";
 import { buildDemoSeed } from "@/lib/demoSeed";
@@ -33,6 +37,47 @@ import { playBadgeEarned, playLevelUp } from "@/lib/sounds";
 import { xpToLevel } from "@/lib/milestones";
 import { formatHydrationAmount, getUnitSystem } from "@/lib/units";
 import { v4 as uuidv4 } from "uuid";
+
+/** Newest wearable row supplying body-fat % / muscle mass (lbs) for macro calibration */
+function latestScaleComposition(data: WearableDaySummary[]): {
+  currentBodyFatPercent?: number;
+  currentMuscleMassLbs?: number;
+} {
+  const sorted = [...data].sort((a, b) => b.date.localeCompare(a.date));
+  let currentBodyFatPercent: number | undefined;
+  let currentMuscleMassLbs: number | undefined;
+  for (const d of sorted) {
+    if (currentBodyFatPercent == null && d.bodyFatPercent != null) currentBodyFatPercent = d.bodyFatPercent;
+    if (currentMuscleMassLbs == null && d.muscleMass != null) currentMuscleMassLbs = d.muscleMass;
+    if (currentBodyFatPercent != null && currentMuscleMassLbs != null) break;
+  }
+  const out: { currentBodyFatPercent?: number; currentMuscleMassLbs?: number } = {};
+  if (currentBodyFatPercent != null) out.currentBodyFatPercent = currentBodyFatPercent;
+  if (currentMuscleMassLbs != null) out.currentMuscleMassLbs = currentMuscleMassLbs;
+  return out;
+}
+
+function buildPlanGenerateBody(profile: UserProfile, options?: RegeneratePlanOptions): Record<string, unknown> {
+  const metabolicModel = getMetabolicModel();
+  const learnedTDEE =
+    metabolicModel && metabolicModel.confidence >= 70 ? metabolicModel.estimatedTDEE : undefined;
+  const targets = getMeasurementTargets();
+  const hasTargets =
+    targets &&
+    (targets.targetWeightLbs != null ||
+      targets.targetBodyFatPercent != null ||
+      targets.targetMuscleMassLbs != null);
+  const comp = latestScaleComposition(getWearableData());
+  return {
+    ...profile,
+    ...(options?.programWeeks != null ? { programWeeks: options.programWeeks } : {}),
+    ...(options?.workoutDaysPerWeek != null ? { workoutDaysPerWeek: options.workoutDaysPerWeek } : {}),
+    ...(learnedTDEE != null ? { learnedTDEE } : {}),
+    ...(hasTargets ? { measurementTargets: targets } : {}),
+    ...(comp.currentBodyFatPercent != null ? { currentBodyFatPercent: comp.currentBodyFatPercent } : {}),
+    ...(comp.currentMuscleMassLbs != null ? { currentMuscleMassLbs: comp.currentMuscleMassLbs } : {}),
+  };
+}
 export default function Home() {
   const { showToast } = useToast();
   const { trigger: triggerConfetti, ConfettiOverlay } = useConfetti();
@@ -131,6 +176,7 @@ export default function Home() {
     if (data.fastingSessions) saveFastingSessions(data.fastingSessions as Parameters<typeof saveFastingSessions>[0]);
     if (data.biofeedback) saveBiofeedback(data.biofeedback as Parameters<typeof saveBiofeedback>[0]);
     if (data.pantry) savePantry(data.pantry as Parameters<typeof savePantry>[0]);
+    if (data.savedRecipes) saveSavedRecipes(data.savedRecipes as Parameters<typeof saveSavedRecipes>[0]);
     if (data.bodyScans) saveBodyScans(data.bodyScans as Parameters<typeof saveBodyScans>[0]);
     if (data.supplements) saveSupplements(data.supplements as Parameters<typeof saveSupplements>[0]);
     if (data.bloodWork) saveBloodWork(data.bloodWork as Parameters<typeof saveBloodWork>[0]);
@@ -335,7 +381,7 @@ export default function Home() {
       const res = await fetch("/api/plans/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newProfile),
+        body: JSON.stringify(buildPlanGenerateBody(newProfile)),
       });
       const p = await res.json();
       if (p.error) throw new Error(p.error);
@@ -353,25 +399,40 @@ export default function Home() {
     }
   };
 
-  const handleRegeneratePlan = async () => {
+  const handleRegeneratePlan = async (options?: RegeneratePlanOptions) => {
     if (!profile) return;
     setPlanRegenerating(true);
+    const totalWeeks = options?.programWeeks ?? 1;
+    if (totalWeeks > 1) {
+      setPlanLoadingMessage(`Building week 1 of ${totalWeeks}…`);
+    }
     try {
-      const res = await fetch("/api/plans/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
-      });
-      const p = await res.json();
-      if (p.error) throw new Error(p.error);
+      const p = await generatePlanWithOptions(
+        buildPlanGenerateBody,
+        profile,
+        options,
+        (progress) => {
+          if (progress.totalWeeks > 1) {
+            setPlanLoadingMessage(
+              progress.phase === "done"
+                ? "Finishing up…"
+                : `Building week ${progress.completedWeeks} of ${progress.totalWeeks}…`
+            );
+          }
+        }
+      );
       savePlan(p);
       setPlan(p);
       syncToServer();
+      if (totalWeeks > 1) {
+        showToast(`Your ${totalWeeks}-week program is ready.`, "success");
+      }
     } catch (e) {
       console.error(e);
       showToast("Plan generation failed. Try again.", "error");
     } finally {
       setPlanRegenerating(false);
+      setPlanLoadingMessage("Generating your plan… (may take up to 60s)");
     }
   };
 
@@ -713,15 +774,15 @@ export default function Home() {
               streak={getCurrentStreakFromMeals(meals)}
               macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
               onDataFetched={(data) => {
-                const existing = getWearableData();
-                const merged = [...existing];
-                (data as WearableDaySummary[]).forEach((d) => {
-                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                  if (i >= 0) merged[i] = { ...merged[i], ...d };
-                  else merged.push(d);
-                });
+                const merged = mergeWearableIncoming(getWearableData(), data as WearableDaySummary[]);
                 saveWearableData(merged);
                 setWearableData(merged);
+                syncToServer();
+              }}
+              onManualWearableEntryRemoved={(manualEntryId) => {
+                const next = getWearableData().filter((x) => x.manualEntryId !== manualEntryId);
+                saveWearableData(next);
+                setWearableData(next);
                 syncToServer();
               }}
             />
@@ -738,12 +799,17 @@ export default function Home() {
               result={adjustResult}
               loading={loading}
               onAdjust={handleAdjust}
-              onApplyAdjustments={(newTargets) => {
-                if (plan && newTargets) {
+              onApplyAdjustments={({ daily, training, rest }) => {
+                if (plan) {
                   setHasAdjustedPlan();
                   const updated = {
                     ...plan,
-                    dietPlan: { ...plan.dietPlan, dailyTargets: newTargets as Macros },
+                    dietPlan: {
+                      ...plan.dietPlan,
+                      ...(daily ? { dailyTargets: daily } : {}),
+                      ...(training !== undefined ? { trainingTargets: training } : {}),
+                      ...(rest !== undefined ? { restTargets: rest } : {}),
+                    },
                   };
                   savePlan(updated);
                   setPlan(updated);
@@ -783,13 +849,7 @@ export default function Home() {
               }}
               onRegistered={() => setIsDemoMode(false)}
               onWearableDataFetched={(data) => {
-                const existing = getWearableData();
-                const merged = [...existing];
-                (data as WearableDaySummary[]).forEach((d) => {
-                  const i = merged.findIndex((x) => x.date === d.date && x.provider === d.provider);
-                  if (i >= 0) merged[i] = { ...merged[i], ...d };
-                  else merged.push(d);
-                });
+                const merged = mergeWearableIncoming(getWearableData(), data as WearableDaySummary[]);
                 saveWearableData(merged);
                 setWearableData(merged);
                 syncToServer();
@@ -842,9 +902,44 @@ export default function Home() {
               })(),
               activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
               workoutPlan: plan?.workoutPlan ?? null,
+              macroTargets: plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 },
+              todayMacros: (() => {
+                const today = getTodayLocal();
+                return meals
+                  .filter((m) => m.date === today)
+                  .reduce(
+                    (acc, m) => ({
+                      calories: acc.calories + m.macros.calories,
+                      protein: acc.protein + m.macros.protein,
+                      carbs: acc.carbs + m.macros.carbs,
+                      fat: acc.fat + m.macros.fat,
+                    }),
+                    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+                  );
+              })(),
+              remainingMacros: (() => {
+                const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+                const today = getTodayLocal();
+                const consumed = meals
+                  .filter((m) => m.date === today)
+                  .reduce(
+                    (acc, m) => ({
+                      calories: acc.calories + m.macros.calories,
+                      protein: acc.protein + m.macros.protein,
+                      carbs: acc.carbs + m.macros.carbs,
+                      fat: acc.fat + m.macros.fat,
+                    }),
+                    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+                  );
+                return remainingMacros(targets, consumed);
+              })(),
+              savedRecipeCount: getSavedRecipes().length,
+              savedRecipeNames: getSavedRecipes().slice(0, 8).map((r) => r.name),
+              savedRecipes: getSavedRecipes().slice(0, 30),
             }}
             isOpen={ricoOpen}
             onClose={() => setRicoOpen(false)}
+            onRegeneratePlan={handleRegeneratePlan}
           />
         </>
       )}

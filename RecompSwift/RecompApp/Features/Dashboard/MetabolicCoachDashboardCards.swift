@@ -7,13 +7,13 @@ struct MetabolicModelDashboardCard: View {
     @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \MealEntry.date, order: .reverse) private var meals: [MealEntry]
     @Query(sort: \WearableDaySummary.date, order: .reverse) private var wearables: [WearableDaySummary]
+    @Query(sort: \MetabolicModel.lastUpdated, order: .reverse) private var metabolicModels: [MetabolicModel]
     @Environment(AuthService.self) private var auth
 
-    @State private var planService = PlanService()
-    @State private var isUpdating = false
-    @State private var errorText: String?
-    @State private var resultSummary: String?
+    @State private var vm = MetabolicModelDashboardViewModel()
     @State private var showExplainer = false
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
 
     var body: some View {
         GroupBox {
@@ -21,7 +21,7 @@ struct MetabolicModelDashboardCard: View {
                 Text("Adaptive TDEE")
                     .font(.subheadline.weight(.semibold))
 
-                if let resultSummary {
+                if let resultSummary = vm.resultSummary {
                     Text(resultSummary)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -31,11 +31,18 @@ struct MetabolicModelDashboardCard: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let errorText {
+                if let errorText = vm.errorText {
                     Text(errorText)
                         .font(.caption2)
                         .foregroundStyle(Color.appError)
                 }
+                #if DEBUG
+                if let unitDebugSummary = vm.unitDebugSummary {
+                    Text(unitDebugSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                #endif
 
                 DisclosureGroup(isExpanded: $showExplainer) {
                     Text(
@@ -49,93 +56,82 @@ struct MetabolicModelDashboardCard: View {
                         .font(.caption)
                 }
 
-                Button {
-                    Task { await refreshModel() }
-                } label: {
-                    if isUpdating {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text(resultSummary == nil ? "Update model" : "Refresh model")
-                            .font(.caption.weight(.semibold))
+                if let appliedSummary = vm.appliedTargetsSummary {
+                    Text(appliedSummary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Button {
+                        if aiConsentGiven {
+                            Task { await refreshModel() }
+                        } else {
+                            showAIConsent = true
+                        }
+                    } label: {
+                        if vm.isUpdating {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text(vm.resultSummary == nil ? "Update model" : "Refresh model")
+                                .font(.caption.weight(.semibold))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(vm.isUpdating || vm.isApplyingTargets)
+
+                    if vm.currentEstimatedTDEE(metabolicModels: metabolicModels) != nil {
+                        Button {
+                            Task { await applyToTargets() }
+                        } label: {
+                            if vm.isApplyingTargets {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Apply to macro targets")
+                                    .font(.caption.weight(.semibold))
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(vm.isUpdating || vm.isApplyingTargets)
                     }
                 }
-                .buttonStyle(.bordered)
-                .disabled(isUpdating)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .onAppear {
-            if resultSummary == nil, let cached = MetabolicModelStorage.load() {
-                resultSummary =
-                    "Last estimate: \(Int(cached.estimatedTDEE)) kcal/day · \(cached.confidence)% confidence " +
-                    "(\(cached.dataPointCount) pts)"
-            }
+        .onAppear { vm.syncSummaryFromStores(metabolicModels: metabolicModels) }
+        .onChange(of: metabolicModels.count) { _, _ in vm.syncSummaryFromStores(metabolicModels: metabolicModels) }
+        .onChange(of: metabolicModels.first?.estimatedTDEE ?? 0) { _, _ in vm.syncSummaryFromStores(metabolicModels: metabolicModels) }
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentView(
+                onAccept: {
+                    aiConsentGiven = true
+                    showAIConsent = false
+                    Task { await refreshModel() }
+                },
+                onDecline: { showAIConsent = false }
+            )
         }
     }
 
     private func refreshModel() async {
-        isUpdating = true
-        errorText = nil
-        defer { isUpdating = false }
+        await vm.refreshModel(
+            context: context,
+            meals: meals,
+            wearables: wearables,
+            profileWeight: auth.currentUser?.weight,
+            syncEngine: syncEngine
+        )
+    }
 
-        let plan = planService.currentPlan(context: context)
-        let targets = plan?.dietPlan.dailyTargets ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-        let baseWeightKg = auth.currentUser?.weight ?? 75
-
-        var byDate: [String: (intake: Double, weightKg: Double?, expenditure: Double?)] = [:]
-        for m in meals.prefix(400) {
-            var cur = byDate[m.date] ?? (0, nil, nil)
-            cur.intake += Double(m.macros.calories)
-            byDate[m.date] = cur
-        }
-        for w in wearables.prefix(120) {
-            var cur = byDate[w.date] ?? (0, nil, nil)
-            if let lbs = w.weight {
-                cur.weightKg = lbs * 0.45359237
-            }
-            cur.expenditure = w.caloriesBurned
-            byDate[w.date] = cur
-        }
-
-        var prevWeight = baseWeightKg
-        let sortedDates = byDate.keys.sorted()
-        var points: [MetabolicDataPointPayload] = []
-        for d in sortedDates {
-            guard let row = byDate[d], row.intake > 0 else { continue }
-            let wKg = row.weightKg ?? prevWeight
-            if let w = row.weightKg { prevWeight = w }
-            let expenditure = row.expenditure ?? Double(targets.calories)
-            points.append(
-                MetabolicDataPointPayload(
-                    date: d,
-                    weightKg: wKg,
-                    totalIntake: row.intake,
-                    totalExpenditure: expenditure
-                )
-            )
-        }
-
-        guard points.count >= 7 else {
-            errorText = "Need 7+ days with meals logged."
-            return
-        }
-
-        do {
-            let payload = MetabolicBatchUpdatePayload(dataPoints: points, currentTDEE: targets.calories)
-            let model: MetabolicModelResponse = try await APIClient.shared.request(MiscAPI.metabolicUpdate(payload: payload))
-            MetabolicModelStorage.save(model, dataPointCount: points.count)
-            if let msg = model.message, !msg.isEmpty {
-                resultSummary =
-                    "\(Int(model.estimatedTDEE)) kcal/day · \(model.confidence)% — \(msg)"
-            } else {
-                resultSummary =
-                    "Estimated TDEE \(Int(model.estimatedTDEE)) kcal/day · \(model.confidence)% confidence"
-            }
-            await syncEngine?.markDirty()
-        } catch {
-            errorText = error.localizedDescription
-        }
+    private func applyToTargets() async {
+        await vm.applyToMacroTargets(
+            context: context,
+            metabolicModels: metabolicModels,
+            profile: auth.currentUser?.toDTO(),
+            syncEngine: syncEngine
+        )
     }
 }
 
@@ -146,30 +142,9 @@ struct CoachCheckInDashboardCard: View {
     @Query(sort: \BiofeedbackEntry.time, order: .reverse) private var biofeedbackEntries: [BiofeedbackEntry]
     @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
 
-    @State private var mealService = MealService()
-    @State private var planService = PlanService()
-    @State private var message: String?
-    @State private var tone: String?
-    @State private var loading = false
-
-    private var todayKey: String { DateHelpers.todayString() }
-
-    private var latestTodayBio: BiofeedbackEntry? {
-        biofeedbackEntries.first { $0.date == todayKey }
-    }
-
-    private var mealLoggingStreak: Int {
-        let dates = Set(allMeals.map(\.date))
-        return DateHelpers.streakLength(dates: Array(dates))
-    }
-
-    private var workoutCompletedToday: Bool {
-        guard let plan = planService.currentPlan(context: context),
-              let idx = planService.todaysWorkoutPlanIndex(context: context),
-              let day = planService.todaysWorkout(context: context)
-        else { return false }
-        return WorkoutService.shared.isWorkoutDayFullyComplete(day, dayKey: todayKey, planIndex: idx, planId: plan.id)
-    }
+    @State private var vm = CoachCheckInViewModel()
+    @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
+    @State private var showAIConsent = false
 
     var body: some View {
         GroupBox {
@@ -177,13 +152,13 @@ struct CoachCheckInDashboardCard: View {
                 Text("Ref Check-In")
                     .font(.subheadline.weight(.semibold))
 
-                if loading {
+                if vm.loading {
                     ProgressView()
                         .controlSize(.small)
-                } else if let message {
+                } else if let message = vm.message {
                     Text(message)
                         .font(.caption)
-                    if let tone {
+                    if let tone = vm.tone {
                         Text(tone.capitalized)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -195,47 +170,37 @@ struct CoachCheckInDashboardCard: View {
                 }
 
                 Button("Get check-in") {
-                    Task { await fetchCheckIn() }
+                    if aiConsentGiven {
+                        Task { await fetchCheckIn() }
+                    } else {
+                        showAIConsent = true
+                    }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
-                .disabled(loading || auth.currentUser == nil)
+                .disabled(vm.loading || auth.currentUser == nil)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheet(isPresented: $showAIConsent) {
+            AIConsentView(
+                onAccept: {
+                    aiConsentGiven = true
+                    showAIConsent = false
+                    Task { await fetchCheckIn() }
+                },
+                onDecline: { showAIConsent = false }
+            )
         }
     }
 
     private func fetchCheckIn() async {
         guard let profile = auth.currentUser else { return }
-        loading = true
-        defer { loading = false }
-        let targets = planService.currentPlan(context: context)?.dietPlan.dailyTargets
-            ?? Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-        let todayMealCount = mealService.mealsForDate(todayKey, context: context).count
-        let bioSnap: CoachBiofeedbackSnapshot? = latestTodayBio.map {
-            CoachBiofeedbackSnapshot(
-                energy: $0.energy,
-                mood: $0.mood,
-                hunger: $0.hunger,
-                stress: $0.stress,
-                soreness: $0.soreness
-            )
-        }
-        let payload = CoachCheckInRequest(
-            name: profile.name,
-            todayMeals: todayMealCount,
-            todayTargets: targets,
-            workoutCompleted: workoutCompletedToday,
-            streak: mealLoggingStreak,
-            biofeedback: bioSnap
+        await vm.fetchCheckIn(
+            profileName: profile.name,
+            context: context,
+            biofeedbackEntries: biofeedbackEntries,
+            allMeals: allMeals
         )
-        do {
-            let res: CoachCheckInResponse = try await APIClient.shared.request(CoachAPI.checkIn(payload: payload))
-            message = res.message ?? "Keep going — consistency wins."
-            tone = res.tone ?? "encouraging"
-        } catch {
-            message = "Keep pushing! You've got this."
-            tone = "encouraging"
-        }
     }
 }

@@ -19,8 +19,10 @@ export interface UserProfile {
   email?: string;
   avatarDataUrl?: string; // base64 data URL for profile picture
   age: number;
-  weight: number; // kg
-  height: number; // cm
+  /** Body weight; native iOS submits **lbs** and height **inches** (see onboarding). Treat as authoritative for BMI with wearables when present. */
+  weight: number;
+  /** Stored as **total inches** (us) or **cm** when `unitSystem === "metric"` (native clients normalize at signup). */
+  height: number;
   gender: "male" | "female" | "other";
   fitnessLevel: FitnessLevel;
   goal: Goal;
@@ -33,6 +35,7 @@ export interface UserProfile {
   workoutDaysPerWeek?: number; // 2–7
   workoutTimeframe?: "morning" | "afternoon" | "evening" | "flexible";
   createdAt: string;
+  proAccess?: boolean;
 }
 
 export interface Macros {
@@ -71,6 +74,39 @@ export interface WorkoutDay {
   finishers?: WorkoutExercise[];
 }
 
+export type AdvancementMode = "calendar" | "completion";
+export type MissedSessionStatus = "missed" | "skipped" | "rescheduled";
+export type ScheduleAction =
+  | "stay_on_week"
+  | "skip_week"
+  | "catch_up"
+  | "repeat_week"
+  | "skip_today"
+  | "reschedule";
+
+/** A workout session that was scheduled but not completed (or explicitly skipped/rescheduled). */
+export interface MissedSession {
+  id: string;
+  planIndex: number;
+  scheduledDate: string;
+  status: MissedSessionStatus;
+  rescheduledTo?: string;
+  dayLabel?: string;
+  focus?: string;
+}
+
+export interface WorkoutScheduleState {
+  /** Calendar = advance by elapsed weeks; completion = advance when program week is fully done. */
+  advancementMode?: AdvancementMode;
+  /** Shifts program week backward (repeat/stay on week). 1 = show previous program week. */
+  programWeekOffset?: number;
+  /** Freeze program week advancement until this date (YYYY-MM-DD), inclusive. */
+  pausedUntil?: string;
+  missedSessions?: MissedSession[];
+  /** ISO timestamp when user last dismissed the catch-up banner. */
+  catchUpBannerDismissedAt?: string;
+}
+
 export interface DietDay {
   day: string;
   meals: {
@@ -86,15 +122,19 @@ export interface FitnessPlan {
   createdAt: string;
   dietPlan: {
     dailyTargets: Macros;
+    trainingTargets?: Macros;
+    restTargets?: Macros;
     weeklyPlan: DietDay[];
     tips: string[];
   };
   workoutPlan: {
+    /** Anchor Monday week for multi-week PDF plans (`yyyy-MM-dd`); pairs with `Week N` day labels. */
+    programWeek1Start?: string;
     weeklyPlan: WorkoutDay[];
     tips: string[];
     /** Monday YYYY-MM-DD of program week 1; used with multi-week plans so the calendar picks the right session. */
     programWeek1Start?: string;
-  };
+  } & WorkoutScheduleState;
   reasoning?: string;
 }
 
@@ -125,12 +165,21 @@ export interface WearableDaySummary {
   heartRateAvg?: number;
   heartRateResting?: number;
   workouts?: { name: string; duration: number; calories?: number }[];
-  /** Weight in lbs (from scale, Fitbit Aria, Apple Health, etc.) */
+  /**
+   * Mass sent by the client. **Interpretation** depends on `weightUnit` (default `lbs`).
+   * After `/api/data/sync`, stored values are always **canonical lbs** (`weightUnit` stripped).
+   */
   weight?: number;
+  /** `kg` converts to lbs on ingest. Omitted ⇒ treat weight as lbs (legacy). Not persisted. */
+  weightUnit?: "lbs" | "kg";
   /** Body fat % (0–100) when available from smart scale */
   bodyFatPercent?: number;
-  /** Muscle mass in lbs when available */
+  /**
+   * Muscle mass from client; default unit `lbs`.
+   */
   muscleMass?: number;
+  /** `kg` ⇒ converted to lbs on ingest. Not persisted. */
+  muscleMassUnit?: "lbs" | "kg";
   /** RENPHO / smart scale extras (all weight-related in lbs) */
   bmi?: number;
   skeletalMusclePercent?: number;
@@ -142,6 +191,8 @@ export interface WearableDaySummary {
   proteinPercent?: number;
   bmr?: number; // kcal
   metabolicAge?: number;
+  /** Set for weigh-ins added via Body measurements manual entry; used to remove mistaken entries without affecting sync/import rows. */
+  manualEntryId?: string;
 }
 
 export type MilestoneType =
@@ -355,7 +406,7 @@ export interface GroupMemberProgress {
   updatedAt: string;
 }
 
-/** Saved recipe from a cooking app or import — used to improve meal suggestions (gourmet options within calorie budget) */
+/** Saved recipe from a cooking app, URL, or import — synced across devices */
 export interface CookingAppRecipe {
   id: string;
   name: string;
@@ -364,9 +415,15 @@ export interface CookingAppRecipe {
   protein: number;
   carbs: number;
   fat: number;
-  source?: string; // e.g. "whisk", "import"
+  recipeUrl?: string;
+  source?: string; // e.g. "whisk", "import", "recipekeeper", "edamam", "url"
+  mealTypes?: ("breakfast" | "lunch" | "dinner" | "snack")[];
+  servings?: number;
   addedAt: string;
 }
+
+/** Alias for synced recipe library (same shape as CookingAppRecipe) */
+export type SavedRecipe = CookingAppRecipe;
 
 // ── Hydration Tracking ──────────────────────────────────
 export interface HydrationEntry {

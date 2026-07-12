@@ -3,6 +3,7 @@
  * Calls route handlers with mocked auth and Nova. Verifies the critical user journey.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { calculateMacros } from "@/lib/macro-calculator";
 
 vi.mock("@/lib/auth", () => ({ getUserId: vi.fn() }));
 vi.mock("@/lib/server-rate-limit", () => ({
@@ -12,10 +13,14 @@ vi.mock("@/lib/server-rate-limit", () => ({
   getRequestIp: () => "127.0.0.1",
 }));
 vi.mock("@/lib/nova", () => ({ invokeNovaWithExtendedThinking: vi.fn() }));
-vi.mock("@/lib/logger", () => ({
-  logInfo: vi.fn(),
-  logError: vi.fn(),
-}));
+vi.mock("@/lib/logger", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/logger")>();
+  return {
+    ...actual,
+    logInfo: vi.fn(),
+    logError: vi.fn(),
+  };
+});
 
 const mockProfile = {
   name: "Test User",
@@ -59,7 +64,15 @@ describe("Onboarding flow integration", () => {
 
     expect(res.status).toBe(200);
     expect(data.dietPlan).toBeDefined();
-    expect(data.dietPlan.dailyTargets).toEqual({ calories: 2000, protein: 150, carbs: 200, fat: 65 });
+    const expectedDailyTargets = calculateMacros({
+      weightKg: mockProfile.weight ?? 70,
+      heightCm: mockProfile.height ?? 170,
+      age: mockProfile.age ?? 30,
+      gender: mockProfile.gender === "female" ? "female" : mockProfile.gender === "male" ? "male" : "other",
+      dailyActivityLevel: mockProfile.dailyActivityLevel ?? "moderate",
+      goal: mockProfile.goal,
+    });
+    expect(data.dietPlan.dailyTargets).toEqual(expectedDailyTargets);
     expect(data.workoutPlan).toBeDefined();
     expect(data.workoutPlan.weeklyPlan).toHaveLength(1);
     expect(data.workoutPlan.weeklyPlan[0].day).toBe("Monday");

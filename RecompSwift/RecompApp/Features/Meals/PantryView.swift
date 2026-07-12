@@ -4,12 +4,14 @@ import RefactorKit
 
 struct PantryView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \PantryItem.addedAt, order: .reverse)
     private var items: [PantryItem]
 
     @State private var showAdd = false
     @State private var newName = ""
     @State private var newCategory: PantryCategory = .protein
+    @State private var saveError: String?
 
     var body: some View {
         Group {
@@ -39,6 +41,8 @@ struct PantryView: View {
                                 }
                                 .onDelete { indices in
                                     for i in indices { context.delete(categoryItems[i]) }
+                                    do { try context.save() } catch { saveError = error.localizedDescription }
+                                    Task { await syncEngine?.markDirty() }
                                 }
                             }
                         }
@@ -60,9 +64,19 @@ struct PantryView: View {
                 if !newName.isEmpty {
                     context.insert(PantryItem(name: newName, category: newCategory))
                     newName = ""
+                    do { try context.save() } catch { saveError = error.localizedDescription }
+                    Task { await syncEngine?.markDirty() }
                 }
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
         }
     }
 }

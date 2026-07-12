@@ -4,7 +4,9 @@ import RefactorKit
 
 struct HydrationWidget: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.syncEngine) private var syncEngine
     @Query(sort: \HydrationEntry.time) private var allEntries: [HydrationEntry]
+    @State private var saveError: String?
 
     private var todaysEntries: [HydrationEntry] {
         let today = DateHelpers.todayString()
@@ -32,36 +34,84 @@ struct HydrationWidget: View {
                         .foregroundStyle(Color.appAccent)
                 }
                 .frame(width: 50, height: 50)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Water intake")
+                .accessibilityValue("\(totalMl) of \(goalMl) milliliters")
 
                 Text("\(totalMl) ml")
                     .font(.caption.weight(.semibold))
+                    .monospacedDigit()
+                    .accessibilityHidden(true)
 
-                HStack(spacing: 8) {
-                    quickAddButton(250)
-                    quickAddButton(500)
+                HStack(spacing: 6) {
+                    adjustButton(-250)
+                    adjustButton(+250)
+                }
+                HStack(spacing: 6) {
+                    adjustButton(-500)
+                    adjustButton(+500)
                 }
             }
         } label: {
             Label("Hydration", systemImage: "drop")
                 .font(.caption.weight(.medium))
         }
+        .alert("Save Failed", isPresented: Binding(
+            get: { saveError != nil },
+            set: { if !$0 { saveError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(saveError ?? "")
+        }
     }
 
-    private func quickAddButton(_ ml: Int) -> some View {
-        Button {
-            let entry = HydrationEntry(
-                date: DateHelpers.todayString(),
-                time: DateHelpers.timeString(from: .now),
-                amountMl: ml
-            )
-            context.insert(entry)
+    private func adjustButton(_ ml: Int) -> some View {
+        let isSubtract = ml < 0
+        let label = isSubtract ? "\(ml)" : "+\(ml)"
+        let wouldGoNegative = isSubtract && totalMl + ml < 0
+
+        return Button {
+            if isSubtract {
+                // Remove the most recent entry with this magnitude, or the closest one.
+                let target = -ml
+                if let idx = todaysEntries.indices.reversed().first(where: { todaysEntries[$0].amountMl == target }) {
+                    context.delete(todaysEntries[idx])
+                } else if let last = todaysEntries.last {
+                    context.delete(last)
+                }
+                persistHydrationChange()
+            } else {
+                let entry = HydrationEntry(
+                    date: DateHelpers.todayString(),
+                    time: DateHelpers.timeString(from: .now),
+                    amountMl: ml
+                )
+                context.insert(entry)
+                persistHydrationChange()
+            }
         } label: {
-            Text("+\(ml)")
+            Text(label)
                 .font(.caption2.weight(.medium))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(Color.appAccent.opacity(0.1), in: Capsule())
+                .background(
+                    (isSubtract ? Color.red : Color.appAccent).opacity(0.1),
+                    in: Capsule()
+                )
+                .foregroundStyle(isSubtract ? Color.red : Color.appAccent)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isSubtract ? "Remove \(-ml) milliliters" : "Add \(ml) milliliters")
+        .disabled(wouldGoNegative || (isSubtract && todaysEntries.isEmpty))
+    }
+
+    private func persistHydrationChange() {
+        do {
+            try context.save()
+        } catch {
+            saveError = error.localizedDescription
+        }
+        Task { await syncEngine?.markDirty() }
     }
 }

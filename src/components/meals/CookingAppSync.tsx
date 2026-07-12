@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getCookingAppRecipes, saveCookingAppRecipes } from "@/lib/storage";
+import { getCookingAppRecipes, saveCookingAppRecipes, saveSavedRecipes, getSavedRecipes, syncToServer } from "@/lib/storage";
 import { useToast } from "@/components/Toast";
 import type { MealEntry, CookingAppRecipe } from "@/lib/types";
 
@@ -25,7 +25,7 @@ export function CookingAppSync({
     try { return JSON.parse(localStorage.getItem("recomp_cooking_apps") ?? "[]"); } catch { return []; }
   });
   const [cookingImportLoading, setCookingImportLoading] = useState(false);
-  const [cookingImportResult, setCookingImportResult] = useState<{ imported: number; meals: MealEntry[] } | null>(null);
+  const [cookingImportResult, setCookingImportResult] = useState<{ imported: number; meals: MealEntry[]; recipes?: CookingAppRecipe[] } | null>(null);
   const [webhookVerifyLoading, setWebhookVerifyLoading] = useState(false);
   const [webhookVerifyResult, setWebhookVerifyResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null);
 
@@ -196,8 +196,12 @@ export function CookingAppSync({
                     form.append("file", file);
                     const res = await fetch("/api/cooking/import", { method: "POST", body: form });
                     const data = await res.json();
-                    if (res.ok && data.meals) {
-                      setCookingImportResult(data);
+                    if (res.ok && (data.meals || data.recipes)) {
+                      setCookingImportResult({
+                        imported: data.imported ?? (data.recipes?.length ?? data.meals?.length ?? 0),
+                        meals: data.meals ?? [],
+                        recipes: data.recipes,
+                      });
                     } else {
                       showToast(data.error || "Import failed", "error");
                     }
@@ -232,8 +236,12 @@ export function CookingAppSync({
                   body: JSON.stringify({ data: text }),
                 });
                 const data = await res.json();
-                if (res.ok && data.meals) {
-                  setCookingImportResult(data);
+                if (res.ok && (data.meals || data.recipes)) {
+                  setCookingImportResult({
+                    imported: data.imported ?? (data.recipes?.length ?? data.meals?.length ?? 0),
+                    meals: data.meals ?? [],
+                    recipes: data.recipes,
+                  });
                   el.value = "";
                 } else {
                   showToast(data.error || "Import failed", "error");
@@ -249,7 +257,17 @@ export function CookingAppSync({
 
           {cookingImportResult && (
             <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent)]/5 p-4 space-y-2">
-              <p className="text-sm font-medium">{cookingImportResult.imported} meal(s) parsed</p>
+              <p className="text-sm font-medium">
+                {cookingImportResult.recipes?.length
+                  ? `${cookingImportResult.imported} recipe(s) imported`
+                  : `${cookingImportResult.imported} meal(s) parsed`}
+              </p>
+              {cookingImportResult.recipes?.map((r, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span>{r.name}</span>
+                  <span className="text-xs text-[var(--muted)]">{r.calories} cal · {r.protein}g P</span>
+                </div>
+              ))}
               {cookingImportResult.meals.map((m, i) => (
                 <div key={i} className="flex items-center justify-between text-sm">
                   <span>{m.name}</span>
@@ -257,6 +275,7 @@ export function CookingAppSync({
                 </div>
               ))}
               <div className="flex flex-wrap gap-2 mt-2">
+                {cookingImportResult.meals.length > 0 && (
                 <button
                   onClick={() => {
                     cookingImportResult.meals.forEach((m) => {
@@ -267,12 +286,13 @@ export function CookingAppSync({
                   }}
                   className="btn-primary rounded-lg px-4 py-2 text-sm"
                 >
-                  Log all {cookingImportResult.imported} meal(s)
+                  Log all {cookingImportResult.meals.length} meal(s)
                 </button>
+                )}
                 <button
                   onClick={() => {
                     const now = new Date().toISOString();
-                    const newRecipes: CookingAppRecipe[] = cookingImportResult.meals.map((m) => ({
+                    const fromMeals: CookingAppRecipe[] = cookingImportResult.meals.map((m) => ({
                       id: `recipe_${Date.now()}_${m.id}`,
                       name: m.name,
                       description: m.notes ?? undefined,
@@ -283,14 +303,18 @@ export function CookingAppSync({
                       source: "import",
                       addedAt: now,
                     }));
-                    const existing = getCookingAppRecipes();
+                    const fromRecipes = cookingImportResult.recipes ?? [];
+                    const newRecipes = [...fromRecipes, ...fromMeals];
+                    const existing = getSavedRecipes();
                     const combined = [...existing];
                     for (const r of newRecipes) {
                       if (!combined.some((e) => e.name === r.name && e.calories === r.calories)) combined.push(r);
                     }
-                    saveCookingAppRecipes(combined);
+                    saveSavedRecipes(combined);
                     setRecipeLibrary(combined);
+                    syncToServer();
                     setCookingImportResult(null);
+                    showToast(`Added ${newRecipes.length} recipe(s) to library`, "success");
                   }}
                   className="rounded-lg border border-[var(--accent)] px-4 py-2 text-sm text-[var(--accent)] hover:bg-[var(--accent)]/10"
                 >
@@ -327,8 +351,9 @@ export function CookingAppSync({
                     type="button"
                     onClick={() => {
                       const next = recipeLibrary.filter((x) => x.id !== r.id);
-                      saveCookingAppRecipes(next);
+                      saveSavedRecipes(next);
                       setRecipeLibrary(next);
+                      syncToServer();
                     }}
                     className="text-xs text-[var(--muted)] hover:text-[var(--accent-terracotta)]"
                     aria-label={`Remove ${r.name}`}

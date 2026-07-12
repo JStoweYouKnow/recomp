@@ -7,6 +7,8 @@ import Observation
 public final class CoachService {
     public private(set) var messages: [CoachMessage] = []
     public private(set) var isResponding = false
+    public private(set) var shouldRegeneratePlan = false
+    public private(set) var pendingRegenerateOptions = RegeneratePlanOptions.default
 
     private let api: APIClient
 
@@ -22,12 +24,17 @@ public final class CoachService {
     }
 
     public func sendMessage(_ text: String, context: ModelContext) async throws {
-        let userMessage = CoachMessage(role: .user, content: text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let userMessage = CoachMessage(role: .user, content: trimmed)
         context.insert(userMessage)
         messages.append(userMessage)
 
         isResponding = true
         defer { isResponding = false }
+        shouldRegeneratePlan = false
+        pendingRegenerateOptions = .default
 
         let historyDTOs = messages.map { msg in
             CoachMessageDTO(
@@ -37,15 +44,52 @@ public final class CoachService {
             )
         }
 
-        let response: CoachChatResponse = try await api.request(
-            CoachAPI.chat(message: text, history: historyDTOs)
-        )
+        let ricoContext = buildRicoContext(modelContext: context)
 
-        let assistantMessage = CoachMessage(role: .assistant, content: response.reply)
+        let response: CoachChatResponse
+        do {
+            response = try await api.request(
+                CoachAPI.chat(message: trimmed, history: historyDTOs, context: ricoContext)
+            )
+        } catch {
+            context.delete(userMessage)
+            messages.removeAll { $0.id == userMessage.id }
+            throw error
+        }
+
+        var replyText = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let suggestions = response.recipeSuggestions, !suggestions.isEmpty {
+            replyText += Self.formatRecipeSuggestions(suggestions)
+        }
+
+        let assistantMessage = CoachMessage(role: .assistant, content: replyText)
         context.insert(assistantMessage)
         messages.append(assistantMessage)
 
-        try? context.save()
+        if let saved = response.recipeSaved {
+            let record = SavedRecipeRecord(
+                id: saved.id,
+                name: saved.name,
+                description: saved.description,
+                calories: saved.calories,
+                protein: saved.protein,
+                carbs: saved.carbs,
+                fat: saved.fat,
+                recipeUrl: saved.recipeUrl,
+                source: saved.source,
+                mealTypes: saved.mealTypes,
+                servings: saved.servings,
+                addedAt: saved.addedAt
+            )
+            SavedRecipesStorage.append(record)
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+        }
+
+        if !response.actions.isEmpty {
+            applyActions(response.actions, modelContext: context)
+        }
+
+        try context.save()
     }
 
     public func clearHistory(context: ModelContext) {
@@ -54,5 +98,278 @@ public final class CoachService {
         }
         messages.removeAll()
         try? context.save()
+    }
+
+    // MARK: - Context Building
+
+    private func buildRicoContext(modelContext: ModelContext) -> RicoContextPayload {
+        let profile = fetchLatest(UserProfile.self, modelContext: modelContext)
+        let today = DateHelpers.todayString()
+
+        let todayDescriptor = FetchDescriptor<MealEntry>(
+            predicate: #Predicate { $0.date == today }
+        )
+        let todayMeals = (try? modelContext.fetch(todayDescriptor)) ?? []
+
+        let allDescriptor = FetchDescriptor<MealEntry>()
+        let allMeals = (try? modelContext.fetch(allDescriptor)) ?? []
+        let allMealDates = Array(Set(allMeals.map { $0.date }))
+
+        let streak = DateHelpers.streakLength(dates: allMealDates)
+
+        let plan = fetchLatestPlan(modelContext: modelContext)
+        let workoutPlanPayload = plan.map { p in
+            RicoWorkoutPlanPayload(
+                weeklyPlan: p.workoutPlan.weeklyPlan.map { day in
+                    RicoWorkoutDayPayload(
+                        day: day.day,
+                        focus: day.focus,
+                        warmups: day.warmups?.map { toExercisePayload($0) },
+                        exercises: day.exercises.map { toExercisePayload($0) },
+                        finishers: day.finishers?.map { toExercisePayload($0) }
+                    )
+                }
+            )
+        }
+
+        let recentMeals: [RicoMealSummary]? = todayMeals.isEmpty ? nil : todayMeals.map {
+            RicoMealSummary(
+                name: $0.name,
+                mealType: $0.mealType.rawValue,
+                calories: Double($0.macros.calories),
+                protein: $0.macros.protein,
+                carbs: $0.macros.carbs,
+                fat: $0.macros.fat
+            )
+        }
+
+        let todayMacros: RicoMacroSummary? = todayMeals.isEmpty ? nil : {
+            let cal = todayMeals.reduce(0.0) { $0 + Double($1.macros.calories) }
+            let pro = todayMeals.reduce(0.0) { $0 + $1.macros.protein }
+            let carb = todayMeals.reduce(0.0) { $0 + $1.macros.carbs }
+            let fat = todayMeals.reduce(0.0) { $0 + $1.macros.fat }
+            return RicoMacroSummary(calories: cal, protein: pro, carbs: carb, fat: fat)
+        }()
+
+        let macroTargets: RicoMacroSummary? = plan.map {
+            let t = $0.dietPlan.dailyTargets
+            return RicoMacroSummary(calories: Double(t.calories), protein: t.protein, carbs: t.carbs, fat: t.fat)
+        }
+
+        let remainingMacros: RicoMacroSummary? = {
+            guard let targets = macroTargets, let consumed = todayMacros else { return nil }
+            return RicoMacroSummary(
+                calories: max(0, targets.calories - consumed.calories),
+                protein: max(0, targets.protein - consumed.protein),
+                carbs: max(0, targets.carbs - consumed.carbs),
+                fat: max(0, targets.fat - consumed.fat)
+            )
+        }()
+
+        let savedRecords = SavedRecipesStorage.load()
+        let savedRecipeDTOs: [SavedRecipeDTO]? = savedRecords.isEmpty ? nil : savedRecords.prefix(30).map {
+            SavedRecipeDTO(
+                id: $0.id,
+                name: $0.name,
+                description: $0.description,
+                calories: $0.calories,
+                protein: $0.protein,
+                carbs: $0.carbs,
+                fat: $0.fat,
+                recipeUrl: $0.recipeUrl,
+                source: $0.source,
+                mealTypes: $0.mealTypes,
+                servings: $0.servings,
+                addedAt: $0.addedAt
+            )
+        }
+
+        let weightDescriptor = FetchDescriptor<WearableDaySummary>(
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        let latestWeight = (try? modelContext.fetch(weightDescriptor))?.first(where: { $0.weight != nil })?.weight
+
+        return RicoContextPayload(
+            name: profile?.name,
+            goal: profile?.goal.rawValue,
+            streak: streak,
+            mealsLogged: todayMeals.count,
+            workoutPlan: workoutPlanPayload,
+            equipment: profile.flatMap { $0.workoutEquipment.isEmpty ? nil : $0.workoutEquipment.map { $0.rawValue } },
+            injuries: profile.flatMap { $0.injuriesOrLimitations.isEmpty ? nil : $0.injuriesOrLimitations },
+            dietaryRestrictions: profile.flatMap { $0.dietaryRestrictions.isEmpty ? nil : $0.dietaryRestrictions },
+            recentMeals: recentMeals,
+            todayMacros: todayMacros,
+            macroTargets: macroTargets,
+            remainingMacros: remainingMacros,
+            savedRecipeCount: savedRecords.isEmpty ? nil : savedRecords.count,
+            savedRecipeNames: savedRecords.isEmpty ? nil : savedRecords.prefix(8).map(\.name),
+            savedRecipes: savedRecipeDTOs,
+            bodyWeight: latestWeight
+        )
+    }
+
+    private static func formatRecipeSuggestions(_ suggestions: [ScoredRecipeSuggestion]) -> String {
+        guard !suggestions.isEmpty else { return "" }
+        let lines = suggestions.enumerated().map { index, s in
+            let link = s.recipeUrl.map { " \($0)" } ?? ""
+            return "\(index + 1). \(s.name) (\(s.calories) cal, \(s.protein)g P, score \(s.fitScore)) — \(s.fitReason)\(link)"
+        }
+        return "\n\n" + lines.joined(separator: "\n")
+    }
+
+    private func toExercisePayload(_ ex: WorkoutExercise) -> RicoExercisePayload {
+        RicoExercisePayload(name: ex.name, sets: ex.sets, reps: ex.reps, notes: ex.notes)
+    }
+
+    // MARK: - Action Application
+
+    private func applyActions(_ actions: [RicoAction], modelContext: ModelContext) {
+        for action in actions {
+            switch action {
+            case .logMeal(let payload):
+                let entry = MealEntry(
+                    date: DateHelpers.todayString(),
+                    mealType: .snack,
+                    name: payload.name,
+                    macros: payload.asMacros,
+                    synced: false
+                )
+                modelContext.insert(entry)
+
+            case .updateMacros(let payload):
+                if let plan = fetchLatestPlan(modelContext: modelContext) {
+                    plan.dietPlan.dailyTargets = payload.asMacros
+                    plan.synced = false
+                }
+
+            case .swapExercise(let payload):
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                var weeklyPlan = plan.workoutPlan.weeklyPlan
+                guard let dayIdx = weeklyPlan.firstIndex(where: {
+                    $0.day.lowercased() == payload.day.lowercased()
+                }) else { break }
+
+                var day = weeklyPlan[dayIdx]
+                let newEx = WorkoutExercise(
+                    name: payload.newExerciseName,
+                    sets: payload.newSets,
+                    reps: payload.newReps,
+                    notes: payload.newNotes
+                )
+                let section = payload.section ?? "exercises"
+                switch section {
+                case "warmups":
+                    if let idx = day.warmups?.firstIndex(where: {
+                        $0.name.lowercased() == payload.oldExerciseName.lowercased()
+                    }) { day.warmups?[idx] = newEx }
+                case "finishers":
+                    if let idx = day.finishers?.firstIndex(where: {
+                        $0.name.lowercased() == payload.oldExerciseName.lowercased()
+                    }) { day.finishers?[idx] = newEx }
+                default:
+                    if let idx = day.exercises.firstIndex(where: {
+                        $0.name.lowercased() == payload.oldExerciseName.lowercased()
+                    }) { day.exercises[idx] = newEx }
+                }
+                weeklyPlan[dayIdx] = day
+                plan.workoutPlan = WorkoutPlan(
+                    weeklyPlan: weeklyPlan,
+                    tips: plan.workoutPlan.tips,
+                    programWeek1Start: plan.workoutPlan.programWeek1Start
+                )
+                plan.synced = false
+
+            case .addExercise(let payload):
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                var weeklyPlan = plan.workoutPlan.weeklyPlan
+                guard let dayIdx = weeklyPlan.firstIndex(where: {
+                    $0.day.lowercased() == payload.day.lowercased()
+                }) else { break }
+
+                var day = weeklyPlan[dayIdx]
+                let newEx = WorkoutExercise(
+                    name: payload.exerciseName,
+                    sets: payload.sets,
+                    reps: payload.reps,
+                    notes: payload.notes
+                )
+                let section = payload.section ?? "exercises"
+                switch section {
+                case "warmups":
+                    if day.warmups == nil { day.warmups = [] }
+                    day.warmups?.append(newEx)
+                case "finishers":
+                    if day.finishers == nil { day.finishers = [] }
+                    day.finishers?.append(newEx)
+                default:
+                    day.exercises.append(newEx)
+                }
+                weeklyPlan[dayIdx] = day
+                plan.workoutPlan = WorkoutPlan(
+                    weeklyPlan: weeklyPlan,
+                    tips: plan.workoutPlan.tips,
+                    programWeek1Start: plan.workoutPlan.programWeek1Start
+                )
+                plan.synced = false
+
+            case .updateWorkoutDay(let payload):
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                var weeklyPlan = plan.workoutPlan.weeklyPlan
+                guard let dayIdx = weeklyPlan.firstIndex(where: {
+                    $0.day.lowercased() == payload.day.lowercased()
+                }) else { break }
+
+                var day = weeklyPlan[dayIdx]
+                day.focus = payload.focus
+                if let warmups = payload.warmups {
+                    day.warmups = warmups.map {
+                        WorkoutExercise(name: $0.name, sets: $0.sets, reps: $0.reps, notes: $0.notes)
+                    }
+                }
+                if let exercises = payload.exercises {
+                    day.exercises = exercises.map {
+                        WorkoutExercise(name: $0.name, sets: $0.sets, reps: $0.reps, notes: $0.notes)
+                    }
+                }
+                if let finishers = payload.finishers {
+                    day.finishers = finishers.isEmpty ? nil : finishers.map {
+                        WorkoutExercise(name: $0.name, sets: $0.sets, reps: $0.reps, notes: $0.notes)
+                    }
+                }
+                weeklyPlan[dayIdx] = day
+                plan.workoutPlan = WorkoutPlan(
+                    weeklyPlan: weeklyPlan,
+                    tips: plan.workoutPlan.tips,
+                    programWeek1Start: plan.workoutPlan.programWeek1Start
+                )
+                plan.synced = false
+
+            case .regeneratePlan(let payload):
+                shouldRegeneratePlan = true
+                pendingRegenerateOptions = RegeneratePlanOptions(
+                    programWeeks: payload.programWeeks,
+                    workoutDaysPerWeek: payload.workoutDaysPerWeek,
+                    reason: payload.reason
+                )
+
+            case .unknown(let actionType):
+                print("[CoachService] Unhandled action type: \(actionType)")
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func fetchLatest<T: PersistentModel>(_ type: T.Type, modelContext: ModelContext) -> T? {
+        let descriptor = FetchDescriptor<T>()
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private func fetchLatestPlan(modelContext: ModelContext) -> FitnessPlan? {
+        let descriptor = FetchDescriptor<FitnessPlan>(
+            sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
+        )
+        return try? modelContext.fetch(descriptor).first
     }
 }

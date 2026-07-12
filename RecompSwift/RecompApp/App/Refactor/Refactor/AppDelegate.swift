@@ -41,11 +41,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         switch (category, actionId) {
         case ("MEAL_REMINDER", "LOG_MEAL"):
-            break
+            NotificationCenter.default.post(name: .recompNavigateToMeals, object: nil)
         case ("WORKOUT_REMINDER", "START_WORKOUT"):
-            break
+            NotificationCenter.default.post(name: .recompNavigateToWorkouts, object: nil)
+        case ("WORKOUT_REMINDER", "SKIP"):
+            NotificationCenter.default.post(name: .recompSkipTodayWorkout, object: nil)
         case ("HYDRATION_REMINDER", "LOG_WATER"):
-            break
+            NotificationCenter.default.post(name: .recompNavigateToDashboard, object: nil)
+        case ("COACH_CHECKIN", "REPLY"):
+            NotificationCenter.default.post(name: .recompNavigateToDashboard, object: nil)
         default:
             break
         }

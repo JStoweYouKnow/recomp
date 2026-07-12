@@ -8,9 +8,12 @@ struct GroupsView: View {
     @State private var showCreate = false
     @State private var showJoinByCode = false
     @State private var showCreateChallenge = false
+    @State private var showSprintSheet = false
     @State private var joinCode = ""
     @State private var joinError: String?
     @State private var selectedGroupId: IdentifiedString?
+    @State private var fetchError: String?
+    @State private var actionError: String?
 
     var body: some View {
         NavigationStack {
@@ -41,8 +44,11 @@ struct GroupsView: View {
                             Label("Join with Code", systemImage: "number")
                         }
                         if selectedTab == 2 {
+                            Button { showSprintSheet = true } label: {
+                                Label("7-Day Sprint", systemImage: "bolt.fill")
+                            }
                             Button { showCreateChallenge = true } label: {
-                                Label("New Challenge", systemImage: "flag.fill")
+                                Label("Custom Challenge", systemImage: "flag.fill")
                             }
                         }
                     } label: {
@@ -63,18 +69,37 @@ struct GroupsView: View {
             .sheet(isPresented: $showCreateChallenge) {
                 CreateChallengeSheet(groupService: groupService)
             }
+            .sheet(isPresented: $showSprintSheet) {
+                SprintChallengeSheet(groupService: groupService)
+            }
             .sheet(item: $selectedGroupId) { item in
                 GroupDetailView(groupId: item.value, groupService: groupService)
             }
             .task {
-                try? await groupService.fetchMyGroups()
+                do {
+                    try await groupService.fetchMyGroups()
+                } catch {
+                    fetchError = error.localizedDescription
+                }
+            }
+            .alert("Error", isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(actionError ?? "")
             }
         }
     }
 
     private var myGroupsList: some View {
         Group {
-            if groupService.myGroups.isEmpty {
+            if let fetchError {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.appError)
+                    Text(fetchError).font(.caption).foregroundStyle(Color.appError).multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if groupService.myGroups.isEmpty {
                 EmptyStateView(
                     icon: "person.3",
                     title: "No Groups",
@@ -125,7 +150,11 @@ struct GroupsView: View {
         }
         .listStyle(.plain)
         .task {
-            try? await groupService.fetchDiscoverGroups()
+            do {
+                try await groupService.fetchDiscoverGroups()
+            } catch {
+                fetchError = error.localizedDescription
+            }
         }
     }
 
@@ -148,33 +177,55 @@ struct GroupsView: View {
                         .foregroundStyle(.secondary)
                 }
                 let uid = auth.currentUser?.id
-                let joined = uid.map { u in challenge.participants.contains { $0.userId == u } } ?? false
-                HStack(spacing: 10) {
-                    Button("Join") {
-                        Task {
-                            guard !joined else { return }
-                            try? await groupService.joinChallenge(id: challenge.id)
+                let myParticipant = uid.flatMap { u in challenge.participants.first { $0.userId == u } }
+                let joined = myParticipant != nil
+                if joined && challenge.status == .active {
+                    let fraction = challenge.target > 0 ? min((myParticipant?.progress ?? 0) / challenge.target, 1.0) : 0
+                    ProgressView(value: fraction)
+                        .tint(Color.appSuccess)
+                    Text("\(Int(myParticipant?.progress ?? 0)) / \(Int(challenge.target))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 10) {
+                        Button("Join") {
+                            Task {
+                                guard !joined else { return }
+                                do {
+                                    try await groupService.joinChallenge(id: challenge.id)
+                                } catch {
+                                    actionError = error.localizedDescription
+                                }
+                            }
                         }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .disabled(joined)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(joined || challenge.status == .completed)
 
-                    Button("Leave", role: .destructive) {
-                        Task {
-                            guard joined else { return }
-                            try? await groupService.leaveChallenge(id: challenge.id)
+                        if joined {
+                            Button("Leave", role: .destructive) {
+                                Task {
+                                    do {
+                                        try await groupService.leaveChallenge(id: challenge.id)
+                                    } catch {
+                                        actionError = error.localizedDescription
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!joined)
                 }
             }
         }
         .listStyle(.plain)
         .task {
-            try? await groupService.fetchChallenges()
+            do {
+                try await groupService.fetchChallenges()
+            } catch {
+                fetchError = error.localizedDescription
+            }
         }
     }
 }
@@ -231,10 +282,16 @@ struct CreateChallengeSheet: View {
     @State private var metric = "steps"
     @State private var target: Double = 10000
     @State private var stakes = ""
+    @State private var createError: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                if let createError {
+                    Section {
+                        Text(createError).font(.caption).foregroundStyle(Color.appError)
+                    }
+                }
                 Section("Challenge") {
                     TextField("Title", text: $title)
                     TextField("Description", text: $description, axis: .vertical)
@@ -266,11 +323,89 @@ struct CreateChallengeSheet: View {
                                 stakes: stakes.isEmpty ? nil : stakes,
                                 groupId: nil
                             )
-                            try? await groupService.createChallenge(payload)
-                            dismiss()
+                            do {
+                                try await groupService.createChallenge(payload)
+                                dismiss()
+                            } catch {
+                                createError = error.localizedDescription
+                            }
                         }
                     }
                     .disabled(title.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+struct SprintChallengeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let groupService: GroupService
+
+    @State private var metric = "xp_gained"
+    @State private var createError: String?
+
+    private let options: [(value: String, label: String, defaultTarget: Double)] = [
+        ("xp_gained",       "XP earned (overall effort)",  700),
+        ("meal_streak",     "Meal logging streak",          7),
+        ("steps",           "Total steps",                  70_000),
+        ("macro_accuracy",  "Macro accuracy",               700),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let createError {
+                    Section {
+                        Text(createError).font(.caption).foregroundStyle(Color.appError)
+                    }
+                }
+                Section {
+                    Text("Compete with your group for 7 days, starting today.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Section("What are you competing on?") {
+                    Picker("Metric", selection: $metric) {
+                        ForEach(options, id: \.value) { opt in
+                            Text(opt.label).tag(opt.value)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                }
+            }
+            .navigationTitle("7-Day Sprint")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Start") {
+                        Task {
+                            let target = options.first { $0.value == metric }?.defaultTarget ?? 700
+                            let today = DateHelpers.todayString()
+                            let end = DateHelpers.dateString(from: Calendar.current.date(byAdding: .day, value: 7, to: Date()) ?? Date())
+                            let payload = CreateChallengePayload(
+                                type: "solo",
+                                title: "7-Day Sprint",
+                                description: "7-day group sprint. Who can rack up the most \(metric.replacingOccurrences(of: "_", with: " "))?",
+                                metric: metric,
+                                target: target,
+                                startDate: today,
+                                endDate: end,
+                                stakes: nil,
+                                groupId: nil
+                            )
+                            do {
+                                try await groupService.createChallenge(payload)
+                                dismiss()
+                            } catch {
+                                createError = error.localizedDescription
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -291,10 +426,16 @@ struct CreateGroupSheet: View {
     @State private var goalType: GroupGoalType = .consistency
     @State private var accessMode: GroupAccessMode = .open
     @State private var trackingMode: GroupTrackingMode = .both
+    @State private var createError: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                if let createError {
+                    Section {
+                        Text(createError).font(.caption).foregroundStyle(Color.appError)
+                    }
+                }
                 Section("Group Info") {
                     TextField("Group Name", text: $name)
                     TextField("Description", text: $description, axis: .vertical)
@@ -327,17 +468,21 @@ struct CreateGroupSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         Task {
-                            _ = try? await groupService.createGroup(
-                                CreateGroupPayload(
-                                    name: name,
-                                    description: description,
-                                    goalType: goalType.rawValue,
-                                    goalDescription: nil,
-                                    accessMode: accessMode.rawValue,
-                                    trackingMode: trackingMode.rawValue
+                            do {
+                                _ = try await groupService.createGroup(
+                                    CreateGroupPayload(
+                                        name: name,
+                                        description: description,
+                                        goalType: goalType.rawValue,
+                                        goalDescription: nil,
+                                        accessMode: accessMode.rawValue,
+                                        trackingMode: trackingMode.rawValue
+                                    )
                                 )
-                            )
-                            dismiss()
+                                dismiss()
+                            } catch {
+                                createError = error.localizedDescription
+                            }
                         }
                     }
                     .disabled(name.isEmpty)
@@ -352,6 +497,8 @@ struct GroupDetailView: View {
     let groupService: GroupService
     @State private var selectedTab = 0
     @State private var messageText = ""
+    @State private var groupError: String?
+    @FocusState private var isChatFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -376,54 +523,84 @@ struct GroupDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Leave", role: .destructive) {
                         Task {
-                            try? await groupService.leaveGroup(groupId: groupId)
+                            do {
+                                try await groupService.leaveGroup(groupId: groupId)
+                            } catch {
+                                groupError = error.localizedDescription
+                            }
                         }
                     }
                 }
             }
             .task {
-                try? await groupService.fetchGroupDetail(id: groupId)
-                try? await groupService.fetchMessages(groupId: groupId)
-                try? await groupService.fetchLeaderboard(groupId: groupId)
+                do {
+                    try await groupService.fetchGroupDetail(id: groupId)
+                    try await groupService.fetchMessages(groupId: groupId)
+                    try await groupService.fetchLeaderboard(groupId: groupId)
+                } catch {
+                    groupError = error.localizedDescription
+                }
+            }
+            .alert("Error", isPresented: Binding(get: { groupError != nil }, set: { if !$0 { groupError = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(groupError ?? "")
             }
         }
     }
 
     private var chatSection: some View {
-        VStack {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(groupService.messages, id: \.id) { msg in
-                        HStack(alignment: .top, spacing: 8) {
-                            AvatarView(dataUrl: msg.authorAvatarUrl, name: msg.authorName, size: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(msg.authorName).font(.caption.weight(.semibold))
-                                Text(msg.text).font(.subheadline)
-                            }
-                            Spacer()
+        ScrollView {
+            LazyVStack(spacing: 8) {
+                ForEach(groupService.messages, id: \.id) { msg in
+                    HStack(alignment: .top, spacing: 8) {
+                        AvatarView(dataUrl: msg.authorAvatarUrl, name: msg.authorName, size: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(msg.authorName).font(.caption.weight(.semibold))
+                            Text(msg.text).font(.subheadline)
                         }
-                        .padding(.horizontal)
+                        Spacer()
                     }
+                    .padding(.horizontal)
                 }
             }
-
-            Divider()
-
-            HStack {
-                TextField("Message...", text: $messageText)
-                    .textFieldStyle(.roundedBorder)
-                Button {
-                    Task {
-                        try? await groupService.sendMessage(groupId: groupId, text: messageText)
+            .padding(.vertical, 8)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                Divider()
+                HStack {
+                    TextField("Message...", text: $messageText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($isChatFocused)
+                    Button {
+                        let text = messageText
                         messageText = ""
+                        isChatFocused = false
+                        Task {
+                            do {
+                                try await groupService.sendMessage(groupId: groupId, text: text)
+                            } catch {
+                                groupError = error.localizedDescription
+                                messageText = text
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title2)
                     }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.title2)
+                    .disabled(messageText.isEmpty)
                 }
-                .disabled(messageText.isEmpty)
+                .padding()
             }
-            .padding()
+            .background(.regularMaterial)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { isChatFocused = false }
+            }
         }
     }
 

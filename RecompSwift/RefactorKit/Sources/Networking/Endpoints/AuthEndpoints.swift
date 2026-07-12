@@ -6,6 +6,9 @@ public enum AuthAPI: APIEndpoint {
     case me
     case demo
     case claim(email: String, password: String)
+    case forgotPassword(email: String)
+    case resetPassword(email: String, code: String, newPassword: String)
+    case deleteAccount
 
     public var path: String {
         switch self {
@@ -14,12 +17,16 @@ public enum AuthAPI: APIEndpoint {
         case .me: return "/api/auth/me"
         case .demo: return "/api/auth/demo"
         case .claim: return "/api/auth/claim"
+        case .forgotPassword: return "/api/auth/forgot-password"
+        case .resetPassword: return "/api/auth/reset-password"
+        case .deleteAccount: return "/api/user/account"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .me: return .GET
+        case .deleteAccount: return .DELETE
         default: return .POST
         }
     }
@@ -32,6 +39,10 @@ public enum AuthAPI: APIEndpoint {
             return AnyEncodable(LoginPayload(email: email, password: password))
         case .claim(let email, let password):
             return AnyEncodable(LoginPayload(email: email, password: password))
+        case .forgotPassword(let email):
+            return AnyEncodable(ForgotPasswordPayload(email: email))
+        case .resetPassword(let email, let code, let newPassword):
+            return AnyEncodable(ResetPasswordPayload(email: email, code: code, newPassword: newPassword))
         default:
             return nil
         }
@@ -43,10 +54,21 @@ private struct LoginPayload: Encodable {
     let password: String
 }
 
+private struct ForgotPasswordPayload: Encodable {
+    let email: String
+}
+
+private struct ResetPasswordPayload: Encodable {
+    let email: String
+    let code: String
+    let newPassword: String
+}
+
 public struct AuthResponse: Decodable {
     let authenticated: Bool
     let profile: UserProfileDTO?
     let userId: String?
+    let apiToken: String?
 }
 
 public struct UserProfileDTO: Codable, Sendable {
@@ -69,6 +91,13 @@ public struct UserProfileDTO: Codable, Sendable {
     public var workoutDaysPerWeek: Int?
     public var workoutTimeframe: String?
     public var createdAt: String?
+    public var proAccess: Bool?
+    public var learnedTDEE: Double?
+    public var measurementTargets: MeasurementTargetsDTO?
+    public var currentBodyFatPercent: Double?
+    public var currentMuscleMassLbs: Double?
+    /** Set only for `/api/plans/generate` — not persisted on profile rows. */
+    public var programWeeks: Int?
 
     public init(
         id: String,
@@ -89,7 +118,13 @@ public struct UserProfileDTO: Codable, Sendable {
         workoutEquipment: [String]? = nil,
         workoutDaysPerWeek: Int? = nil,
         workoutTimeframe: String? = nil,
-        createdAt: String? = nil
+        createdAt: String? = nil,
+        proAccess: Bool? = nil,
+        learnedTDEE: Double? = nil,
+        measurementTargets: MeasurementTargetsDTO? = nil,
+        currentBodyFatPercent: Double? = nil,
+        currentMuscleMassLbs: Double? = nil,
+        programWeeks: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -110,5 +145,11 @@ public struct UserProfileDTO: Codable, Sendable {
         self.workoutDaysPerWeek = workoutDaysPerWeek
         self.workoutTimeframe = workoutTimeframe
         self.createdAt = createdAt
+        self.proAccess = proAccess
+        self.learnedTDEE = learnedTDEE
+        self.measurementTargets = measurementTargets
+        self.currentBodyFatPercent = currentBodyFatPercent
+        self.currentMuscleMassLbs = currentMuscleMassLbs
+        self.programWeeks = programWeeks
     }
 }

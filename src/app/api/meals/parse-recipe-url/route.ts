@@ -8,12 +8,9 @@ import {
 } from "@/lib/server-rate-limit";
 
 /**
- * Parse a recipe URL to extract name, image, and nutrition per serving.
- *
- * Strategy (in priority order):
- * 1. Firecrawl schema extraction — handles JS-rendered sites, returns structured data directly
- * 2. schema.org Recipe JSON-LD in raw HTML — fast, no external call, works on static sites
- * 3. Nova AI over stripped HTML — last-resort LLM extraction
+ * Parse a recipe URL to extract name, image, and nutrition.
+ * Uses schema.org Recipe JSON-LD when available, og meta tags as fallback,
+ * and Nova AI for pages without structured data.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -41,226 +38,168 @@ export async function POST(req: NextRequest) {
     }
 
     const trimmed = url.trim();
-    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+    if (
+      !trimmed.startsWith("http://") &&
+      !trimmed.startsWith("https://")
+    ) {
       return NextResponse.json(
         { error: "Invalid URL. Use http:// or https://" },
         { status: 400 }
       );
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+
+    const res = await fetch(trimmed, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: `Could not fetch URL: ${res.status}` },
+        { status: 422 }
+      );
+    }
+
+    const html = await res.text();
+    const baseUrl = new URL(trimmed).origin;
+
+    // 1. Try schema.org Recipe JSON-LD
+    const schemaMatch = html.match(
+      /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    );
     let name: string | null = null;
     let imageUrl: string | null = null;
-    let nutrition: { calories: number; protein: number; carbs: number; fat: number } | null = null;
+    let nutrition: { calories?: number; protein?: number; carbs?: number; fat?: number } | null = null;
     let servings = 1;
-    let html = "";
 
-    // ── 1. Firecrawl: renders JS, extracts clean content + structured nutrition ──
-    if (process.env.FIRECRAWL_API_KEY) {
-      try {
-        const { default: FirecrawlApp } = await import("@mendable/firecrawl-js");
-        const fc = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
-
-        const result = await fc.scrape(trimmed, {
-          formats: [
-            "markdown",
-            {
-              type: "json",
-              schema: {
-                type: "object",
-                properties: {
-                  recipeName: { type: "string", description: "Name of the recipe" },
-                  servings: { type: "number", description: "Number of servings the recipe makes" },
-                  caloriesPerServing: { type: "number", description: "Calories per serving" },
-                  proteinPerServingGrams: { type: "number", description: "Protein in grams per serving" },
-                  carbsPerServingGrams: { type: "number", description: "Carbohydrates in grams per serving" },
-                  fatPerServingGrams: { type: "number", description: "Fat in grams per serving" },
-                  imageUrl: { type: "string", description: "URL of the main recipe image" },
-                },
-                required: ["recipeName"],
-              },
-            },
-          ],
-        });
-
-        const extract = (result as { json?: Record<string, unknown> }).json;
-        if (extract) {
-          name = typeof extract.recipeName === "string" ? extract.recipeName : null;
-          servings = typeof extract.servings === "number" && extract.servings > 0
-            ? Math.round(extract.servings) : 1;
-          if (
-            typeof extract.caloriesPerServing === "number" ||
-            typeof extract.proteinPerServingGrams === "number"
-          ) {
-            nutrition = {
-              calories: Math.round(Number(extract.caloriesPerServing) || 0),
-              protein: Math.round(Number(extract.proteinPerServingGrams) || 0),
-              carbs: Math.round(Number(extract.carbsPerServingGrams) || 0),
-              fat: Math.round(Number(extract.fatPerServingGrams) || 0),
-            };
-          }
-          if (!imageUrl && typeof extract.imageUrl === "string") {
-            imageUrl = extract.imageUrl;
-          }
-        }
-
-        // Keep markdown for the Nova fallback if needed
-        const md = (result as { markdown?: string }).markdown;
-        if (!nutrition && md) {
-          html = md; // reuse as clean text for Nova below
-        }
-      } catch {
-        // Firecrawl failed — fall through to raw HTML methods
-      }
+    function parseServings(val: unknown): number {
+      if (val == null) return 1;
+      if (typeof val === "number") return val > 0 ? Math.round(val) : 1;
+      const s = String(val).replace(/\D/g, "");
+      const n = parseInt(s, 10);
+      return Number.isFinite(n) && n > 0 ? n : 1;
     }
 
-    // ── 2. Raw HTML fetch + schema.org JSON-LD (static sites, or Firecrawl unavailable) ──
-    if (!name || !nutrition) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15_000);
-        const res = await fetch(trimmed, {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (compatible; RefactorRecipeBot/1.0; +https://github.com/JStoweYouKnow/recomp)",
-          },
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
+    /** Extract calorie value without pulling in digits from servings (e.g. "515 calories (6 servings)" -> 515). */
+    function extractCalories(val: unknown): number {
+      if (val == null) return 0;
+      if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val <= 5000 ? val : 0;
+      if (typeof val === "object" && val !== null && "value" in (val as object)) {
+        const v = (val as { value?: unknown }).value;
+        return extractCalories(v);
+      }
+      const s = String(val);
+      // Prefer number immediately before "calorie"/"kcal" to avoid concatenating with "6 servings"
+      const beforeUnit = s.match(/(\d{2,5})\s*(?:calories?|kcal|cal)\b/i);
+      if (beforeUnit) {
+        const n = parseInt(beforeUnit[1], 10);
+        if (n >= 1 && n <= 5000) return n;
+      }
+      // Fallback: first 2–5 digit number in reasonable range
+      const firstNum = s.match(/(\d{2,5})/);
+      if (firstNum) {
+        const n = parseInt(firstNum[1], 10);
+        if (n >= 1 && n <= 5000) return n;
+      }
+      return 0;
+    }
 
-        if (res.ok) {
-          html = await res.text();
-          const baseUrl = new URL(trimmed).origin;
-
-          const schemaMatch = html.match(
-            /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-          );
-
-          function parseServings(val: unknown): number {
-            if (val == null) return 1;
-            if (typeof val === "number") return val > 0 ? Math.round(val) : 1;
-            const s = String(val).replace(/\D/g, "");
-            const n = parseInt(s, 10);
-            return Number.isFinite(n) && n > 0 ? n : 1;
-          }
-
-          function extractCalories(val: unknown): number {
-            if (val == null) return 0;
-            if (typeof val === "number") return Number.isFinite(val) && val >= 0 && val <= 5000 ? val : 0;
-            if (typeof val === "object" && val !== null && "value" in (val as object)) {
-              return extractCalories((val as { value?: unknown }).value);
-            }
-            const s = String(val);
-            const beforeUnit = s.match(/(\d{2,5})\s*(?:calories?|kcal|cal)\b/i);
-            if (beforeUnit) {
-              const n = parseInt(beforeUnit[1], 10);
-              if (n >= 1 && n <= 5000) return n;
-            }
-            const firstNum = s.match(/(\d{2,5})/);
-            if (firstNum) {
-              const n = parseInt(firstNum[1], 10);
-              if (n >= 1 && n <= 5000) return n;
-            }
-            return 0;
-          }
-
-          if (schemaMatch) {
-            for (const tag of schemaMatch) {
-              const content = tag.replace(/<script[^>]*>([\s\S]*?)<\/script>/i, "$1");
-              try {
-                const parsed = JSON.parse(content);
-                const items = parsed["@graph"] ?? (Array.isArray(parsed) ? parsed : [parsed]);
-                for (const item of Array.isArray(items) ? items : [items]) {
-                  if (!item || typeof item !== "object") continue;
-                  const type = item["@type"];
-                  if (type === "Recipe" || (Array.isArray(type) && type.includes("Recipe"))) {
-                    if (!name) name = item.name ?? item.headline ?? null;
-                    if (!servings || servings === 1) {
-                      servings = parseServings(item.recipeYield ?? item.yield ?? item.servings ?? 1);
-                    }
-                    if (!imageUrl) {
-                      const img = item.image;
-                      if (img) {
-                        const first = Array.isArray(img) ? img[0] : img;
-                        const candidate =
-                          typeof first === "string" ? first : first?.url ?? first?.["@id"] ?? null;
-                        if (candidate) {
-                          imageUrl = candidate.startsWith("http")
-                            ? candidate
-                            : new URL(candidate, baseUrl).href;
-                        }
-                      }
-                    }
-                    if (!nutrition) {
-                      const nut = item.nutrition;
-                      if (nut && typeof nut === "object") {
-                        const toNum = (val: unknown): number =>
-                          typeof val === "number"
-                            ? val
-                            : typeof val === "string"
-                            ? parseFloat(val.replace(/[^\d.]/g, "")) || 0
-                            : 0;
-                        let cal = extractCalories(nut.calories ?? nut.energyContent);
-                        let pro = toNum(nut.proteinContent ?? nut.protein);
-                        let carb = toNum(nut.carbohydrateContent ?? nut.carbohydrates ?? nut.carbs);
-                        let fat = toNum(nut.fatContent ?? nut.fat);
-                        const servingSize = String(nut.servingSize ?? "").toLowerCase();
-                        const isTotal =
-                          servingSize.includes("recipe") ||
-                          servingSize.includes("whole") ||
-                          servingSize.includes("entire") ||
-                          servingSize.includes("total");
-                        if (isTotal && servings > 1) {
-                          cal = Math.round(cal / servings);
-                          pro = Math.round(pro / servings);
-                          carb = Math.round(carb / servings);
-                          fat = Math.round(fat / servings);
-                        }
-                        nutrition = { calories: cal, protein: pro, carbs: carb, fat: fat };
-                      }
-                    }
-                    if (name) break;
-                  }
+    if (schemaMatch) {
+      for (const tag of schemaMatch) {
+        const content = tag.replace(
+          /<script[^>]*>([\s\S]*?)<\/script>/i,
+          "$1"
+        );
+        try {
+          const parsed = JSON.parse(content);
+          const items = parsed["@graph"] ?? (Array.isArray(parsed) ? parsed : [parsed]);
+          for (const item of Array.isArray(items) ? items : [items]) {
+            if (!item || typeof item !== "object") continue;
+            const type = item["@type"];
+            if (
+              type === "Recipe" ||
+              (Array.isArray(type) && type.includes("Recipe"))
+            ) {
+              name = item.name ?? item.headline ?? null;
+              servings = parseServings(item.recipeYield ?? item.yield ?? item.servings ?? 1);
+              const img = item.image;
+              if (img) {
+                const first = Array.isArray(img) ? img[0] : img;
+                imageUrl = typeof first === "string" ? first : first?.url ?? first?.["@id"] ?? null;
+                if (imageUrl && !imageUrl.startsWith("http")) {
+                  imageUrl = new URL(imageUrl, baseUrl).href;
                 }
-                if (name) break;
-              } catch {
-                /* skip invalid JSON */
               }
+              const nut = item.nutrition;
+              if (nut && typeof nut === "object") {
+                const toNum = (val: unknown): number =>
+                  typeof val === "number" ? val : typeof val === "string" ? parseFloat(val.replace(/[^\d.]/g, "")) || 0 : 0;
+                let calories = extractCalories(nut.calories ?? nut.energyContent);
+                let protein = toNum(nut.proteinContent ?? nut.protein);
+                let carbs = toNum(nut.carbohydrateContent ?? nut.carbohydrates ?? nut.carbs);
+                let fat = toNum(nut.fatContent ?? nut.fat);
+                const servingSize = String(nut.servingSize ?? "").toLowerCase();
+                const isTotal = servingSize.includes("recipe") || servingSize.includes("whole") || servingSize.includes("entire") || servingSize.includes("total");
+                if (isTotal && servings > 1) {
+                  calories = Math.round(calories / servings);
+                  protein = Math.round(protein / servings);
+                  carbs = Math.round(carbs / servings);
+                  fat = Math.round(fat / servings);
+                }
+                nutrition = { calories, protein, carbs, fat };
+              }
+              if (name) break;
             }
           }
-
-          // og:title / og:image fallbacks
-          if (!name) {
-            const ogTitle = html.match(
-              /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i
-            );
-            name = ogTitle?.[1] ?? null;
-          }
-          if (!imageUrl) {
-            const ogImage = html.match(
-              /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i
-            );
-            const img = ogImage?.[1];
-            if (img) {
-              imageUrl = img.startsWith("http") ? img : new URL(img, baseUrl).href;
-            }
-          }
+          if (name) break;
+        } catch {
+          /* skip invalid JSON */
         }
-      } catch {
-        // raw fetch failed — continue to Nova fallback
       }
     }
 
-    // ── 3. Nova: LLM extraction over whatever text we collected ──
-    if (!nutrition && html.length > 500) {
-      const truncated = (html.startsWith("#") ? html : html
+    // 2. Fallback: og meta tags
+    if (!name) {
+      const ogTitle = html.match(
+        /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i
+      );
+      name = ogTitle?.[1] ?? null;
+    }
+    if (!imageUrl) {
+      const ogImage = html.match(
+        /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i
+      );
+      const img = ogImage?.[1];
+      if (img) {
+        imageUrl = img.startsWith("http") ? img : new URL(img, baseUrl).href;
+      }
+    }
+
+    // 3. If we have HTML but missing usable nutrition, use Nova to extract.
+    // Check for usable values — schema.org parsing may produce a non-null object with all zeros
+    // when the nutrition block exists but the field names don't match expected keys.
+    const hasUsableNutrition =
+      nutrition !== null &&
+      ((nutrition.calories ?? 0) > 0 || (nutrition.protein ?? 0) > 0 || (nutrition.carbs ?? 0) > 0 || (nutrition.fat ?? 0) > 0);
+    if (!hasUsableNutrition && html.length > 500) {
+      // 3a. Try extracting nutrition from the page text.
+      const truncated = html
         .replace(/<script[\s\S]*?<\/script>/gi, "")
         .replace(/<style[\s\S]*?<\/style>/gi, "")
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ")
         .trim()
-      ).slice(0, 8000);
-
-      const prompt = `Extract nutrition and serving count from this recipe page. Return ONLY a JSON object with: servings (number), calories (number, per serving), protein (grams, per serving), carbs (grams, per serving), fat (grams, per serving). Divide totals by servings if needed. Use 0 for missing values.
+        .slice(0, 8000);
+      const prompt = `Extract nutrition and serving count from this recipe page. Return ONLY a JSON object with: servings (number, how many servings the recipe makes; default 1), calories (number, per serving), protein (grams, per serving), carbs (grams, per serving), fat (grams, per serving). If nutrition is for the whole recipe, divide by servings. Use 0 for missing values. If no nutrition found, return {"servings":1,"calories":0,"protein":0,"carbs":0,"fat":0}.
 
 PAGE EXCERPT:
 ${truncated}`;
@@ -283,13 +222,47 @@ ${truncated}`;
       } catch {
         nutrition = null;
       }
+
+      // 3b. If the page text yielded no nutrition (e.g. paywalled sites like NYT Cooking
+      // that embed the recipe name in JSON-LD but hide nutrition behind a login), fall back
+      // to asking Nova to estimate nutrition from the recipe name alone.
+      const textNutritionUsable =
+        nutrition !== null &&
+        ((nutrition.calories ?? 0) > 0 || (nutrition.protein ?? 0) > 0 || (nutrition.carbs ?? 0) > 0 || (nutrition.fat ?? 0) > 0);
+      if (!textNutritionUsable && name) {
+        try {
+          const namePrompt = `Estimate the nutrition per serving for a recipe called "${name}". Return ONLY a JSON object: {"servings":N,"calories":N,"protein":N,"carbs":N,"fat":N}. Use typical ingredient quantities for this dish. Integer values only.`;
+          const raw2 = await invokeNova(
+            "You are a nutrition estimator. Return only valid JSON with integer values.",
+            namePrompt
+          );
+          const m2 = raw2.match(/\{[\s\S]*\}/);
+          if (m2) {
+            const p2 = JSON.parse(m2[0]);
+            const estimated = {
+              calories: Math.round(Number(p2.calories) || 0),
+              protein:  Math.round(Number(p2.protein)  || 0),
+              carbs:    Math.round(Number(p2.carbs)    || 0),
+              fat:      Math.round(Number(p2.fat)      || 0),
+            };
+            if (estimated.calories > 0 || estimated.protein > 0) {
+              servings = Math.max(1, Math.round(Number(p2.servings) || 1));
+              nutrition = estimated;
+            }
+          }
+        } catch {
+          // estimation failed — leave nutrition as-is
+        }
+      }
     }
 
     const result = {
       name: name || "Recipe",
       imageUrl: imageUrl || undefined,
       servings,
-      nutrition: nutrition ?? { calories: 0, protein: 0, carbs: 0, fat: 0 },
+      macros: hasUsableNutrition
+        ? nutrition!
+        : (nutrition ?? { calories: 0, protein: 0, carbs: 0, fat: 0 }),
     };
 
     const headers = getRateLimitHeaderValues(rl);

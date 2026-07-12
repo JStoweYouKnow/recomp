@@ -7,6 +7,7 @@ import {
   QueryCommand,
   DeleteCommand,
   BatchWriteCommand,
+  ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type {
   UserProfile,
@@ -27,6 +28,7 @@ import type {
   BiofeedbackEntry,
   MetabolicModel,
   PantryItem,
+  CookingAppRecipe,
   MealPrepPlan,
   CoachSchedule,
   Challenge,
@@ -607,6 +609,54 @@ export async function dbDeleteExpoPushToken(userId: string, token: string): Prom
   );
 }
 
+// ── FCM Push Tokens (native Android) ─────────────────────────────────────
+export interface FcmPushTokenRecord {
+  token: string;
+  createdAt: string;
+}
+
+function fcmTokenSk(token: string): string {
+  const hash = createHash("sha256").update(token).digest("base64url").slice(0, 32);
+  return `PUSH_FCM#${hash}`;
+}
+
+export async function dbSaveFcmPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `USER#${userId}`,
+        SK: fcmTokenSk(token),
+        data: { token, createdAt: new Date().toISOString() },
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+}
+
+export async function dbGetFcmPushTokens(userId: string): Promise<FcmPushTokenRecord[]> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "PUSH_FCM#" },
+    })
+  );
+  return (Items ?? []).map((i) => i.data as FcmPushTokenRecord);
+}
+
+export async function dbDeleteFcmPushToken(userId: string, token: string): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new DeleteCommand({
+      TableName: TABLE,
+      Key: { PK: `USER#${userId}`, SK: fcmTokenSk(token) },
+    })
+  );
+}
+
 // ── Social Settings ──────────────────────────────────────
 export async function dbGetSocialSettings(userId: string): Promise<SocialSettings | null> {
   const doc = getDocClient();
@@ -661,6 +711,49 @@ export async function dbReleaseUsername(username: string): Promise<void> {
   await doc.send(
     new DeleteCommand({ TableName: TABLE, Key: { PK: `USERNAME#${key}`, SK: `USERNAME#${key}` } })
   );
+}
+
+export async function dbDeleteAccount(userId: string, email: string): Promise<void> {
+  const doc = getDocClient();
+
+  // 1. Collect every item stored under USER#{userId} and delete in batches of 25.
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const res = await doc.send(
+      new QueryCommand({
+        TableName: TABLE,
+        KeyConditionExpression: "PK = :pk",
+        ExpressionAttributeValues: { ":pk": `USER#${userId}` },
+        ProjectionExpression: "PK, SK",
+        ExclusiveStartKey: lastKey,
+        Limit: 100,
+      })
+    );
+    const items = (res.Items ?? []) as { PK: string; SK: string }[];
+    for (let i = 0; i < items.length; i += 25) {
+      await doc.send(
+        new BatchWriteCommand({
+          RequestItems: {
+            [TABLE]: items.slice(i, i + 25).map((item) => ({
+              DeleteRequest: { Key: { PK: item.PK, SK: item.SK } },
+            })),
+          },
+        })
+      );
+    }
+    lastKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  // 2. Delete the email/password credential record.
+  if (email) {
+    const emailKey = email.toLowerCase().trim();
+    await doc.send(
+      new DeleteCommand({ TableName: TABLE, Key: { PK: `ACCOUNT#${emailKey}`, SK: `ACCOUNT#${emailKey}` } })
+    ).catch(() => {});
+    await doc.send(
+      new DeleteCommand({ TableName: TABLE, Key: { PK: `PWRESET#${emailKey}`, SK: `PWRESET#${emailKey}` } })
+    ).catch(() => {});
+  }
 }
 
 // ── Groups ───────────────────────────────────────────────
@@ -853,6 +946,14 @@ export async function dbGetGroupMessages(groupId: string, limit = 50): Promise<G
     })
   );
   return (Items ?? []).map((i) => i.data as GroupMessage).reverse();
+}
+
+export async function dbGetGroupMessage(groupId: string, messageId: string, timestamp: string): Promise<GroupMessage | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `GROUP#${groupId}`, SK: `MSG#${timestamp}#${messageId}` } })
+  );
+  return (Item?.data as GroupMessage) ?? null;
 }
 
 export async function dbDeleteGroupMessage(groupId: string, messageId: string, timestamp: string): Promise<void> {
@@ -1094,6 +1195,24 @@ export async function dbSavePantry(userId: string, items: PantryItem[]): Promise
   );
 }
 
+export async function dbGetSavedRecipes(userId: string): Promise<CookingAppRecipe[]> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "SAVED_RECIPES" } })
+  );
+  return Item ? (Item.data as CookingAppRecipe[]) : [];
+}
+
+export async function dbSaveSavedRecipes(userId: string, recipes: CookingAppRecipe[]): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "SAVED_RECIPES", data: recipes, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
 // ── Meal Prep ───────────────────────────────────────────
 export async function dbGetMealPrepPlan(userId: string, weekStart: string): Promise<MealPrepPlan | null> {
   const doc = getDocClient();
@@ -1299,6 +1418,59 @@ export async function dbVerifyAccount(email: string): Promise<AuthAccount | null
 export async function dbGetUserIdByEmail(email: string): Promise<string | null> {
   const account = await dbVerifyAccount(email);
   return account?.userId ?? null;
+}
+
+// ── Password Reset OTP ───────────────────────────────────────────────────
+const RESET_OTP_TTL_SECONDS = 15 * 60; // 15 minutes
+
+export async function dbCreatePasswordResetToken(email: string): Promise<string> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = Math.floor(Date.now() / 1000) + RESET_OTP_TTL_SECONDS;
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}`, data: { code, expiresAt }, ttl: expiresAt },
+    })
+  );
+  return code;
+}
+
+export async function dbVerifyPasswordResetToken(email: string, code: string): Promise<boolean> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}` } })
+  );
+  if (!Item?.data) return false;
+  const { code: stored, expiresAt } = Item.data as { code: string; expiresAt: number };
+  return stored === code && Math.floor(Date.now() / 1000) <= expiresAt;
+}
+
+export async function dbDeletePasswordResetToken(email: string): Promise<void> {
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  await doc.send(new DeleteCommand({ TableName: TABLE, Key: { PK: `PWRESET#${key}`, SK: `PWRESET#${key}` } }));
+}
+
+export async function dbUpdatePasswordHash(email: string, newHash: string): Promise<boolean> {
+  const account = await dbVerifyAccount(email);
+  if (!account) return false;
+  const doc = getDocClient();
+  const key = email.toLowerCase().trim();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: {
+        PK: `ACCOUNT#${key}`,
+        SK: `ACCOUNT#${key}`,
+        data: { ...account, passwordHash: newHash },
+        updatedAt: new Date().toISOString(),
+      },
+    })
+  );
+  return true;
 }
 
 /** Overwrite credentials row (e.g. password rotation for an existing email). */
@@ -1566,4 +1738,79 @@ export async function dbGetPopularExercises(limit = 50): Promise<CommunityExerci
   } catch {
     return [];
   }
+}
+
+// ── Play Store subscriptions ─────────────────────────────────────────────────
+
+export type PlaySubscriptionRecord = {
+  purchaseToken: string;
+  subscriptionId: string;
+  packageName: string;
+  expiryTime: string;       // ISO timestamp from lineItems[0].expiryTime
+  subscriptionState: string;
+  autoRenewing: boolean;
+  verifiedAt: string;
+};
+
+export async function dbSavePlaySubscription(userId: string, record: PlaySubscriptionRecord): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "PLAY_SUB", data: record, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+export async function dbGetPlaySubscription(userId: string): Promise<PlaySubscriptionRecord | null> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "PLAY_SUB" } })
+  );
+  return Item ? (Item.data as PlaySubscriptionRecord) : null;
+}
+
+// ── Admin Scans (cron use only — full table scan) ────────
+
+export async function dbScanUsersWithCoachSchedules(): Promise<Array<{ userId: string; schedule: CoachSchedule }>> {
+  const doc = getDocClient();
+  const results: Array<{ userId: string; schedule: CoachSchedule }> = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const { Items, LastEvaluatedKey } = await doc.send(
+      new ScanCommand({
+        TableName: TABLE,
+        FilterExpression: "SK = :sk",
+        ExpressionAttributeValues: { ":sk": "COACH_SCHEDULE" },
+        ExclusiveStartKey,
+      })
+    );
+    for (const item of Items ?? []) {
+      const userId = (item.PK as string).replace("USER#", "");
+      results.push({ userId, schedule: item.data as CoachSchedule });
+    }
+    ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ExclusiveStartKey);
+  return results;
+}
+
+export async function dbScanAllChallenges(): Promise<Challenge[]> {
+  const doc = getDocClient();
+  const results: Challenge[] = [];
+  let ExclusiveStartKey: Record<string, unknown> | undefined;
+  do {
+    const { Items, LastEvaluatedKey } = await doc.send(
+      new ScanCommand({
+        TableName: TABLE,
+        FilterExpression: "SK = :sk AND begins_with(PK, :pk)",
+        ExpressionAttributeValues: { ":sk": "META", ":pk": "CHALLENGE#" },
+        ExclusiveStartKey,
+      })
+    );
+    for (const item of Items ?? []) {
+      results.push(item.data as Challenge);
+    }
+    ExclusiveStartKey = LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (ExclusiveStartKey);
+  return results;
 }

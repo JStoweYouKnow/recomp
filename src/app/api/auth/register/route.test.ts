@@ -13,9 +13,17 @@ vi.mock("uuid", () => ({
   v4: vi.fn(() => "generated-user"),
 }));
 
+vi.mock("@/lib/server-rate-limit", () => ({
+  fixedWindowRateLimit: vi.fn().mockResolvedValue({ ok: true }),
+  getClientKey: (_ip: string, _suffix: string) => "test-register-rl",
+  getRequestIp: () => "127.0.0.1",
+}));
+
 describe("POST /api/auth/register", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { dbSaveProfile } = await import("@/lib/db");
+    vi.mocked(dbSaveProfile).mockResolvedValue(undefined);
   });
 
   it("returns 400 for invalid payload", async () => {
@@ -83,7 +91,7 @@ describe("POST /api/auth/register", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 500 when body is not valid JSON", async () => {
+  it("returns 400 when body is not valid JSON", async () => {
     const { POST } = await import("./route");
     const req = new Request("http://localhost/api/auth/register", {
       method: "POST",
@@ -91,6 +99,19 @@ describe("POST /api/auth/register", () => {
       body: "not json {",
     });
     const res = await POST(req as unknown as import("next/server").NextRequest);
-    expect(res.status).toBe(500);
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts empty email and password strings after normalization", async () => {
+    const { getUserId } = await import("@/lib/auth");
+    vi.mocked(getUserId).mockResolvedValue(null);
+    const { POST } = await import("./route");
+    const req = new Request("http://localhost/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Pat", email: "", password: "" }),
+    });
+    const res = await POST(req as unknown as import("next/server").NextRequest);
+    expect(res.status).toBe(200);
   });
 });

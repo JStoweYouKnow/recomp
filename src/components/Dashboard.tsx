@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getWorkoutProgress, getWeeklyReview, saveWeeklyReview, getActivityLog, saveActivityLog, syncToServer, getChallenges } from "@/lib/storage";
 import { CalendarView } from "./CalendarView";
-import { getTodayLocal, getWeekStart, isTimestampInWeek, mondayWeeksElapsed } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart, isTimestampInWeek } from "@/lib/date-utils";
+import { matchDayToDate as scheduleMatchDayToDate } from "@/lib/workout-schedule";
+import { CatchUpBanner } from "./workouts/CatchUpBanner";
 import { TodayAtAGlance } from "./dashboard/TodayAtAGlance";
 import { WeeklyReviewCard } from "./dashboard/WeeklyReviewCard";
 
@@ -16,6 +18,12 @@ import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
 import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
 import { DuelCard } from "./dashboard/DuelCard";
+import {
+  PlanGenerateOptions,
+  defaultWorkoutDaysPerWeek,
+  planOptionsFromState,
+} from "./dashboard/PlanGenerateOptions";
+import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
 import { FeedbackButton } from "./FeedbackButton";
 import type { UserProfile, FitnessPlan, MealEntry, Macros, WearableDaySummary, WeeklyReview, ActivityLogEntry } from "@/lib/types";
@@ -61,13 +69,26 @@ export function Dashboard({
   wearableData?: WearableDaySummary[];
   onProfileUpdate: (p: UserProfile) => void;
   onPlanUpdate: (p: FitnessPlan) => void;
-  onRegeneratePlan: () => void;
+  onRegeneratePlan: (options?: RegeneratePlanOptions) => void;
   planRegenerating: boolean;
   planLoadingMessage?: string;
   onReset: () => void;
   onNavigateToMeals?: () => void;
   onNavigateToWorkouts?: () => void;
 }) {
+  const [programWeeks, setProgramWeeks] = useState(1);
+  const [workoutDaysPerWeek, setWorkoutDaysPerWeek] = useState(() =>
+    defaultWorkoutDaysPerWeek(profile.workoutDaysPerWeek)
+  );
+
+  useEffect(() => {
+    setWorkoutDaysPerWeek(defaultWorkoutDaysPerWeek(profile.workoutDaysPerWeek));
+  }, [profile.workoutDaysPerWeek]);
+
+  const runRegenerate = useCallback(() => {
+    onRegeneratePlan(planOptionsFromState(programWeeks, workoutDaysPerWeek));
+  }, [onRegeneratePlan, programWeeks, workoutDaysPerWeek]);
+
   const unitSystem = profile.unitSystem ?? "us";
   // Prefer most recent weight from wearables when available
   const displayWeightLbs = useMemo(() => {
@@ -190,39 +211,7 @@ export function Dashboard({
 
   const matchWorkoutDay = useCallback((date: string): number | null => {
     if (!plan) return null;
-    const d = new Date(date + "T12:00:00");
-    const dow = d.getDay();
-    const dayName = WEEKDAY_NAMES_DASH[dow].toLowerCase();
-    const shortName = SHORT_WEEKDAY_DASH[dow].toLowerCase();
-    const wp = plan.workoutPlan.weeklyPlan;
-    const anchor = plan.workoutPlan.programWeek1Start;
-
-    const weekdayMatches = (planDay: string) =>
-      planDay === dayName ||
-      planDay === shortName ||
-      planDay.startsWith(dayName) ||
-      planDay.startsWith(shortName);
-
-    if (anchor && wp.length > 7) {
-      const weekStart = getWeekStart(date);
-      const programWeek = mondayWeeksElapsed(anchor, weekStart) + 1;
-      if (programWeek >= 1) {
-        for (let i = 0; i < wp.length; i++) {
-          const planDay = wp[i].day.toLowerCase().trim();
-          if (!weekdayMatches(planDay)) continue;
-          const wm = planDay.match(/week\s*(\d+)/);
-          if (wm && parseInt(wm[1], 10) === programWeek) return i;
-        }
-      }
-      return null;
-    }
-
-    for (let i = 0; i < wp.length; i++) {
-      const planDay = wp[i].day.toLowerCase().trim();
-      if (weekdayMatches(planDay)) return i;
-    }
-    const mondayBased = dow === 0 ? 6 : dow - 1;
-    return mondayBased < wp.length ? mondayBased : null;
+    return scheduleMatchDayToDate(plan, date);
   }, [plan]);
 
   // Progress for the viewing week only — so Diet/Workout cards refresh when changing weeks
@@ -411,8 +400,45 @@ export function Dashboard({
         <div className="card p-8 text-center animate-fade-in border-dashed border-2 border-[var(--border-soft)]">
           <h3 className="card-section-title mb-2">No plan yet</h3>
           <p className="text-sm text-[var(--muted)] mb-4">Your personalized plan couldn’t be created or hasn’t loaded. Generate one now.</p>
-          <button type="button" onClick={onRegeneratePlan} disabled={planRegenerating} className="btn-primary px-6 py-2.5">
+          <PlanGenerateOptions
+            programWeeks={programWeeks}
+            workoutDaysPerWeek={workoutDaysPerWeek}
+            onProgramWeeksChange={setProgramWeeks}
+            onWorkoutDaysPerWeekChange={setWorkoutDaysPerWeek}
+            disabled={planRegenerating}
+          />
+          <button
+            type="button"
+            onClick={runRegenerate}
+            disabled={planRegenerating}
+            className="btn-primary px-6 py-2.5 mt-5"
+          >
             Generate my plan
+          </button>
+        </div>
+      )}
+
+      {plan && !planRegenerating && (
+        <div className="card p-5 animate-fade-in">
+          <h3 className="card-section-title mb-1">Regenerate program</h3>
+          <p className="text-sm text-[var(--muted)] mb-4">
+            Build a fresh meal and workout plan. Replaces your current program.
+          </p>
+          <PlanGenerateOptions
+            programWeeks={programWeeks}
+            workoutDaysPerWeek={workoutDaysPerWeek}
+            onProgramWeeksChange={setProgramWeeks}
+            onWorkoutDaysPerWeekChange={setWorkoutDaysPerWeek}
+            disabled={planRegenerating}
+            compact
+          />
+          <button
+            type="button"
+            onClick={runRegenerate}
+            disabled={planRegenerating}
+            className="btn-secondary px-5 py-2 mt-4 w-full sm:w-auto"
+          >
+            Regenerate plan
           </button>
         </div>
       )}
@@ -442,13 +468,23 @@ export function Dashboard({
         />
       </div>
 
+      {plan && (
+        <CatchUpBanner
+          plan={plan}
+          progress={workoutProgress}
+          today={today}
+          onUpdatePlan={onPlanUpdate}
+          onSync={() => syncToServer()}
+        />
+      )}
+
       {/* ── Daily Quests & Adaptive TDEE (paired so TDEE expander doesn't elongate other cards) ── */}
       <div className="grid gap-4 sm:grid-cols-2 animate-fade-in stagger-2">
         <DailyQuestsCard
           todayMealCount={meals.filter((m) => m.date === today).length}
           workoutCompleted={workoutCompletedToday}
         />
-        <MetabolicModelCard />
+        <MetabolicModelCard onPlanUpdate={onPlanUpdate} />
       </div>
 
       {/* ── How are you feeling & Coach check-in (paired) ── */}

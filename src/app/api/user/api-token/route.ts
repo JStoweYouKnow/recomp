@@ -3,8 +3,8 @@ import { getUserId } from "@/lib/auth";
 import { dbCreateApiToken, dbRevokeApiToken, dbGetUserIdByApiToken } from "@/lib/db";
 
 /** POST: Create new API token. Returns { token } - user must copy it; we only show it once. */
-export async function POST() {
-  const userId = await getUserId();
+export async function POST(req: NextRequest) {
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
   try {
@@ -26,7 +26,7 @@ export async function POST() {
 
 /** DELETE: Revoke token. Body: { token: "..." } */
 export async function DELETE(req: NextRequest) {
-  const userId = await getUserId();
+  const userId = await getUserId(req.headers);
   if (!userId) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
 
   try {

@@ -1,84 +1,70 @@
 import { NextRequest, NextResponse } from "next/server";
+import { dbVerifyAccount, dbGetProfile, dbCreateApiToken } from "@/lib/db";
 import { buildSetCookieHeader } from "@/lib/auth";
-import { verifyPassword } from "@/lib/auth-password";
-import { dbGetProfile, dbSaveProfile, dbVerifyAccount } from "@/lib/db";
-import { isJudgeMode } from "@/lib/judgeMode";
+import { logInfo, logError } from "@/lib/logger";
+import { hasProAccess } from "@/lib/proAccess";
+import { z } from "zod";
+import bcrypt from "bcryptjs";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
-import { buildDemoSeed } from "@/lib/demoSeed";
-import type { UserProfile } from "@/lib/types";
+
+const LoginSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(8),
+});
 
 export async function POST(req: NextRequest) {
-  const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "auth-login"), 30, 60_000);
-  if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+    try {
+        const ip = getRequestIp(req);
+        const rlKey = getClientKey(ip, "login");
+        const { ok, remaining, resetAt } = await fixedWindowRateLimit(rlKey, 10, 60000);
+        if (!ok) {
+            logInfo("RATE_LIMIT_EXCEEDED", { route: "auth/login", ip });
+            return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+        }
 
-  const judgeMode = isJudgeMode();
-  const hasDb = Boolean(process.env.DYNAMODB_TABLE_NAME);
+        const body = await req.json();
+        const parsed = LoginSchema.safeParse(body);
+        if (!parsed.success) {
+            return NextResponse.json({ error: "Invalid input", details: parsed.error.format() }, { status: 400 });
+        }
 
-  if (judgeMode || !hasDb) {
-    // In judge mode or without a DB, accept the reviewer demo credentials
-    // (or any credentials) and return the demo user so review can proceed.
-    const body = await req.json().catch(() => ({})) as { email?: string; password?: string };
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
+        const { email, password } = parsed.data;
+
+        const account = await dbVerifyAccount(email);
+        if (!account) {
+            return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+        }
+
+        const passwordMatch = await bcrypt.compare(password, account.passwordHash);
+        if (!passwordMatch) {
+            return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+        }
+
+        logInfo("USER_LOGGED_IN", { route: "auth/login", userId: account.userId });
+
+        const profile = await dbGetProfile(account.userId);
+        if (profile && await hasProAccess(account.userId)) profile.proAccess = true;
+        const cookieHeader = buildSetCookieHeader(account.userId);
+
+        let apiToken: string | undefined;
+        try {
+          apiToken = await dbCreateApiToken(account.userId);
+        } catch {
+          // Non-fatal — client can still authenticate via session cookie
+        }
+
+        const response = NextResponse.json({
+          success: true,
+          authenticated: true,
+          userId: account.userId,
+          profile,
+          apiToken,
+        });
+        response.headers.set("Set-Cookie", cookieHeader);
+
+        return response;
+    } catch (error) {
+        logError("Failed to login", error, { route: "auth/login" });
+        return NextResponse.json({ error: "Failed to login" }, { status: 500 });
     }
-    const { profile } = buildDemoSeed();
-    const res = NextResponse.json({ authenticated: true, userId: profile.id, profile });
-    res.headers.append("Set-Cookie", buildSetCookieHeader(profile.id));
-    return res;
-  }
-
-  try {
-    const body = (await req.json()) as { email?: string; password?: string };
-    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const password = typeof body.password === "string" ? body.password : "";
-    if (!email || !password) {
-      return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
-    }
-
-    const account = await dbVerifyAccount(email);
-    if (!account || !(await verifyPassword(password, account.passwordHash))) {
-      return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
-    }
-
-    let profile = await dbGetProfile(account.userId);
-    if (!profile) {
-      profile = {
-        id: account.userId,
-        name: "Athlete",
-        email: account.email,
-        age: 30,
-        weight: 70,
-        height: 170,
-        gender: "other",
-        fitnessLevel: "intermediate",
-        goal: "maintain",
-        dietaryRestrictions: [],
-        injuriesOrLimitations: [],
-        dailyActivityLevel: "moderate",
-        unitSystem: "us",
-        workoutLocation: "gym",
-        workoutEquipment: ["free_weights"],
-        workoutDaysPerWeek: 4,
-        workoutTimeframe: "flexible",
-        createdAt: new Date().toISOString(),
-      } satisfies UserProfile;
-      await dbSaveProfile(account.userId, profile);
-    } else if (!profile.email) {
-      profile = { ...profile, email: account.email };
-      await dbSaveProfile(account.userId, profile);
-    }
-
-    const res = NextResponse.json({
-      authenticated: true,
-      userId: account.userId,
-      profile,
-    });
-    res.headers.append("Set-Cookie", buildSetCookieHeader(account.userId));
-    return res;
-  } catch (err) {
-    console.error("auth/login", err);
-    return NextResponse.json({ error: "Login failed" }, { status: 500 });
-  }
 }

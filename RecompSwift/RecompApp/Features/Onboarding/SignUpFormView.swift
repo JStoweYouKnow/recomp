@@ -10,13 +10,16 @@ struct SignUpFormView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var age = 30
-    @State private var weight: Double = 70
-    @State private var height: Double = 170
+    @State private var weight: Double = 165       // lbs (US default)
+    @State private var height: Double = 70        // total inches (US default)
+    @State private var heightFeet: Int = 5
+    @State private var heightInches: Int = 10
+    @State private var heightCm: Double = 177.8   // cm (metric branch)
+    @State private var unitSystem: MeasurementSystem = .us
     @State private var gender: Gender = .male
     @State private var fitnessLevel: FitnessLevel = .beginner
     @State private var goal: FitnessGoal = .loseWeight
     @State private var activityLevel: ActivityLevel = .moderate
-    @State private var unitSystem: MeasurementSystem = .us
     @State private var workoutLocation: WorkoutLocation = .gym
     @State private var workoutDays = 4
     @State private var dietaryRestrictions: [String] = []
@@ -48,6 +51,10 @@ struct SignUpFormView: View {
                 Button("Back", action: onBack)
             }
         }
+        .onAppear {
+            height = Double(heightFeet * 12 + heightInches)
+            heightCm = height * 2.54
+        }
     }
 
     private var stepIndicator: some View {
@@ -66,21 +73,23 @@ struct SignUpFormView: View {
             Section("About You") {
                 TextField("Name", text: $name)
                     .textContentType(.name)
-                TextField("Email (optional)", text: $email)
+                TextField("Email", text: $email)
                     .textContentType(.emailAddress)
                     .keyboardType(.emailAddress)
                     .autocapitalization(.none)
-                SecureField("Password (optional)", text: $password)
+                    .autocorrectionDisabled()
+                SecureField("Password", text: $password)
                     .textContentType(.newPassword)
             }
 
-            Section("Measurement System") {
-                Picker("Units", selection: $unitSystem) {
-                    Text("US (lbs/in)").tag(MeasurementSystem.us)
-                    Text("Metric (kg/cm)").tag(MeasurementSystem.metric)
+            if step == 0 && (!email.isEmpty && !isValidEmail(email)) {
+                Section {
+                    Text("Enter a valid email address.")
+                        .font(.caption)
+                        .foregroundStyle(Color.appError)
                 }
-                .pickerStyle(.segmented)
             }
+
         }
     }
 
@@ -98,13 +107,38 @@ struct SignUpFormView: View {
                         .frame(width: 80)
                 }
 
-                HStack {
-                    Text(unitSystem == .metric ? "Height (cm)" : "Height (in)")
-                    Spacer()
-                    TextField("", value: $height, format: .number)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                if unitSystem == .metric {
+                    HStack {
+                        Text("Height (cm)")
+                        Spacer()
+                        TextField("", value: $heightCm, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 80)
+                    }
+                } else {
+                    HStack {
+                        Text("Height")
+                        Spacer()
+                        Picker("Feet", selection: $heightFeet) {
+                            ForEach(4...7, id: \.self) { ft in
+                                Text("\(ft) ft").tag(ft)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(width: 80, height: 100)
+                        .clipped()
+                        Picker("Inches", selection: $heightInches) {
+                            ForEach(0...11, id: \.self) { ins in
+                                Text("\(ins) in").tag(ins)
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(width: 80, height: 100)
+                        .clipped()
+                    }
+                    .onChange(of: heightFeet) { _, _ in height = Double(heightFeet * 12 + heightInches) }
+                    .onChange(of: heightInches) { _, _ in height = Double(heightFeet * 12 + heightInches) }
                 }
             }
 
@@ -150,6 +184,25 @@ struct SignUpFormView: View {
 
     private var preferencesStep: some View {
         Form {
+            Section("Measurement System") {
+                Picker("Units", selection: $unitSystem) {
+                    Text("US (lbs, ft)").tag(MeasurementSystem.us)
+                    Text("Metric (kg, cm)").tag(MeasurementSystem.metric)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: unitSystem) { _, newVal in
+                    if newVal == .metric {
+                        weight = (weight * 0.45359237 * 10).rounded() / 10
+                        heightCm = (height * 2.54 * 10).rounded() / 10
+                    } else {
+                        weight = (weight * 2.20462 * 10).rounded() / 10
+                        height = (heightCm / 2.54 * 10).rounded() / 10
+                        heightFeet = Int(height) / 12
+                        heightInches = Int(height) % 12
+                    }
+                }
+            }
+
             Section("Workout Preferences") {
                 Picker("Location", selection: $workoutLocation) {
                     ForEach(WorkoutLocation.allCases) { loc in
@@ -204,7 +257,7 @@ struct SignUpFormView: View {
                     withAnimation { step += 1 }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(step == 0 && name.isEmpty)
+                .disabled(step == 0 && !step0Valid)
             } else {
                 Button {
                     submit()
@@ -216,21 +269,32 @@ struct SignUpFormView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(name.isEmpty || isSubmitting)
+                .disabled(!step0Valid || isSubmitting)
             }
         }
         .padding()
     }
 
+    private var step0Valid: Bool {
+        !name.isEmpty && isValidEmail(email) && password.count >= 8
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        value.contains("@") && value.contains(".")
+    }
+
     private func submit() {
         isSubmitting = true
+        // Server stores weight in lbs and height in centimeters.
+        let submitWeight = unitSystem == .metric ? weight * 2.20462 : weight
+        let submitHeight = unitSystem == .metric ? heightCm : height * 2.54
         let payload = SignUpPayload(
             name: name,
-            email: email.isEmpty ? nil : email,
-            password: password.isEmpty ? nil : password,
+            email: email,
+            password: password,
             age: age,
-            weight: weight,
-            height: height,
+            weight: submitWeight,
+            height: submitHeight,
             gender: gender.rawValue,
             fitnessLevel: fitnessLevel.rawValue,
             goal: goal.rawValue,

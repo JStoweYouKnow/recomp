@@ -71,6 +71,30 @@ public final class MealService {
         return try await api.request(MealAPI.parseRecipeUrl(url: url))
     }
 
+    public func saveRecipeFromUrl(_ url: String) async throws -> RecipeSaveResponse {
+        isLoading = true
+        defer { isLoading = false }
+        return try await api.request(MealAPI.saveRecipeFromUrl(url: url))
+    }
+
+    public func suggestRecipes(payload: RecipeSuggestPayload) async throws -> [ScoredRecipeSuggestion] {
+        isLoading = true
+        defer { isLoading = false }
+        let response: RecipeSuggestResponse = try await api.request(MealAPI.recipeSuggest(payload: payload))
+        return response.suggestions
+    }
+
+    /// Parses a natural-language meal description via `POST /api/voice/parse` (same contract as iOS voice logging).
+    public func parseVoiceMeals(transcript: String) async throws -> [SuggestedMeal] {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        isLoading = true
+        defer { isLoading = false }
+
+        let response: VoiceParseResponse = try await api.request(VoiceAPI.parse(text: trimmed))
+        return response.meals ?? []
+    }
+
     public func saveMeal(_ meal: MealEntry, context: ModelContext) {
         context.insert(meal)
         try? context.save()
@@ -93,6 +117,20 @@ public final class MealService {
         let today = DateHelpers.todayString()
         let meals = mealsForDate(today, context: context)
         return meals.reduce(.zero) { $0.adding($1.macros) }
+    }
+
+    /// Sum of `calorieAdjustment` for activity log rows on a date (matches web dashboard `todayAdjustment`).
+    public func activityCalorieAdjustment(for date: String, context: ModelContext) -> Int {
+        let descriptor = FetchDescriptor<ActivityLogEntry>(
+            predicate: #Predicate { $0.date == date },
+            sortBy: [SortDescriptor(\.loggedAt)]
+        )
+        let rows = (try? context.fetch(descriptor)) ?? []
+        return rows.reduce(0) { $0 + $1.calorieAdjustment }
+    }
+
+    public func todaysActivityCalorieAdjustment(context: ModelContext) -> Int {
+        activityCalorieAdjustment(for: DateHelpers.todayString(), context: context)
     }
 
     /// Calls `POST /api/meal-prep/generate` and returns decoded recipes plus batch metadata.

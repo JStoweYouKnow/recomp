@@ -1,5 +1,6 @@
-import WidgetKit
+import SwiftData
 import SwiftUI
+import WidgetKit
 import RefactorKit
 
 struct CalorieEntry: TimelineEntry {
@@ -16,6 +17,17 @@ struct CalorieEntry: TimelineEntry {
 }
 
 struct RefactorComplicationProvider: TimelineProvider {
+    /// Used when the App Group store is unavailable (misconfiguration or migration failure).
+    private static let fallbackEntry = CalorieEntry(
+        date: .now,
+        caloriesRemaining: 0,
+        calorieTarget: 2000,
+        streakDays: 0,
+        protein: 0, proteinTarget: 150,
+        carbs: 0, carbsTarget: 200,
+        fat: 0, fatTarget: 65
+    )
+
     func placeholder(in context: Context) -> CalorieEntry {
         CalorieEntry(
             date: .now,
@@ -29,14 +41,64 @@ struct RefactorComplicationProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (CalorieEntry) -> Void) {
-        completion(placeholder(in: context))
+        Task { @MainActor in
+            completion(Self.buildEntryFromSharedStore())
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<CalorieEntry>) -> Void) {
-        let entry = placeholder(in: context)
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now)!
-        let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
-        completion(timeline)
+        Task { @MainActor in
+            let entry = Self.buildEntryFromSharedStore()
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 15, to: .now) ?? .now.addingTimeInterval(900)
+            completion(Timeline(entries: [entry], policy: .after(nextUpdate)))
+        }
+    }
+
+    /// Reads the App Group SwiftData store and phone-pushed snapshot (same as watch dashboard).
+    @MainActor
+    private static func buildEntryFromSharedStore() -> CalorieEntry {
+        do {
+            let container = try RefactorSchema.makeContainer(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
+            let ctx = ModelContext(container)
+            let metrics = WatchDashboardMetricsResolver.resolve(context: ctx)
+            let consumed = metrics.consumed
+            let targets = metrics.targets
+            let adjustedCalorieTarget = metrics.adjustedCalorieTarget
+            let streak = streakFromSharedStore(context: ctx)
+
+            let remaining = max(adjustedCalorieTarget - consumed.calories, 0)
+            return CalorieEntry(
+                date: .now,
+                caloriesRemaining: remaining,
+                calorieTarget: max(adjustedCalorieTarget, 1),
+                streakDays: streak,
+                protein: consumed.protein,
+                proteinTarget: max(targets.protein, 1),
+                carbs: consumed.carbs,
+                carbsTarget: max(targets.carbs, 1),
+                fat: consumed.fat,
+                fatTarget: max(targets.fat, 1)
+            )
+        } catch {
+            return Self.fallbackEntry
+        }
+    }
+
+    @MainActor
+    private static func streakFromSharedStore(context: ModelContext? = nil) -> Int {
+        do {
+            let ctx: ModelContext
+            if let context {
+                ctx = context
+            } else {
+                let container = try RefactorSchema.makeContainer(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
+                ctx = ModelContext(container)
+            }
+            let allMeals = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
+            return DateHelpers.streakLength(dates: Array(Set(allMeals.map(\.date))))
+        } catch {
+            return 0
+        }
     }
 }
 
@@ -44,7 +106,10 @@ struct CalorieRingComplication: View {
     let entry: CalorieEntry
 
     var body: some View {
-        let progress = 1.0 - (Double(entry.caloriesRemaining) / Double(max(entry.calorieTarget, 1)))
+        // Fill by calories consumed (matches the phone dashboard ring), derived from
+        // remaining vs target so the two surfaces never disagree.
+        let consumed = max(entry.calorieTarget - entry.caloriesRemaining, 0)
+        let progress = Double(consumed) / Double(max(entry.calorieTarget, 1))
 
         ZStack {
             AccessoryWidgetBackground()
@@ -52,7 +117,7 @@ struct CalorieRingComplication: View {
                 Circle()
                     .stroke(.orange.opacity(0.3), lineWidth: 4)
                 Circle()
-                    .trim(from: 0, to: min(progress, 1.0))
+                    .trim(from: 0, to: min(max(progress, 0), 1.0))
                     .stroke(.orange, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(entry.caloriesRemaining)")

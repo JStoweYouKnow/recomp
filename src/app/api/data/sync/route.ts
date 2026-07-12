@@ -36,6 +36,8 @@ import {
   dbSaveFastingSession,
   dbSaveBiofeedbackEntry,
   dbSavePantry,
+  dbGetSavedRecipes,
+  dbSaveSavedRecipes,
   dbSaveBodyScan,
   dbSaveSupplements,
   dbSaveBloodWork,
@@ -43,8 +45,13 @@ import {
   dbSaveCommunityExercise,
 } from "@/lib/db";
 import { syncBodySchema, SYNC_MAX_BODY_SIZE } from "@/lib/sync-schema";
+import {
+  normalizeWearableSummariesForStorage,
+  repairWearableScaleRowsForCanonicalLbs,
+  type WearableInbound,
+} from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, WearableConnection, WearableDaySummary, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
@@ -80,7 +87,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
-    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, savedRecipes, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -183,7 +190,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (wearableData && wearableData.length > 0) {
-      promises.push(dbSaveWearableData(userId, wearableData as WearableDaySummary[]));
+      const normalizedWearables = normalizeWearableSummariesForStorage(
+        wearableData as WearableInbound[],
+        profile ? (profile as unknown as UserProfile) : undefined
+      );
+      const repairedWearables = repairWearableScaleRowsForCanonicalLbs(
+        normalizedWearables,
+        profile ? (profile as unknown as UserProfile) : undefined
+      );
+      promises.push(dbSaveWearableData(userId, repairedWearables));
     }
 
     if (activityLog && activityLog.length > 0) {
@@ -221,6 +236,10 @@ export async function POST(req: NextRequest) {
 
     if (pantry && pantry.length > 0) {
       promises.push(dbSavePantry(userId, pantry as PantryItem[]));
+    }
+
+    if (savedRecipes && savedRecipes.length > 0) {
+      promises.push(dbSaveSavedRecipes(userId, savedRecipes as CookingAppRecipe[]));
     }
 
     if (bodyScans && bodyScans.length > 0) {
@@ -270,6 +289,7 @@ export async function GET(req: NextRequest) {
       fastingSessions,
       biofeedback,
       pantry,
+      savedRecipes,
       bodyScans,
       supplements,
       bloodWork,
@@ -289,6 +309,7 @@ export async function GET(req: NextRequest) {
       dbGetFastingSessions(userId).catch(() => []),
       dbGetBiofeedback(userId).catch(() => []),
       dbGetPantry(userId).catch(() => []),
+      dbGetSavedRecipes(userId).catch(() => []),
       dbGetBodyScans(userId).catch(() => []),
       dbGetSupplements(userId).catch(() => []),
       dbGetBloodWork(userId).catch(() => []),
@@ -299,15 +320,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No profile found" }, { status: 404 });
     }
 
-    const mealsDeduped = meals.length > 0 ? dedupeMealsByDateAndId(meals) : [];
+    const mealsDeduped = meals.length > 0
+      ? dedupeMealsByDateAndId(meals).map((m) => {
+          if (m.macros.calories > 0) return m;
+          const { protein, carbs, fat } = m.macros;
+          return { ...m, macros: { calories: Math.round(protein * 4 + carbs * 4 + fat * 9), protein, carbs, fat } };
+        })
+      : [];
+    const wearableDataRepaired =
+      wearableData.length > 0 ? repairWearableScaleRowsForCanonicalLbs(wearableData, profile) : [];
     const payload = {
       profile,
       plan,
-      // Always send an array so clients replace local state (including clearing all meals).
-      meals: mealsDeduped,
+      // Only include meals when the server actually has rows. Sending `meals: []` would
+      // cause iOS fetchAndApply() to wipe local SwiftData before the device has ever
+      // successfully pushed — e.g. after a first-sync auth failure. Omitting the key
+      // means the iOS `if let mealDTOs = response.meals` guard short-circuits, preserving
+      // local state. The web client handles undefined by treating it as an empty array.
+      meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
       milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
-      wearableData: wearableData.length > 0 ? wearableData : undefined,
+      wearableData: wearableDataRepaired.length > 0 ? wearableDataRepaired : undefined,
       weeklyReview: weeklyReview ?? undefined,
       // Always send an array so native clients can replace local rows (including clearing).
       activityLog,
@@ -318,6 +351,7 @@ export async function GET(req: NextRequest) {
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,
       pantry: pantry.length > 0 ? pantry : undefined,
+      savedRecipes: savedRecipes.length > 0 ? savedRecipes : undefined,
       bodyScans: bodyScans.length > 0 ? bodyScans : undefined,
       supplements: supplements.length > 0 ? supplements : undefined,
       bloodWork: bloodWork.length > 0 ? bloodWork : undefined,

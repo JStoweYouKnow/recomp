@@ -7,7 +7,7 @@ export function ResearchCard() {
   const { showToast } = useToast();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ answer: string; source?: string; error?: boolean } | null>(null);
+  const [result, setResult] = useState<{ answer: string; source?: string; sources?: { title: string; url: string }[] | null; error?: boolean } | null>(null);
 
   const handleSearch = async () => {
     if (!query.trim()) return;
@@ -21,7 +21,7 @@ export function ResearchCard() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setResult({ answer: data.answer ?? "", source: data.source });
+      setResult({ answer: data.answer ?? "", source: data.source, sources: data.sources });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Research failed. Try again.";
       setResult({ answer: msg, error: true });
@@ -57,7 +57,23 @@ export function ResearchCard() {
           <p className={`whitespace-pre-wrap ${result.error ? "text-[var(--accent-terracotta)]" : "text-[var(--foreground)]"}`}>
             {result.answer}
           </p>
-          {result.source && <p className="mt-2 text-label text-[var(--muted)]">Source: {result.source}</p>}
+          {result.sources && result.sources.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {result.sources.map((s) => (
+                <a
+                  key={s.url}
+                  href={s.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-xs text-[var(--accent)] hover:underline truncate"
+                >
+                  {s.title || s.url}
+                </a>
+              ))}
+            </div>
+          ) : result.source ? (
+            <p className="mt-2 text-label text-[var(--muted)]">Source: {result.source}</p>
+          ) : null}
           {result.error && (
             <button type="button" onClick={handleSearch} className="mt-2 text-xs text-[var(--accent)] hover:underline">
               Try again

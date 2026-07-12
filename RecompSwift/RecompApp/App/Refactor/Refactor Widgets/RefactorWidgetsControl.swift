@@ -6,13 +6,11 @@
 //
 
 import AppIntents
-import SwiftData
 import SwiftUI
 import WidgetKit
-import RefactorKit
 
 struct RefactorWidgetsControl: ControlWidget {
-    static let kind: String = "ProjectComfortDev.RecompWatch.watchkitapp.RefactorWidgets"
+    static let kind: String = "com.recomp.ios.watchkitapp.RefactorWidgets.control"
 
     var body: some ControlWidgetConfiguration {
         AppIntentControlConfiguration(
@@ -26,7 +24,6 @@ struct RefactorWidgetsControl: ControlWidget {
             ) { isRunning in
                 Label(isRunning ? "On" : "Off", systemImage: "timer")
             }
-            .modelContainer(WidgetSharedModelContainer.shared)
         }
         .displayName("Timer")
         .description("A an example control that runs a timer.")

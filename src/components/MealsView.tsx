@@ -12,6 +12,7 @@ import { CalendarView } from "./CalendarView";
 import { PantrySection } from "./meals/PantrySection";
 import { MealPrepSection } from "./meals/MealPrepSection";
 import { CookingAppSync } from "./meals/CookingAppSync";
+import { AskRefRecipes } from "./meals/AskRefRecipes";
 import { MealList } from "./meals/MealList";
 
 type NutritionData = {
@@ -1167,6 +1168,22 @@ export function MealsView({
           </div>
         </div>
       )}
+
+      {/* ─── Recipe macro fit ─── */}
+      <AskRefRecipes
+        macroTargets={targets}
+        todayMacros={displayTotals}
+        goal={goal}
+        onApply={(s) => {
+          setName(s.name);
+          setCal(String(s.calories));
+          setPro(String(s.protein));
+          setCarb(String(s.carbs));
+          setFat(String(s.fat));
+          setPortions(1);
+          setShowAdd(true);
+        }}
+      />
 
       {/* ─── Cooking App Integration ─── */}
       <CookingAppSync
