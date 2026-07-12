@@ -10,7 +10,7 @@ import {
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
   saveMetabolicModel, saveMeasurementTargets, getMetabolicModel, getMeasurementTargets,
-  getSavedRecipes, saveSavedRecipes,
+  getSavedRecipes, saveSavedRecipes, saveMealPrepPlan,
 } from "@/lib/storage";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { UserProfile, FitnessPlan, MealEntry, WearableDaySummary } from "@/lib/types";
@@ -177,6 +177,7 @@ export default function Home() {
     if (data.biofeedback) saveBiofeedback(data.biofeedback as Parameters<typeof saveBiofeedback>[0]);
     if (data.pantry) savePantry(data.pantry as Parameters<typeof savePantry>[0]);
     if (data.savedRecipes) saveSavedRecipes(data.savedRecipes as Parameters<typeof saveSavedRecipes>[0]);
+    if (data.mealPrepPlan) saveMealPrepPlan(data.mealPrepPlan as Parameters<typeof saveMealPrepPlan>[0]);
     if (data.bodyScans) saveBodyScans(data.bodyScans as Parameters<typeof saveBodyScans>[0]);
     if (data.supplements) saveSupplements(data.supplements as Parameters<typeof saveSupplements>[0]);
     if (data.bloodWork) saveBloodWork(data.bloodWork as Parameters<typeof saveBloodWork>[0]);

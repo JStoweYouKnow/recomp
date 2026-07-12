@@ -276,7 +276,20 @@ data class SyncGetResponse(
     val biofeedback: List<BiofeedbackEntryDto>? = null,
     val pantry: List<PantryItemDto>? = null,
     val savedRecipes: List<SavedRecipeDto>? = null,
+    val mealPrepPlan: MealPrepPlanDto? = null,
     val activityLog: List<ActivityLogEntryDto>? = null,
     val supplements: List<SupplementDto>? = null,
     val bloodWork: List<BloodWorkDto>? = null,
+)
+
+/** Weekly meal-prep plan with grocery list; synced so checked-off state follows the user across devices. */
+@Serializable
+data class MealPrepPlanDto(
+    val id: String,
+    val weekStart: String,
+    val recipes: List<MealPrepRecipeDto> = emptyList(),
+    val groceryList: List<GroceryItemDto> = emptyList(),
+    val batchInstructions: List<String> = emptyList(),
+    val estimatedPrepTime: Int = 0,
+    val createdAt: String,
 )

@@ -36,6 +36,20 @@ public struct DietPlan: Codable, Sendable {
     public var restTargets: Macros?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
+
+    public init(
+        dailyTargets: Macros,
+        trainingTargets: Macros? = nil,
+        restTargets: Macros? = nil,
+        weeklyPlan: [DietDay],
+        tips: [String]
+    ) {
+        self.dailyTargets = dailyTargets
+        self.trainingTargets = trainingTargets
+        self.restTargets = restTargets
+        self.weeklyPlan = weeklyPlan
+        self.tips = tips
+    }
 }
 
 public struct WorkoutPlan: Codable, Sendable {

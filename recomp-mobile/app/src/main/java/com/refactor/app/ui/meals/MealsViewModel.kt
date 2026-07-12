@@ -7,9 +7,11 @@ import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.buildGroceryList
+import com.refactor.app.api.dto.GroceryItemDto
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
-import com.refactor.app.api.dto.MealPrepGenerateResponseDto
+import com.refactor.app.api.dto.MealPrepPlanDto
 import com.refactor.app.api.dto.PantryItemDto
 import com.refactor.app.api.dto.RecipeSuggestRequestDto
 import com.refactor.app.api.dto.SavedRecipeDto
@@ -23,6 +25,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 
 class MealsViewModel(
@@ -87,11 +91,19 @@ class MealsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _mealPrep = MutableStateFlow<MealPrepGenerateResponseDto?>(null)
-    val mealPrepResult: StateFlow<MealPrepGenerateResponseDto?> = _mealPrep.asStateFlow()
+    /** Synced meal-prep plan — grocery checked state follows the user across devices. */
+    val mealPrepPlan = syncCacheDao.observe()
+        .map { entity ->
+            val raw = entity?.payloadJson ?: return@map null
+            runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw).mealPrepPlan }.getOrNull()
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     private val _mealPrepError = MutableStateFlow<String?>(null)
     val mealPrepError: StateFlow<String?> = _mealPrepError.asStateFlow()
+
+    private val _mealPrepBusy = MutableStateFlow(false)
+    val mealPrepBusy: StateFlow<Boolean> = _mealPrepBusy.asStateFlow()
 
     fun clearMealPrepError() {
         _mealPrepError.value = null
@@ -99,24 +111,77 @@ class MealsViewModel(
 
     fun generateMealPrep(preferences: String?) {
         viewModelScope.launch {
+            _mealPrepBusy.value = true
             _mealPrepError.value = null
             val raw = syncCacheDao.getOnce()?.payloadJson
             if (raw == null) {
                 _mealPrepError.value = "Refresh Today tab first to load sync data."
+                _mealPrepBusy.value = false
                 return@launch
             }
             val snap = runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw) }.getOrElse {
                 _mealPrepError.value = it.message
+                _mealPrepBusy.value = false
                 return@launch
             }
             val targets = snap.plan?.dietPlan?.dailyTargets ?: MealMacrosDto()
             val restrictions = snap.profile.dietaryRestrictions
             val pantryNames = snap.pantry.orEmpty().map { it.name }
             mealPrepRepository.generate(targets, restrictions, pantryNames, preferences).fold(
-                onSuccess = { _mealPrep.value = it },
+                onSuccess = { generated ->
+                    val plan = MealPrepPlanDto(
+                        id = "prep-${System.currentTimeMillis()}",
+                        weekStart = LocalDate.now().with(DayOfWeek.MONDAY).toString(),
+                        recipes = generated.recipes,
+                        groceryList = buildGroceryList(generated.recipes, pantryNames),
+                        batchInstructions = generated.batchInstructions,
+                        estimatedPrepTime = generated.estimatedPrepTime,
+                        createdAt = Instant.now().toString(),
+                    )
+                    persistMealPrepPlanAndPush(plan).onFailure {
+                        _mealPrepError.value = it.message ?: "Saved locally but sync failed"
+                    }
+                },
                 onFailure = { _mealPrepError.value = it.message ?: "Meal prep failed" },
             )
+            _mealPrepBusy.value = false
         }
+    }
+
+    fun toggleGroceryItem(item: GroceryItemDto) {
+        mutateGroceryList { list ->
+            list.map { if (it.item == item.item) it.copy(checked = !it.checked) else it }
+        }
+    }
+
+    fun addGroceryItem(name: String) {
+        val trimmed = name.trim().lowercase()
+        if (trimmed.isEmpty()) return
+        mutateGroceryList { list ->
+            if (list.any { it.item == trimmed }) list
+            else list + GroceryItemDto(item = trimmed, amount = "", category = "custom")
+        }
+    }
+
+    fun removeGroceryItem(item: GroceryItemDto) {
+        mutateGroceryList { list -> list.filter { it.item != item.item } }
+    }
+
+    private fun mutateGroceryList(transform: (List<GroceryItemDto>) -> List<GroceryItemDto>) {
+        viewModelScope.launch {
+            val current = mealPrepPlan.value ?: return@launch
+            val next = current.copy(groceryList = transform(current.groceryList))
+            if (next == current) return@launch
+            persistMealPrepPlanAndPush(next).onFailure {
+                _mealPrepError.value = it.message ?: "Sync failed"
+            }
+        }
+    }
+
+    private suspend fun persistMealPrepPlanAndPush(plan: MealPrepPlanDto): Result<Unit> {
+        val local = syncRepository.mutateCachedSnapshot { it.copy(mealPrepPlan = plan) }
+        if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
+        return syncRepository.pushCachedSnapshot()
     }
 
     suspend fun persistPantryAndPush(pantry: List<PantryItemDto>): Result<Unit> {

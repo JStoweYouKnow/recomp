@@ -125,6 +125,20 @@ public actor SyncService: ModelActor {
                 }
             }()
 
+            let mealPrepPlanDTO: MealPrepPlanDTO? = {
+                let plans = (try? modelContext.fetch(FetchDescriptor<MealPrepPlan>())) ?? []
+                guard let latest = plans.max(by: { $0.createdAt < $1.createdAt }) else { return nil }
+                return MealPrepPlanDTO(
+                    id: latest.id,
+                    weekStart: latest.weekStart,
+                    recipes: latest.recipes,
+                    groceryList: latest.groceryList,
+                    batchInstructions: latest.batchInstructions,
+                    estimatedPrepTime: latest.estimatedPrepTime,
+                    createdAt: iso8601.string(from: latest.createdAt)
+                )
+            }()
+
             let payload = SyncPayload(
                 profile: profileDTO,
                 meals: mealDTOs.isEmpty ? nil : mealDTOs,
@@ -138,6 +152,7 @@ public actor SyncService: ModelActor {
                 bodyScans: bodyScanDTOs.isEmpty ? nil : bodyScanDTOs,
                 pantry: pantryDTOs.isEmpty ? nil : pantryDTOs,
                 savedRecipes: savedRecipeDTOs,
+                mealPrepPlan: mealPrepPlanDTO,
                 activityLog: activityLogDTOs.isEmpty ? nil : activityLogDTOs,
                 workoutProgress: workoutPayload,
                 wearableConnections: wearableConnDTOs.isEmpty ? nil : wearableConnDTOs,
@@ -293,6 +308,32 @@ public actor SyncService: ModelActor {
                 )
             }
             SavedRecipesStorage.save(records)
+        }
+
+        if let mealPrepDTO = response.mealPrepPlan {
+            let existing = (try? modelContext.fetch(FetchDescriptor<MealPrepPlan>())) ?? []
+            // Replace local plans only when the server copy is different — a same-id
+            // plan with identical content should not churn SwiftData on every pull.
+            let localLatest = existing.max(by: { $0.createdAt < $1.createdAt })
+            let differs = localLatest.map {
+                $0.id != mealPrepDTO.id
+                    || $0.groceryList != mealPrepDTO.groceryList
+                    || $0.recipes.count != mealPrepDTO.recipes.count
+            } ?? true
+            if differs {
+                for x in existing { modelContext.delete(x) }
+                modelContext.insert(
+                    MealPrepPlan(
+                        id: mealPrepDTO.id,
+                        weekStart: mealPrepDTO.weekStart,
+                        recipes: mealPrepDTO.recipes,
+                        groceryList: mealPrepDTO.groceryList,
+                        batchInstructions: mealPrepDTO.batchInstructions,
+                        estimatedPrepTime: mealPrepDTO.estimatedPrepTime,
+                        createdAt: iso8601.date(from: mealPrepDTO.createdAt) ?? .now
+                    )
+                )
+            }
         }
 
         if let wearableConnectionDTOs = response.wearableConnections {

@@ -121,6 +121,14 @@ data class MealPrepGenerateResponseDto(
 )
 
 @Serializable
+data class GroceryItemDto(
+    val item: String,
+    val amount: String,
+    val category: String = "other",
+    val checked: Boolean = false,
+)
+
+@Serializable
 data class ExerciseSearchResultDto(
     @SerialName("exerciseId") val id: String = "",
     val name: String = "",

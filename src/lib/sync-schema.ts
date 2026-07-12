@@ -318,6 +318,35 @@ const profileSchema = z.looseObject({
   createdAt: z.string().max(50).optional(),
 });
 
+const mealPrepRecipeSchema = z.object({
+  name: z.string().max(500),
+  servings: z.number().min(1).max(100),
+  macrosPerServing: macrosSchema,
+  ingredients: z.array(z.object({
+    name: z.string().max(200),
+    amount: z.string().max(100),
+    category: z.string().max(50),
+  })).max(100),
+  instructions: z.array(z.string().max(2000)).max(50),
+  prepTime: z.number().min(0).max(10000),
+  cookTime: z.number().min(0).max(10000),
+});
+
+const mealPrepPlanSchema = z.object({
+  id: z.string().max(100),
+  weekStart: z.string().max(50),
+  recipes: z.array(mealPrepRecipeSchema).max(20),
+  groceryList: z.array(z.object({
+    item: z.string().max(200),
+    amount: z.string().max(500),
+    category: z.string().max(50),
+    checked: z.boolean(),
+  })).max(300),
+  batchInstructions: z.array(z.string().max(2000)).max(50),
+  estimatedPrepTime: z.number().min(0).max(10000),
+  createdAt: z.string().max(50),
+});
+
 export const syncBodySchema = z.object({
   profile: profileSchema.optional().nullable(),
   plan: fitnessPlanSchema.optional().nullable(),
@@ -333,6 +362,7 @@ export const syncBodySchema = z.object({
   biofeedback: z.array(biofeedbackEntrySchema).max(2000).optional(),
   pantry: z.array(pantryItemSchema).max(500).optional(),
   savedRecipes: z.array(savedRecipeSchema).max(500).optional(),
+  mealPrepPlan: mealPrepPlanSchema.optional().nullable(),
   bodyScans: z.array(bodyScanSchema).max(200).optional(),
   supplements: z.array(supplementSchema).max(100).optional(),
   bloodWork: z.array(bloodWorkSchema).max(100).optional(),

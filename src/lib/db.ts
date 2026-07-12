@@ -1232,6 +1232,21 @@ export async function dbSaveMealPrepPlan(userId: string, plan: MealPrepPlan): Pr
   );
 }
 
+/** Latest plan by weekStart (MEAL_PREP# SKs sort lexicographically on yyyy-MM-dd). */
+export async function dbGetLatestMealPrepPlan(userId: string): Promise<MealPrepPlan | null> {
+  const doc = getDocClient();
+  const { Items } = await doc.send(
+    new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: "PK = :pk AND begins_with(SK, :sk)",
+      ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":sk": "MEAL_PREP#" },
+      ScanIndexForward: false,
+      Limit: 1,
+    })
+  );
+  return Items?.[0] ? (Items[0].data as MealPrepPlan) : null;
+}
+
 // ── Coach Schedule ──────────────────────────────────────
 export async function dbGetCoachSchedule(userId: string): Promise<CoachSchedule | null> {
   const doc = getDocClient();

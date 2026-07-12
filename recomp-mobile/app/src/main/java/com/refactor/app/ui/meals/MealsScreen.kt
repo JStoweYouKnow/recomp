@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -45,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -52,9 +54,10 @@ import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
 import com.refactor.app.prefs.AiConsentPrefs
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.dto.GroceryItemDto
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
-import com.refactor.app.api.dto.MealPrepGenerateResponseDto
+import com.refactor.app.api.dto.MealPrepPlanDto
 import com.refactor.app.api.dto.PantryItemDto
 import com.refactor.app.api.dto.SavedRecipeDto
 import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
@@ -86,8 +89,9 @@ fun MealsScreen(
     val allMeals by vm.allMeals.collectAsStateWithLifecycle()
     val syncSnapshot by vm.snapshot.collectAsStateWithLifecycle()
     val allPantry by vm.allPantry.collectAsStateWithLifecycle()
-    val mealPrep by vm.mealPrepResult.collectAsStateWithLifecycle()
+    val mealPrepPlan by vm.mealPrepPlan.collectAsStateWithLifecycle()
     val mealPrepErr by vm.mealPrepError.collectAsStateWithLifecycle()
+    val mealPrepBusy by vm.mealPrepBusy.collectAsStateWithLifecycle()
     val savedRecipes by vm.allSavedRecipes.collectAsStateWithLifecycle()
     val recipeSuggestions by vm.recipeSuggestions.collectAsStateWithLifecycle()
     val recipeStatus by vm.recipeStatus.collectAsStateWithLifecycle()
@@ -303,9 +307,13 @@ fun MealsScreen(
                     },
                 )
                 2 -> MealPrepTab(
-                    mealPrep = mealPrep,
+                    plan = mealPrepPlan,
                     mealPrepErr = mealPrepErr,
+                    busy = mealPrepBusy,
                     onGenerate = { prefs -> vm.generateMealPrep(prefs) },
+                    onToggleGrocery = { item -> vm.toggleGroceryItem(item) },
+                    onAddGrocery = { name -> vm.addGroceryItem(name) },
+                    onRemoveGrocery = { item -> vm.removeGroceryItem(item) },
                     onClearErr = { vm.clearMealPrepError() },
                 )
                 3 -> SavedRecipesTab(
@@ -559,39 +567,113 @@ private fun PantryTab(
 
 @Composable
 private fun MealPrepTab(
-    mealPrep: MealPrepGenerateResponseDto?,
+    plan: MealPrepPlanDto?,
     mealPrepErr: String?,
+    busy: Boolean,
     onGenerate: (String?) -> Unit,
+    onToggleGrocery: (GroceryItemDto) -> Unit,
+    onAddGrocery: (String) -> Unit,
+    onRemoveGrocery: (GroceryItemDto) -> Unit,
     onClearErr: () -> Unit,
 ) {
     var prefs by remember { mutableStateOf("") }
-    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            "Generate a batch-cook plan from your macro targets and pantry (POST /api/meal-prep/generate).",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        OutlinedTextField(
-            value = prefs,
-            onValueChange = { prefs = it },
-            label = { Text("Preferences (optional)") },
-        )
-        Button(onClick = { onGenerate(prefs.trim().ifBlank { null }) }) { Text("Generate plan") }
-        mealPrepErr?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onClearErr) { Text("Dismiss") }
+    var newItem by remember { mutableStateOf("") }
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            Text(
+                "Generate a batch-cook plan with a grocery list from your macro targets and pantry.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        mealPrep?.let { plan ->
-            Text("~${plan.estimatedPrepTime} min prep", style = MaterialTheme.typography.labelLarge)
-            plan.batchInstructions.forEach { line ->
+        item {
+            OutlinedTextField(
+                value = prefs,
+                onValueChange = { prefs = it },
+                label = { Text("Preferences (optional)") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        item {
+            Button(onClick = { onGenerate(prefs.trim().ifBlank { null }) }, enabled = !busy) {
+                Text(if (busy) "Generating…" else "Generate plan")
+            }
+        }
+        mealPrepErr?.let {
+            item {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onClearErr) { Text("Dismiss") }
+            }
+        }
+        plan?.let { p ->
+            item {
+                Text("~${p.estimatedPrepTime} min prep", style = MaterialTheme.typography.labelLarge)
+            }
+            items(p.batchInstructions) { line ->
                 Text("· $line", style = MaterialTheme.typography.bodySmall)
             }
-            Text("Recipes (${plan.recipes.size})", style = MaterialTheme.typography.titleSmall)
-            plan.recipes.forEach { r ->
+            item {
+                Text("Recipes (${p.recipes.size})", style = MaterialTheme.typography.titleSmall)
+            }
+            items(p.recipes) { r ->
                 Text(
                     "${r.name} · ${r.servings} servings · ${r.prepTime + r.cookTime} min",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+            }
+            item {
+                val remaining = p.groceryList.count { !it.checked }
+                Text("Grocery list ($remaining to buy)", style = MaterialTheme.typography.titleSmall)
+            }
+            items(p.groceryList, key = { it.item }) { g ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onToggleGrocery(g) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(checked = g.checked, onCheckedChange = { onToggleGrocery(g) })
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            g.item,
+                            style = MaterialTheme.typography.bodyMedium,
+                            textDecoration = if (g.checked) TextDecoration.LineThrough else null,
+                        )
+                        if (g.amount.isNotBlank() || g.category.isNotBlank()) {
+                            Text(
+                                listOf(g.amount, g.category).filter { it.isNotBlank() }.joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    IconButton(onClick = { onRemoveGrocery(g) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Remove ${g.item}")
+                    }
+                }
+            }
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedTextField(
+                        value = newItem,
+                        onValueChange = { newItem = it },
+                        label = { Text("Add grocery item") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                    )
+                    Button(
+                        onClick = {
+                            onAddGrocery(newItem)
+                            newItem = ""
+                        },
+                        enabled = newItem.trim().isNotEmpty(),
+                    ) { Text("Add") }
+                }
             }
         }
     }

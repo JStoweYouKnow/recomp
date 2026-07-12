@@ -159,6 +159,24 @@ public struct MealPrepRecipe: Codable, Identifiable, Sendable {
     public var prepTime: Int
     public var cookTime: Int
 
+    public init(
+        name: String,
+        servings: Int,
+        macrosPerServing: Macros,
+        ingredients: [Ingredient],
+        instructions: [String],
+        prepTime: Int,
+        cookTime: Int
+    ) {
+        self.name = name
+        self.servings = servings
+        self.macrosPerServing = macrosPerServing
+        self.ingredients = ingredients
+        self.instructions = instructions
+        self.prepTime = prepTime
+        self.cookTime = cookTime
+    }
+
     public struct Ingredient: Codable, Sendable {
         public var name: String
         public var amount: String
@@ -182,7 +200,7 @@ public final class MealPrepPlan: @unchecked Sendable {
     public var estimatedPrepTime: Int
     public var createdAt: Date
 
-    public struct GroceryItem: Codable, Sendable {
+    public struct GroceryItem: Codable, Equatable, Sendable {
         public var item: String
         public var amount: String
         public var category: String

@@ -16,6 +16,7 @@ struct MealPrepView: View {
     @State private var errorText: String?
     @State private var showError = false
     @State private var prefsNote = ""
+    @State private var newGroceryItem = ""
     @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
     @State private var showAIConsent = false
     @State private var pendingReplace = false
@@ -68,16 +69,41 @@ struct MealPrepView: View {
                     }
 
                     Section("Grocery List") {
-                        ForEach(plan.groceryList, id: \.item) { item in
-                            HStack {
-                                Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(item.checked ? Color.appSuccess : Color.secondary)
-                                Text(item.item)
-                                Spacer()
-                                Text(item.amount)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                        if plan.groceryList.isEmpty {
+                            Button {
+                                buildGroceryList(for: plan)
+                            } label: {
+                                Label("Build grocery list", systemImage: "cart")
                             }
+                        }
+                        ForEach(Array(plan.groceryList.enumerated()), id: \.element.item) { index, item in
+                            Button {
+                                toggleGroceryItem(in: plan, at: index)
+                            } label: {
+                                HStack {
+                                    Image(systemName: item.checked ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(item.checked ? Color.appSuccess : Color.secondary)
+                                    Text(item.item)
+                                        .strikethrough(item.checked)
+                                        .foregroundStyle(item.checked ? .secondary : .primary)
+                                    Spacer()
+                                    Text(item.amount)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .onDelete { offsets in
+                            removeGroceryItems(in: plan, at: offsets)
+                        }
+                        HStack {
+                            TextField("Add item…", text: $newGroceryItem)
+                                .textInputAutocapitalization(.never)
+                            Button("Add") {
+                                addGroceryItem(to: plan)
+                            }
+                            .disabled(newGroceryItem.trimmingCharacters(in: .whitespaces).isEmpty)
                         }
                     }
                 }
@@ -153,9 +179,11 @@ struct MealPrepView: View {
         do {
             let response = try await mealService.generateMealPrepPlan(payload: payload)
             let recipes = response.toRecipes()
+            // Monday-based week start (matches web getWeekStart and Android).
             let cal = Calendar.current
             let weekday = cal.component(.weekday, from: .now)
-            let start = cal.date(byAdding: .day, value: -(weekday - 1), to: .now) ?? .now
+            let daysToMonday = (weekday + 5) % 7
+            let start = cal.date(byAdding: .day, value: -daysToMonday, to: .now) ?? .now
             let weekStart = DateHelpers.dateString(from: start)
 
             if replaceExisting {
@@ -165,7 +193,7 @@ struct MealPrepView: View {
             let plan = MealPrepPlan(
                 weekStart: weekStart,
                 recipes: recipes,
-                groceryList: [],
+                groceryList: GroceryListBuilder.build(from: recipes, pantryNames: pantry),
                 batchInstructions: response.batchInstructions,
                 estimatedPrepTime: response.estimatedPrepTime
             )
@@ -176,5 +204,42 @@ struct MealPrepView: View {
             errorText = error.localizedDescription
             showError = true
         }
+    }
+
+    /// Backfills the grocery list for plans generated before lists were populated.
+    private func buildGroceryList(for plan: MealPrepPlan) {
+        plan.groceryList = GroceryListBuilder.build(
+            from: plan.recipes,
+            pantryNames: pantryItems.map(\.name)
+        )
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
+    }
+
+    private func toggleGroceryItem(in plan: MealPrepPlan, at index: Int) {
+        guard plan.groceryList.indices.contains(index) else { return }
+        plan.groceryList[index].checked.toggle()
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
+    }
+
+    private func addGroceryItem(to plan: MealPrepPlan) {
+        let trimmed = newGroceryItem.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty, !plan.groceryList.contains(where: { $0.item == trimmed }) else {
+            newGroceryItem = ""
+            return
+        }
+        plan.groceryList.append(
+            MealPrepPlan.GroceryItem(item: trimmed, amount: "", category: "custom", checked: false)
+        )
+        newGroceryItem = ""
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
+    }
+
+    private func removeGroceryItems(in plan: MealPrepPlan, at offsets: IndexSet) {
+        plan.groceryList.remove(atOffsets: offsets)
+        try? context.save()
+        Task { await syncEngine?.markDirty() }
     }
 }

@@ -607,6 +607,7 @@ function buildSyncPayload() {
   const biofeedback = getBiofeedback();
   const pantry = getPantry();
   const savedRecipes = getSavedRecipes();
+  const mealPrepPlan = getMealPrepPlan();
   const supplements = getSupplements();
   const bloodWork = getBloodWork();
   const activityLog = getActivityLog();
@@ -632,6 +633,7 @@ function buildSyncPayload() {
     plan, meals, milestones, xp, hasAdjusted, ricoHistory,
     wearableConnections, wearableData,
     hydration, fastingSessions, biofeedback, pantry, savedRecipes,
+    mealPrepPlan: mealPrepPlan ?? undefined,
     bodyScans: bodyScansForSync, supplements, bloodWork,
     activityLog, workoutProgress, recentExerciseNames,
     metabolicModel: metabolicModel ?? undefined,

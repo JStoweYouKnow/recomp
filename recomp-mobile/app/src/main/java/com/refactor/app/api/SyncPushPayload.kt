@@ -21,6 +21,7 @@ internal fun buildSyncPushPayload(cacheRoot: JsonObject): JsonObject {
         "biofeedback",
         "pantry",
         "savedRecipes",
+        "mealPrepPlan",
         "bodyScans",
         "supplements",
         "bloodWork",

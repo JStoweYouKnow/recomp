@@ -148,9 +148,9 @@ public struct WorkoutDay: Codable, Identifiable, Hashable, Sendable {
     public init(
         day: String,
         focus: String,
-        warmups: [WorkoutExercise]?,
+        warmups: [WorkoutExercise]? = nil,
         exercises: [WorkoutExercise],
-        finishers: [WorkoutExercise]?
+        finishers: [WorkoutExercise]? = nil
     ) {
         self.day = day
         self.focus = focus
