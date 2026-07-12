@@ -66,6 +66,8 @@ public struct CoachChatResponse: Decodable {
 
         guard c.contains(.actions) else {
             actions = []
+            recipeSuggestions = try c.decodeIfPresent([ScoredRecipeSuggestion].self, forKey: .recipeSuggestions)
+            recipeSaved = try c.decodeIfPresent(SavedRecipeDTO.self, forKey: .recipeSaved)
             return
         }
         var nested = try c.nestedUnkeyedContainer(forKey: .actions)

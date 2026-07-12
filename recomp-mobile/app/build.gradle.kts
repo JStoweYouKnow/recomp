@@ -32,7 +32,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 33
-        versionName = "4.8"
+        versionName = "4.9"
         // Optional: set in `gradle.properties` to enable FCM (`FirebaseMessaging`). Leave empty for CI/local without Firebase.
         val fbAppId = (project.findProperty("FIREBASE_APP_ID") as String?) ?: ""
         val fbApiKey = (project.findProperty("FIREBASE_API_KEY") as String?) ?: ""
