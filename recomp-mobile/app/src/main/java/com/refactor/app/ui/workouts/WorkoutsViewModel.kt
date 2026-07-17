@@ -76,7 +76,7 @@ class WorkoutsViewModel(
                 runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw) }.getOrNull()
             }
             .distinctUntilChanged { a, b ->
-                a?.workoutProgress == b?.workoutProgress && a?.plan?.id == b?.plan?.id
+                a?.workoutProgress == b?.workoutProgress && a?.plan == b?.plan
             }
             .onEach { snap ->
                 if (snap == null) {

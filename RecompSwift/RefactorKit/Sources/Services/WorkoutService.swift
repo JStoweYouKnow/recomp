@@ -591,14 +591,11 @@ public final class WorkoutService {
             var result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseSearch(name: name))
 
             // Server returns a relative path like "/api/exercises/gif?id=...". Build absolute URL.
+            // The path is already percent-encoded, so resolve it as-is: rebuilding the query
+            // through URLComponents.query re-encodes "%20" into "%2520" and breaks the
+            // server's name-based GIF fallback.
             if let relPath = result.gifUrl, !relPath.hasPrefix("http") {
-                var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
-                let pathAndQuery = relPath.split(separator: "?", maxSplits: 1)
-                components?.path = String(pathAndQuery[0])
-                if pathAndQuery.count > 1 {
-                    components?.query = String(pathAndQuery[1])
-                }
-                let absoluteUrl = components?.url?.absoluteString ?? relPath
+                let absoluteUrl = URL(string: relPath, relativeTo: api.baseURL)?.absoluteString ?? relPath
                 result = ExerciseSearchResult(
                     id: result.id,
                     name: result.name,
@@ -647,11 +644,7 @@ public final class WorkoutService {
         let result: ExerciseSearchResult = try await api.request(WorkoutAPI.exerciseGif(id: id))
         guard let relPath = result.gifUrl else { return nil }
         if relPath.hasPrefix("http") { return URL(string: relPath) }
-        var components = URLComponents(url: api.baseURL, resolvingAgainstBaseURL: false)
-        let parts = relPath.split(separator: "?", maxSplits: 1)
-        components?.path = String(parts[0])
-        if parts.count > 1 { components?.query = String(parts[1]) }
-        return components?.url
+        return URL(string: relPath, relativeTo: api.baseURL)?.absoluteURL
     }
 
     public func assessRecovery(biofeedback: [String: Int]) async throws -> RecoveryAssessment {

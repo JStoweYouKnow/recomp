@@ -70,10 +70,6 @@ struct MealsView: View {
                 guard let engine = syncEngine else { return }
                 try? await engine.fetchAndApply()
             }
-            .task {
-                guard let engine = syncEngine else { return }
-                try? await engine.fetchAndApply()
-            }
         }
     }
 
@@ -108,8 +104,15 @@ struct MealsView: View {
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 context.delete(meal)
-                                try? context.save()
-                                Task { await syncEngine?.markDirty() }
+                                do {
+                                    try context.save()
+                                    Task {
+                                        await syncEngine?.markDirty()
+                                        await syncEngine?.syncNow()
+                                    }
+                                } catch {
+                                    // Deletion failed locally; meal row remains.
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }

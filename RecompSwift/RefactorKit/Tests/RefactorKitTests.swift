@@ -17,6 +17,28 @@ import RefactorKit
     #expect(!missed.isEmpty)
 }
 
+@Test func workoutSchedule_dismissCatchUpBannerUsesLocalDatePrefix() async throws {
+    let plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [
+                WorkoutDay(day: "Monday", focus: "Push", exercises: [WorkoutExercise(name: "Bench", sets: "3", reps: "10")]),
+            ],
+            tips: []
+        )
+    )
+    let dismissed = WorkoutScheduleService.dismissCatchUpBanner(plan: plan, at: "2026-07-12T03:04:00.000Z")
+    #expect(dismissed.workoutPlan.catchUpBannerDismissedAt?.hasPrefix("2026-07-12") == true)
+    #expect(
+        WorkoutScheduleService.shouldShowCatchUpBanner(
+            plan: dismissed,
+            progress: [:],
+            today: "2026-07-12"
+        ) == false
+    )
+}
+
 @Test func workoutSchedule_stayOnWeekIncrementsOffset() async throws {
     var plan = FitnessPlan(
         userId: "u1",

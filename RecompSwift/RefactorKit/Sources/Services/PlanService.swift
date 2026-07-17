@@ -245,6 +245,11 @@ public final class PlanService {
         plan.synced = false
     }
 
+    public func dismissCatchUpBanner(on plan: FitnessPlan) {
+        plan.workoutPlan = WorkoutScheduleService.dismissCatchUpBanner(plan: plan).workoutPlan
+        plan.synced = false
+    }
+
     public func applyLocalScheduleAction(
         action: ScheduleAction,
         to plan: FitnessPlan,

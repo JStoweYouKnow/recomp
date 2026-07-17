@@ -7,7 +7,6 @@ struct CatchUpBannerView: View {
     let progress: [String: String]
     @Bindable var planService: PlanService
     let modelContext: ModelContext
-    let onSync: () -> Void
 
     @State private var loadingAction: ScheduleAction?
     @State private var isAskingCoach = false
@@ -87,7 +86,7 @@ struct CatchUpBannerView: View {
         let summary = planService.applyLocalScheduleAction(action: action, to: plan, progress: progress)
         message = summary
         try? modelContext.save()
-        onSync()
+        NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
         loadingAction = nil
     }
 
@@ -103,17 +102,16 @@ struct CatchUpBannerView: View {
             planService.applyScheduleResponse(response, to: plan)
             message = response.summary
             try? modelContext.save()
-            onSync()
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
         } catch {
             message = "Could not reach coach. Try again."
         }
     }
 
     private func dismiss() {
-        let updated = WorkoutScheduleService.dismissCatchUpBanner(plan: plan)
-        plan.workoutPlan = updated.workoutPlan
+        planService.dismissCatchUpBanner(on: plan)
         try? modelContext.save()
-        onSync()
+        NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
     }
 }
 

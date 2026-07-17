@@ -63,8 +63,7 @@ struct WorkoutsView: View {
                                 plan: plan,
                                 progress: workoutService.webWorkoutProgressDictionaryForSync(),
                                 planService: planService,
-                                modelContext: context,
-                                onSync: { NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil) }
+                                modelContext: context
                             )
 
                             CatchUpQueueView(
@@ -168,7 +167,7 @@ struct WorkoutsView: View {
                     progress: workoutService.webWorkoutProgressDictionaryForSync()
                 )
                 try? context.save()
-                NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil)
+                NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -657,8 +656,6 @@ struct WorkoutDayCard: View {
                     webContext: webCtx,
                     setsDisabled: setsDisabled,
                     gifData: gifData["\(globalSlot)-\(exercise.name)"],
-                    isLoadingGif: loadingGifs.contains("\(globalSlot)-\(exercise.name)"),
-                    gifError: gifErrors["\(globalSlot)-\(exercise.name)"],
                     onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) },
                     onStartRestTimer: onStartRestTimer,
                     onCancelRestTimer: onCancelRestTimer
@@ -668,9 +665,10 @@ struct WorkoutDayCard: View {
     }
 
     private func loadGif(slotTag: String, searchName: String) async {
-        guard gifData[slotTag] == nil, !loadingGifs.contains(slotTag) else { return }
+        // One attempt per slot: a recorded error means the demo is unavailable,
+        // so rows scrolling back into view don't re-fetch it.
+        guard gifData[slotTag] == nil, !loadingGifs.contains(slotTag), gifErrors[slotTag] == nil else { return }
         loadingGifs.insert(slotTag)
-        gifErrors[slotTag] = nil
         defer { loadingGifs.remove(slotTag) }
         do {
             let results = try await workoutService.searchExercises(name: searchName)
@@ -717,13 +715,8 @@ struct WorkoutDayCard: View {
         if data.count >= 2, data[data.startIndex] == 0xFF, data[data.index(after: data.startIndex)] == 0xD8 {
             return true
         }
-        // Proxy may intentionally return SVG placeholder.
-        if let prefix = String(data: data.prefix(256), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-           prefix.hasPrefix("<svg") || prefix.hasPrefix("<?xml") {
-            return true
-        }
+        // The proxy signals "no demo" with an SVG placeholder instead of a 404 —
+        // treat it as unavailable so the play button stays hidden.
         return false
     }
 
@@ -802,8 +795,6 @@ struct ExerciseRow: View {
     let webContext: WorkoutSetProgressContext
     var setsDisabled: Bool = false
     let gifData: Data?
-    let isLoadingGif: Bool
-    let gifError: String?
     let onLoadGif: () async -> Void
     var onStartRestTimer: ((String, Int) -> Void)? = nil
     var onCancelRestTimer: (() -> Void)? = nil
@@ -836,30 +827,20 @@ struct ExerciseRow: View {
                     }
                 }
                 Spacer()
-                // GIF demo toggle
-                Button {
-                    if gifData != nil {
+                // GIF demo toggle — only rendered once the demo has actually loaded,
+                // so exercises without an available demo never show a play button.
+                if gifData != nil {
+                    Button {
                         withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
-                    } else {
-                        Task { await onLoadGif() }
+                    } label: {
+                        Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
+                            .frame(width: 32, height: 32)
                     }
-                } label: {
-                    ZStack {
-                        if isLoadingGif {
-                            ProgressView()
-                                .scaleEffect(0.75)
-                                .frame(width: 28, height: 28)
-                        } else {
-                            Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
-                        }
-                    }
-                    .frame(width: 32, height: 32)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
-                .disabled(isLoadingGif)
             }
 
             // Set completion checkboxes — horizontal scroll so many sets stay one row (no wrap / “calendar” illusion).
@@ -939,20 +920,10 @@ struct ExerciseRow: View {
                     .frame(height: 220)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            if let gifError {
-                Label(gifError, systemImage: "exclamationmark.triangle")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-            }
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
-        .onChange(of: gifData != nil) { _, hasData in
-            if hasData {
-                withAnimation(.easeIn(duration: 0.25)) { showGif = true }
-            }
-        }
+        .task { await onLoadGif() }
         Divider().padding(.leading)
     }
 }

@@ -33,6 +33,7 @@ struct AddMealSheet: View {
     @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
     @State private var showAIConsent = false
     @State private var pendingAIAction: (() -> Void)?
+    @State private var saveError: String?
 
     enum InputMode: String, CaseIterable {
         case manual = "Manual"
@@ -56,9 +57,17 @@ struct AddMealSheet: View {
                     }
                 }
 
+                Section("Meal") {
+                    TextField("Meal name", text: $name)
+                    Picker("Type", selection: $mealType) {
+                        ForEach(MealType.allCases) { type in
+                            Text(type.rawValue.capitalized).tag(type)
+                        }
+                    }
+                }
+
                 switch inputMode {
                 case .manual:
-                    manualInputSection
                     autofillSuggestionsSection
                 case .photo:
                     photoInputSection
@@ -124,6 +133,14 @@ struct AddMealSheet: View {
                     Button("Done") { hideKeyboard() }
                 }
             }
+            .alert("Could not save", isPresented: Binding(
+                get: { saveError != nil },
+                set: { if !$0 { saveError = nil } }
+            )) {
+                Button("OK", role: .cancel) { saveError = nil }
+            } message: {
+                Text(saveError ?? "")
+            }
             .sheet(isPresented: $showAIConsent) {
                 AIConsentView(
                     onAccept: {
@@ -156,17 +173,6 @@ struct AddMealSheet: View {
         return allMeals.filter {
             $0.name.localizedCaseInsensitiveContains(name) && seen.insert($0.name.lowercased()).inserted
         }.prefix(5).map { $0 }
-    }
-
-    private var manualInputSection: some View {
-        Section("Meal Info") {
-            TextField("Meal name", text: $name)
-            Picker("Type", selection: $mealType) {
-                ForEach(MealType.allCases) { type in
-                    Text(type.rawValue.capitalized).tag(type)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -347,6 +353,9 @@ struct AddMealSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let err = vm.photoParseError {
+                Text(err).font(.caption).foregroundStyle(.red)
+            }
         }
     }
 
@@ -478,21 +487,32 @@ struct AddMealSheet: View {
     }
 
     private func saveMeal() {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
         let meal = MealEntry(
             date: date,
             mealType: mealType,
-            name: name,
+            name: trimmed,
             macros: Macros(
                 calories: Int((Double(calories) * servings).rounded()),
                 protein: (protein * servings * 10).rounded() / 10,
                 carbs: (carbs * servings * 10).rounded() / 10,
                 fat: (fat * servings * 10).rounded() / 10
             ),
-            notes: notes.isEmpty ? nil : notes
+            notes: notes.isEmpty ? nil : notes,
+            synced: false
         )
         context.insert(meal)
-        try? context.save()
-        Task { await syncEngine?.markDirty() }
-        dismiss()
+        do {
+            try context.save()
+            dismiss()
+            Task {
+                await syncEngine?.markDirty()
+                _ = await syncEngine?.syncNow()
+            }
+        } catch {
+            saveError = error.localizedDescription
+        }
     }
 }

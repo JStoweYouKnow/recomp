@@ -139,11 +139,15 @@ struct EditMealSheet: View {
         meal.macros = Macros(calories: calories, protein: protein, carbs: carbs, fat: fat)
         let n = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         meal.notes = n.isEmpty ? nil : n
+        meal.synced = false
 
         do {
             try context.save()
-            Task { await syncEngine?.markDirty() }
             dismiss()
+            Task {
+                await syncEngine?.markDirty()
+                _ = await syncEngine?.syncNow()
+            }
         } catch {
             saveError = error.localizedDescription
         }

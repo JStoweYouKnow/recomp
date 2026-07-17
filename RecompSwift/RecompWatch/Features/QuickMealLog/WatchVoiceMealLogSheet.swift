@@ -123,7 +123,10 @@ struct WatchVoiceMealLogSheet: View {
         )
         context.insert(meal)
         try? context.save()
-        Task { await syncEngine?.markDirty() }
+        Task {
+            await syncEngine?.markDirty()
+            await syncEngine?.syncNow()
+        }
         statusMessage = "Logged \(suggestion.name)"
         parsedMeals.removeAll { $0.name == suggestion.name && $0.macros.calories == suggestion.macros.calories }
     }

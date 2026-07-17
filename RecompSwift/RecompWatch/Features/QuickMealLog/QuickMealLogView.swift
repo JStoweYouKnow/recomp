@@ -91,7 +91,10 @@ struct QuickMealLogView: View {
         )
         context.insert(meal)
         try? context.save()
-        Task { await syncEngine?.markDirty() }
+        Task {
+            await syncEngine?.markDirty()
+            await syncEngine?.syncNow()
+        }
         loggedMessage = "\(name) logged!"
 
         Task {

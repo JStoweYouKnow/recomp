@@ -1,6 +1,7 @@
 package com.refactor.app.ui.workouts
 
 import android.app.Application
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
@@ -76,7 +77,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.ImageLoader
 import coil.compose.AsyncImage
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
+import coil.request.ImageRequest
 import com.refactor.app.BuildConfig
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
@@ -90,6 +95,7 @@ import com.refactor.app.api.dto.WorkoutExerciseDto
 import com.refactor.app.db.SyncCacheDao
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.nio.ByteBuffer
 import java.time.LocalDate
 
 // ─── Screen ──────────────────────────────────────────────────────────────────
@@ -674,11 +680,15 @@ private fun ExerciseRow(
     workoutExtrasRepository: WorkoutExtrasRepository,
 ) {
     val numSets = exercise.effectiveSetCount()
-    var gifUrl by remember(globalSlot, exercise.name) { mutableStateOf<String?>(null) }
-    var isLoadingGif by remember(globalSlot, exercise.name) { mutableStateOf(false) }
-    var gifError by remember(globalSlot, exercise.name) { mutableStateOf<String?>(null) }
-    var showGif by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    var gifBytes by remember(globalSlot, exercise.name) { mutableStateOf<ByteArray?>(null) }
+    var showGif by remember(globalSlot, exercise.name) { mutableStateOf(false) }
+
+    // Prefetch the demo so the play button only appears when a real demo exists.
+    LaunchedEffect(globalSlot, exercise.name) {
+        if (gifBytes == null) {
+            gifBytes = workoutExtrasRepository.fetchExerciseGif(exercise.name).getOrNull()
+        }
+    }
 
     Column(
         Modifier
@@ -717,32 +727,10 @@ private fun ExerciseRow(
                 }
             }
 
-            // GIF play button per exercise
-            IconButton(
-                onClick = {
-                    if (gifUrl != null) {
-                        showGif = !showGif
-                    } else {
-                        isLoadingGif = true
-                        gifError = null
-                        scope.launch {
-                            workoutExtrasRepository.searchExercises(exercise.name).fold(
-                                onSuccess = { result ->
-                                    gifUrl = result.gifUrl
-                                    if (result.gifUrl != null) showGif = true
-                                    else gifError = "No demo available"
-                                },
-                                onFailure = { gifError = it.message ?: "Failed to load" },
-                            )
-                            isLoadingGif = false
-                        }
-                    }
-                },
-                enabled = !isLoadingGif,
-            ) {
-                if (isLoadingGif) {
-                    CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                } else {
+            // GIF play button — only rendered once a real demo has loaded, so
+            // exercises without an available demo never show a play button.
+            if (gifBytes != null) {
+                IconButton(onClick = { showGif = !showGif }) {
                     Icon(
                         Icons.Filled.PlayArrow,
                         contentDescription = if (showGif) "Hide demo" else "Show demo",
@@ -801,13 +789,22 @@ private fun ExerciseRow(
             }
         }
 
-        // GIF image
-        AnimatedVisibility(visible = showGif && gifUrl != null) {
-            val base = BuildConfig.API_BASE_URL.trimEnd('/')
-            val url = gifUrl?.let { if (it.startsWith("http")) it else base + it }
-            url?.let {
+        // GIF image — decoded from the prefetched bytes with a GIF-capable
+        // ImageLoader so demos animate instead of showing a static first frame.
+        AnimatedVisibility(visible = showGif && gifBytes != null) {
+            gifBytes?.let { bytes ->
+                val context = LocalContext.current
+                val gifLoader = remember {
+                    ImageLoader.Builder(context)
+                        .components {
+                            if (Build.VERSION.SDK_INT >= 28) add(ImageDecoderDecoder.Factory())
+                            else add(GifDecoder.Factory())
+                        }
+                        .build()
+                }
                 AsyncImage(
-                    model = it,
+                    model = ImageRequest.Builder(context).data(ByteBuffer.wrap(bytes)).build(),
+                    imageLoader = gifLoader,
                     contentDescription = "${exercise.name} demo",
                     modifier = Modifier
                         .fillMaxWidth()
@@ -816,15 +813,6 @@ private fun ExerciseRow(
                         .clip(RoundedCornerShape(12.dp)),
                 )
             }
-        }
-
-        gifError?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
-            )
         }
     }
 }

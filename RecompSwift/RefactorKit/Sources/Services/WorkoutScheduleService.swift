@@ -170,10 +170,23 @@ public enum WorkoutScheduleService {
         return (wp, summary, addedMissed)
     }
 
-    public static func dismissCatchUpBanner(plan: FitnessPlan, at: String = ISO8601DateFormatter().string(from: .now)) -> FitnessPlan {
+    public static func dismissCatchUpBanner(
+        plan: FitnessPlan,
+        at: String = catchUpBannerDismissedTimestamp()
+    ) -> FitnessPlan {
         var copy = plan
         copy.workoutPlan.catchUpBannerDismissedAt = at
         return copy
+    }
+
+    /// ISO timestamp with a local-date prefix so [shouldShowCatchUpBanner] can compare `prefix(10)` to [DateHelpers.todayString].
+    public static func catchUpBannerDismissedTimestamp(now: Date = .now) -> String {
+        let localToday = DateHelpers.todayString()
+        let iso = DateHelpers.isoString(from: now)
+        guard let tIndex = iso.firstIndex(of: "T") else {
+            return "\(localToday)T12:00:00.000Z"
+        }
+        return localToday + String(iso[tIndex...])
     }
 
     // MARK: - Private helpers

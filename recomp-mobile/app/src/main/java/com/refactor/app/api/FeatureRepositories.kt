@@ -23,6 +23,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.bodyAsBytes
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
@@ -261,6 +262,37 @@ class WorkoutExtrasRepository(
         }
         r.ensureSuccessOrThrow()
         SyncJson.format.decodeFromString<ExerciseSearchResultDto>(r.bodyAsText())
+    }
+
+    /**
+     * Fetch the demo GIF bytes for an exercise, failing when no real demo exists.
+     * The server proxy returns an SVG "Demo unavailable" placeholder instead of a
+     * 404, so the payload is sniffed to distinguish a real image from the placeholder.
+     */
+    suspend fun fetchExerciseGif(name: String): Result<ByteArray> = runCatching {
+        val relUrl = searchExercises(name).getOrThrow().gifUrl
+            ?: throw IllegalStateException("No demo available")
+        val url = if (relUrl.startsWith("http")) relUrl else baseUrl + relUrl
+        val r = client.get(url)
+        r.ensureSuccessOrThrow()
+        val bytes = r.bodyAsBytes()
+        if (!isLikelyImagePayload(bytes)) throw IllegalStateException("No demo available")
+        bytes
+    }
+
+    private fun isLikelyImagePayload(bytes: ByteArray): Boolean {
+        if (bytes.size >= 6) {
+            val sig = String(bytes, 0, 6, Charsets.US_ASCII)
+            if (sig == "GIF87a" || sig == "GIF89a") return true
+        }
+        if (bytes.size >= 8 &&
+            bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+            bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte()
+        ) {
+            return true
+        }
+        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte()) return true
+        return false
     }
 
     suspend fun musicSuggest(workoutFocus: String): Result<MusicSuggestResponseDto> = runCatching {

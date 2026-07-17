@@ -19,13 +19,16 @@ final class AddMealViewModel {
     var suggestError: String?
     var menuScanError: String?
     var receiptScanError: String?
+    var photoParseError: String?
 
     func analyzePhoto(data: Data) async {
         isAnalyzing = true
+        photoParseError = nil
         do {
             analysisResults = try await mealService.analyzePhoto(imageData: data)
         } catch {
             analysisResults = []
+            photoParseError = error.localizedDescription
         }
         isAnalyzing = false
     }

@@ -3,6 +3,7 @@
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
+import { dbSaveMeal } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
 import { getTodayLocal } from "../date-utils";
 
@@ -447,6 +448,33 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
   }
 
   return { reply: replyText.trim(), actions };
+}
+
+/**
+ * Persist `log_meal` actions directly to DynamoDB for headless surfaces (SMS, Siri
+ * Shortcuts) that have no client-side store to apply Rico's tool actions into —
+ * unlike the iOS/web chat, which insert into local storage and sync normally.
+ * Without this, those surfaces confirm the meal was logged but never save it.
+ */
+export async function persistLogMealActions(
+  userId: string,
+  actions: RicoOutput["actions"]
+): Promise<void> {
+  const now = new Date();
+  for (const action of actions) {
+    if (action.type !== "log_meal") continue;
+    const p = action.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
+    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const meal: MealEntry = {
+      id: crypto.randomUUID(),
+      date: getTodayLocal(),
+      mealType: "snack",
+      name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : "Meal",
+      macros: { calories: num(p.calories), protein: num(p.protein), carbs: num(p.carbs), fat: num(p.fat) },
+      loggedAt: now.toISOString(),
+    };
+    await dbSaveMeal(userId, meal);
+  }
 }
 
 /** Build minimal context from server-side data for SMS / Shortcuts (no localStorage). */

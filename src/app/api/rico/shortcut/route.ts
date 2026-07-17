@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbGetUserIdByApiToken } from "@/lib/db";
 import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
-import { invokeRico, buildRicoContextFromServer } from "@/lib/services/rico";
+import { invokeRico, buildRicoContextFromServer, persistLogMealActions } from "@/lib/services/rico";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logError } from "@/lib/logger";
 
@@ -46,10 +46,14 @@ export async function POST(req: NextRequest) {
       meta,
     });
 
-    const { reply } = await invokeRico({
+    const { reply, actions } = await invokeRico({
       message,
       context,
     });
+
+    if (actions.length > 0) {
+      await persistLogMealActions(userId, actions);
+    }
 
     return NextResponse.json({ reply });
   } catch (err) {

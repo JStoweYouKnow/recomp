@@ -22,9 +22,9 @@ public actor SyncEngine {
         }
     }
 
-    public func syncNow() async {
+    public func syncNow() async -> Bool {
         debounceTask?.cancel()
-        await performSync()
+        return await syncService.syncNow()
     }
 
     /// Pulls the full snapshot from the server and upserts it into the local SwiftData store,
@@ -40,6 +40,9 @@ public actor SyncEngine {
     /// Workout progress: `WorkoutService.replaceWebProgressFromServer` only clears day buckets
     /// for dates present in the server map, preserving in-progress days not yet on the server.
     public func fetchAndApply() async throws {
+        if await syncService.hasPendingChanges {
+            await performSync()
+        }
         try await syncService.fetchAndApply()
         await performSync()
     }
@@ -60,13 +63,14 @@ public actor SyncEngine {
         await syncService.markDirty()
     }
 
-    private func performSync() async {
-        await syncService.syncNow()
+    private func performSync() async -> Bool {
+        let ok = await syncService.syncNow()
         // Refresh watch complications / home-screen widgets that read the shared
         // App Group store so they reflect freshly synced macros and streaks.
         WidgetCenter.shared.reloadAllTimelines()
         #if os(iOS)
         NotificationCenter.default.post(name: .recompPhoneDidSync, object: nil)
         #endif
+        return ok
     }
 }

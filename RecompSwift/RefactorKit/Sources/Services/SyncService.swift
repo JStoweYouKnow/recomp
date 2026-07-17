@@ -20,6 +20,9 @@ public actor SyncService: ModelActor {
     private var dirtyGeneration = 0
     private let iso8601 = ISO8601DateFormatter()
 
+    /// True when local edits are waiting for the next push (meals, plan, etc.).
+    public var hasPendingChanges: Bool { isDirty }
+
     public init(api: APIClient = .shared, modelContainer: ModelContainer) {
         self.api = api
         self.modelContainer = modelContainer
@@ -44,10 +47,10 @@ public actor SyncService: ModelActor {
         }
     }
 
-    public func syncNow() async {
+    public func syncNow() async -> Bool {
         let attemptedGeneration = dirtyGeneration
         do {
-            let meals           = (try? modelContext.fetch(FetchDescriptor<MealEntry>())) ?? []
+            let meals           = fetchAllMealsFromStore()
             let milestones      = (try? modelContext.fetch(FetchDescriptor<Milestone>())) ?? []
             let plans           = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>())) ?? []
             let profiles        = (try? modelContext.fetch(FetchDescriptor<UserProfile>())) ?? []
@@ -165,14 +168,17 @@ public actor SyncService: ModelActor {
                 measurementTargets: measurementTargetsPayload
             )
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
+            markAllMealsSyncedInStore()
             // Only clear the dirty flag if no new edits landed while the push was
             // in flight; otherwise leave it set so the queued resync picks them up.
             if dirtyGeneration == attemptedGeneration {
                 isDirty = false
             }
+            return true
         } catch {
             isDirty = true
             scheduleSync() // auto-retry after failed sync
+            return false
         }
     }
 
@@ -200,17 +206,7 @@ public actor SyncService: ModelActor {
         for p in (try? modelContext.fetch(FetchDescriptor<FitnessPlan>())) ?? [] { modelContext.delete(p) }
         if let dto = response.plan    { upsertPlan(dto) }
 
-        // Full replace so deletes and web-only edits converge (insert-only left orphans forever).
-        if let mealDTOs = response.meals {
-            for m in (try? modelContext.fetch(FetchDescriptor<MealEntry>())) ?? [] {
-                modelContext.delete(m)
-            }
-            for dto in mealDTOs {
-                if let meal = MealEntry(dto: dto, iso8601: iso8601) {
-                    modelContext.insert(meal)
-                }
-            }
-        }
+        let mealDTOsFromServer = response.meals
 
         if let milestoneDTOs = response.milestones {
             for x in (try? modelContext.fetch(FetchDescriptor<Milestone>())) ?? [] {
@@ -375,6 +371,10 @@ public actor SyncService: ModelActor {
 
         try modelContext.save()
 
+        if let mealDTOsFromServer {
+            try applyMealPullFromServer(mealDTOsFromServer)
+        }
+
         let planForWorkouts = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>()))?.first
         await MainActor.run {
             WorkoutService.shared.replaceWebProgressFromServer(response.workoutProgress ?? [:], plan: planForWorkouts)
@@ -446,7 +446,50 @@ public actor SyncService: ModelActor {
         )
     }
 
+    // MARK: - Meal store helpers
+
+    /// Reads meals from a fresh context so UI-thread saves are visible before push/pull.
+    private func fetchAllMealsFromStore() -> [MealEntry] {
+        let fresh = ModelContext(modelContainer)
+        return (try? fresh.fetch(FetchDescriptor<MealEntry>())) ?? []
+    }
+
+    private func markAllMealsSyncedInStore() {
+        let fresh = ModelContext(modelContainer)
+        let meals = (try? fresh.fetch(FetchDescriptor<MealEntry>())) ?? []
+        for meal in meals {
+            meal.synced = true
+        }
+        try? fresh.save()
+    }
+
+    /// Merges server meals on a fresh context so the ModelActor cache cannot resurrect deleted rows.
+    private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO]) throws {
+        let fresh = ModelContext(modelContainer)
+        let localMeals = try fresh.fetch(FetchDescriptor<MealEntry>())
+        let pendingKeys = Set(localMeals.filter { !$0.synced }.map(\.syncKey))
+
+        for meal in localMeals where meal.synced {
+            fresh.delete(meal)
+        }
+
+        var insertedKeys = pendingKeys
+        for dto in mealDTOs {
+            let key = Self.mealSyncKey(date: dto.date, id: dto.id)
+            guard !insertedKeys.contains(key) else { continue }
+            if let meal = MealEntry(dto: dto, iso8601: iso8601) {
+                fresh.insert(meal)
+                insertedKeys.insert(key)
+            }
+        }
+        try fresh.save()
+    }
+
     // MARK: - Upsert helpers
+
+    private static func mealSyncKey(date: String, id: String) -> String {
+        "\(date)#\(id)"
+    }
 
     /// Thin wrapper over the shared `UserProfile.upsert(from:in:)` so the pull path
     /// and `AuthService` apply server profiles identically (including `proAccess`).

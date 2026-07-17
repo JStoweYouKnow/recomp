@@ -142,9 +142,16 @@ object WorkoutScheduleService {
         return plan.copy(workoutPlan = wp) to summary
     }
 
-    fun dismissCatchUpBanner(plan: FitnessPlanDto, at: String = java.time.Instant.now().toString()): FitnessPlanDto {
+    fun dismissCatchUpBanner(plan: FitnessPlanDto, at: String = dismissedAtNow()): FitnessPlanDto {
         val wp = plan.workoutPlan ?: return plan
         return plan.copy(workoutPlan = wp.copy(catchUpBannerDismissedAt = at))
+    }
+
+    /** ISO timestamp with a local-date prefix so [shouldShowCatchUpBanner] can compare `take(10)` to [today]. */
+    private fun dismissedAtNow(): String {
+        val localToday = today()
+        val utcTail = java.time.Instant.now().toString().substringAfter('T')
+        return "${localToday}T$utcTail"
     }
 
     private fun isWorkoutSessionComplete(
