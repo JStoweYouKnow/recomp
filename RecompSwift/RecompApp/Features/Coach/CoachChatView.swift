@@ -160,7 +160,8 @@ struct CoachChatView: View {
                                     options: coachService.pendingRegenerateOptions
                                 )
                             }
-                            await syncEngine?.syncNow()
+                            await syncEngine?.markDirty()
+                            _ = await syncEngine?.syncNow()
                         } catch {
                             sendError =
                                 (error as? LocalizedError)?.errorDescription

@@ -18,6 +18,13 @@ public actor SyncService: ModelActor {
     /// clears `isDirty` if no new edits arrived during the in-flight request, so changes
     /// made mid-sync are never silently dropped (actor reentrancy at the `await`).
     private var dirtyGeneration = 0
+    /// Bumped at both the start AND end of every `syncNow()` call — regardless of whether
+    /// the caller went through `markDirty()` (some, like the Rico chat flow, call `syncNow()`
+    /// directly). `fetchAndApply()` snapshots this before its GET and re-checks it before
+    /// applying the destructive half of the meal merge: any push that started, finished, or
+    /// did both while the GET was in flight moves this counter, which is exactly the window
+    /// where the pull's response can't be trusted to reflect that push's write yet.
+    private var syncActivityGeneration = 0
     private let iso8601 = ISO8601DateFormatter()
 
     /// True when local edits are waiting for the next push (meals, plan, etc.).
@@ -48,6 +55,8 @@ public actor SyncService: ModelActor {
     }
 
     public func syncNow() async -> Bool {
+        syncActivityGeneration &+= 1
+        defer { syncActivityGeneration &+= 1 }
         let attemptedGeneration = dirtyGeneration
         do {
             let meals           = fetchAllMealsFromStore()
@@ -186,6 +195,14 @@ public actor SyncService: ModelActor {
 
     /// Fetches the full snapshot from the server and upserts it into the local store.
     public func fetchAndApply() async throws {
+        // Actors are reentrant across `await` — a concurrent push (e.g. Rico logging a
+        // meal via CoachChatView's own syncNow()) can insert+mark-synced a meal *while*
+        // this GET is in flight. If that happens, this response no longer reflects the
+        // full current state, and the destructive half of applyMealPullFromServer (delete
+        // any local "synced" meal missing from the response) would wrongly erase the meal
+        // that push just landed. Snapshot syncActivityGeneration before the request so we
+        // can detect that race and skip deletions this round.
+        let syncActivityAtPullStart = syncActivityGeneration
         let data = try await api.requestRaw(MiscAPI.dataFetch)
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -372,7 +389,8 @@ public actor SyncService: ModelActor {
         try modelContext.save()
 
         if let mealDTOsFromServer {
-            try applyMealPullFromServer(mealDTOsFromServer)
+            let racedWithConcurrentPush = syncActivityGeneration != syncActivityAtPullStart
+            try applyMealPullFromServer(mealDTOsFromServer, skipDeletions: racedWithConcurrentPush)
         }
 
         let planForWorkouts = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>()))?.first
@@ -464,22 +482,30 @@ public actor SyncService: ModelActor {
     }
 
     /// Merges server meals on a fresh context so the ModelActor cache cannot resurrect deleted rows.
-    private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO]) throws {
+    ///
+    /// `skipDeletions` is set when a local edit landed concurrently with the GET that produced
+    /// `mealDTOs` (see `fetchAndApply`): that response can't be trusted as complete anymore, so
+    /// we only add what it knows about and leave every local row alone — the next, unraced pull
+    /// will reconcile deletions once the dust settles.
+    private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO], skipDeletions: Bool) throws {
         let fresh = ModelContext(modelContainer)
         let localMeals = try fresh.fetch(FetchDescriptor<MealEntry>())
-        let pendingKeys = Set(localMeals.filter { !$0.synced }.map(\.syncKey))
+        var knownKeys = Set(localMeals.map(\.syncKey))
 
-        for meal in localMeals where meal.synced {
-            fresh.delete(meal)
+        if !skipDeletions {
+            let pendingKeys = Set(localMeals.filter { !$0.synced }.map(\.syncKey))
+            for meal in localMeals where meal.synced {
+                fresh.delete(meal)
+            }
+            knownKeys = pendingKeys
         }
 
-        var insertedKeys = pendingKeys
         for dto in mealDTOs {
             let key = Self.mealSyncKey(date: dto.date, id: dto.id)
-            guard !insertedKeys.contains(key) else { continue }
+            guard !knownKeys.contains(key) else { continue }
             if let meal = MealEntry(dto: dto, iso8601: iso8601) {
                 fresh.insert(meal)
-                insertedKeys.insert(key)
+                knownKeys.insert(key)
             }
         }
         try fresh.save()
