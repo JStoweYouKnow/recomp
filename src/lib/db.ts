@@ -106,6 +106,13 @@ export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
         ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
         ExclusiveStartKey,
+        // Strongly consistent: a pull immediately following a push (e.g. logging a
+        // meal via Rico, then the scenePhase-triggered fetchAndApply on the next
+        // foreground) must see that write. Without this, an eventually-consistent
+        // read can miss the just-written row, and the client's pull-merge logic
+        // deletes any local "synced" meal absent from this response — silently
+        // destroying a meal that was, in fact, just saved successfully.
+        ConsistentRead: true,
       })
     );
     for (const row of Items ?? []) {
