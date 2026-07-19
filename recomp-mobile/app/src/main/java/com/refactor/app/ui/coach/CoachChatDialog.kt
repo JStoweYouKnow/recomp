@@ -58,8 +58,10 @@ fun CoachChatDialog(
     coachMessageDao: CoachMessageDao,
     onDismiss: () -> Unit,
 ) {
+    val context = LocalContext.current
     val vm: CoachViewModel = viewModel(
         factory = CoachViewModel.Factory(
+            context.applicationContext,
             coachRepository,
             syncRepository,
             syncCacheDao,
@@ -72,7 +74,6 @@ fun CoachChatDialog(
     val err by vm.error.collectAsStateWithLifecycle()
     val pushNote by vm.lastPushNote.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
-    val context = LocalContext.current
     val speech = remember(context) { SpeechRecognizer.createSpeechRecognizer(context) }
     DisposableEffect(speech) {
         onDispose { speech.destroy() }

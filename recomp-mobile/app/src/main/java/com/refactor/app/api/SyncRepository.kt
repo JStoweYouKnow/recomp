@@ -165,24 +165,37 @@ class SyncRepository(
 
     /**
      * Merges Rico tool actions into the cached GET JSON (iOS/web parity) and persists to Room.
-     * @return true if the cache was updated
      */
-    suspend fun applyRicoActionsToCache(actions: List<RicoToolActionWire>): Result<Boolean> =
+    suspend fun applyRicoActionsToCache(actions: List<RicoToolActionWire>): Result<RicoCacheApplyOutcome> =
         runCatching {
-            if (actions.isEmpty()) return@runCatching false
-            val entity = syncCacheDao.getOnce() ?: return@runCatching false
+            if (actions.isEmpty()) {
+                return@runCatching RicoCacheApplyOutcome(changed = false, result = RicoApplyResult())
+            }
+            val entity = syncCacheDao.getOnce() ?: return@runCatching RicoCacheApplyOutcome(
+                changed = false,
+                result = RicoApplyResult(skipped = listOf(RicoSkippedAction("all", "no cached snapshot"))),
+            )
             val root = SyncJson.format.parseToJsonElement(entity.payloadJson).jsonObject
-            val merged = RicoSyncActionApplier.apply(root, actions)
-            val out = SyncJson.format.encodeToString(JsonElement.serializer(), merged)
-            if (out == entity.payloadJson) return@runCatching false
+            val outcome = RicoSyncActionApplier.apply(root, actions)
+            val out = SyncJson.format.encodeToString(JsonElement.serializer(), outcome.root)
+            if (out == entity.payloadJson) {
+                return@runCatching RicoCacheApplyOutcome(changed = false, result = outcome.result)
+            }
             syncCacheDao.upsert(
                 SyncCacheEntity(
                     payloadJson = out,
                     fetchedAtEpochMillis = System.currentTimeMillis(),
                 )
             )
-            true
+            RicoCacheApplyOutcome(changed = true, result = outcome.result)
         }
+
+    suspend fun readCachedSnapshot(): SyncGetResponse? =
+        runCatching {
+            syncCacheDao.getOnce()?.payloadJson?.let {
+                SyncJson.format.decodeFromString<SyncGetResponse>(it)
+            }
+        }.getOrNull()
 
     /**
      * Writes [**`meta.ricoHistory`**] from local coach messages (max 100 entries, content capped for sync schema).

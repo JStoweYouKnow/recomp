@@ -7,26 +7,19 @@ import {
   getCoachPersona,
   saveCoachPersona,
   type CoachPersona,
-  saveMeasurementTargets,
-  getMeasurementTargets,
-  saveMeals,
-  getMeals,
-  getPlan,
-  savePlan,
-  syncToServer,
-  getSavedRecipes,
   saveSavedRecipes,
+  getSavedRecipes,
+  syncToServer,
 } from "@/lib/storage";
+import { processRicoActions, formatRicoApplyStatus } from "@/lib/rico-actions";
 import {
   startRecording,
   startStreamingRecording,
   playAudioResponse,
   isAudioSupported,
 } from "@/lib/audio-utils";
-import type { RicoMessage, WorkoutExercise, CookingAppRecipe } from "@/lib/types";
+import type { RicoMessage, CookingAppRecipe } from "@/lib/types";
 import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
-import { parseRegeneratePlanPayload } from "@/lib/multi-week-plan";
-import { getWeekStart } from "@/lib/date-utils";
 import type { AudioRecorder, StreamingRecorder } from "@/lib/audio-utils";
 
 function formatRecipeSuggestions(
@@ -38,110 +31,6 @@ function formatRecipeSuggestions(
       `${i + 1}. **${s.name}** (${s.calories} cal, ${s.protein}g P, score ${s.fitScore}) — ${s.fitReason}${s.recipeUrl ? ` [link](${s.recipeUrl})` : ""}`
   );
   return `\n\n${lines.join("\n")}`;
-}
-
-/** Process Rico tool-call actions, mutate localStorage. Returns flags for sync + full plan regeneration. */
-function processRicoActions(actions: { type: string; payload: Record<string, unknown> }[]): {
-  changed: boolean;
-  regeneratePlan: boolean;
-  regeneratePlanOptions?: RegeneratePlanOptions;
-} {
-  let changed = false;
-  let regeneratePlan = false;
-  let regeneratePlanOptions: RegeneratePlanOptions | undefined;
-  for (const act of actions) {
-    if (act.type === "update_macros") {
-      const current = getMeasurementTargets();
-      saveMeasurementTargets({ ...current, ...act.payload });
-      changed = true;
-    } else if (act.type === "log_meal") {
-      const p = act.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
-      const meals = getMeals();
-      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v)) ? v : Math.max(0, parseInt(String(v ?? 0), 10) || 0);
-      meals.push({
-        id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        date: new Date().toLocaleDateString("en-CA"),
-        name: typeof p?.name === "string" ? p.name : "Meal",
-        mealType: "snack",
-        loggedAt: new Date().toISOString(),
-        macros: { calories: num(p?.calories), protein: num(p?.protein), carbs: num(p?.carbs), fat: num(p?.fat) },
-      });
-      saveMeals(meals);
-      changed = true;
-    } else if (act.type === "swap_exercise") {
-      const p = act.payload as { day?: string; oldExerciseName?: string; newExerciseName?: string; newSets?: string; newReps?: string; newNotes?: string; section?: string };
-      const plan = getPlan();
-      if (plan && p.day && p.oldExerciseName && p.newExerciseName) {
-        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
-        if (dayIndex >= 0) {
-          const day = plan.workoutPlan.weeklyPlan[dayIndex];
-          const section = (p.section === "warmups" || p.section === "finishers") ? p.section : "exercises";
-          const list: WorkoutExercise[] = (section === "warmups" ? day.warmups : section === "finishers" ? day.finishers : day.exercises) ?? [];
-          const oldLower = p.oldExerciseName.toLowerCase();
-          const idx = list.findIndex((ex) => ex.name.toLowerCase() === oldLower);
-          if (idx >= 0) {
-            list[idx] = { name: p.newExerciseName, sets: p.newSets ?? list[idx].sets, reps: p.newReps ?? list[idx].reps, notes: p.newNotes };
-            if (section === "warmups") day.warmups = list;
-            else if (section === "finishers") day.finishers = list;
-            else day.exercises = list;
-            plan.workoutPlan.weeklyPlan[dayIndex] = day;
-            savePlan(plan);
-            changed = true;
-          }
-        }
-      }
-    } else if (act.type === "add_exercise") {
-      const p = act.payload as { day?: string; exerciseName?: string; sets?: string; reps?: string; notes?: string; section?: string };
-      const plan = getPlan();
-      if (plan && p.day && p.exerciseName) {
-        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
-        if (dayIndex >= 0) {
-          const day = plan.workoutPlan.weeklyPlan[dayIndex];
-          const newEx: WorkoutExercise = { name: p.exerciseName, sets: p.sets ?? "3", reps: p.reps ?? "10", notes: p.notes };
-          const section = (p.section === "warmups" || p.section === "finishers") ? p.section : "exercises";
-          if (section === "warmups") day.warmups = [...(day.warmups ?? []), newEx];
-          else if (section === "finishers") day.finishers = [...(day.finishers ?? []), newEx];
-          else day.exercises = [...day.exercises, newEx];
-          plan.workoutPlan.weeklyPlan[dayIndex] = day;
-          savePlan(plan);
-          changed = true;
-        }
-      }
-    } else if (act.type === "update_workout_day") {
-      const p = act.payload as { day?: string; focus?: string; warmups?: WorkoutExercise[]; exercises?: WorkoutExercise[]; finishers?: WorkoutExercise[] };
-      const plan = getPlan();
-      if (plan && p.day && p.focus) {
-        const dayIndex = plan.workoutPlan.weeklyPlan.findIndex((d) => d.day.toLowerCase() === p.day!.toLowerCase());
-        if (dayIndex >= 0) {
-          const day = plan.workoutPlan.weeklyPlan[dayIndex];
-          day.focus = p.focus;
-          if (p.warmups !== undefined) day.warmups = p.warmups;
-          if (p.exercises !== undefined) day.exercises = p.exercises;
-          if (p.finishers !== undefined) day.finishers = p.finishers;
-          plan.workoutPlan.weeklyPlan[dayIndex] = day;
-          savePlan(plan);
-          changed = true;
-        }
-      }
-    } else if (act.type === "regenerate_plan") {
-      regeneratePlan = true;
-      regeneratePlanOptions = parseRegeneratePlanPayload(act.payload);
-    } else if (act.type === "adjust_program_start") {
-      const p = act.payload as { startDate?: string };
-      const plan = getPlan();
-      if (plan && typeof p.startDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.startDate)) {
-        plan.workoutPlan.programWeek1Start = getWeekStart(p.startDate);
-        plan.workoutPlan.programWeekOffset = 0;
-        savePlan(plan);
-        changed = true;
-      }
-    }
-  }
-  if (changed) {
-    syncToServer();
-    window.dispatchEvent(new Event("userDataUpdated"));
-  }
-  return { changed, regeneratePlan, regeneratePlanOptions };
 }
 
 export function RicoChat({
@@ -310,15 +199,15 @@ export function RicoChat({
         syncToServer();
       }
 
-      addMessage({ role: "assistant", content: reply, at: new Date().toISOString() });
-
-      // Execute AI Agent tool calls
       if (data.actions && Array.isArray(data.actions)) {
-        const { regeneratePlan, regeneratePlanOptions } = processRicoActions(data.actions);
-        if (regeneratePlan && onRegeneratePlan) {
-          void onRegeneratePlan(regeneratePlanOptions);
+        const applyResult = processRicoActions(data.actions);
+        reply += formatRicoApplyStatus(applyResult);
+        if (applyResult.regeneratePlan && onRegeneratePlan) {
+          void onRegeneratePlan(applyResult.regeneratePlanOptions);
         }
       }
+
+      addMessage({ role: "assistant", content: reply, at: new Date().toISOString() });
     } catch (e) {
       console.error(e);
       addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again in a sec.", at: new Date().toISOString() });
@@ -510,13 +399,15 @@ export function RicoChat({
                         });
                         const data = await res.json();
                         if (data.error) throw new Error(data.error);
-                        addMessage({ role: "assistant", content: data.reply, at: new Date().toISOString() });
+                        let reply = data.reply as string;
                         if (data.actions?.length) {
-                          const { regeneratePlan, regeneratePlanOptions } = processRicoActions(data.actions);
-                          if (regeneratePlan && onRegeneratePlan) {
-                            void onRegeneratePlan(regeneratePlanOptions);
+                          const applyResult = processRicoActions(data.actions);
+                          reply += formatRicoApplyStatus(applyResult);
+                          if (applyResult.regeneratePlan && onRegeneratePlan) {
+                            void onRegeneratePlan(applyResult.regeneratePlanOptions);
                           }
                         }
+                        addMessage({ role: "assistant", content: reply, at: new Date().toISOString() });
                       } catch (e) {
                         console.error(e);
                         addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again.", at: new Date().toISOString() });

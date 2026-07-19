@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { dbGetUserIdByApiToken } from "@/lib/db";
 import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
-import { invokeRico, buildRicoContextFromServer, persistLogMealActions } from "@/lib/services/rico";
+import { invokeRico, buildRicoContextFromServer, persistHeadlessRicoActions } from "@/lib/services/rico";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logError } from "@/lib/logger";
 
@@ -51,11 +51,13 @@ export async function POST(req: NextRequest) {
       context,
     });
 
+    let replyText = reply;
     if (actions.length > 0) {
-      await persistLogMealActions(userId, actions);
+      const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
+      replyText += replySuffix;
     }
 
-    return NextResponse.json({ reply });
+    return NextResponse.json({ reply: replyText });
   } catch (err) {
     logError("Rico shortcut failed", err, { userId: userId.slice(0, 8) });
     return NextResponse.json({ error: "The Ref is taking a breather. Try again." }, { status: 500 });

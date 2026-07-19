@@ -1,10 +1,13 @@
 import Foundation
 import SwiftData
 import Observation
+import os.log
 
 @MainActor
 @Observable
 public final class CoachService {
+    private static let logger = Logger(subsystem: "com.refactor.app", category: "CoachService")
+
     public private(set) var messages: [CoachMessage] = []
     public private(set) var isResponding = false
     public private(set) var shouldRegeneratePlan = false
@@ -62,10 +65,6 @@ public final class CoachService {
             replyText += Self.formatRecipeSuggestions(suggestions)
         }
 
-        let assistantMessage = CoachMessage(role: .assistant, content: replyText)
-        context.insert(assistantMessage)
-        messages.append(assistantMessage)
-
         if let saved = response.recipeSaved {
             let record = SavedRecipeRecord(
                 id: saved.id,
@@ -85,11 +84,21 @@ public final class CoachService {
             NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
         }
 
+        var applyResult = RicoApplyResult()
         if !response.actions.isEmpty {
-            applyActions(response.actions, modelContext: context)
+            applyResult = applyActions(response.actions, modelContext: context)
         }
 
+        if let suffix = applyResult.statusSuffix {
+            replyText += suffix
+        }
+
+        let assistantMessage = CoachMessage(role: .assistant, content: replyText)
+        context.insert(assistantMessage)
+        messages.append(assistantMessage)
+
         try context.save()
+        commitCoachTurn(context: context, applyResult: applyResult)
     }
 
     public func clearHistory(context: ModelContext) {
@@ -98,6 +107,20 @@ public final class CoachService {
         }
         messages.removeAll()
         try? context.save()
+        CoachHistoryStore.mergeIntoDefaults(container: context.container)
+    }
+
+    /// Save → notify dependent UI → merge chat history for the next sync push.
+    private func commitCoachTurn(context: ModelContext, applyResult: RicoApplyResult) {
+        shouldRegeneratePlan = applyResult.shouldRegeneratePlan
+        pendingRegenerateOptions = applyResult.pendingRegenerateOptions
+        CoachHistoryStore.mergeIntoDefaults(container: context.container)
+        if applyResult.touchedMeals {
+            MealChangeNotifier.postLocalMealsChanged()
+        }
+        if applyResult.touchedPlan {
+            PlanChangeNotifier.postLocalPlanChanged()
+        }
     }
 
     // MARK: - Context Building
@@ -224,31 +247,46 @@ public final class CoachService {
 
     // MARK: - Action Application
 
-    private func applyActions(_ actions: [RicoAction], modelContext: ModelContext) {
+    @discardableResult
+    private func applyActions(_ actions: [RicoAction], modelContext: ModelContext) -> RicoApplyResult {
+        var result = RicoApplyResult()
+
         for action in actions {
             switch action {
             case .logMeal(let payload):
                 let entry = MealEntry(
                     date: DateHelpers.todayString(),
-                    mealType: .snack,
+                    mealType: payload.mealType ?? .snack,
                     name: payload.name,
                     macros: payload.asMacros,
                     synced: false
                 )
                 modelContext.insert(entry)
+                result.touchedMeals = true
+                result.recordApplied("log_meal")
 
             case .updateMacros(let payload):
-                if let plan = fetchLatestPlan(modelContext: modelContext) {
-                    plan.dietPlan.dailyTargets = payload.asMacros
-                    plan.synced = false
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else {
+                    result.recordSkipped(type: "update_macros", reason: "no plan")
+                    continue
                 }
+                plan.dietPlan.dailyTargets = payload.asMacros
+                plan.synced = false
+                result.touchedPlan = true
+                result.recordApplied("update_macros")
 
             case .swapExercise(let payload):
-                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else {
+                    result.recordSkipped(type: "swap_exercise", reason: "no plan")
+                    continue
+                }
                 var weeklyPlan = plan.workoutPlan.weeklyPlan
                 guard let dayIdx = weeklyPlan.firstIndex(where: {
                     $0.day.lowercased() == payload.day.lowercased()
-                }) else { break }
+                }) else {
+                    result.recordSkipped(type: "swap_exercise", reason: "day not found: \(payload.day)")
+                    continue
+                }
 
                 var day = weeklyPlan[dayIdx]
                 let newEx = WorkoutExercise(
@@ -258,19 +296,33 @@ public final class CoachService {
                     notes: payload.newNotes
                 )
                 let section = payload.section ?? "exercises"
+                var swapped = false
                 switch section {
                 case "warmups":
                     if let idx = day.warmups?.firstIndex(where: {
                         $0.name.lowercased() == payload.oldExerciseName.lowercased()
-                    }) { day.warmups?[idx] = newEx }
+                    }) {
+                        day.warmups?[idx] = newEx
+                        swapped = true
+                    }
                 case "finishers":
                     if let idx = day.finishers?.firstIndex(where: {
                         $0.name.lowercased() == payload.oldExerciseName.lowercased()
-                    }) { day.finishers?[idx] = newEx }
+                    }) {
+                        day.finishers?[idx] = newEx
+                        swapped = true
+                    }
                 default:
                     if let idx = day.exercises.firstIndex(where: {
                         $0.name.lowercased() == payload.oldExerciseName.lowercased()
-                    }) { day.exercises[idx] = newEx }
+                    }) {
+                        day.exercises[idx] = newEx
+                        swapped = true
+                    }
+                }
+                guard swapped else {
+                    result.recordSkipped(type: "swap_exercise", reason: "exercise not found: \(payload.oldExerciseName)")
+                    continue
                 }
                 weeklyPlan[dayIdx] = day
                 plan.workoutPlan = WorkoutPlan(
@@ -279,13 +331,21 @@ public final class CoachService {
                     programWeek1Start: plan.workoutPlan.programWeek1Start
                 )
                 plan.synced = false
+                result.touchedPlan = true
+                result.recordApplied("swap_exercise")
 
             case .addExercise(let payload):
-                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else {
+                    result.recordSkipped(type: "add_exercise", reason: "no plan")
+                    continue
+                }
                 var weeklyPlan = plan.workoutPlan.weeklyPlan
                 guard let dayIdx = weeklyPlan.firstIndex(where: {
                     $0.day.lowercased() == payload.day.lowercased()
-                }) else { break }
+                }) else {
+                    result.recordSkipped(type: "add_exercise", reason: "day not found: \(payload.day)")
+                    continue
+                }
 
                 var day = weeklyPlan[dayIdx]
                 let newEx = WorkoutExercise(
@@ -312,13 +372,21 @@ public final class CoachService {
                     programWeek1Start: plan.workoutPlan.programWeek1Start
                 )
                 plan.synced = false
+                result.touchedPlan = true
+                result.recordApplied("add_exercise")
 
             case .updateWorkoutDay(let payload):
-                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else {
+                    result.recordSkipped(type: "update_workout_day", reason: "no plan")
+                    continue
+                }
                 var weeklyPlan = plan.workoutPlan.weeklyPlan
                 guard let dayIdx = weeklyPlan.firstIndex(where: {
                     $0.day.lowercased() == payload.day.lowercased()
-                }) else { break }
+                }) else {
+                    result.recordSkipped(type: "update_workout_day", reason: "day not found: \(payload.day)")
+                    continue
+                }
 
                 var day = weeklyPlan[dayIdx]
                 day.focus = payload.focus
@@ -344,17 +412,23 @@ public final class CoachService {
                     programWeek1Start: plan.workoutPlan.programWeek1Start
                 )
                 plan.synced = false
+                result.touchedPlan = true
+                result.recordApplied("update_workout_day")
 
             case .regeneratePlan(let payload):
-                shouldRegeneratePlan = true
-                pendingRegenerateOptions = RegeneratePlanOptions(
+                result.shouldRegeneratePlan = true
+                result.pendingRegenerateOptions = RegeneratePlanOptions(
                     programWeeks: payload.programWeeks,
                     workoutDaysPerWeek: payload.workoutDaysPerWeek,
                     reason: payload.reason
                 )
+                result.recordApplied("regenerate_plan")
 
             case .adjustProgramStart(let payload):
-                guard let plan = fetchLatestPlan(modelContext: modelContext) else { break }
+                guard let plan = fetchLatestPlan(modelContext: modelContext) else {
+                    result.recordSkipped(type: "adjust_program_start", reason: "no plan")
+                    continue
+                }
                 plan.workoutPlan.programWeek1Start = DateHelpers.mondayWeekStartString(
                     containingCalendarDay: payload.startDate
                 )
@@ -362,11 +436,22 @@ public final class CoachService {
                 plan.workoutPlan.missedSessions = []
                 plan.workoutPlan.catchUpBannerDismissedAt = nil
                 plan.synced = false
+                result.touchedPlan = true
+                result.recordApplied("adjust_program_start")
 
             case .unknown(let actionType):
-                print("[CoachService] Unhandled action type: \(actionType)")
+                result.recordSkipped(type: actionType, reason: "unsupported action")
+                Self.logger.warning("Unhandled Rico action type: \(actionType, privacy: .public)")
             }
         }
+
+        for skip in result.skipped {
+            Self.logger.info(
+                "Rico action skipped type=\(skip.type, privacy: .public) reason=\(skip.reason, privacy: .public)"
+            )
+        }
+
+        return result
     }
 
     // MARK: - Helpers

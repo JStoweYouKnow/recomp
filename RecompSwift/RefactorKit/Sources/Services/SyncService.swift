@@ -94,12 +94,7 @@ public actor SyncService: ModelActor {
             let xpTotal = MacroCalculator.totalXp(from: milestones)
             let defaults = RecompAppGroupDefaults.shared
             let hasAdjustedFlag = defaults.bool(forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
-            let ricoForPush: [RicoMessageDTO]? = {
-                guard let data = defaults.data(forKey: RecompUserDefaultsKeys.ricoHistoryJSON),
-                      let decoded = try? JSONDecoder().decode([RicoMessageDTO].self, from: data),
-                      !decoded.isEmpty else { return nil }
-                return decoded
-            }()
+            let ricoForPush: [RicoMessageDTO]? = CoachHistoryStore.historyForPush(container: modelContainer)
 
             let measurementTargetsPayload: MeasurementTargetsDTO? = {
                 guard let mt = MeasurementTargetsStorage.load() else { return nil }

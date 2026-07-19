@@ -4,10 +4,18 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
+data class RicoHistoryMessageDto(
+    val role: String,
+    val content: String,
+    val at: String? = null,
+)
+
+@Serializable
 data class RicoChatRequest(
     val message: String,
     val context: RicoContextDto? = null,
     val persona: String? = null,
+    val history: List<RicoHistoryMessageDto>? = null,
 )
 
 @Serializable
@@ -46,6 +54,7 @@ data class RicoContextDto(
     val savedRecipeCount: Int? = null,
     val savedRecipeNames: List<String>? = null,
     val savedRecipes: List<SavedRecipeDto>? = null,
+    val bodyWeight: Double? = null,
 )
 
 @Serializable

@@ -123,6 +123,7 @@ struct WatchVoiceMealLogSheet: View {
         )
         context.insert(meal)
         try? context.save()
+        MealChangeNotifier.postLocalMealsChanged()
         Task {
             await syncEngine?.markDirty()
             await syncEngine?.syncNow()

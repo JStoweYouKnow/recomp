@@ -1,5 +1,6 @@
 package com.refactor.app.ui.coach
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,10 +9,12 @@ import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.RicoContextFactory
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.RegeneratePlanOptions
+import com.refactor.app.api.dto.RicoHistoryMessageDto
 import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.CoachMessageEntity
 import com.refactor.app.db.SyncCacheDao
+import com.refactor.app.widget.RecompWidgetUpdater
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ enum class ChatRole { User, Assistant }
 data class ChatLine(val role: ChatRole, val content: String)
 
 class CoachViewModel(
+    private val appContext: Context,
     private val coachRepository: CoachRepository,
     private val syncRepository: SyncRepository,
     private val syncCacheDao: SyncCacheDao,
@@ -80,16 +84,31 @@ class CoachViewModel(
                     createdAtEpochMillis = System.currentTimeMillis(),
                 ),
             )
+            val history = coachMessageDao.listAllAsc().takeLast(RICO_HISTORY_MAX).map { row ->
+                RicoHistoryMessageDto(
+                    role = if (row.role == "user") "user" else "assistant",
+                    content = row.content.take(RICO_CONTENT_MAX),
+                    at = row.createdAtEpochMillis.toString(),
+                )
+            }
             _busy.value = true
-            coachRepository.chat(trimmed, ctx).fold(
+            coachRepository.chat(trimmed, ctx, history).fold(
                 onSuccess = { res ->
                     val serverHandledActions = setOf("regenerate_plan", "suggest_recipes", "save_recipe_from_url")
                     val needsRegenerate = res.actions.any { it.type == "regenerate_plan" }
                     val localActions = res.actions.filter { it.type !in serverHandledActions }
-                    val applied = if (localActions.isNotEmpty()) {
-                        syncRepository.applyRicoActionsToCache(localActions).getOrElse { false }
+                    val applyOutcome = if (localActions.isNotEmpty()) {
+                        syncRepository.applyRicoActionsToCache(localActions).getOrElse { e ->
+                            coachMessageDao.deleteById(userId)
+                            _error.value = when (e) {
+                                is ApiException -> e.message
+                                else -> e.message ?: "Ref couldn't apply changes"
+                            }
+                            _busy.value = false
+                            return@launch
+                        }
                     } else {
-                        false
+                        null
                     }
                     if (res.recipeSaved != null) {
                         syncRepository.mergeSavedRecipeIntoCache(res.recipeSaved).fold(
@@ -125,22 +144,18 @@ class CoachViewModel(
                         )
                         _regeneratingPlan.value = false
                     }
+                    val applyResult = applyOutcome?.result
                     val assistantText = buildString {
                         append(res.reply.trim())
                         res.recipeSuggestions?.takeIf { it.isNotEmpty() }?.let { list ->
                             if (isNotEmpty()) append("\n\n")
                             append(formatRecipeSuggestions(list))
                         }
-                        if (localActions.isNotEmpty() || needsRegenerate) {
+                        if (needsRegenerate) {
                             if (isNotEmpty()) append("\n\n")
-                            append(
-                                when {
-                                    needsRegenerate -> "Started building your new plan."
-                                    applied -> "Applied ${localActions.size} change(s) to your offline snapshot."
-                                    else -> "Ref couldn't apply all changes (missing plan, day, or exercise in cache)."
-                                },
-                            )
+                            append("Started building your new plan.")
                         }
+                        applyResult?.statusSuffix()?.takeIf { it.isNotBlank() }?.let { append(it) }
                     }
                     coachMessageDao.insert(
                         CoachMessageEntity(
@@ -162,6 +177,11 @@ class CoachViewModel(
                             }
                         },
                     )
+                    if (applyOutcome?.changed == true) {
+                        syncRepository.readCachedSnapshot()?.let { snap ->
+                            RecompWidgetUpdater.updateFromSnapshot(appContext, snap)
+                        } ?: RecompWidgetUpdater.refreshWidgets(appContext)
+                    }
                 },
                 onFailure = { e ->
                     coachMessageDao.deleteById(userId)
@@ -182,6 +202,7 @@ class CoachViewModel(
         }.joinToString("\n")
 
     class Factory(
+        private val appContext: Context,
         private val coachRepository: CoachRepository,
         private val syncRepository: SyncRepository,
         private val syncCacheDao: SyncCacheDao,
@@ -191,11 +212,17 @@ class CoachViewModel(
             require(modelClass.isAssignableFrom(CoachViewModel::class.java))
             @Suppress("UNCHECKED_CAST")
             return CoachViewModel(
+                appContext,
                 coachRepository,
                 syncRepository,
                 syncCacheDao,
                 coachMessageDao,
             ) as T
         }
+    }
+
+    private companion object {
+        private const val RICO_HISTORY_MAX = 100
+        private const val RICO_CONTENT_MAX = 10_000
     }
 }

@@ -237,9 +237,10 @@ public struct LogMealPayload: Decodable, Sendable {
     public let protein: Double
     public let carbs: Double
     public let fat: Double
+    public let mealType: MealType?
 
     enum CodingKeys: String, CodingKey {
-        case name, calories, protein, carbs, fat
+        case name, calories, protein, carbs, fat, mealType
     }
 
     /// Bedrock payloads can omit fields or use integers — keep meal logging resilient.
@@ -252,6 +253,12 @@ public struct LogMealPayload: Decodable, Sendable {
         protein = Self.readDouble(c, key: .protein)
         carbs = Self.readDouble(c, key: .carbs)
         fat = Self.readDouble(c, key: .fat)
+        if let raw = try c.decodeIfPresent(String.self, forKey: .mealType),
+           let parsed = MealType(rawValue: raw.lowercased()) {
+            mealType = parsed
+        } else {
+            mealType = nil
+        }
     }
 
     private nonisolated static func readDouble(

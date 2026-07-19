@@ -205,6 +205,12 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .recompPhoneDidSync)) { _ in
             pushWatchDashboard(from: modelContext)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .recompMealsDidChange)) { _ in
+            pushWatchDashboard(from: modelContext)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .recompPlanDidChange)) { _ in
+            pushWatchDashboard(from: modelContext)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToMeals)) { _ in
             coordinator.navigate(to: .meals)
         }

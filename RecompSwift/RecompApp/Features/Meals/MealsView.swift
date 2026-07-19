@@ -106,6 +106,7 @@ struct MealsView: View {
                                 context.delete(meal)
                                 do {
                                     try context.save()
+                                    MealChangeNotifier.postLocalMealsChanged()
                                     Task {
                                         await syncEngine?.markDirty()
                                         await syncEngine?.syncNow()

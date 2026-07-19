@@ -3,9 +3,10 @@
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
-import { dbSaveMeal } from "@/lib/db";
+import { dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
 import { getTodayLocal } from "../date-utils";
+import { applyRicoActionsToState, type RicoActionWire } from "../rico-actions";
 
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
@@ -104,6 +105,11 @@ const RICO_TOOLS: ToolConfiguration = {
             type: "object",
             properties: {
               name: { type: "string", description: "Name of the meal/food" },
+              mealType: {
+                type: "string",
+                enum: ["breakfast", "lunch", "dinner", "snack"],
+                description: "Meal slot when obvious from user text; defaults to snack",
+              },
               calories: { type: "number" },
               protein: { type: "number" },
               carbs: { type: "number" },
@@ -451,30 +457,58 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
 }
 
 /**
- * Persist `log_meal` actions directly to DynamoDB for headless surfaces (SMS, Siri
- * Shortcuts) that have no client-side store to apply Rico's tool actions into —
- * unlike the iOS/web chat, which insert into local storage and sync normally.
- * Without this, those surfaces confirm the meal was logged but never save it.
+ * Persist Rico actions for headless surfaces (SMS, Siri Shortcuts).
+ * Applies meals and macro targets server-side; workout edits require the app.
  */
+export async function persistHeadlessRicoActions(
+  userId: string,
+  actions: RicoOutput["actions"]
+): Promise<{ replySuffix: string }> {
+  if (actions.length === 0) return { replySuffix: "" };
+
+  const meals = await dbGetMeals(userId);
+  const plan = await dbGetPlan(userId);
+  const mealCountBefore = meals.length;
+  const wireActions: RicoActionWire[] = actions.map((a) => ({
+    type: a.type,
+    payload: a.payload as Record<string, unknown>,
+  }));
+  const state = {
+    meals: [...meals],
+    plan: plan ? structuredClone(plan) : null,
+  };
+  const result = applyRicoActionsToState(wireActions, state);
+
+  if (result.touchedMeals) {
+    for (const meal of state.meals.slice(mealCountBefore)) {
+      await dbSaveMeal(userId, meal);
+    }
+  }
+  if (result.touchedPlan && state.plan) {
+    await dbSavePlan(userId, state.plan);
+  }
+
+  const appOnly = result.skipped
+    .filter((s) =>
+      ["swap_exercise", "add_exercise", "update_workout_day", "regenerate_plan", "adjust_program_start"].includes(
+        s.type,
+      ),
+    )
+    .map((s) => s.type);
+
+  let replySuffix = "";
+  if (appOnly.length > 0) {
+    replySuffix = `\n\nOpen the Refactor app to apply: ${Array.from(new Set(appOnly)).join(", ")}.`;
+  }
+  return { replySuffix };
+}
+
+/** @deprecated Use persistHeadlessRicoActions */
 export async function persistLogMealActions(
   userId: string,
   actions: RicoOutput["actions"]
 ): Promise<void> {
-  const now = new Date();
-  for (const action of actions) {
-    if (action.type !== "log_meal") continue;
-    const p = action.payload as { name?: string; calories?: number; protein?: number; carbs?: number; fat?: number };
-    const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-    const meal: MealEntry = {
-      id: crypto.randomUUID(),
-      date: getTodayLocal(),
-      mealType: "snack",
-      name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : "Meal",
-      macros: { calories: num(p.calories), protein: num(p.protein), carbs: num(p.carbs), fat: num(p.fat) },
-      loggedAt: now.toISOString(),
-    };
-    await dbSaveMeal(userId, meal);
-  }
+  await persistHeadlessRicoActions(userId, actions);
 }
 
 /** Build minimal context from server-side data for SMS / Shortcuts (no localStorage). */

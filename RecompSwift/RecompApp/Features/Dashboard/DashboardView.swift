@@ -19,7 +19,14 @@ struct DashboardView: View {
 
     @Query private var profiles: [UserProfile]
 
+    @Query(sort: \MealEntry.loggedAt, order: .reverse)
+    private var allMeals: [MealEntry]
+
     private var hasPlan: Bool { !plans.isEmpty }
+    private var todaysMeals: [MealEntry] {
+        let today = DateHelpers.todayString()
+        return allMeals.filter { $0.date == today }
+    }
     private var profileDaysPerWeek: Int {
         let d = profiles.first?.workoutDaysPerWeek ?? 4
         return min(7, max(2, d))
@@ -187,7 +194,7 @@ struct DashboardView: View {
 
     private var calorieBudgetSection: some View {
         VStack(spacing: 12) {
-            let consumed = mealService.todaysMacros(context: context)
+            let consumed = todaysMeals.reduce(Macros.zero) { $0.adding($1.macros) }
             let targets = planService.todaysTargets(context: context)
             let activityAdj = mealService.todaysActivityCalorieAdjustment(context: context)
             let adjustedCalorieTarget = targets.calories + activityAdj

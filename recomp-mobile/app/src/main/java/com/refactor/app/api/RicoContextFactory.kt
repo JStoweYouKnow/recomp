@@ -79,6 +79,9 @@ internal object RicoContextFactory {
 
         val saved = snap.savedRecipes.orEmpty()
         val savedRecipes = saved.take(30).takeIf { it.isNotEmpty() }
+        val bodyWeight = snap.wearableData.orEmpty()
+            .sortedByDescending { it.date }
+            .firstNotNullOfOrNull { it.weight }
 
         return RicoContextDto(
             name = profile.name,
@@ -97,6 +100,7 @@ internal object RicoContextFactory {
             savedRecipeCount = saved.takeIf { it.isNotEmpty() }?.size,
             savedRecipeNames = saved.take(8).map { it.name }.takeIf { it.isNotEmpty() },
             savedRecipes = savedRecipes,
+            bodyWeight = bodyWeight,
         )
     }
 

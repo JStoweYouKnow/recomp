@@ -240,6 +240,8 @@ data class WearableDaySummaryDto(
     val steps: Int? = null,
     val caloriesBurned: Double? = null,
     val sleepScore: Int? = null,
+    /** Body mass in pounds (sync contract). */
+    val weight: Double? = null,
 )
 
 @Serializable

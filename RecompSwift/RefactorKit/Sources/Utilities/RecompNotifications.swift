@@ -26,6 +26,10 @@ public extension Notification.Name {
     static let recompSaveRecipeURL = Notification.Name("recompSaveRecipeURL")
     /// Posted after saved-recipes change outside SwiftData (e.g. Rico save) to debounce push sync.
     static let recompSchedulePushSync = Notification.Name("recompSchedulePushSync")
+    /// Posted after a meal is saved, edited, or deleted locally so dashboard macros refresh immediately.
+    static let recompMealsDidChange = Notification.Name("recompMealsDidChange")
+    /// Posted after plan targets or workout structure change locally (e.g. Rico update_macros).
+    static let recompPlanDidChange = Notification.Name("recompPlanDidChange")
     /// Posted when user taps "Skip Today" on a workout reminder notification.
     static let recompSkipTodayWorkout = Notification.Name("recompSkipTodayWorkout")
 }

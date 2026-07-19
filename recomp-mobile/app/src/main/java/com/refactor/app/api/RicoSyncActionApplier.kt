@@ -1,5 +1,6 @@
 package com.refactor.app.api
 
+import android.util.Log
 import com.refactor.app.api.dto.RicoToolActionWire
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -23,24 +24,45 @@ import java.util.UUID
  * Applies Rico/Bedrock tool actions to a GET-shaped sync JSON root (same intent as web `processRicoActions` / iOS `CoachService.applyActions`).
  */
 internal object RicoSyncActionApplier {
+    private const val TAG = "RicoSyncActionApplier"
 
-    fun apply(root: JsonObject, actions: List<RicoToolActionWire>): JsonObject {
+    fun apply(root: JsonObject, actions: List<RicoToolActionWire>): RicoApplyOutcome {
         var current = root
-        for (a in actions) {
-            current = when (a.type) {
-                "log_meal" -> applyLogMeal(current, a.payload)
-                "update_macros" -> applyUpdateMacros(current, a.payload)
-                "swap_exercise" -> applySwapExercise(current, a.payload)
-                "add_exercise" -> applyAddExercise(current, a.payload)
-                "update_workout_day" -> applyUpdateWorkoutDay(current, a.payload)
-                "adjust_program_start" -> applyAdjustProgramStart(current, a.payload)
-                else -> current
+        var result = RicoApplyResult()
+        for (action in actions) {
+            val step = when (action.type) {
+                "log_meal" -> applyLogMeal(current, action.payload)
+                "update_macros" -> applyUpdateMacros(current, action.payload)
+                "swap_exercise" -> applySwapExercise(current, action.payload)
+                "add_exercise" -> applyAddExercise(current, action.payload)
+                "update_workout_day" -> applyUpdateWorkoutDay(current, action.payload)
+                "adjust_program_start" -> applyAdjustProgramStart(current, action.payload)
+                else -> StepOutcome(current, applied = false, skipReason = "unsupported on this client")
+            }
+            current = step.root
+            result = if (step.applied) {
+                val next = result.recordApplied(action.type)
+                when (action.type) {
+                    "log_meal" -> next.copy(touchedMeals = true)
+                    else -> next.copy(touchedPlan = true)
+                }
+            } else {
+                result.recordSkipped(action.type, step.skipReason ?: "no change")
             }
         }
-        return current
+        for (skip in result.skipped) {
+            Log.i(TAG, "Rico action skipped type=${skip.type} reason=${skip.reason}")
+        }
+        return RicoApplyOutcome(current, result)
     }
 
-    private fun applyLogMeal(root: JsonObject, payload: JsonObject): JsonObject {
+    private data class StepOutcome(
+        val root: JsonObject,
+        val applied: Boolean,
+        val skipReason: String? = null,
+    )
+
+    private fun applyLogMeal(root: JsonObject, payload: JsonObject): StepOutcome {
         val existing = root["meals"]?.jsonArray?.toMutableList() ?: mutableListOf()
         val today = LocalDate.now().toString()
         val macros = buildJsonObject {
@@ -52,18 +74,20 @@ internal object RicoSyncActionApplier {
         val meal = buildJsonObject {
             put("id", JsonPrimitive(UUID.randomUUID().toString()))
             put("date", JsonPrimitive(today))
-            put("mealType", JsonPrimitive("snack"))
+            put("mealType", JsonPrimitive(parseMealType(payload)))
             put("name", JsonPrimitive(payload.stringOr("name") ?: "Meal"))
             put("loggedAt", JsonPrimitive(Instant.now().toString()))
             put("macros", macros)
         }
         existing.add(meal)
-        return root.replaceTopLevel("meals", JsonArray(existing))
+        return StepOutcome(root.replaceTopLevel("meals", JsonArray(existing)), applied = true)
     }
 
-    private fun applyUpdateMacros(root: JsonObject, payload: JsonObject): JsonObject {
-        val plan = root["plan"]?.jsonObject ?: return root
-        val diet = plan["dietPlan"]?.jsonObject ?: return root
+    private fun applyUpdateMacros(root: JsonObject, payload: JsonObject): StepOutcome {
+        val plan = root["plan"]?.jsonObject
+            ?: return StepOutcome(root, applied = false, skipReason = "no plan")
+        val diet = plan["dietPlan"]?.jsonObject
+            ?: return StepOutcome(root, applied = false, skipReason = "no diet plan")
         val targets = buildJsonObject {
             put("calories", JsonPrimitive(payload.doubleOr("calories").toInt()))
             put("protein", JsonPrimitive(payload.doubleOr("protein")))
@@ -72,47 +96,53 @@ internal object RicoSyncActionApplier {
         }
         val newDiet = diet.replaceKey("dailyTargets", targets)
         val newPlan = plan.replaceKey("dietPlan", newDiet)
-        return root.replaceTopLevel("plan", newPlan)
+        return StepOutcome(root.replaceTopLevel("plan", newPlan), applied = true)
     }
 
-    private fun applySwapExercise(root: JsonObject, payload: JsonObject): JsonObject {
-        val dayLabel = payload.stringOr("day") ?: return root
-        val oldName = payload.stringOr("oldExerciseName") ?: return root
+    private fun applySwapExercise(root: JsonObject, payload: JsonObject): StepOutcome {
+        val dayLabel = payload.stringOr("day")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing day")
+        val oldName = payload.stringOr("oldExerciseName")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing oldExerciseName")
+        val newName = payload.stringOr("newExerciseName")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing newExerciseName")
         val section = (payload.stringOr("section") ?: "exercises").lowercase()
-        val newName = payload.stringOr("newExerciseName") ?: return root
         val newEx = buildJsonObject {
             put("name", JsonPrimitive(newName))
             put("sets", JsonPrimitive(payload.stringOr("newSets") ?: "3"))
             put("reps", JsonPrimitive(payload.stringOr("newReps") ?: "10"))
             payload["newNotes"]?.let { put("notes", it) }
         }
-        return mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
+        val updated = mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
             when (section) {
                 "warmups" -> dayObj.replaceExerciseInList("warmups", oldName, newEx)
                 "finishers" -> dayObj.replaceExerciseInList("finishers", oldName, newEx)
                 else -> dayObj.replaceExerciseInList("exercises", oldName, newEx)
             }
-        }
+        } ?: return StepOutcome(root, applied = false, skipReason = "day or exercise not found: $dayLabel / $oldName")
+        return StepOutcome(updated, applied = true)
     }
 
     private fun JsonObject.replaceExerciseInList(
         listKey: String,
         oldName: String,
         newExercise: JsonObject,
-    ): JsonObject {
-        val arr = this[listKey]?.jsonArray ?: return this
+    ): JsonObject? {
+        val arr = this[listKey]?.jsonArray ?: return null
         val list = arr.toMutableList()
         val idx = list.indexOfFirst {
             it.jsonObject.stringOr("name")?.equals(oldName, ignoreCase = true) == true
         }
-        if (idx < 0) return this
+        if (idx < 0) return null
         list[idx] = newExercise
         return replaceKey(listKey, JsonArray(list))
     }
 
-    private fun applyAddExercise(root: JsonObject, payload: JsonObject): JsonObject {
-        val dayLabel = payload.stringOr("day") ?: return root
-        val exName = payload.stringOr("exerciseName") ?: return root
+    private fun applyAddExercise(root: JsonObject, payload: JsonObject): StepOutcome {
+        val dayLabel = payload.stringOr("day")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing day")
+        val exName = payload.stringOr("exerciseName")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing exerciseName")
         val section = (payload.stringOr("section") ?: "exercises").lowercase()
         val newEx = buildJsonObject {
             put("name", JsonPrimitive(exName))
@@ -120,7 +150,7 @@ internal object RicoSyncActionApplier {
             put("reps", JsonPrimitive(payload.stringOr("reps") ?: "10"))
             payload["notes"]?.let { put("notes", it) }
         }
-        return mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
+        val updated = mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
             val key = when (section) {
                 "warmups" -> "warmups"
                 "finishers" -> "finishers"
@@ -129,38 +159,54 @@ internal object RicoSyncActionApplier {
             val arr = dayObj[key]?.jsonArray?.toMutableList() ?: mutableListOf()
             arr.add(newEx)
             dayObj.replaceKey(key, JsonArray(arr))
-        }
+        } ?: return StepOutcome(root, applied = false, skipReason = "day not found: $dayLabel")
+        return StepOutcome(updated, applied = true)
     }
 
-    private fun applyAdjustProgramStart(root: JsonObject, payload: JsonObject): JsonObject {
-        val startDate = payload.stringOr("startDate") ?: return root
-        if (!startDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) return root
+    private fun applyAdjustProgramStart(root: JsonObject, payload: JsonObject): StepOutcome {
+        val startDate = payload.stringOr("startDate")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing startDate")
+        if (!startDate.matches(Regex("^\\d{4}-\\d{2}-\\d{2}$"))) {
+            return StepOutcome(root, applied = false, skipReason = "invalid startDate")
+        }
         val anchor = runCatching {
             LocalDate.parse(startDate).with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString()
-        }.getOrNull() ?: return root
-        val plan = root["plan"]?.jsonObject ?: return root
-        val workoutPlan = plan["workoutPlan"]?.jsonObject ?: return root
+        }.getOrNull() ?: return StepOutcome(root, applied = false, skipReason = "invalid startDate")
+        val plan = root["plan"]?.jsonObject
+            ?: return StepOutcome(root, applied = false, skipReason = "no plan")
+        val workoutPlan = plan["workoutPlan"]?.jsonObject
+            ?: return StepOutcome(root, applied = false, skipReason = "no workout plan")
         var newWorkoutPlan = workoutPlan.replaceKey("programWeek1Start", JsonPrimitive(anchor))
         newWorkoutPlan = newWorkoutPlan.replaceKey("programWeekOffset", JsonPrimitive(0))
         newWorkoutPlan = newWorkoutPlan.replaceKey("missedSessions", JsonArray(emptyList()))
         newWorkoutPlan = newWorkoutPlan.replaceKey("catchUpBannerDismissedAt", JsonNull)
         val newPlan = plan.replaceKey("workoutPlan", newWorkoutPlan)
-        return root.replaceTopLevel("plan", newPlan)
+        return StepOutcome(root.replaceTopLevel("plan", newPlan), applied = true)
     }
 
-    private fun applyUpdateWorkoutDay(root: JsonObject, payload: JsonObject): JsonObject {
-        val dayLabel = payload.stringOr("day") ?: return root
-        val focus = payload.stringOr("focus") ?: return root
-        return mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
+    private fun applyUpdateWorkoutDay(root: JsonObject, payload: JsonObject): StepOutcome {
+        val dayLabel = payload.stringOr("day")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing day")
+        val focus = payload.stringOr("focus")
+            ?: return StepOutcome(root, applied = false, skipReason = "missing focus")
+        val updated = mutateWeeklyPlanDay(root, dayLabel) { dayObj ->
             var d = dayObj.replaceKey("focus", JsonPrimitive(focus))
             coerceExerciseArray(payload["warmups"])?.let { d = d.replaceKey("warmups", it) }
             coerceExerciseArray(payload["exercises"])?.let { d = d.replaceKey("exercises", it) }
             coerceExerciseArray(payload["finishers"])?.let { d = d.replaceKey("finishers", it) }
             d
+        } ?: return StepOutcome(root, applied = false, skipReason = "day not found: $dayLabel")
+        return StepOutcome(updated, applied = true)
+    }
+
+    private fun parseMealType(payload: JsonObject): String {
+        val raw = payload.stringOr("mealType")?.lowercase()
+        return when (raw) {
+            "breakfast", "lunch", "dinner", "snack" -> raw
+            else -> "snack"
         }
     }
 
-    /** Bedrock may emit a single exercise object instead of an array — normalize for sync JSON. */
     private fun coerceExerciseArray(el: JsonElement?): JsonArray? {
         if (el == null) return null
         return when (el) {
@@ -173,17 +219,17 @@ internal object RicoSyncActionApplier {
     private fun mutateWeeklyPlanDay(
         root: JsonObject,
         dayLabel: String,
-        fn: (JsonObject) -> JsonObject,
-    ): JsonObject {
-        val plan = root["plan"]?.jsonObject ?: return root
-        val workoutPlan = plan["workoutPlan"]?.jsonObject ?: return root
-        val weeklyArr = workoutPlan["weeklyPlan"]?.jsonArray ?: return root
+        fn: (JsonObject) -> JsonObject?,
+    ): JsonObject? {
+        val plan = root["plan"]?.jsonObject ?: return null
+        val workoutPlan = plan["workoutPlan"]?.jsonObject ?: return null
+        val weeklyArr = workoutPlan["weeklyPlan"]?.jsonArray ?: return null
         val weekly = weeklyArr.toMutableList()
         val idx = weekly.indexOfFirst {
             it.jsonObject.stringOr("day")?.equals(dayLabel, ignoreCase = true) == true
         }
-        if (idx < 0) return root
-        val updatedDay = fn(weekly[idx].jsonObject)
+        if (idx < 0) return null
+        val updatedDay = fn(weekly[idx].jsonObject) ?: return null
         weekly[idx] = updatedDay
         val newWorkoutPlan = workoutPlan.replaceKey("weeklyPlan", JsonArray(weekly))
         val newPlan = plan.replaceKey("workoutPlan", newWorkoutPlan)

@@ -143,6 +143,7 @@ struct EditMealSheet: View {
 
         do {
             try context.save()
+            MealChangeNotifier.postLocalMealsChanged()
             dismiss()
             Task {
                 await syncEngine?.markDirty()

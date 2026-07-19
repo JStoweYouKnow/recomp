@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
 import { dbGetUserIdByPhone } from "@/lib/db";
 import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
-import { invokeRico, buildRicoContextFromServer, persistLogMealActions } from "@/lib/services/rico";
+import { invokeRico, buildRicoContextFromServer, persistHeadlessRicoActions } from "@/lib/services/rico";
 import { logError } from "@/lib/logger";
 
 /** Twilio webhook for incoming SMS. Configure your Twilio number's "A MESSAGE COMES IN" to this URL. */
@@ -81,12 +81,14 @@ export async function POST(req: NextRequest) {
       context,
     });
 
+    let replyText = reply;
     if (actions.length > 0) {
-      await persistLogMealActions(userId, actions);
+      const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
+      replyText += replySuffix;
     }
 
     const res = new MessagingResponse();
-    const truncated = reply.length > 1600 ? `${reply.slice(0, 1597)}...` : reply;
+    const truncated = replyText.length > 1600 ? `${replyText.slice(0, 1597)}...` : replyText;
     res.message(truncated);
 
     return new NextResponse(res.toString(), {
