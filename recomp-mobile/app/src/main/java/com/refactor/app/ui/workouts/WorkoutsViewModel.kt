@@ -163,7 +163,7 @@ class WorkoutsViewModel(
     }
 
     suspend fun applyScheduleAction(action: ScheduleAction): Result<String> {
-        val progress = workoutProgressMap.value
+        val progress = mergedWorkoutProgress(_plan.value)
         var summary = ""
         val local = syncRepository.mutateCachedSnapshot { snap ->
             val plan = snap.plan ?: return@mutateCachedSnapshot snap
@@ -186,6 +186,9 @@ class WorkoutsViewModel(
 
     suspend fun askCoachForSchedule(): Result<String> =
         syncRepository.adjustWorkoutSchedule(useAiRecommendation = true).map { it.summary }
+
+    fun mergedWorkoutProgress(plan: FitnessPlanDto?): Map<String, String> =
+        progressStore.mergedForPush(plan)
 
     class Factory(
         private val application: Application,

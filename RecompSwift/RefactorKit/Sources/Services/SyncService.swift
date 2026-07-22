@@ -489,10 +489,16 @@ public actor SyncService: ModelActor {
 
         if !skipDeletions {
             let pendingKeys = Set(localMeals.filter { !$0.synced }.map(\.syncKey))
+            let graceCutoff = Date().addingTimeInterval(-120)
+            var protectedKeys = Set<String>()
             for meal in localMeals where meal.synced {
+                if meal.loggedAt > graceCutoff {
+                    protectedKeys.insert(meal.syncKey)
+                    continue
+                }
                 fresh.delete(meal)
             }
-            knownKeys = pendingKeys
+            knownKeys = pendingKeys.union(protectedKeys)
         }
 
         for dto in mealDTOs {

@@ -61,7 +61,7 @@ struct WorkoutsView: View {
                         if let plan = currentPlan {
                             CatchUpBannerView(
                                 plan: plan,
-                                progress: workoutService.webWorkoutProgressDictionaryForSync(),
+                                progress: workoutService.webWorkoutProgressMergedForSync(plan: plan),
                                 planService: planService,
                                 modelContext: context
                             )
@@ -164,7 +164,7 @@ struct WorkoutsView: View {
                 _ = planService.applyLocalScheduleAction(
                     action: .skipToday,
                     to: plan,
-                    progress: workoutService.webWorkoutProgressDictionaryForSync()
+                    progress: workoutService.webWorkoutProgressMergedForSync(plan: plan)
                 )
                 try? context.save()
                 NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)

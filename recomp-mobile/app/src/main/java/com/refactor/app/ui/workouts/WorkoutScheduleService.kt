@@ -54,6 +54,10 @@ object WorkoutScheduleService {
             val planIndex = WorkoutProgramSchedule.planIndexForDate(plan, parse(dateStr)) ?: continue
             val id = sessionId(planIndex, dateStr)
             if (known.contains(id)) continue
+            val alreadyTracked = plan.workoutPlan?.missedSessions.orEmpty().any {
+                it.planIndex == planIndex && it.scheduledDate == dateStr && it.status != "missed"
+            }
+            if (alreadyTracked) continue
             if (isWorkoutSessionComplete(plan, planIndex, dateStr, progress)) continue
             val day = wp[planIndex]
             found += MissedSessionDto(
@@ -81,7 +85,9 @@ object WorkoutScheduleService {
     ): Int {
         val detected = detectMissedSessions(plan, progress, today, days)
         val tracked = plan.workoutPlan?.missedSessions.orEmpty().filter {
-            it.status == "missed" && it.scheduledDate >= offsetDate(today, -days)
+            it.status == "missed" &&
+                it.scheduledDate >= offsetDate(today, -days) &&
+                !isWorkoutSessionComplete(plan, it.planIndex, it.scheduledDate, progress)
         }
         return (detected.map { it.id } + tracked.map { it.id }).toSet().size
     }
@@ -163,10 +169,48 @@ object WorkoutScheduleService {
         val day = plan.workoutPlan?.weeklyPlan?.getOrNull(planIndex) ?: return false
         val items = allExercises(day)
         if (items.isEmpty()) return false
+        val weekStart = WorkoutProgramSchedule.mondayWeekStartStringContaining(date)
+        val weekProgress = progressForDate(plan, date, progress)
         return items.count { (exercise, section) ->
-            val key = exerciseProgressKey(plan.id, day, exercise, section)
-            progress[key]?.take(10) == date
+            val legacy = exerciseProgressKey(plan.id, day, exercise, section)
+            val scoped = WorkoutWebProgress.weekScopedKey(plan.id, weekStart, day.day, section, exercise)
+            val ts = weekProgress[legacy] ?: progress[scoped] ?: progress[legacy]
+            ts?.take(10) == date
         } >= items.size
+    }
+
+    private fun progressForDate(
+        plan: FitnessPlanDto,
+        date: String,
+        progress: WorkoutProgressMap,
+    ): Map<String, String> {
+        val weekStart = WorkoutProgramSchedule.mondayWeekStartStringContaining(date)
+        val filtered = mutableMapOf<String, String>()
+        val weekPattern = Regex("^\\d{4}-\\d{2}-\\d{2}$")
+        for ((key, ts) in progress) {
+            if (ts.isBlank()) continue
+            val legacy = legacyLookupKey(key, plan.id) ?: continue
+            val parts = key.split(':')
+            val isWeekScoped = parts.size > 1 && weekPattern.matches(parts[1])
+            when {
+                isWeekScoped && parts[1] == weekStart -> filtered[legacy] = ts
+                !isWeekScoped && isTimestampInWeek(ts, weekStart) -> filtered[legacy] = ts
+            }
+        }
+        return filtered
+    }
+
+    private fun legacyLookupKey(key: String, planId: String): String? {
+        val parsed = WorkoutWebProgress.parseKey(key, planId) ?: return null
+        return WorkoutWebProgress.legacyKey(planId, parsed.dayLabel, parsed.section, parsed.exercise)
+    }
+
+    private fun isTimestampInWeek(isoTimestamp: String, weekStartMonday: String): Boolean {
+        val ts = isoTimestamp.take(10)
+        val start = runCatching { parse(weekStartMonday) }.getOrNull() ?: return false
+        val tsDate = runCatching { parse(ts) }.getOrNull() ?: return false
+        val end = start.plusDays(7)
+        return !tsDate.isBefore(start) && tsDate.isBefore(end)
     }
 
     private fun sessionId(planIndex: Int, scheduledDate: String) = "$planIndex:$scheduledDate"

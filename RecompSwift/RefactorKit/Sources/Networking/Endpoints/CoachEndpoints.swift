@@ -232,6 +232,8 @@ public enum RicoAction: Decodable, Sendable {
 }
 
 public struct LogMealPayload: Decodable, Sendable {
+    public let id: String?
+    public let date: String?
     public let name: String
     public let calories: Double
     public let protein: Double
@@ -240,12 +242,18 @@ public struct LogMealPayload: Decodable, Sendable {
     public let mealType: MealType?
 
     enum CodingKeys: String, CodingKey {
-        case name, calories, protein, carbs, fat, mealType
+        case id, date, name, calories, protein, carbs, fat, mealType
     }
 
     /// Bedrock payloads can omit fields or use integers — keep meal logging resilient.
     nonisolated public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawId = try c.decodeIfPresent(String.self, forKey: .id)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        id = rawId.flatMap { $0.isEmpty ? nil : $0 }
+        let rawDate = try c.decodeIfPresent(String.self, forKey: .date)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        date = rawDate.flatMap { $0.isEmpty ? nil : $0 }
         let rawName = try c.decodeIfPresent(String.self, forKey: .name)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         name = rawName.flatMap { $0.isEmpty ? nil : $0 } ?? "Meal"
@@ -267,11 +275,25 @@ public struct LogMealPayload: Decodable, Sendable {
     ) -> Double {
         if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return d }
         if let i = try? c.decodeIfPresent(Int.self, forKey: key) { return Double(i) }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key),
+           let parsed = Double(s.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return parsed
+        }
         return 0
     }
 
     public var asMacros: Macros {
         Macros(calories: Int(calories.rounded()), protein: protein, carbs: carbs, fat: fat)
+    }
+
+    public var resolvedId: String {
+        if let id, !id.isEmpty { return id }
+        return UUID().uuidString
+    }
+
+    public var resolvedDate: String {
+        if let date, !date.isEmpty { return date }
+        return DateHelpers.todayString()
     }
 }
 

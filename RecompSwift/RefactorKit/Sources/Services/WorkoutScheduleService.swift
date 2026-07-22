@@ -49,7 +49,12 @@ public enum WorkoutScheduleService {
             }
             let id = sessionId(planIndex: planIndex, scheduledDate: dateStr)
             if known.contains(id) { continue }
+            let alreadyTracked = (plan.workoutPlan.missedSessions ?? []).contains {
+                $0.planIndex == planIndex && $0.scheduledDate == dateStr && $0.status != .missed
+            }
+            if alreadyTracked { continue }
             if isWorkoutSessionComplete(plan: plan, planIndex: planIndex, date: dateStr, progress: progress) { continue }
+            guard planIndex < plan.workoutPlan.weeklyPlan.count else { continue }
             let day = plan.workoutPlan.weeklyPlan[planIndex]
             found.append(MissedSession(
                 id: id,
@@ -77,7 +82,9 @@ public enum WorkoutScheduleService {
     ) -> Int {
         let detected = detectMissedSessions(plan: plan, progress: progress, today: today, lookbackDays: days)
         let tracked = (plan.workoutPlan.missedSessions ?? []).filter {
-            $0.status == .missed && $0.scheduledDate >= (DateHelpers.offsetDate(today, by: -days) ?? "")
+            $0.status == .missed &&
+                $0.scheduledDate >= (DateHelpers.offsetDate(today, by: -days) ?? "") &&
+                !isWorkoutSessionComplete(plan: plan, planIndex: $0.planIndex, date: $0.scheduledDate, progress: progress)
         }
         var ids = Set(detected.map(\.id))
         for s in tracked { ids.insert(s.id) }
@@ -208,15 +215,24 @@ public enum WorkoutScheduleService {
         status: MissedSessionStatus,
         rescheduledTo: String? = nil
     ) -> MissedSession {
-        let day = plan.workoutPlan.weeklyPlan[planIndex]
+        let dayLabel: String
+        let focus: String?
+        if planIndex >= 0, planIndex < plan.workoutPlan.weeklyPlan.count {
+            let day = plan.workoutPlan.weeklyPlan[planIndex]
+            dayLabel = day.day
+            focus = day.focus
+        } else {
+            dayLabel = "Workout"
+            focus = nil
+        }
         return MissedSession(
             id: sessionId(planIndex: planIndex, scheduledDate: scheduledDate),
             planIndex: planIndex,
             scheduledDate: scheduledDate,
             status: status,
             rescheduledTo: rescheduledTo,
-            dayLabel: day.day,
-            focus: day.focus
+            dayLabel: dayLabel,
+            focus: focus
         )
     }
 
@@ -230,17 +246,70 @@ public enum WorkoutScheduleService {
         let day = plan.workoutPlan.weeklyPlan[planIndex]
         let slots = day.enumeratedExerciseSlots()
         guard !slots.isEmpty else { return false }
+
+        let weekStart = DateHelpers.mondayWeekStartString(containingCalendarDay: date)
+        let weekProgress = progressForDate(plan: plan, date: date, progress: progress)
+
         let done = slots.filter { pair in
             let section = WorkoutWebProgress.sectionForExerciseSlot(day: day, globalSlot: pair.globalSlot)
-            let key = WorkoutWebProgress.legacyKey(
+            let legacy = WorkoutWebProgress.legacyKey(
                 planId: plan.id,
                 dayLabel: day.day,
                 section: section,
                 exercise: pair.exercise
             )
-            return progress[key]?.prefix(10) == Substring(date)
+            let scoped = WorkoutWebProgress.weekScopedKey(
+                planId: plan.id,
+                weekStartMondayYyyyMmDd: weekStart,
+                dayLabel: day.day,
+                section: section,
+                exercise: pair.exercise
+            )
+            let ts = weekProgress[legacy] ?? progress[scoped] ?? progress[legacy]
+            return ts?.prefix(10) == Substring(date)
         }.count
+
         return done >= slots.count
+    }
+
+    private static func progressForDate(
+        plan: FitnessPlan,
+        date: String,
+        progress: [String: String]
+    ) -> [String: String] {
+        let weekStart = DateHelpers.mondayWeekStartString(containingCalendarDay: date)
+        var filtered: [String: String] = [:]
+        for (key, ts) in progress {
+            guard !ts.isEmpty else { continue }
+            guard let legacy = legacyLookupKey(from: key, planId: plan.id) else { continue }
+            let parts = key.split(separator: ":", omittingEmptySubsequences: false)
+            let isWeekScoped = parts.count > 1 && parts[1].range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil
+            if isWeekScoped, String(parts[1]) == weekStart {
+                filtered[legacy] = ts
+            } else if !isWeekScoped, isTimestampInWeek(ts, weekStartMonday: weekStart) {
+                filtered[legacy] = ts
+            }
+        }
+        return filtered
+    }
+
+    private static func legacyLookupKey(from key: String, planId: String) -> String? {
+        guard let parsed = WorkoutWebProgress.parseKey(key, planId: planId) else { return nil }
+        return WorkoutWebProgress.legacyKey(
+            planId: planId,
+            dayLabel: parsed.dayLabel,
+            section: parsed.section,
+            exercise: parsed.exercise
+        )
+    }
+
+    private static func isTimestampInWeek(_ isoTimestamp: String, weekStartMonday: String) -> Bool {
+        let ts = String(isoTimestamp.prefix(10))
+        guard let tsDate = DateHelpers.date(from: ts),
+              let startDate = DateHelpers.date(from: weekStartMonday),
+              let endDate = Calendar.current.date(byAdding: .day, value: 7, to: startDate)
+        else { return false }
+        return tsDate >= startDate && tsDate < endDate
     }
 
     private static func isProgramWeekFullyComplete(

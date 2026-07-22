@@ -73,9 +73,11 @@ export function applyRicoActionsToState(
       }
       case "log_meal": {
         const p = act.payload;
+        const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const date = getTodayLocal();
         state.meals.push({
-          id: crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-          date: getTodayLocal(),
+          id,
+          date,
           name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : "Meal",
           mealType: parseMealType(p.mealType),
           loggedAt: new Date().toISOString(),
@@ -86,6 +88,9 @@ export function applyRicoActionsToState(
             fat: num(p.fat),
           },
         });
+        // Echo ids back on the action payload so mobile clients insert the same row the server saved.
+        p.id = id;
+        p.date = date;
         changed = true;
         touchedMeals = true;
         applied.push("log_meal");

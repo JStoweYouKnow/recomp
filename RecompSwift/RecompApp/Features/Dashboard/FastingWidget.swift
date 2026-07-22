@@ -5,11 +5,14 @@ import RefactorKit
 struct FastingWidget: View {
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
-    @Query(filter: #Predicate<FastingSession> { $0.endTime == nil },
-           sort: \FastingSession.startTime, order: .reverse)
-    private var activeSessions: [FastingSession]
+    // Avoid `#Predicate { $0.endTime == nil }` — comparing optionals to nil in SwiftData
+    // predicates triggers runtime assertions on iOS 26 when the query re-evaluates after sync.
+    @Query(sort: \FastingSession.startTime, order: .reverse)
+    private var fastingSessions: [FastingSession]
 
-    private var activeSession: FastingSession? { activeSessions.first }
+    private var activeSession: FastingSession? {
+        fastingSessions.first { $0.endTime == nil }
+    }
     @State private var saveError: String?
 
     var body: some View {

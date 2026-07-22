@@ -11,12 +11,20 @@ enum WidgetSharedModelContainer {
             )
         } catch {
             Logger(subsystem: "com.refactor.ios", category: "SwiftData")
-                .error("RecompWidgetsExtension: shared store failed to open (\(error, privacy: .public)); using a temporary in-memory store.")
+                .error("RecompWidgetsExtension: shared store failed to open (\(error, privacy: .public)); attempting recovery.")
+            RefactorSchema.deleteStore(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
             do {
-                return try RefactorSchema.makeContainerNonisolated(inMemory: true)
+                return try RefactorSchema.makeContainerNonisolated(
+                    appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
+                )
             } catch {
-                // In-memory creation should never fail; if it does the widget can't render data.
-                fatalError("Widget SwiftData store could not start: \(error)")
+                Logger(subsystem: "com.refactor.ios", category: "SwiftData")
+                    .error("RecompWidgetsExtension: recovery failed (\(error, privacy: .public)); using a temporary in-memory store.")
+                do {
+                    return try RefactorSchema.makeContainerNonisolated(inMemory: true)
+                } catch {
+                    fatalError("Widget SwiftData store could not start: \(error)")
+                }
             }
         }
     }()

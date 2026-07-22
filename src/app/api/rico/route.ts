@@ -3,7 +3,8 @@ import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
 import { logInfo, logError, withRequestLogging } from "@/lib/logger";
-import { invokeRico } from "@/lib/services/rico";
+import { invokeRico, persistHeadlessRicoActions } from "@/lib/services/rico";
+import { stripRicoDiagnosticMarkup } from "@/lib/rico-reply-sanitizer";
 import { dbGetSavedRecipes, dbSaveSavedRecipes } from "@/lib/db";
 import { rankWithDiscovery } from "@/lib/recipe-library";
 import { remainingMacros } from "@/lib/recipe-fit";
@@ -34,6 +35,12 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
     let recipeSaved: CookingAppRecipe | undefined;
 
     const userId = await getUserId(req.headers);
+    let replyText = reply;
+    if (userId && actions.length > 0) {
+      const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
+      replyText += replySuffix;
+    }
+
     if (userId && actions.length > 0) {
       for (const action of actions) {
         if (action.type === "suggest_recipes") {
@@ -108,7 +115,7 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
 
     logInfo("Rico chat reply", { route: "rico", persona: persona || "default", actions: actions.length });
     return NextResponse.json({
-      reply,
+      reply: stripRicoDiagnosticMarkup(replyText),
       actions,
       recipeSuggestions,
       recipeSaved,

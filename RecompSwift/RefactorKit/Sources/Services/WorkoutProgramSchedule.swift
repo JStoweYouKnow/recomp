@@ -81,9 +81,18 @@ public enum WorkoutProgramSchedule {
             }
         }
 
-        let mondayBased = (dow + 5) % 7 // Mon = 0 … Sun = 6 (matches web)
-        if mondayBased < wp.count { return mondayBased }
+        if !planUsesNamedWeekdays(wp) {
+            let mondayBased = (dow + 5) % 7 // Mon = 0 … Sun = 6 (matches web)
+            if mondayBased < wp.count { return mondayBased }
+        }
         return nil
+    }
+
+    private static func planUsesNamedWeekdays(_ weeklyPlan: [WorkoutDay]) -> Bool {
+        weeklyPlan.contains { day in
+            let p = day.day.lowercased()
+            return weekdayNames.contains { p.hasPrefix($0) } || shortNames.contains { p.hasPrefix($0) }
+        }
     }
 
     /// Rows to show on the Workouts tab: full week for classic 7-day plans; current program week only for PDF-style plans.

@@ -32,6 +32,7 @@ describe("matchDayToDate", () => {
     const plan = makePlan();
     expect(matchDayToDate(plan, "2026-06-29")).not.toBeNull(); // Monday
     expect(matchDayToDate(plan, "2026-06-28")).toBeNull(); // Sunday rest
+    expect(matchDayToDate(plan, "2026-06-30")).toBeNull(); // Tuesday rest (not Wed by index)
   });
 
   it("honors program week offset for multi-week plans", () => {
@@ -92,5 +93,41 @@ describe("shouldShowCatchUpBanner", () => {
   it("hides when dismissed today", () => {
     const plan = makePlan({ catchUpBannerDismissedAt: "2026-06-30T10:00:00.000Z" });
     expect(shouldShowCatchUpBanner(plan, {}, "2026-06-30")).toBe(false);
+  });
+
+  it("hides when tracked missed sessions were completed", () => {
+    const plan: FitnessPlan = {
+      ...makePlan({
+        weeklyPlan: [
+          { day: "Monday", focus: "Push", exercises: [{ name: "Bench", sets: "3", reps: "10" }] },
+          { day: "Friday", focus: "Legs", exercises: [{ name: "Squat", sets: "3", reps: "8" }] },
+        ],
+        missedSessions: [
+          {
+            id: "0:2026-06-29",
+            planIndex: 0,
+            scheduledDate: "2026-06-29",
+            status: "missed",
+            dayLabel: "Monday",
+            focus: "Push",
+          },
+          {
+            id: "1:2026-07-03",
+            planIndex: 1,
+            scheduledDate: "2026-07-03",
+            status: "missed",
+            dayLabel: "Friday",
+            focus: "Legs",
+          },
+        ],
+      }),
+    };
+    const monday = plan.workoutPlan.weeklyPlan[0];
+    const friday = plan.workoutPlan.weeklyPlan[1];
+    const progress = {
+      [`${plan.id}:${monday.day}:Bench:3:10:`]: "2026-06-29T18:00:00.000Z",
+      [`${plan.id}:${friday.day}:Squat:3:8:`]: "2026-07-03T18:00:00.000Z",
+    };
+    expect(shouldShowCatchUpBanner(plan, progress, "2026-07-05")).toBe(false);
   });
 });

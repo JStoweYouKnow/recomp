@@ -121,6 +121,9 @@ fun WorkoutsScreen(
     val progressMap by vm.workoutProgressMap.collectAsStateWithLifecycle()
     val planId = plan?.id.orEmpty()
     val progressUiEpoch by vm.progressUiEpoch.collectAsStateWithLifecycle()
+    val catchUpProgress = remember(plan, progressMap, progressUiEpoch) {
+        vm.mergedWorkoutProgress(plan)
+    }
 
     val cacheEntity by syncCacheDao.observe().collectAsStateWithLifecycle(initialValue = null)
     val todaysBiofeedback = remember(cacheEntity) {
@@ -201,7 +204,7 @@ fun WorkoutsScreen(
             plan?.let { currentPlan ->
                 CatchUpBanner(
                     plan = currentPlan,
-                    progress = progressMap,
+                    progress = catchUpProgress,
                     onApplyAction = { action ->
                         vm.applyScheduleAction(action).getOrNull()
                     },

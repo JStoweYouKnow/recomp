@@ -156,6 +156,8 @@ struct RootView: View {
                 }
             }
             if auth.isAuthenticated, let engine = syncEngine {
+                // Let dashboard @Query views finish their first pass before pull-merge updates the store.
+                await Task.yield()
                 try? await engine.fetchAndApply()
                 auth.refreshCurrentUserFromStore()
                 subscriptions.proAccessOverride = auth.currentUser?.proAccess == true

@@ -75,9 +75,18 @@ object WorkoutProgramSchedule {
             if (weekdayMatches(day.day.lowercase(), dayName, shortName)) return i
         }
 
-        val mondayBased = if (dow == 0) 6 else dow - 1
-        return if (mondayBased < wp.size) mondayBased else null
+        if (!planUsesNamedWeekdays(wp)) {
+            val mondayBased = if (dow == 0) 6 else dow - 1
+            if (mondayBased < wp.size) return mondayBased
+        }
+        return null
     }
+
+    private fun planUsesNamedWeekdays(weeklyPlan: List<WorkoutDay>): Boolean =
+        weeklyPlan.any { day ->
+            val p = day.day.lowercase()
+            weekdayNames.any { p.startsWith(it) } || shortNames.any { p.startsWith(it) }
+        }
 }
 
 object WorkoutScheduleService {
@@ -141,7 +150,9 @@ object WorkoutScheduleService {
     fun countRecentMissed(plan: FitnessPlan, progress: WorkoutProgressMap, days: Int = 7, today: String = DateHelpers.today()): Int {
         val detected = detectMissedSessions(plan, progress, today, days)
         val tracked = (plan.workoutPlan.missedSessions ?: emptyList()).filter {
-            it.status == MissedSessionStatus.missed && it.scheduledDate >= DateHelpers.offsetDate(today, -days)
+            it.status == MissedSessionStatus.missed &&
+                it.scheduledDate >= DateHelpers.offsetDate(today, -days) &&
+                !isWorkoutSessionComplete(plan, it.planIndex, it.scheduledDate, progress)
         }
         return (detected.map { it.id } + tracked.map { it.id }).toSet().size
     }

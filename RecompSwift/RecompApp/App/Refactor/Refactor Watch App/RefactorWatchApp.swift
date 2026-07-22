@@ -12,17 +12,26 @@ struct RefactorWatchApp: App {
 
     init() {
         WatchSessionManager.shared.activate()
+        let logger = Logger(subsystem: "com.refactor.ios", category: "SwiftData")
         do {
             modelContainer = try RefactorSchema.makeContainer(
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
             )
         } catch {
-            Logger(subsystem: "com.refactor.ios", category: "SwiftData")
-                .error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Using a temporary in-memory store.")
+            logger.error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Attempting recovery.")
+            RefactorSchema.deleteStore(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
             do {
-                modelContainer = try RefactorSchema.makeContainer(inMemory: true)
+                modelContainer = try RefactorSchema.makeContainer(
+                    appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
+                )
+                logger.info("SwiftData store recovered on watch.")
             } catch {
-                fatalError("SwiftData could not start (watch): \(error)")
+                logger.error("SwiftData recovery failed (watch): \(error, privacy: .public). Using a temporary in-memory store.")
+                do {
+                    modelContainer = try RefactorSchema.makeContainer(inMemory: true)
+                } catch {
+                    fatalError("SwiftData could not start (watch): \(error)")
+                }
             }
         }
         syncEngine = SyncEngine(modelContainer: modelContainer)

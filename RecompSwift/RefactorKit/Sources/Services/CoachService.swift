@@ -23,7 +23,14 @@ public final class CoachService {
         let descriptor = FetchDescriptor<CoachMessage>(
             sortBy: [SortDescriptor(\.timestamp)]
         )
-        messages = (try? context.fetch(descriptor)) ?? []
+        messages = ((try? context.fetch(descriptor)) ?? []).map { message in
+            guard message.role == .assistant else { return message }
+            let cleaned = RicoReplySanitizer.stripDiagnosticMarkup(message.content)
+            guard cleaned != message.content else { return message }
+            message.content = cleaned
+            return message
+        }
+        try? context.save()
     }
 
     public func sendMessage(_ text: String, context: ModelContext) async throws {
@@ -40,9 +47,12 @@ public final class CoachService {
         pendingRegenerateOptions = .default
 
         let historyDTOs = messages.map { msg in
-            CoachMessageDTO(
+            let content = msg.role == .assistant
+                ? RicoReplySanitizer.stripDiagnosticMarkup(msg.content)
+                : msg.content
+            return CoachMessageDTO(
                 role: msg.role == .user ? "user" : "assistant",
-                content: msg.content,
+                content: content,
                 at: ISO8601DateFormatter().string(from: msg.timestamp)
             )
         }
@@ -60,7 +70,9 @@ public final class CoachService {
             throw error
         }
 
-        var replyText = response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        var replyText = RicoReplySanitizer.stripDiagnosticMarkup(
+            response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         if let suggestions = response.recipeSuggestions, !suggestions.isEmpty {
             replyText += Self.formatRecipeSuggestions(suggestions)
         }
@@ -91,6 +103,9 @@ public final class CoachService {
 
         if let suffix = applyResult.statusSuffix {
             replyText += suffix
+        } else if Self.replyClaimsMealLogged(replyText), !applyResult.touchedMeals {
+            replyText +=
+                "\n\nThat meal wasn't saved — Ref didn't return a log action. Try again or add it manually in Meals."
         }
 
         let assistantMessage = CoachMessage(role: .assistant, content: replyText)
@@ -241,6 +256,12 @@ public final class CoachService {
         return "\n\n" + lines.joined(separator: "\n")
     }
 
+    /// Model sometimes replies "I've logged …" in plain text without calling `log_meal`.
+    private static func replyClaimsMealLogged(_ reply: String) -> Bool {
+        let lower = reply.lowercased()
+        return lower.contains("i've logged") || lower.contains("i logged") || lower.contains("logged your meal")
+    }
+
     private func toExercisePayload(_ ex: WorkoutExercise) -> RicoExercisePayload {
         RicoExercisePayload(name: ex.name, sets: ex.sets, reps: ex.reps, notes: ex.notes)
     }
@@ -254,8 +275,19 @@ public final class CoachService {
         for action in actions {
             switch action {
             case .logMeal(let payload):
+                let syncKey = "\(payload.resolvedDate)#\(payload.resolvedId)"
+                var descriptor = FetchDescriptor<MealEntry>(
+                    predicate: #Predicate { $0.syncKey == syncKey }
+                )
+                descriptor.fetchLimit = 1
+                if (try? modelContext.fetch(descriptor))?.first != nil {
+                    result.touchedMeals = true
+                    result.recordApplied("log_meal")
+                    continue
+                }
                 let entry = MealEntry(
-                    date: DateHelpers.todayString(),
+                    id: payload.resolvedId,
+                    date: payload.resolvedDate,
                     mealType: payload.mealType ?? .snack,
                     name: payload.name,
                     macros: payload.asMacros,

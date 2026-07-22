@@ -5,11 +5,12 @@ import RefactorKit
 struct WatchFastingView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
-    @Query(filter: #Predicate<FastingSession> { $0.endTime == nil },
-           sort: \FastingSession.startTime, order: .reverse)
-    private var activeSessions: [FastingSession]
+    @Query(sort: \FastingSession.startTime, order: .reverse)
+    private var fastingSessions: [FastingSession]
 
-    private var session: FastingSession? { activeSessions.first }
+    private var session: FastingSession? {
+        fastingSessions.first { $0.endTime == nil }
+    }
 
     var body: some View {
         VStack(spacing: 12) {

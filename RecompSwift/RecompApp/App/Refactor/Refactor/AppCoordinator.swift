@@ -67,7 +67,7 @@ struct MainTabView: View {
 
         TabView(selection: $coord.selectedTab) {
             ForEach(AppCoordinator.Tab.allTabs) { tab in
-                tab.destinationView
+                LazyTabContent(tab: tab)
                     .tabItem {
                         Label(tab.rawValue, systemImage: tab.icon)
                     }
@@ -75,6 +75,21 @@ struct MainTabView: View {
             }
         }
         .tint(.blue)
+    }
+}
+
+/// SwiftUI `TabView` builds every tab's body at launch. Defer heavy tabs (Workouts catch-up,
+/// Progress charts) until the user selects them so cold start stays stable on device.
+private struct LazyTabContent: View {
+    @Environment(AppCoordinator.self) private var coordinator
+    let tab: AppCoordinator.Tab
+
+    var body: some View {
+        if coordinator.selectedTab == tab {
+            tab.destinationView
+        } else {
+            Color.clear
+        }
     }
 }
 

@@ -86,17 +86,28 @@ object WorkoutProgramSchedule {
             if (weekdayMatches(wp[i].day.lowercase(), dayName, shortName)) return i
         }
 
-        val mondayBased = when (date.dayOfWeek) {
-            DayOfWeek.MONDAY -> 0
-            DayOfWeek.TUESDAY -> 1
-            DayOfWeek.WEDNESDAY -> 2
-            DayOfWeek.THURSDAY -> 3
-            DayOfWeek.FRIDAY -> 4
-            DayOfWeek.SATURDAY -> 5
-            DayOfWeek.SUNDAY -> 6
+        if (!planUsesNamedWeekdays(wp)) {
+            val mondayBased = when (date.dayOfWeek) {
+                DayOfWeek.MONDAY -> 0
+                DayOfWeek.TUESDAY -> 1
+                DayOfWeek.WEDNESDAY -> 2
+                DayOfWeek.THURSDAY -> 3
+                DayOfWeek.FRIDAY -> 4
+                DayOfWeek.SATURDAY -> 5
+                DayOfWeek.SUNDAY -> 6
+            }
+            if (mondayBased < wp.size) return mondayBased
         }
-        if (mondayBased < wp.size) return mondayBased
         return null
+    }
+
+    private fun planUsesNamedWeekdays(weeklyPlan: List<com.refactor.app.api.dto.WorkoutDayDto>): Boolean {
+        val names = listOf("sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday")
+        val shorts = listOf("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+        return weeklyPlan.any { day ->
+            val p = day.day.lowercase()
+            names.any { p.startsWith(it) } || shorts.any { p.startsWith(it) }
+        }
     }
 
     fun progressDayKeyForWorkoutDay(workoutDayLabel: String, weekContaining: LocalDate): String {

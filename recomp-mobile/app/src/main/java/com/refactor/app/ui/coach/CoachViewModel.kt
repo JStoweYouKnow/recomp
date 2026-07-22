@@ -11,6 +11,7 @@ import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.RegeneratePlanOptions
 import com.refactor.app.api.dto.RicoHistoryMessageDto
 import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
+import com.refactor.app.api.stripRicoDiagnosticMarkup
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.CoachMessageEntity
 import com.refactor.app.db.SyncCacheDao
@@ -87,7 +88,7 @@ class CoachViewModel(
             val history = coachMessageDao.listAllAsc().takeLast(RICO_HISTORY_MAX).map { row ->
                 RicoHistoryMessageDto(
                     role = if (row.role == "user") "user" else "assistant",
-                    content = row.content.take(RICO_CONTENT_MAX),
+                    content = stripRicoDiagnosticMarkup(row.content).take(RICO_CONTENT_MAX),
                     at = row.createdAtEpochMillis.toString(),
                 )
             }
@@ -146,7 +147,7 @@ class CoachViewModel(
                     }
                     val applyResult = applyOutcome?.result
                     val assistantText = buildString {
-                        append(res.reply.trim())
+                        append(stripRicoDiagnosticMarkup(res.reply.trim()))
                         res.recipeSuggestions?.takeIf { it.isNotEmpty() }?.let { list ->
                             if (isNotEmpty()) append("\n\n")
                             append(formatRecipeSuggestions(list))

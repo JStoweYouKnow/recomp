@@ -39,6 +39,72 @@ import RefactorKit
     )
 }
 
+@Test func workoutSchedule_hidesCatchUpBannerWhenTrackedSessionsCompleted() async throws {
+    let plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [
+                WorkoutDay(day: "Monday", focus: "Push", exercises: [WorkoutExercise(name: "Bench", sets: "3", reps: "10")]),
+                WorkoutDay(day: "Wednesday", focus: "Pull", exercises: [WorkoutExercise(name: "Row", sets: "3", reps: "10")]),
+            ],
+            tips: [],
+            missedSessions: [
+                MissedSession(id: "0:2026-06-29", planIndex: 0, scheduledDate: "2026-06-29", status: .missed, dayLabel: "Monday", focus: "Push"),
+                MissedSession(id: "1:2026-06-25", planIndex: 1, scheduledDate: "2026-06-25", status: .missed, dayLabel: "Wednesday", focus: "Pull"),
+            ]
+        )
+    )
+    let monday = plan.workoutPlan.weeklyPlan[0]
+    let wednesday = plan.workoutPlan.weeklyPlan[1]
+    let progress: [String: String] = [
+        WorkoutWebProgress.legacyKey(planId: plan.id, dayLabel: monday.day, section: "main", exercise: monday.exercises[0]): "2026-06-29T18:00:00.000Z",
+        WorkoutWebProgress.legacyKey(planId: plan.id, dayLabel: wednesday.day, section: "main", exercise: wednesday.exercises[0]): "2026-06-25T18:00:00.000Z",
+    ]
+    #expect(WorkoutScheduleService.shouldShowCatchUpBanner(plan: plan, progress: progress, today: "2026-06-30") == false)
+}
+
+@Test func workoutSchedule_ignoresStaleMissedSessionPlanIndex() async throws {
+    let plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [
+                WorkoutDay(day: "Monday", focus: "Push", exercises: [WorkoutExercise(name: "Bench", sets: "3", reps: "10")]),
+            ],
+            tips: [],
+            missedSessions: [
+                MissedSession(id: "99:2026-06-29", planIndex: 99, scheduledDate: "2026-06-29", status: .missed, dayLabel: "Monday", focus: "Push"),
+            ]
+        )
+    )
+    #expect(WorkoutScheduleService.countRecentMissed(plan: plan, progress: [:], today: "2026-06-30") == 0)
+}
+
+@Test func workoutSchedule_countsWeekScopedProgressAsComplete() async throws {
+    let plan = FitnessPlan(
+        userId: "u1",
+        dietPlan: DietPlan(dailyTargets: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65), weeklyPlan: [], tips: []),
+        workoutPlan: WorkoutPlan(
+            weeklyPlan: [
+                WorkoutDay(day: "Monday", focus: "Push", exercises: [WorkoutExercise(name: "Bench", sets: "3", reps: "10")]),
+            ],
+            tips: []
+        )
+    )
+    let day = plan.workoutPlan.weeklyPlan[0]
+    let scoped = WorkoutWebProgress.weekScopedKey(
+        planId: plan.id,
+        weekStartMondayYyyyMmDd: "2026-06-23",
+        dayLabel: day.day,
+        section: "main",
+        exercise: day.exercises[0]
+    )
+    let progress = [scoped: "2026-06-29T18:00:00.000Z"]
+    let missed = WorkoutScheduleService.detectMissedSessions(plan: plan, progress: progress, today: "2026-06-30", lookbackDays: 7)
+    #expect(!missed.contains { $0.scheduledDate == "2026-06-29" })
+}
+
 @Test func workoutSchedule_stayOnWeekIncrementsOffset() async throws {
     var plan = FitnessPlan(
         userId: "u1",

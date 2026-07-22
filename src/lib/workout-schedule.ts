@@ -54,8 +54,20 @@ export function matchDayToDate(plan: FitnessPlan, date: string): number | null {
     if (weekdayMatches(wp[i].day.toLowerCase().trim(), dayName, shortName)) return i;
   }
 
-  const mondayBased = dow === 0 ? 6 : dow - 1;
-  return mondayBased < wp.length ? mondayBased : null;
+  // Positional plans (e.g. "Day 1") map by weekday index; named plans treat unmatched days as rest.
+  if (!planUsesNamedWeekdays(wp)) {
+    const mondayBased = dow === 0 ? 6 : dow - 1;
+    return mondayBased < wp.length ? mondayBased : null;
+  }
+
+  return null;
+}
+
+function planUsesNamedWeekdays(weeklyPlan: WorkoutDay[]): boolean {
+  return weeklyPlan.some((d) => {
+    const p = d.day.toLowerCase().trim();
+    return WEEKDAY_NAMES.some((w) => p.startsWith(w)) || SHORT_WEEKDAY.some((w) => p.startsWith(w));
+  });
 }
 
 /** 1-based program week for a Monday week-start, honoring offset, pause, and completion mode. */
@@ -266,7 +278,10 @@ export function getCatchUpQueue(plan: FitnessPlan): MissedSession[] {
 export function countRecentMissed(plan: FitnessPlan, progress: WorkoutProgressMap, days = 7, today = getTodayLocal()): number {
   const detected = detectMissedSessions(plan, progress, today, days);
   const tracked = (plan.workoutPlan.missedSessions ?? []).filter(
-    (s) => s.status === "missed" && s.scheduledDate >= offsetDate(today, -days)
+    (s) =>
+      s.status === "missed" &&
+      s.scheduledDate >= offsetDate(today, -days) &&
+      !isWorkoutSessionComplete(plan, s.planIndex, s.scheduledDate, progress),
   );
   const ids = new Set([...detected.map((s) => s.id), ...tracked.map((s) => s.id)]);
   return ids.size;

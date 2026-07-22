@@ -72,8 +72,8 @@ internal object RicoSyncActionApplier {
             put("fat", JsonPrimitive(payload.doubleOr("fat")))
         }
         val meal = buildJsonObject {
-            put("id", JsonPrimitive(UUID.randomUUID().toString()))
-            put("date", JsonPrimitive(today))
+            put("id", JsonPrimitive(payload.stringOr("id") ?: UUID.randomUUID().toString()))
+            put("date", JsonPrimitive(payload.stringOr("date") ?: today))
             put("mealType", JsonPrimitive(parseMealType(payload)))
             put("name", JsonPrimitive(payload.stringOr("name") ?: "Meal"))
             put("loggedAt", JsonPrimitive(Instant.now().toString()))

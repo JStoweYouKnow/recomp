@@ -38,18 +38,22 @@ describe("applyRicoActionsToState", () => {
 
   it("logs a meal with optional mealType", () => {
     const state = { meals: [] as MealEntry[], plan: null };
-    const result = applyRicoActionsToState(
-      [
-        {
-          type: "log_meal",
-          payload: { name: "Oatmeal", calories: 350, protein: 12, carbs: 55, fat: 8, mealType: "breakfast" },
-        },
-      ],
-      state,
-    );
+    const payload: Record<string, unknown> = {
+      name: "Oatmeal",
+      calories: 350,
+      protein: 12,
+      carbs: 55,
+      fat: 8,
+      mealType: "breakfast",
+    };
+    const result = applyRicoActionsToState([{ type: "log_meal", payload }], state);
     expect(result.touchedMeals).toBe(true);
     expect(state.meals).toHaveLength(1);
     expect(state.meals[0]?.mealType).toBe("breakfast");
+    expect(typeof payload.id).toBe("string");
+    expect(typeof payload.date).toBe("string");
+    expect(state.meals[0]?.id).toBe(payload.id);
+    expect(state.meals[0]?.date).toBe(payload.date);
   });
 
   it("reports skipped swap when exercise is missing", () => {

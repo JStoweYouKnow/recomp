@@ -6,6 +6,7 @@ struct CoachChatView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.syncEngine) private var syncEngine
+    @Environment(AuthService.self) private var auth
     @State private var coachService = CoachService()
     @State private var planService = PlanService()
     @State private var messageText = ""
@@ -162,6 +163,8 @@ struct CoachChatView: View {
                             }
                             await syncEngine?.markDirty()
                             _ = await syncEngine?.syncNow()
+                            try? await syncEngine?.fetchAndApply()
+                            auth.refreshCurrentUserFromStore()
                         } catch {
                             sendError =
                                 (error as? LocalizedError)?.errorDescription
