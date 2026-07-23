@@ -31,8 +31,8 @@ android {
         applicationId = "com.refactor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 41
-        versionName = "5.5"
+        versionCode = 42
+        versionName = "5.6"
         // Optional: set in `gradle.properties` to enable FCM (`FirebaseMessaging`). Leave empty for CI/local without Firebase.
         val fbAppId = (project.findProperty("FIREBASE_APP_ID") as String?) ?: ""
         val fbApiKey = (project.findProperty("FIREBASE_API_KEY") as String?) ?: ""
