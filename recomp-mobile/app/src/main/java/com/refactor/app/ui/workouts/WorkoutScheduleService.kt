@@ -58,7 +58,7 @@ object WorkoutScheduleService {
                 it.planIndex == planIndex && it.scheduledDate == dateStr && it.status != "missed"
             }
             if (alreadyTracked) continue
-            if (isWorkoutSessionComplete(plan, planIndex, dateStr, progress)) continue
+            if (isWorkoutSessionCompleteInternal(plan, planIndex, dateStr, progress)) continue
             val day = wp[planIndex]
             found += MissedSessionDto(
                 id = id,
@@ -160,7 +160,17 @@ object WorkoutScheduleService {
         return "${localToday}T$utcTail"
     }
 
-    private fun isWorkoutSessionComplete(
+    fun matchDayToDate(plan: FitnessPlanDto, date: String): Int? =
+        runCatching { WorkoutProgramSchedule.planIndexForDate(plan, parse(date)) }.getOrNull()
+
+    fun isWorkoutSessionComplete(
+        plan: FitnessPlanDto,
+        planIndex: Int,
+        date: String,
+        progress: WorkoutProgressMap,
+    ): Boolean = isWorkoutSessionCompleteInternal(plan, planIndex, date, progress)
+
+    private fun isWorkoutSessionCompleteInternal(
         plan: FitnessPlanDto,
         planIndex: Int,
         date: String,

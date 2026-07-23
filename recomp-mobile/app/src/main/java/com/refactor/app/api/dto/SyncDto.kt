@@ -79,6 +79,24 @@ data class WorkoutExerciseDto(
 )
 
 @Serializable
+data class WorkoutSetLogDto(
+    val id: String,
+    val date: String,
+    val planId: String,
+    val dayLabel: String,
+    val section: String,
+    val exerciseName: String,
+    val globalSlot: Int,
+    val setIndex: Int,
+    val weightLbs: Double? = null,
+    val reps: Int? = null,
+    val rpe: Double? = null,
+    val prescribedSets: String? = null,
+    val prescribedReps: String? = null,
+    val loggedAt: String,
+)
+
+@Serializable
 data class WorkoutDayDto(
     val day: String,
     val focus: String,
@@ -270,6 +288,8 @@ data class SyncGetResponse(
     val plan: FitnessPlanDto? = null,
     /** Exercise slot → progress blob (strings; often JSON) from `dbGetWorkoutProgress`. */
     val workoutProgress: Map<String, String>? = null,
+    /** Per-set weight/reps/RPE logs from `dbGetWorkoutSetLogs`. */
+    val workoutSetLogs: List<WorkoutSetLogDto>? = null,
     val milestones: List<MilestoneDto>? = null,
     val wearableConnections: List<WearableConnectionDto>? = null,
     val wearableData: List<WearableDaySummaryDto>? = null,

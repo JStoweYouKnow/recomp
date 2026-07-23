@@ -101,6 +101,9 @@ public struct RicoContextPayload: Encodable, Sendable {
     public let savedRecipeNames: [String]?
     public let savedRecipes: [SavedRecipeDTO]?
     public let bodyWeight: Double?
+    public let completedWorkoutToday: CompletedSessionSummary?
+    public let workoutHistory: WorkoutHistorySummary?
+    public let nextWorkout: NextWorkoutPreview?
 
     public init(
         name: String? = nil,
@@ -118,7 +121,10 @@ public struct RicoContextPayload: Encodable, Sendable {
         savedRecipeCount: Int? = nil,
         savedRecipeNames: [String]? = nil,
         savedRecipes: [SavedRecipeDTO]? = nil,
-        bodyWeight: Double? = nil
+        bodyWeight: Double? = nil,
+        completedWorkoutToday: CompletedSessionSummary? = nil,
+        workoutHistory: WorkoutHistorySummary? = nil,
+        nextWorkout: NextWorkoutPreview? = nil
     ) {
         self.name = name
         self.goal = goal
@@ -136,6 +142,9 @@ public struct RicoContextPayload: Encodable, Sendable {
         self.savedRecipeNames = savedRecipeNames
         self.savedRecipes = savedRecipes
         self.bodyWeight = bodyWeight
+        self.completedWorkoutToday = completedWorkoutToday
+        self.workoutHistory = workoutHistory
+        self.nextWorkout = nextWorkout
     }
 }
 

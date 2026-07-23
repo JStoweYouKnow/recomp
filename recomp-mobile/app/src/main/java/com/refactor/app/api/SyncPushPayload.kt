@@ -27,6 +27,7 @@ internal fun buildSyncPushPayload(cacheRoot: JsonObject): JsonObject {
         "bloodWork",
         "activityLog",
         "workoutProgress",
+        "workoutSetLogs",
         "metabolicModel",
         "recentExerciseNames",
     )

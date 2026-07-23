@@ -55,6 +55,37 @@ data class RicoContextDto(
     val savedRecipeNames: List<String>? = null,
     val savedRecipes: List<SavedRecipeDto>? = null,
     val bodyWeight: Double? = null,
+    val completedWorkoutToday: CompletedSessionSummaryDto? = null,
+    val workoutHistory: WorkoutHistorySummaryDto? = null,
+    val nextWorkout: NextWorkoutPreviewDto? = null,
+)
+
+@Serializable
+data class CompletedSessionSummaryDto(
+    val date: String,
+    val planIndex: Int,
+    val day: String,
+    val focus: String,
+    val exercisesCompleted: List<String>,
+    val exerciseCount: Int,
+)
+
+@Serializable
+data class WorkoutHistorySummaryDto(
+    val sessionsCompletedLast7Days: Int,
+    val sessionsCompletedLast14Days: Int,
+    val recentSessions: List<CompletedSessionSummaryDto>,
+    val exerciseFrequency: Map<String, Int>,
+    val focusFrequency: Map<String, Int>,
+)
+
+@Serializable
+data class NextWorkoutPreviewDto(
+    val planIndex: Int,
+    val day: String,
+    val focus: String,
+    val scheduledDate: String? = null,
+    val mainExercises: List<String>,
 )
 
 @Serializable

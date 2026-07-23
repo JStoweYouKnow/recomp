@@ -7,6 +7,9 @@ import { dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
 import { getTodayLocal } from "../date-utils";
 import { applyRicoActionsToState, type RicoActionWire } from "../rico-actions";
+import { buildRicoWorkoutLearningContext } from "../workout-learning";
+import type { WorkoutProgressMap } from "../workout-schedule";
+import type { WorkoutSetLog } from "../types";
 
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 
@@ -27,6 +30,10 @@ CONTEXT YOU RECEIVE (JSON fields in the [Context: ...] prefix):
 - mealsLogged: number of meals logged today
 - xp: total experience points earned
 - workoutPlan.weeklyPlan: their current workout schedule with exercises, sets, reps
+- completedWorkoutToday: session they finished today (day, focus, exercisesCompleted)
+- workoutHistory: recent completion patterns (sessionsCompletedLast7Days, recentSessions, exerciseFrequency, focusFrequency)
+- nextWorkout: their upcoming scheduled session (day, focus, mainExercises, scheduledDate)
+- workoutPerformance: recentHighlights with last logged weight/reps/RPE and volume per exercise
 - equipment: list of available equipment (e.g. "free_weights", "machines", "bodyweight", "cable_machine")
 - injuries: list of physical limitations (e.g. "lower back pain", "knee injury") – CRITICAL: never recommend exercises that stress these areas
 - dietaryRestrictions: list (e.g. "vegetarian", "gluten-free", "dairy-free") – always respect when logging meals or making food suggestions
@@ -41,6 +48,7 @@ You have access to tools! You are an AGENT, not just a chatbot.
 7. If the user asks what to cook, which saved recipe fits their macros, or wants dinner ideas from their recipe library, use the 'suggest_recipes' tool. Pass mealType when they mention breakfast/lunch/dinner/snack.
 8. If the user shares a recipe URL to save (or asks to save a recipe link), use the 'save_recipe_from_url' tool with the URL.
 9. If the user asks to change when their imported or multi-week program starts (e.g. "start my program next Monday", "push week 1 to June 20"), use the 'adjust_program_start' tool with startDate as YYYY-MM-DD (any day in the week they want as program week 1).
+10. When completedWorkoutToday or workoutHistory is present, use it to personalize advice. After workouts, suggest recovery nutrition (protein/carbs timing). For nextWorkout, recommend progressive overload, exercise variety, or deloads based on exerciseFrequency, recentSessions, and workoutPerformance (last weights/reps/volume). Use swap_exercise, add_exercise, or update_workout_day to apply concrete plan tweaks when appropriate.
 Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "Swapped Bench Press for Dumbbell Press on Monday!").
 
 MACRO ESTIMATION GUIDELINES (for log_meal – accuracy matters, be realistic not generous):
@@ -346,6 +354,46 @@ export interface RicoContext {
   remainingMacros?: { calories: number; protein: number; carbs: number; fat: number };
   /** Saved recipes for server-side ranking (cap ~30 in client) */
   savedRecipes?: { id: string; name: string; calories: number; protein: number; carbs: number; fat: number; recipeUrl?: string; source?: string }[];
+  /** Session completed today (if any). */
+  completedWorkoutToday?: {
+    date: string;
+    day: string;
+    focus: string;
+    exercisesCompleted: string[];
+    exerciseCount: number;
+  };
+  /** Recent completion patterns for adaptive coaching. */
+  workoutHistory?: {
+    sessionsCompletedLast7Days: number;
+    sessionsCompletedLast14Days: number;
+    recentSessions: {
+      date: string;
+      day: string;
+      focus: string;
+      exercisesCompleted: string[];
+      exerciseCount: number;
+    }[];
+    exerciseFrequency: Record<string, number>;
+    focusFrequency: Record<string, number>;
+  };
+  /** Next scheduled incomplete workout. */
+  nextWorkout?: {
+    day: string;
+    focus: string;
+    scheduledDate: string | null;
+    mainExercises: string[];
+  };
+  /** Recent lift performance (weight, reps, volume). */
+  workoutPerformance?: {
+    recentHighlights: {
+      exerciseName: string;
+      lastDate?: string;
+      lastSets: { weightLbs?: number; reps?: number; rpe?: number }[];
+      bestWeightLbs?: number;
+      totalVolumeLbs?: number;
+    }[];
+    lastSessionVolumeLbs?: number;
+  };
 }
 
 export interface RicoHistoryMessage {
@@ -365,33 +413,123 @@ export interface RicoOutput {
   actions: { type: string; payload: Record<string, unknown> }[];
 }
 
-/** Invoke Rico and return reply text + optional tool actions. */
-export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
-  const { message, history = [], context = {}, persona } = input;
-  const msg = typeof message === "string" ? message.trim() : "";
-  if (!msg) throw new Error("Message required");
+/** User text that clearly asks to log food — used to force the log_meal tool. */
+export function isMealLogIntent(message: string): boolean {
+  const m = message.trim().toLowerCase();
+  if (!m) return false;
+  if (m.includes("?")) return false;
 
-  let systemPrompt = RICO_SYSTEM;
-  if (Object.keys(context).length > 0) {
-    systemPrompt += `\n\n[USER CONTEXT: ${JSON.stringify(context)}]`;
+  const patterns = [
+    /\b(i\s+(had|ate|eat|just\s+had|just\s+ate|am\s+eating))\b/,
+    /\b(log|logged|logging)\s+(my\s+)?(breakfast|lunch|dinner|snack|meal)\b/,
+    /^(had|ate)\s+/,
+    /\b(breakfast|lunch|dinner|snack)\s*[:—-]/,
+    /\b(i\s+(had|ate|eat|just\s+had|just\s+ate))\b.+\bfor\s+(breakfast|lunch|dinner|snack)\b/,
+  ];
+  if (patterns.some((p) => p.test(m))) return true;
+
+  // Short food-only messages in coach (e.g. "cheeseburger", "2 eggs scrambled", "bunch of grapes").
+  if (m.length > 120) return false;
+  if (/\b(workout|exercise|swap|replace|regenerate|program|schedule|target)\b/.test(m)) return false;
+  if (/\b\d+\s*(egg|eggs|oz|slice|slices|cup|cups|g|grams|lb|lbs)\b/.test(m)) return true;
+  const foodWords =
+    /\b(burger|cheeseburger|grape|grapes|egg|eggs|scrambled|salad|chicken|rice|oatmeal|shake|sandwich|pizza|burrito|bowl|bento|tempura|steak|fish|salmon|tuna|yogurt|banana|apple|toast|wrap|taco|pasta|soup|smoothie|snack|meal|lunch|dinner|breakfast)\b/;
+  return foodWords.test(m) && m.split(/\s+/).length <= 14;
+}
+
+/** Model sometimes claims a log in plain text without calling log_meal. */
+export function replyClaimsMealLogged(reply: string): boolean {
+  const lower = reply.toLowerCase();
+  return lower.includes("i've logged") || lower.includes("i logged") || lower.includes("logged your meal");
+}
+
+function extractMealNameFromMessage(message: string): string {
+  let s = message.trim();
+  for (const p of [
+    /^(please\s+)?log\s+(my\s+)?/i,
+    /^i\s+(had|ate|eat|just\s+had|just\s+ate)\s+/i,
+    /^(had|ate)\s+/i,
+  ]) {
+    s = s.replace(p, "");
   }
-  if (persona && PERSONA_PROMPTS[persona]) {
-    systemPrompt += PERSONA_PROMPTS[persona];
+  s = s.replace(/\s+for\s+(breakfast|lunch|dinner|snack)\.?\s*$/i, "");
+  return s.trim().replace(/[.!?]+$/, "") || "Meal";
+}
+
+function inferMealType(message: string): MealEntry["mealType"] {
+  const m = message.toLowerCase();
+  if (/\bbreakfast\b/.test(m)) return "breakfast";
+  if (/\blunch\b/.test(m)) return "lunch";
+  if (/\bdinner\b/.test(m)) return "dinner";
+  const hour = new Date().getHours();
+  if (hour < 11) return "breakfast";
+  if (hour < 15) return "lunch";
+  if (hour < 17) return "snack";
+  return "dinner";
+}
+
+/** Last-resort meal action when the model replies without calling log_meal. */
+function synthesizeLogMealAction(message: string): { type: string; payload: Record<string, unknown> } {
+  const name = extractMealNameFromMessage(message);
+  const lower = name.toLowerCase();
+  let calories = 350;
+  let protein = 20;
+  let carbs = 30;
+  let fat = 12;
+
+  if (/\begg/.test(lower)) {
+    const countMatch = lower.match(/(\d+)\s*egg/);
+    const count = countMatch ? Math.max(1, parseInt(countMatch[1], 10)) : 2;
+    calories = 70 * count;
+    protein = 6 * count;
+    carbs = count;
+    fat = 5 * count;
+  } else if (/\bgrape/.test(lower)) {
+    calories = 60;
+    protein = 1;
+    carbs = 15;
+    fat = 0;
+  } else if (/\bburger|cheeseburger/.test(lower)) {
+    calories = 550;
+    protein = 28;
+    carbs = 40;
+    fat = 28;
+  } else if (/\bsalad/.test(lower)) {
+    calories = 320;
+    protein = 18;
+    carbs = 12;
+    fat = 22;
+  } else if (/\bchicken|rice|bowl|bento/.test(lower)) {
+    calories = 480;
+    protein = 35;
+    carbs = 45;
+    fat = 14;
   }
-  systemPrompt += getHolidayContext();
 
-  const client = new BedrockRuntimeClient({ region: REGION });
+  return {
+    type: "log_meal",
+    payload: {
+      name,
+      mealType: inferMealType(message),
+      calories,
+      protein,
+      carbs,
+      fat,
+    },
+  };
+}
 
-  // Build multi-turn conversation from history (last 12 entries = ~6 turns).
-  // The iOS client includes the current user message as the last history entry,
-  // so we drop it to avoid duplication before appending it as the final turn.
+type BedrockInvokeOpts = {
+  temperature?: number;
+  toolChoice?: { auto: Record<string, never> } | { any: Record<string, never> } | { tool: { name: string } };
+};
+
+function buildRicoMessages(history: RicoHistoryMessage[], msg: string): Message[] {
   const trimmed = history
     .filter((h) => h.role === "user" || h.role === "assistant")
-    .slice(-41) // keep at most 41 so after dropping the last we have 40 (20 turns)
-    .slice(0, -1); // drop the last entry (current user message sent by client)
+    .slice(-41)
+    .slice(0, -1);
 
-  // Bedrock requires strictly alternating user/assistant turns.
-  // Collapse any consecutive same-role messages by joining their content.
   const alternating: Message[] = [];
   for (const h of trimmed) {
     const last = alternating[alternating.length - 1];
@@ -402,25 +540,15 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
     }
   }
 
-  // Ensure history starts with a user turn (Bedrock requirement).
   if (alternating.length > 0 && alternating[0].role !== "user") {
     alternating.shift();
   }
 
-  const messages: Message[] = [...alternating, { role: "user", content: [{ text: msg }] }];
+  return [...alternating, { role: "user", content: [{ text: msg }] }];
+}
 
-  const response = await client.send(
-    new ConverseCommand({
-      modelId: NOVA_LITE_MODEL_ID,
-      messages,
-      system: [{ text: systemPrompt }],
-      toolConfig: RICO_TOOLS,
-      inferenceConfig: { temperature: 0.7, maxTokens: 1024, topP: 0.9 },
-    })
-  );
-
-  const output = response.output?.message;
-  if (!output || !output.content) throw new Error("Empty response from Bedrock");
+function parseRicoBedrockOutput(output: Message | undefined): RicoOutput {
+  if (!output?.content) throw new Error("Empty response from Bedrock");
 
   let replyText = "";
   const actions: { type: string; payload: Record<string, unknown> }[] = [];
@@ -454,6 +582,74 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
   }
 
   return { reply: replyText.trim(), actions };
+}
+
+async function callRicoBedrock(
+  client: BedrockRuntimeClient,
+  systemPrompt: string,
+  messages: Message[],
+  opts?: BedrockInvokeOpts,
+): Promise<RicoOutput> {
+  const response = await client.send(
+    new ConverseCommand({
+      modelId: NOVA_LITE_MODEL_ID,
+      messages,
+      system: [{ text: systemPrompt }],
+      toolConfig: {
+        ...RICO_TOOLS,
+        toolChoice: opts?.toolChoice ?? { auto: {} },
+      },
+      inferenceConfig: {
+        temperature: opts?.temperature ?? 0.7,
+        maxTokens: 1024,
+        topP: 0.9,
+      },
+    }),
+  );
+
+  return parseRicoBedrockOutput(response.output?.message);
+}
+
+/** Invoke Rico and return reply text + optional tool actions. */
+export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
+  const { message, history = [], context = {}, persona } = input;
+  const msg = typeof message === "string" ? message.trim() : "";
+  if (!msg) throw new Error("Message required");
+
+  let systemPrompt = RICO_SYSTEM;
+  if (Object.keys(context).length > 0) {
+    systemPrompt += `\n\n[USER CONTEXT: ${JSON.stringify(context)}]`;
+  }
+  if (persona && PERSONA_PROMPTS[persona]) {
+    systemPrompt += PERSONA_PROMPTS[persona];
+  }
+  systemPrompt += getHolidayContext();
+
+  const client = new BedrockRuntimeClient({ region: REGION });
+  const messages = buildRicoMessages(history, msg);
+  const mealIntent = isMealLogIntent(msg);
+
+  let result = await callRicoBedrock(client, systemPrompt, messages, {
+    temperature: mealIntent ? 0.25 : 0.7,
+    toolChoice: mealIntent ? { tool: { name: "log_meal" } } : { auto: {} },
+  });
+
+  if (mealIntent && !result.actions.some((a) => a.type === "log_meal")) {
+    result = await callRicoBedrock(client, systemPrompt, messages, {
+      temperature: 0.2,
+      toolChoice: { any: {} },
+    });
+  }
+
+  if (!result.actions.some((a) => a.type === "log_meal") && (mealIntent || replyClaimsMealLogged(result.reply))) {
+    result.actions.push(synthesizeLogMealAction(msg));
+    if (!result.reply.trim() || replyClaimsMealLogged(result.reply)) {
+      const name = (result.actions[result.actions.length - 1].payload.name as string) ?? "your meal";
+      result.reply = `I've logged ${name} for you.`;
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -517,6 +713,8 @@ export function buildRicoContextFromServer(data: {
   plan?: FitnessPlan | null;
   profile?: { name?: string; goal?: string };
   meta?: { xp?: number; ricoHistory?: { role: string }[] };
+  workoutProgress?: WorkoutProgressMap;
+  workoutSetLogs?: WorkoutSetLog[];
 }): RicoContext {
   const meals = data.meals ?? [];
   const dates = new Set(meals.map((m) => m.date));
@@ -533,10 +731,18 @@ export function buildRicoContextFromServer(data: {
     }
   }
 
+  const learning =
+    data.plan && data.workoutProgress
+      ? buildRicoWorkoutLearningContext(data.plan, data.workoutProgress, today, data.workoutSetLogs ?? [])
+      : {};
+
   return {
     streak,
-    mealsLogged: meals.length,
+    mealsLogged: meals.filter((m) => m.date === today).length,
     xp: data.meta?.xp,
     goal: data.profile?.goal,
+    name: data.profile?.name,
+    workoutPlan: data.plan?.workoutPlan ?? null,
+    ...learning,
   };
 }

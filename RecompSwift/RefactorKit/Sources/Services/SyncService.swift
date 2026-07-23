@@ -110,6 +110,10 @@ public actor SyncService: ModelActor {
                 WorkoutService.shared.webWorkoutProgressMergedForSync(plan: planModel)
             }
             let workoutPayload: [String: String]? = workoutMerged.isEmpty ? nil : workoutMerged
+            let setLogPayload: [WorkoutSetLogDTO]? = {
+                let logs = WorkoutSetLogStorage.load()
+                return logs.isEmpty ? nil : logs
+            }()
 
             let savedRecipeDTOs: [SavedRecipeDTO]? = {
                 let records = SavedRecipesStorage.load()
@@ -162,6 +166,7 @@ public actor SyncService: ModelActor {
                 mealPrepPlan: mealPrepPlanDTO,
                 activityLog: activityLogDTOs.isEmpty ? nil : activityLogDTOs,
                 workoutProgress: workoutPayload,
+                workoutSetLogs: setLogPayload,
                 wearableConnections: wearableConnDTOs.isEmpty ? nil : wearableConnDTOs,
                 wearableData: wearableDataDTOs.isEmpty ? nil : wearableDataDTOs,
                 metabolicModel: metabolicDTO,
@@ -391,6 +396,9 @@ public actor SyncService: ModelActor {
         let planForWorkouts = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>()))?.first
         await MainActor.run {
             WorkoutService.shared.replaceWebProgressFromServer(response.workoutProgress ?? [:], plan: planForWorkouts)
+        }
+        if let remoteLogs = response.workoutSetLogs {
+            WorkoutSetLogStorage.replaceFromServer(remoteLogs)
         }
         persistRemoteMeta(response.meta)
     }

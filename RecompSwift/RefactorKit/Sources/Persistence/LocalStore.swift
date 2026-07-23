@@ -42,6 +42,7 @@ public enum LocalStore {
             RecompUserDefaultsKeys.remoteMetaXp,
             RecompUserDefaultsKeys.ricoHistoryJSON,
             RecompUserDefaultsKeys.measurementTargetsJSON,
+            RecompUserDefaultsKeys.workoutSetLogsJSON,
             RecompUserDefaultsKeys.savedRecipesJSON,
             RecompUserDefaultsKeys.pendingRecipeSaveURL,
         ] {

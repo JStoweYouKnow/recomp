@@ -99,6 +99,8 @@ public final class CoachService {
         var applyResult = RicoApplyResult()
         if !response.actions.isEmpty {
             applyResult = applyActions(response.actions, modelContext: context)
+        } else if Self.replyClaimsMealLogged(replyText) {
+            Self.logger.warning("Rico reply claims meal logged but actions array was empty")
         }
 
         if let suffix = applyResult.statusSuffix {
@@ -132,6 +134,7 @@ public final class CoachService {
         CoachHistoryStore.mergeIntoDefaults(container: context.container)
         if applyResult.touchedMeals {
             MealChangeNotifier.postLocalMealsChanged()
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
         }
         if applyResult.touchedPlan {
             PlanChangeNotifier.postLocalPlanChanged()
@@ -227,6 +230,9 @@ public final class CoachService {
         )
         let latestWeight = (try? modelContext.fetch(weightDescriptor))?.first(where: { $0.weight != nil })?.weight
 
+        let progress = WorkoutService.shared.webWorkoutProgressMergedForSync(plan: plan)
+        let learning = WorkoutLearningService.buildRicoWorkoutLearningContext(plan: plan, progress: progress)
+
         return RicoContextPayload(
             name: profile?.name,
             goal: profile?.goal.rawValue,
@@ -243,7 +249,10 @@ public final class CoachService {
             savedRecipeCount: savedRecords.isEmpty ? nil : savedRecords.count,
             savedRecipeNames: savedRecords.isEmpty ? nil : savedRecords.prefix(8).map(\.name),
             savedRecipes: savedRecipeDTOs,
-            bodyWeight: latestWeight
+            bodyWeight: latestWeight,
+            completedWorkoutToday: learning.completedToday,
+            workoutHistory: learning.history,
+            nextWorkout: learning.nextWorkout
         )
     }
 

@@ -13,9 +13,11 @@ import {
   dbGetSupplements, dbSaveSupplements,
   dbGetBloodWork, dbSaveBloodWork,
   dbGetWorkoutProgress, dbSaveWorkoutProgress,
+  dbGetWorkoutSetLogs, dbSaveWorkoutSetLogs,
   dbGetPlan, dbSavePlan,
 } from "@/lib/db";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
+import { mergeWorkoutSetLogs } from "@/lib/workout-set-logs";
 import { z } from "zod";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 
@@ -140,6 +142,15 @@ export async function POST(req: NextRequest) {
     const mergedWP = { ...fromWP, ...toWP }; // target wins on conflict
     await dbSaveWorkoutProgress(userId, mergedWP);
     summary.workoutProgress = newWPKeys.length;
+
+    // ── Workout set logs (merge by id — target wins on loggedAt conflict) ──
+    const [toLogs, fromLogs] = await Promise.all([
+      dbGetWorkoutSetLogs(userId).catch(() => []),
+      dbGetWorkoutSetLogs(fromUserId).catch(() => []),
+    ]);
+    const mergedLogs = mergeWorkoutSetLogs(toLogs, fromLogs);
+    await dbSaveWorkoutSetLogs(userId, mergedLogs);
+    summary.workoutSetLogs = mergedLogs.length - toLogs.length;
 
     return NextResponse.json({ ok: true, merged: summary });
   } catch (err) {

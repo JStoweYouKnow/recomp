@@ -5,11 +5,14 @@ import {
   flushSync,
   getWorkoutProgress,
   saveWorkoutProgress,
+  getWorkoutSetLogs,
+  saveWorkoutSetLogs,
   getRecentExerciseNames,
   saveRecentExerciseNames,
   getMusicPreference,
   syncToServer,
 } from "@/lib/storage";
+import type { WorkoutSetLog } from "@/lib/types";
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
@@ -19,6 +22,12 @@ import { effectiveProgramWeek, matchDayToDate as scheduleMatchDayToDate } from "
 import { CatchUpBanner } from "./workouts/CatchUpBanner";
 import { CatchUpQueue } from "./workouts/CatchUpQueue";
 import { ExerciseDemoGif } from "./ExerciseDemoGif";
+import {
+  PostWorkoutRecommendationBanner,
+  type PostWorkoutRecommendationData,
+} from "./workouts/PostWorkoutRecommendationBanner";
+import { detectNewlyCompletedSession } from "@/lib/workout-learning";
+import { ExerciseSetPerformanceGrid } from "./workouts/ExerciseSetPerformanceGrid";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
 const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
@@ -58,6 +67,19 @@ function nextWorkoutPlanState(
   return { ...prev, weeklyPlan };
 }
 
+type ExSection = "warmup" | "main" | "finisher";
+
+function globalSlotForExercise(
+  day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+  section: ExSection,
+  exerciseIndex: number,
+): number {
+  if (section === "warmup") return exerciseIndex;
+  const warmupCount = day.warmups?.length ?? 0;
+  if (section === "main") return warmupCount + exerciseIndex;
+  return warmupCount + day.exercises.length + exerciseIndex;
+}
+
 function extractExerciseNames(weeklyPlan: FitnessPlan["workoutPlan"]["weeklyPlan"]): string[] {
   const names: string[] = [];
   for (const day of weeklyPlan) {
@@ -82,14 +104,19 @@ export function WorkoutPlannerView({
   wearableData = [],
   onUpdatePlan,
   onPlanSaved,
+  onRegeneratePlan,
 }: {
   plan: FitnessPlan | null;
   wearableData?: WearableDaySummary[];
   onUpdatePlan: (plan: FitnessPlan) => void;
   /** Called when edits are committed (Done editing, Move, Delete, Add day). Use for sync. */
   onPlanSaved?: () => void;
+  onRegeneratePlan?: (options?: import("@/lib/multi-week-plan").RegeneratePlanOptions) => Promise<void>;
 }) {
   const [progress, setProgress] = useState<Record<string, string>>(getWorkoutProgress());
+  const [setLogs, setSetLogs] = useState<WorkoutSetLog[]>(() => getWorkoutSetLogs());
+  const [postWorkoutRecommendation, setPostWorkoutRecommendation] = useState<PostWorkoutRecommendationData | null>(null);
+  const [postWorkoutLoading, setPostWorkoutLoading] = useState(false);
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const [editingDay, setEditingDay] = useState<number | null>(null);
   /** Local draft while editing — avoids parent updates on every keystroke for responsive typing */
@@ -183,7 +210,6 @@ export function WorkoutPlannerView({
     }
   }, [calendarOpen, selectedDate, matchDayToDate]);
 
-  type ExSection = "warmup" | "main" | "finisher";
   /** Key for progress lookup. Include weekStart to scope completions to a specific week. */
   const exerciseKey = (
     day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
@@ -231,6 +257,76 @@ export function WorkoutPlannerView({
   const weeklyPlan = plan ? (editingWeekCopy ?? plan.workoutPlan.weeklyPlan) : [];
   const viewingDate = calendarOpen ? selectedDate : today;
   const viewingWeekStart = getWeekStart(viewingDate);
+
+  const fetchPostWorkoutRecommendation = useCallback(
+    async (
+      oldProgress: Record<string, string>,
+      newProgress: Record<string, string>,
+      date: string,
+      logs: WorkoutSetLog[],
+    ) => {
+      if (!plan || isViewingFutureDate) return;
+      const session = detectNewlyCompletedSession(plan, oldProgress, newProgress, date, logs);
+      if (!session) return;
+      setPostWorkoutLoading(true);
+      try {
+        const res = await fetch("/api/workouts/post-completion-recommendation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            completedSession: session,
+            completedDate: date,
+            plan,
+            workoutProgress: newProgress,
+            previousProgress: oldProgress,
+            workoutSetLogs: logs,
+          }),
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as PostWorkoutRecommendationData;
+        setPostWorkoutRecommendation(data);
+      } catch {
+        // Non-blocking — workout completion still saved
+      } finally {
+        setPostWorkoutLoading(false);
+      }
+    },
+    [plan, isViewingFutureDate],
+  );
+
+  const handleSetLogsChange = useCallback((nextLogs: WorkoutSetLog[]) => {
+    setSetLogs(nextLogs);
+    saveWorkoutSetLogs(nextLogs);
+    syncToServer();
+  }, []);
+
+  const setExerciseComplete = (
+    day: FitnessPlan["workoutPlan"]["weeklyPlan"][number],
+    exercise: WorkoutExercise,
+    section: ExSection,
+    complete: boolean,
+  ) => {
+    const key = exerciseKey(day, exercise, section, viewingWeekStart);
+    const legacyKey = exerciseKey(day, exercise, section);
+    const oldProgress = progress;
+    const next = { ...progress };
+    if (complete) {
+      if (next[key]) return;
+      const ts = new Date().toISOString();
+      next[key] = ts;
+      next[legacyKey] = ts;
+    } else {
+      if (!next[key] && !next[legacyKey]) return;
+      delete next[key];
+      delete next[legacyKey];
+    }
+    setProgress(next);
+    saveWorkoutProgress(next);
+    syncToServer();
+    if (complete) {
+      void fetchPostWorkoutRecommendation(oldProgress, next, viewingDate, getWorkoutSetLogs());
+    }
+  };
 
   /** Program week index (1-based) for the calendar week being viewed — used to scope completion totals. */
   const viewingProgramWeek = useMemo(() => {
@@ -408,6 +504,9 @@ export function WorkoutPlannerView({
     setProgress(next);
     saveWorkoutProgress(next);
     syncToServer();
+    if (next[key]) {
+      void fetchPostWorkoutRecommendation(progress, next, viewingDate, getWorkoutSetLogs());
+    }
   };
 
   const setDayCompletion = (
@@ -452,6 +551,9 @@ export function WorkoutPlannerView({
     setProgress(next);
     saveWorkoutProgress(next);
     syncToServer();
+    if (complete) {
+      void fetchPostWorkoutRecommendation(progress, next, viewingDate, getWorkoutSetLogs());
+    }
   };
 
   const openImportPanel = useCallback((focus: "url" | "pdf") => {
@@ -736,6 +838,17 @@ export function WorkoutPlannerView({
         }}
         showToast={showToast}
       />
+      {postWorkoutRecommendation && (
+        <PostWorkoutRecommendationBanner
+          recommendation={postWorkoutRecommendation}
+          onDismiss={() => setPostWorkoutRecommendation(null)}
+          onRegeneratePlan={onRegeneratePlan}
+          onApplied={() => onPlanSaved?.()}
+        />
+      )}
+      {postWorkoutLoading && (
+        <p className="text-sm text-[var(--muted-foreground)] animate-pulse">Ref is reviewing your workout…</p>
+      )}
       <datalist id="workout-exercise-names">
         {suggestedExerciseNames.map((name) => (
           <option key={name} value={name} />
@@ -1421,82 +1534,90 @@ export function WorkoutPlannerView({
                                     })()}
                                   </>
                                 ) : (
-                                  /* ── Read mode: clean layout with reps, sets, rest + demo GIF ── */
-                                  <div className="flex items-start gap-3">
-                                    <input
-                                      type="checkbox"
-                                      checked={isDone}
-                                      onChange={() => toggleComplete(day, exercise, "main")}
-                                      disabled={isViewingFutureDate}
-                                      aria-label={`Mark ${exercise.name || "exercise"} complete`}
-                                      className="mt-1 h-4 w-4 flex-shrink-0 accent-[var(--accent)]"
-                                    />
-                                    <div className="flex-1 min-w-0">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
-                                          {exercise.name}
-                                        </p>
-                                        {(() => {
-                                          const gifKey = exercise.name.toLowerCase().trim();
-                                          const gif = exerciseGifs[gifKey];
-                                          const isExpanded = expandedExerciseDemos.has(gifKey);
-                                          const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
-                                          return (
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
-                                                else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
-                                              }}
-                                              className="text-xs font-medium text-[var(--accent)] hover:underline"
-                                            >
-                                              {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
-                                            </button>
-                                          );
-                                        })()}
-                                      </div>
-                                      <div className="mt-1.5 flex flex-wrap gap-2">
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
-                                          <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
-                                          <span className="text-[var(--muted)]">sets</span>
-                                        </span>
-                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
-                                          <span className="font-semibold text-[var(--foreground)]">{exercise.reps}</span>
-                                          <span className="text-[var(--muted)]">reps</span>
-                                        </span>
-                                        {restTime && (
-                                          <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs">
-                                            <span className="font-semibold text-[var(--accent-warm)]">{restTime}</span>
-                                            <span className="text-[var(--muted)]">rest</span>
-                                          </span>
-                                        )}
-                                      </div>
+                                  /* ── Read mode: per-set performance logging + demo GIF ── */
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <p className={`font-medium text-sm ${isDone ? "line-through text-[var(--muted)]" : ""}`}>
+                                        {exercise.name}
+                                      </p>
                                       {(() => {
                                         const gifKey = exercise.name.toLowerCase().trim();
                                         const gif = exerciseGifs[gifKey];
                                         const isExpanded = expandedExerciseDemos.has(gifKey);
                                         const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
-                                        if (!showGif) return null;
                                         return (
-                                          <div className="mt-2 space-y-1">
-                                            <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
-                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              if (isExpanded) setExpandedExerciseDemos((prev) => { const n = new Set(prev); n.delete(gifKey); return n; });
+                                              else { setExpandedExerciseDemos((prev) => new Set(prev).add(gifKey)); fetchExerciseGif(exercise.name); }
+                                            }}
+                                            className="text-xs font-medium text-[var(--accent)] hover:underline"
+                                          >
+                                            {gif === "loading" ? "Loading…" : showGif ? "Hide demo" : "Show demo"}
+                                          </button>
                                         );
                                       })()}
-                                      {exercise.notes && !restTime && (
-                                        <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
-                                      )}
-                                      {exercise.notes && restTime && exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").trim() && (
-                                        <p className="mt-1 text-xs text-[var(--muted)] italic">
-                                          {exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim()}
-                                        </p>
-                                      )}
-                                      {isDone && completedAt && (
-                                        <p className="mt-1 text-label text-[var(--accent)]">
-                                          Completed {new Date(completedAt).toLocaleString()}
-                                        </p>
+                                    </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-2">
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                        <span className="font-semibold text-[var(--foreground)]">{exercise.sets}</span>
+                                        <span className="text-[var(--muted)]">sets</span>
+                                      </span>
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-[var(--surface-elevated)] px-2 py-0.5 text-xs">
+                                        <span className="font-semibold text-[var(--foreground)]">{exercise.reps}</span>
+                                        <span className="text-[var(--muted)]">reps</span>
+                                      </span>
+                                      {restTime && (
+                                        <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs">
+                                          <span className="font-semibold text-[var(--accent-warm)]">{restTime}</span>
+                                          <span className="text-[var(--muted)]">rest</span>
+                                        </span>
                                       )}
                                     </div>
+                                    {plan && (
+                                      <ExerciseSetPerformanceGrid
+                                        planId={plan.id}
+                                        date={viewingDate}
+                                        dayLabel={day.day}
+                                        section="main"
+                                        exercise={exercise}
+                                        globalSlot={globalSlotForExercise(day, "main", exIndex)}
+                                        setLogs={setLogs}
+                                        disabled={isViewingFutureDate}
+                                        onLogsChange={handleSetLogsChange}
+                                        onAllSetsCompleteChange={(complete) => {
+                                          if (complete !== isDone) {
+                                            setExerciseComplete(day, exercise, "main", complete);
+                                          }
+                                        }}
+                                      />
+                                    )}
+                                    {(() => {
+                                      const gifKey = exercise.name.toLowerCase().trim();
+                                      const gif = exerciseGifs[gifKey];
+                                      const isExpanded = expandedExerciseDemos.has(gifKey);
+                                      const showGif = typeof gif === "object" && gif.gifUrl && isExpanded;
+                                      if (!showGif) return null;
+                                      return (
+                                        <div className="mt-2 space-y-1">
+                                          <ExerciseDemoGif src={gif.gifUrl} alt={exercise.name} targetMuscles={gif.targetMuscles} className="rounded-lg max-h-32 object-contain bg-[var(--surface-elevated)]" />
+                                        </div>
+                                      );
+                                    })()}
+                                    {exercise.notes && !restTime && (
+                                      <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>
+                                    )}
+                                    {exercise.notes && restTime && exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").trim() && (
+                                      <p className="mt-1 text-xs text-[var(--muted)] italic">
+                                        {exercise.notes.replace(/rest[:\s]*\d+[\s-]*\d*\s*(?:sec|s|min|m|seconds|minutes)?/i, "").replace(/^[,\s|]+|[,\s|]+$/g, "").trim()}
+                                      </p>
+                                    )}
+                                    {isDone && completedAt && (
+                                      <p className="mt-1 text-label text-[var(--accent)]">
+                                        Completed {new Date(completedAt).toLocaleString()}
+                                      </p>
+                                    )}
                                   </div>
                                 )}
                               </div>

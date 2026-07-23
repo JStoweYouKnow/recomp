@@ -1,6 +1,7 @@
-import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork } from "./types";
+import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, WorkoutSetLog, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork } from "./types";
 import { getTodayLocal } from "./date-utils";
 import { dedupeMealsByDateAndId } from "./meals-dedupe";
+import { mergeWorkoutSetLogs } from "./workout-set-logs";
 
 const STORAGE_KEYS = {
   profile: "recomp_profile",
@@ -15,6 +16,7 @@ const STORAGE_KEYS = {
   hasAdjustedPlan: "recomp_has_adjusted",
   weeklyReview: "recomp_weekly_review",
   workoutProgress: "recomp_workout_progress",
+  workoutSetLogs: "recomp_workout_set_logs",
   cookingApps: "recomp_cooking_apps",
   activityLog: "recomp_activity_log",
   shoppingList: "recomp_shopping_list",
@@ -222,6 +224,23 @@ export function getWorkoutProgress(): WorkoutProgressMap {
 export function saveWorkoutProgress(progress: WorkoutProgressMap): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.workoutProgress, JSON.stringify(progress));
+}
+
+export function getWorkoutSetLogs(): WorkoutSetLog[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<WorkoutSetLog[]>(localStorage.getItem(STORAGE_KEYS.workoutSetLogs), []);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveWorkoutSetLogs(logs: WorkoutSetLog[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.workoutSetLogs, JSON.stringify(logs.slice(-10000)));
+}
+
+export function replaceWorkoutSetLogsFromServer(logs: WorkoutSetLog[]): void {
+  if (typeof window === "undefined") return;
+  const merged = mergeWorkoutSetLogs(getWorkoutSetLogs(), logs);
+  saveWorkoutSetLogs(merged);
 }
 
 /* ── Activity Log ──────────────────────────────────────── */
@@ -612,6 +631,7 @@ function buildSyncPayload() {
   const bloodWork = getBloodWork();
   const activityLog = getActivityLog();
   const workoutProgress = getWorkoutProgress();
+  const workoutSetLogs = getWorkoutSetLogs();
   const metabolicModel = getMetabolicModel();
   const measurementTargets = getMeasurementTargets();
   const recentExerciseNames = getRecentExerciseNames();
@@ -635,7 +655,7 @@ function buildSyncPayload() {
     hydration, fastingSessions, biofeedback, pantry, savedRecipes,
     mealPrepPlan: mealPrepPlan ?? undefined,
     bodyScans: bodyScansForSync, supplements, bloodWork,
-    activityLog, workoutProgress, recentExerciseNames,
+    activityLog, workoutProgress, workoutSetLogs, recentExerciseNames,
     metabolicModel: metabolicModel ?? undefined,
     measurementTargets: measurementTargets ?? undefined,
   };

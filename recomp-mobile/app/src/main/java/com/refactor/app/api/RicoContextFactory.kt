@@ -83,6 +83,11 @@ internal object RicoContextFactory {
             .sortedByDescending { it.date }
             .firstNotNullOfOrNull { it.weight }
 
+        val learning = WorkoutLearning.buildRicoContextFields(
+            plan = snap.plan,
+            progress = snap.workoutProgress.orEmpty(),
+        )
+
         return RicoContextDto(
             name = profile.name,
             goal = profile.goal,
@@ -101,6 +106,9 @@ internal object RicoContextFactory {
             savedRecipeNames = saved.take(8).map { it.name }.takeIf { it.isNotEmpty() },
             savedRecipes = savedRecipes,
             bodyWeight = bodyWeight,
+            completedWorkoutToday = learning.completedWorkoutToday,
+            workoutHistory = learning.workoutHistory,
+            nextWorkout = learning.nextWorkout,
         )
     }
 

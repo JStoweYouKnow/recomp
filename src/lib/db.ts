@@ -36,6 +36,7 @@ import type {
   Supplement,
   BloodWork,
   ActivityLogEntry,
+  WorkoutSetLog,
   MeasurementTargets,
 } from "./types";
 
@@ -333,6 +334,24 @@ export async function dbSaveWorkoutProgress(userId: string, progress: Record<str
     new PutCommand({
       TableName: TABLE,
       Item: { PK: `USER#${userId}`, SK: "WORKOUT_PROGRESS", data: progress, updatedAt: new Date().toISOString() },
+    })
+  );
+}
+
+export async function dbGetWorkoutSetLogs(userId: string): Promise<WorkoutSetLog[]> {
+  const doc = getDocClient();
+  const { Item } = await doc.send(
+    new GetCommand({ TableName: TABLE, Key: { PK: `USER#${userId}`, SK: "WORKOUT_SET_LOGS" } })
+  );
+  return Item ? (Item.data as WorkoutSetLog[]) : [];
+}
+
+export async function dbSaveWorkoutSetLogs(userId: string, logs: WorkoutSetLog[]): Promise<void> {
+  const doc = getDocClient();
+  await doc.send(
+    new PutCommand({
+      TableName: TABLE,
+      Item: { PK: `USER#${userId}`, SK: "WORKOUT_SET_LOGS", data: logs, updatedAt: new Date().toISOString() },
     })
   );
 }

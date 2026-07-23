@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.WorkoutSetLogs
 import com.refactor.app.api.dto.FitnessPlanDto
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.api.dto.WorkoutDayDto
@@ -124,9 +125,22 @@ class WorkoutsViewModel(
             ?: return Result.failure(IllegalStateException("Bad snapshot"))
         val merged = progressStore.mergedForPush(snap.plan)
         val prev = snap.workoutProgress.orEmpty()
-        if (merged == prev) return Result.success(markedComplete)
 
-        val local = syncRepository.mutateCachedSnapshot { it.copy(workoutProgress = merged) }
+        val logId = WorkoutSetLogs.logId(planId, progressDayKey, day.day, section, exercise.name, globalSlot, setIndex)
+        val nextLogs = if (markedComplete) {
+            WorkoutSetLogs.upsert(
+                snap.workoutSetLogs.orEmpty(),
+                WorkoutSetLogs.buildLog(planId, progressDayKey, day.day, section, exercise, globalSlot, setIndex),
+            )
+        } else {
+            WorkoutSetLogs.remove(snap.workoutSetLogs.orEmpty(), logId)
+        }
+        val logsChanged = nextLogs != snap.workoutSetLogs.orEmpty()
+        if (merged == prev && !logsChanged) return Result.success(markedComplete)
+
+        val local = syncRepository.mutateCachedSnapshot {
+            it.copy(workoutProgress = merged, workoutSetLogs = nextLogs)
+        }
         if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
         return syncRepository.pushCachedSnapshot().map { markedComplete }
     }

@@ -280,6 +280,23 @@ const activityLogEntrySchema = z.object({
 
 const workoutProgressMapSchema = z.record(z.string().max(2000), z.string().max(5000));
 
+const workoutSetLogSchema = z.object({
+  id: z.string().max(300),
+  date: z.string().max(20),
+  planId: z.string().max(100),
+  dayLabel: z.string().max(200),
+  section: z.enum(["warmup", "main", "finisher"]),
+  exerciseName: z.string().max(200),
+  globalSlot: z.number().int().min(0).max(500),
+  setIndex: z.number().int().min(0).max(50),
+  weightLbs: z.number().min(0).max(2000).optional(),
+  reps: z.number().int().min(0).max(500).optional(),
+  rpe: z.number().min(1).max(10).optional(),
+  prescribedSets: z.string().max(50).optional(),
+  prescribedReps: z.string().max(50).optional(),
+  loggedAt: z.string().max(50),
+});
+
 const metabolicDataPointSchema = z.object({
   date: z.string().max(50),
   weightKg: z.number(),
@@ -368,6 +385,7 @@ export const syncBodySchema = z.object({
   bloodWork: z.array(bloodWorkSchema).max(100).optional(),
   activityLog: z.array(activityLogEntrySchema).max(5000).optional(),
   workoutProgress: workoutProgressMapSchema.optional(),
+  workoutSetLogs: z.array(workoutSetLogSchema).max(10000).optional(),
   recentExerciseNames: z.array(z.string().max(200)).max(100).optional(),
   metabolicModel: metabolicModelSchema.optional().nullable(),
   measurementTargets: measurementTargetsSchema.optional().nullable(),

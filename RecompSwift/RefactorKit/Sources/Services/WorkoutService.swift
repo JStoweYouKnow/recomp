@@ -102,6 +102,7 @@ public final class WorkoutService {
         progressByDay = [:]
         webProgressMap = [:]
         RecompAppGroupDefaults.shared.removeObject(forKey: defaultsKey)
+        WorkoutSetLogStorage.save([])
     }
 
     private func postSyncNotification() {
@@ -341,6 +342,17 @@ public final class WorkoutService {
         persistToDefaults()
 
         if let ctx = webContext, let ex = exerciseForWeb {
+            WorkoutSetLogStorage.upsert(
+                WorkoutSetLogStorage.buildLog(
+                    planId: ctx.planId,
+                    date: ctx.progressDayKey,
+                    dayLabel: ctx.workoutDay.day,
+                    section: ctx.section,
+                    exercise: ex,
+                    globalSlot: ctx.globalSlot,
+                    setIndex: setIndex
+                )
+            )
             refreshWebProgressKeys(context: ctx, exercise: ex)
             persistToDefaults()
             postSyncNotification()
@@ -374,6 +386,16 @@ public final class WorkoutService {
         persistToDefaults()
 
         if let ctx = webContext, let ex = exerciseForWeb {
+            let logId = WorkoutSetLogStorage.logId(
+                planId: ctx.planId,
+                date: ctx.progressDayKey,
+                dayLabel: ctx.workoutDay.day,
+                section: ctx.section,
+                exerciseName: ex.name,
+                globalSlot: ctx.globalSlot,
+                setIndex: setIndex
+            )
+            WorkoutSetLogStorage.remove(id: logId)
             refreshWebProgressKeys(context: ctx, exercise: ex)
             persistToDefaults()
             postSyncNotification()

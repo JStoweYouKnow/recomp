@@ -3,9 +3,10 @@ import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
 import { logInfo, logError, withRequestLogging } from "@/lib/logger";
-import { invokeRico, persistHeadlessRicoActions } from "@/lib/services/rico";
+import { invokeRico, persistHeadlessRicoActions, replyClaimsMealLogged } from "@/lib/services/rico";
 import { stripRicoDiagnosticMarkup } from "@/lib/rico-reply-sanitizer";
-import { dbGetSavedRecipes, dbSaveSavedRecipes } from "@/lib/db";
+import { dbGetMeals, dbGetSavedRecipes, dbSaveSavedRecipes } from "@/lib/db";
+import { getTodayLocal } from "@/lib/date-utils";
 import { rankWithDiscovery } from "@/lib/recipe-library";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { CookingAppRecipe } from "@/lib/types";
@@ -39,6 +40,28 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
     if (userId && actions.length > 0) {
       const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
       replyText += replySuffix;
+    } else if (actions.length > 0 && !userId) {
+      logError("Rico returned actions but user is not authenticated — meals will not persist server-side", undefined, {
+        route: "rico",
+        actionTypes: actions.map((a) => a.type),
+      });
+    }
+
+    if (userId && actions.some((a) => a.type === "log_meal")) {
+      const meals = await dbGetMeals(userId);
+      const today = getTodayLocal();
+      const protein = Math.round(
+        meals.filter((m) => m.date.slice(0, 10) === today).reduce((sum, m) => sum + m.macros.protein, 0),
+      );
+      if (replyClaimsMealLogged(replyText) && !replyText.includes(`${protein}g protein`)) {
+        replyText = replyText.replace(
+          /\bYou're at \d+g protein today\b[^.!]*[.!]?/gi,
+          `You're at ${protein}g protein today`,
+        );
+        if (!/\b\d+g protein today\b/i.test(replyText)) {
+          replyText += ` You're at ${protein}g protein today.`;
+        }
+      }
     }
 
     if (userId && actions.length > 0) {

@@ -10,8 +10,10 @@ import {
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
   saveMetabolicModel, saveMeasurementTargets, getMetabolicModel, getMeasurementTargets,
-  getSavedRecipes, saveSavedRecipes, saveMealPrepPlan,
+  getSavedRecipes, saveSavedRecipes, saveMealPrepPlan, getWorkoutProgress, getWorkoutSetLogs,
+  replaceWorkoutSetLogsFromServer,
 } from "@/lib/storage";
+import { buildRicoWorkoutLearningContext } from "@/lib/workout-learning";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { UserProfile, FitnessPlan, MealEntry, WearableDaySummary } from "@/lib/types";
 import { getTodayLocal } from "@/lib/date-utils";
@@ -172,6 +174,7 @@ export default function Home() {
     if (data.weeklyReview) saveWeeklyReview(data.weeklyReview as Parameters<typeof saveWeeklyReview>[0]);
     if (data.activityLog) saveActivityLog(data.activityLog as Parameters<typeof saveActivityLog>[0]);
     if (data.workoutProgress !== undefined) saveWorkoutProgress(data.workoutProgress as Parameters<typeof saveWorkoutProgress>[0]);
+    if (Array.isArray(data.workoutSetLogs)) replaceWorkoutSetLogsFromServer(data.workoutSetLogs as Parameters<typeof replaceWorkoutSetLogsFromServer>[0]);
     if (data.hydration) saveHydration(data.hydration as Parameters<typeof saveHydration>[0]);
     if (data.fastingSessions) saveFastingSessions(data.fastingSessions as Parameters<typeof saveFastingSessions>[0]);
     if (data.biofeedback) saveBiofeedback(data.biofeedback as Parameters<typeof saveBiofeedback>[0]);
@@ -761,6 +764,7 @@ export default function Home() {
                 syncToServer();
               }}
               onPlanSaved={syncToServer}
+              onRegeneratePlan={handleRegeneratePlan}
             />
           </div>
         )}
@@ -937,6 +941,7 @@ export default function Home() {
               savedRecipeCount: getSavedRecipes().length,
               savedRecipeNames: getSavedRecipes().slice(0, 8).map((r) => r.name),
               savedRecipes: getSavedRecipes().slice(0, 30),
+              ...buildRicoWorkoutLearningContext(plan, getWorkoutProgress(), getTodayLocal(), getWorkoutSetLogs()),
             }}
             isOpen={ricoOpen}
             onClose={() => setRicoOpen(false)}

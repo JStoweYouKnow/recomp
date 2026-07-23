@@ -14,6 +14,7 @@ import {
   dbGetWeeklyReview,
   dbGetActivityLog,
   dbGetWorkoutProgress,
+  dbGetWorkoutSetLogs,
   dbGetHydration,
   dbGetFastingSessions,
   dbGetBiofeedback,
@@ -32,6 +33,7 @@ import {
   dbSaveWearableConnection,
   dbSaveActivityLog,
   dbSaveWorkoutProgress,
+  dbSaveWorkoutSetLogs,
   dbSaveHydrationEntry,
   dbSaveFastingSession,
   dbSaveBiofeedbackEntry,
@@ -53,7 +55,7 @@ import {
   type WearableInbound,
 } from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, WorkoutSetLog, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
@@ -89,7 +91,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
-    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, workoutSetLogs, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -215,6 +217,10 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveWorkoutProgress(userId, (workoutProgress ?? {}) as Record<string, string>));
     }
 
+    if (Object.prototype.hasOwnProperty.call(parsed.data, "workoutSetLogs")) {
+      promises.push(dbSaveWorkoutSetLogs(userId, (workoutSetLogs ?? []) as WorkoutSetLog[]));
+    }
+
     // Auto-populate community exercise DB from user-submitted exercise names (fire-and-forget)
     if (recentExerciseNames && recentExerciseNames.length > 0) {
       for (const name of recentExerciseNames) {
@@ -291,6 +297,7 @@ export async function GET(req: NextRequest) {
       weeklyReview,
       activityLog,
       workoutProgress,
+      workoutSetLogs,
       hydration,
       fastingSessions,
       biofeedback,
@@ -312,6 +319,7 @@ export async function GET(req: NextRequest) {
       dbGetWeeklyReview(userId),
       dbGetActivityLog(userId).catch(() => []),
       dbGetWorkoutProgress(userId).catch(() => ({})),
+      dbGetWorkoutSetLogs(userId).catch(() => []),
       dbGetHydration(userId).catch(() => []),
       dbGetFastingSessions(userId).catch(() => []),
       dbGetBiofeedback(userId).catch(() => []),
@@ -355,6 +363,7 @@ export async function GET(req: NextRequest) {
       // Always include workoutProgress (even empty) so clients can clear stale local entries
       // when a reset is performed on another device and synced up as an empty map.
       workoutProgress,
+      workoutSetLogs,
       hydration: hydration.length > 0 ? hydration : undefined,
       fastingSessions: fastingSessions.length > 0 ? fastingSessions : undefined,
       biofeedback: biofeedback.length > 0 ? biofeedback : undefined,

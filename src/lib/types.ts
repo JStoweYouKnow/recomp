@@ -288,6 +288,24 @@ export interface ActivityLogEntry {
   loggedAt: string;
 }
 
+/** Per-set lift performance synced across platforms. */
+export interface WorkoutSetLog {
+  id: string;
+  date: string;
+  planId: string;
+  dayLabel: string;
+  section: "warmup" | "main" | "finisher";
+  exerciseName: string;
+  globalSlot: number;
+  setIndex: number;
+  weightLbs?: number;
+  reps?: number;
+  rpe?: number;
+  prescribedSets?: string;
+  prescribedReps?: string;
+  loggedAt: string;
+}
+
 export type CookingAppProvider =
   | "whisk"
   | "mealime"

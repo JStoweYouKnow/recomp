@@ -377,6 +377,7 @@ public struct SyncPayload: Encodable, Sendable {
     public let mealPrepPlan: MealPrepPlanDTO?
     public let activityLog: [ActivityLogEntryDTO]?
     public let workoutProgress: [String: String]?
+    public let workoutSetLogs: [WorkoutSetLogDTO]?
     public let wearableConnections: [WearableConnectionDTO]?
     public let wearableData: [WearableDaySummaryDTO]?
     public let metabolicModel: MetabolicModelDTO?
@@ -402,6 +403,7 @@ public struct SyncPayload: Encodable, Sendable {
         mealPrepPlan: MealPrepPlanDTO? = nil,
         activityLog: [ActivityLogEntryDTO]? = nil,
         workoutProgress: [String: String]? = nil,
+        workoutSetLogs: [WorkoutSetLogDTO]? = nil,
         wearableConnections: [WearableConnectionDTO]? = nil,
         wearableData: [WearableDaySummaryDTO]? = nil,
         metabolicModel: MetabolicModelDTO? = nil,
@@ -426,6 +428,7 @@ public struct SyncPayload: Encodable, Sendable {
         self.mealPrepPlan = mealPrepPlan
         self.activityLog = activityLog
         self.workoutProgress = workoutProgress
+        self.workoutSetLogs = workoutSetLogs
         self.wearableConnections = wearableConnections
         self.wearableData = wearableData
         self.metabolicModel = metabolicModel
@@ -457,12 +460,13 @@ public struct SyncResponseDTO: Decodable, Sendable {
     public let activityLog: [ActivityLogEntryDTO]
     public let metabolicModel: MetabolicModelDTO?
     public let workoutProgress: [String: String]?
+    public let workoutSetLogs: [WorkoutSetLogDTO]?
     public let meta: SyncMetaDTO?
 
     private enum CodingKeys: String, CodingKey {
         case profile, plan, meals, milestones, hydration, fastingSessions, biofeedback
         case supplements, bloodWork, bodyScans, pantry, savedRecipes, mealPrepPlan, wearableConnections, wearableData
-        case activityLog, metabolicModel, workoutProgress, meta
+        case activityLog, metabolicModel, workoutProgress, workoutSetLogs, meta
     }
 
     public init(from decoder: Decoder) throws {
@@ -485,6 +489,7 @@ public struct SyncResponseDTO: Decodable, Sendable {
         activityLog = try c.decodeIfPresent([ActivityLogEntryDTO].self, forKey: .activityLog) ?? []
         metabolicModel = try c.decodeIfPresent(MetabolicModelDTO.self, forKey: .metabolicModel)
         workoutProgress = try c.decodeIfPresent([String: String].self, forKey: .workoutProgress)
+        workoutSetLogs = try c.decodeIfPresent([WorkoutSetLogDTO].self, forKey: .workoutSetLogs)
         meta = try c.decodeIfPresent(SyncMetaDTO.self, forKey: .meta)
     }
 }
