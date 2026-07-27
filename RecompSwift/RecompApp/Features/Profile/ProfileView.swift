@@ -199,11 +199,15 @@ struct ProfileView: View {
                     }
                 }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.recompBackground)
             .navigationTitle("Profile")
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
+            }
         }
-        }
+        .background(Color.recompBackground.ignoresSafeArea())
     }
 
     @ViewBuilder
