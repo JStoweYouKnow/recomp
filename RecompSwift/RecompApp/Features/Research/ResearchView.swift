@@ -27,8 +27,13 @@ struct ResearchView: View {
                 .padding(.horizontal)
 
                 if researchService.isSearching {
-                    ProgressView("Searching...")
-                        .frame(maxHeight: .infinity)
+                    VStack(alignment: .leading, spacing: 20) {
+                        TextSkeleton(lines: 4)
+                        TextSkeleton(lines: 3)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .accessibilityLabel("Searching research")
                 } else if let error = searchError {
                     VStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle")

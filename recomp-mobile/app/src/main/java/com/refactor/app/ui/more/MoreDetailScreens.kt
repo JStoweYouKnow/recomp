@@ -41,6 +41,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.health.connect.client.PermissionController
+import com.refactor.app.util.HealthConnectWriter
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -563,6 +567,16 @@ fun SyncWearablesScreen(
     var connecting by remember { mutableStateOf(false) }
     var connectError by remember { mutableStateOf<String?>(null) }
 
+    val healthConnectAvailable = remember { HealthConnectWriter.isAvailable(ctx) }
+    var healthWriteEnabled by remember { mutableStateOf(HealthConnectWriter.isEnabled(ctx)) }
+    val healthPermsLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract(),
+    ) { granted ->
+        val ok = granted.containsAll(HealthConnectWriter.permissions)
+        HealthConnectWriter.setEnabled(ctx, ok)
+        healthWriteEnabled = ok
+    }
+
     val connectedProviders = remember(snap) {
         snap?.wearableConnections.orEmpty().map { it.provider.lowercase() }.toSet()
     }
@@ -605,6 +619,40 @@ fun SyncWearablesScreen(
         ) {
             connectError?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+
+            // Health Connect — write logged meals & workouts (mirrors iOS "Write to Apple Health").
+            if (healthConnectAvailable) {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("Write to Health Connect", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                            Switch(
+                                checked = healthWriteEnabled,
+                                onCheckedChange = { on ->
+                                    if (on) {
+                                        scope.launch {
+                                            if (HealthConnectWriter.hasPermissions(ctx)) {
+                                                HealthConnectWriter.setEnabled(ctx, true)
+                                                healthWriteEnabled = true
+                                            } else {
+                                                healthPermsLauncher.launch(HealthConnectWriter.permissions)
+                                            }
+                                        }
+                                    } else {
+                                        HealthConnectWriter.setEnabled(ctx, false)
+                                        healthWriteEnabled = false
+                                    }
+                                },
+                            )
+                        }
+                        Text(
+                            "Save the meals (calories & macros) and completed workouts you log to Health Connect.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             Card(Modifier.fillMaxWidth()) {

@@ -330,9 +330,12 @@ public final class WorkoutService {
         planIndex: Int? = nil,
         globalSlot: Int? = nil,
         webContext: WorkoutSetProgressContext? = nil,
-        exerciseForWeb: WorkoutExercise? = nil
+        exerciseForWeb: WorkoutExercise? = nil,
+        weightLbs: Double? = nil,
+        reps: Int? = nil
     ) {
         let day = dayKey ?? DateHelpers.todayString()
+        WorkoutSessionClock.markStartedIfNeeded(dayKey: day)
         var dayMap = progressByDay[day] ?? [:]
         let storageKey = resolveStorageKey(exerciseName: exerciseName, planIndex: planIndex, globalSlot: globalSlot, webContext: webContext, exerciseForWeb: exerciseForWeb)
         var sets = dayMap[storageKey] ?? []
@@ -350,7 +353,9 @@ public final class WorkoutService {
                     section: ctx.section,
                     exercise: ex,
                     globalSlot: ctx.globalSlot,
-                    setIndex: setIndex
+                    setIndex: setIndex,
+                    weightLbs: weightLbs,
+                    reps: reps
                 )
             )
             refreshWebProgressKeys(context: ctx, exercise: ex)

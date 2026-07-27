@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_workout"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_workout_short"
+        android:shortcutLongLabel="@string/shortcut_workout_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="recomp://workout"
+            android:targetPackage="com.refactor.app"
+            android:targetClass="com.refactor.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="log_water"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_water_short"
+        android:shortcutLongLabel="@string/shortcut_water_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="recomp://log-water"
+            android:targetPackage="com.refactor.app"
+            android:targetClass="com.refactor.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="calories"
+        android:enabled="true"
+        android:shortcutShortLabel="@string/shortcut_calories_short"
+        android:shortcutLongLabel="@string/shortcut_calories_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="recomp://calories"
+            android:targetPackage="com.refactor.app"
+            android:targetClass="com.refactor.app.MainActivity" />
+    </shortcut>
+</shortcuts>

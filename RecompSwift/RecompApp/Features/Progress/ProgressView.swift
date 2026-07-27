@@ -455,7 +455,7 @@ struct BodyMeasurementTargetsCard: View {
                         MeasurementTargetsStorage.save(MeasurementTargets())
                         Task {
                             await syncEngine?.markDirty()
-                            await syncEngine?.syncNow()
+                            _ = await syncEngine?.syncNow()
                         }
                         saveMessage = "Targets cleared"
                         Task {
@@ -545,7 +545,7 @@ struct BodyMeasurementTargetsCard: View {
         }
 
         await syncEngine?.markDirty()
-        await syncEngine?.syncNow()
+        _ = await syncEngine?.syncNow()
         saveMessage = "Saved and synced."
         try? await Task.sleep(nanoseconds: 2_500_000_000)
         await MainActor.run { saveMessage = nil }
@@ -714,7 +714,7 @@ struct SmartScaleEntryView: View {
         }
 
         await syncEngine?.markDirty()
-        await syncEngine?.syncNow()
+        _ = await syncEngine?.syncNow()
 
         weight = ""
         bodyFatPercent = ""
@@ -785,7 +785,12 @@ struct BiofeedbackInsightsView: View {
                     .disabled(isLoading)
                 }
                 if isLoading {
-                    ProgressView()
+                    VStack(alignment: .leading, spacing: 10) {
+                        SkeletonBlock(width: 140, height: 13)
+                        TextSkeleton(lines: 2)
+                        SkeletonBlock(width: 180, height: 13)
+                    }
+                    .padding(.vertical, 2)
                 } else if let error {
                     Text(error).font(.caption).foregroundStyle(Color.appError)
                 } else if let insights {

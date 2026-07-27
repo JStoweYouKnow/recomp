@@ -28,6 +28,12 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // The rest timer chimes in-app while foregrounded, so suppress its notification
+        // here to avoid a double alert. It still fires normally when backgrounded/locked.
+        if notification.request.content.categoryIdentifier == "REST_TIMER" {
+            completionHandler([])
+            return
+        }
         completionHandler([.banner, .badge, .sound])
     }
 
@@ -98,8 +104,14 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             intentIdentifiers: []
         )
 
+        let restTimerCategory = UNNotificationCategory(
+            identifier: "REST_TIMER",
+            actions: [],
+            intentIdentifiers: []
+        )
+
         UNUserNotificationCenter.current().setNotificationCategories([
-            mealCategory, workoutCategory, hydrationCategory, coachCategory
+            mealCategory, workoutCategory, hydrationCategory, coachCategory, restTimerCategory
         ])
     }
 }

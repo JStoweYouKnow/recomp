@@ -22,6 +22,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import com.refactor.app.util.OpenFoodFactsClient
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -74,6 +78,7 @@ private enum class MealInputMode(val label: String) {
     Photo("Photo"),
     Menu("Menu scan"),
     Receipt("Receipt scan"),
+    Barcode("Barcode"),
     Search("Food search"),
     Voice("Voice"),
     Recipe("Recipe URL"),
@@ -102,6 +107,7 @@ fun AddMealSheet(
     var fat by remember { mutableStateOf(0.0) }
     var notes by remember { mutableStateOf("") }
     var foodSearchQuery by remember { mutableStateOf("") }
+    var barcodeQuery by remember { mutableStateOf("") }
     var recipeUrl by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
     var analyzing by remember { mutableStateOf(false) }
@@ -272,6 +278,60 @@ fun AddMealSheet(
                     Button(onClick = { runWithConsent { pickPhoto.launch("image/*") } }, enabled = !analyzing) {
                         Text("Choose photo")
                     }
+                }
+                MealInputMode.Barcode -> {
+                    Text(
+                        "Scan a product barcode or enter it manually. Values are per 100g — adjust servings below.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val applyProduct: (OpenFoodFactsClient.Product?) -> Unit = { p ->
+                        if (p != null) {
+                            name = p.name; calories = p.calories; protein = p.protein; carbs = p.carbs; fat = p.fat
+                        } else {
+                            error = "No nutrition found for that barcode. Try Food search."
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            val options = GmsBarcodeScannerOptions.Builder()
+                                .setBarcodeFormats(
+                                    Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8,
+                                    Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E,
+                                )
+                                .build()
+                            GmsBarcodeScanning.getClient(ctx, options).startScan()
+                                .addOnSuccessListener { bc ->
+                                    val code = bc.rawValue ?: return@addOnSuccessListener
+                                    barcodeQuery = code
+                                    scope.launch {
+                                        analyzing = true; error = null
+                                        applyProduct(OpenFoodFactsClient.lookup(code))
+                                        analyzing = false
+                                    }
+                                }
+                                .addOnFailureListener { error = "Couldn't start the scanner." }
+                        },
+                        enabled = !analyzing,
+                    ) { Text("Scan barcode") }
+                    OutlinedTextField(
+                        value = barcodeQuery,
+                        onValueChange = { barcodeQuery = it },
+                        label = { Text("Or enter barcode number") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                analyzing = true; error = null
+                                applyProduct(OpenFoodFactsClient.lookup(barcodeQuery))
+                                analyzing = false
+                            }
+                        },
+                        enabled = barcodeQuery.isNotBlank() && !analyzing,
+                    ) { Text("Look up") }
                 }
                 MealInputMode.Search -> {
                     OutlinedTextField(value = foodSearchQuery, onValueChange = { foodSearchQuery = it }, label = { Text("e.g. grilled chicken 200g") }, modifier = Modifier.fillMaxWidth())

@@ -49,6 +49,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
+import com.refactor.app.util.Feedback
+import com.refactor.app.util.HealthConnectWriter
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
@@ -108,6 +111,7 @@ fun MealsScreen(
     var isRefreshing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         isRefreshing = true
@@ -340,6 +344,24 @@ fun MealsScreen(
             onSave = { draft ->
                 val next = allMeals + draft
                 persistAll(next)
+                // Feedback + Health Connect export + protein-goal celebration (mirrors iOS).
+                val today = LocalDate.now().toString()
+                val proteinTarget = syncSnapshot?.plan?.dietPlan?.dailyTargets?.protein ?: 0.0
+                val priorProtein = allMeals.filter { it.date == draft.date }.sumOf { it.macros.protein }
+                val newProtein = priorProtein + draft.macros.protein
+                if (draft.date == today && proteinTarget > 0 && priorProtein < proteinTarget && newProtein >= proteinTarget) {
+                    Feedback.celebrate(context, "Protein goal hit! 🎯")
+                } else {
+                    Feedback.success(context)
+                    Feedback.toast(context, "Meal logged")
+                }
+                scope.launch {
+                    HealthConnectWriter.saveMeal(
+                        context, draft.name, draft.macros.calories.toInt(),
+                        draft.macros.protein, draft.macros.carbs, draft.macros.fat,
+                        System.currentTimeMillis(),
+                    )
+                }
             },
         )
     }

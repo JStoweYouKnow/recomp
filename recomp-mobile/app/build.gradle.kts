@@ -31,8 +31,8 @@ android {
         applicationId = "com.refactor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 42
-        versionName = "5.6"
+        versionCode = 43
+        versionName = "5.7"
         // Optional: set in `gradle.properties` to enable FCM (`FirebaseMessaging`). Leave empty for CI/local without Firebase.
         val fbAppId = (project.findProperty("FIREBASE_APP_ID") as String?) ?: ""
         val fbApiKey = (project.findProperty("FIREBASE_API_KEY") as String?) ?: ""
@@ -115,6 +115,9 @@ dependencies {
     ksp("androidx.room:room-compiler:$room")
 
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha11")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 
     val firebaseBom = platform("com.google.firebase:firebase-bom:33.7.0")
     implementation(firebaseBom)

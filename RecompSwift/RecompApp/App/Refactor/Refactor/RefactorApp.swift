@@ -14,6 +14,7 @@ struct RefactorApp: App {
     @State private var authService = AuthService()
     @State private var subscriptionService = SubscriptionService()
     @State private var coordinator = AppCoordinator()
+    @State private var toastManager = ToastManager()
 
     private let modelContainer: ModelContainer
     private let syncEngine: SyncEngine
@@ -68,6 +69,7 @@ struct RefactorApp: App {
                 .environment(authService)
                 .environment(subscriptionService)
                 .environment(coordinator)
+                .environment(toastManager)
                 .environment(\.syncEngine, syncEngine)
         }
         .modelContainer(modelContainer)
@@ -137,6 +139,7 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(preferredScheme)
+        .modifier(RootFeedbackOverlay())
         .safeAreaInset(edge: .top) {
             if storeDegraded {
                 StoreDegradedBanner()
@@ -192,6 +195,10 @@ struct RootView: View {
             guard phase == .active, auth.isAuthenticated, let engine = syncEngine else { return }
             Task {
                 try? await engine.fetchAndApply()
+                if PendingIntentSync.consume() {
+                    await engine.markDirty()
+                    _ = await engine.syncNow()
+                }
                 auth.refreshCurrentUserFromStore()
                 pushWatchDashboard(from: modelContext)
             }
@@ -263,6 +270,40 @@ struct RootView: View {
 
 /// Non-intrusive banner shown when the on-disk store failed to open and the app is
 /// running on a temporary in-memory store (changes will not persist this launch).
+/// Bundles the app-wide feedback surfaces (toast + confetti) and their notification
+/// observers into one modifier so `RootView.body` stays small enough for the type-checker.
+private struct RootFeedbackOverlay: ViewModifier {
+    @Environment(ToastManager.self) private var toastManager
+    @State private var showConfetti = false
+
+    func body(content: Content) -> some View {
+        content
+            .toastOverlay()
+            .overlay {
+                if showConfetti {
+                    ConfettiView()
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .recompShowToast)) { note in
+                let message = note.userInfo?["message"] as? String ?? ""
+                let type = note.userInfo?["type"] as? ToastType ?? .info
+                guard !message.isEmpty else { return }
+                toastManager.show(message, type: type)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .recompCelebrate)) { _ in
+                Haptics.success()
+                withAnimation(.easeIn(duration: 0.2)) { showConfetti = true }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2.2))
+                    withAnimation(.easeOut(duration: 0.4)) { showConfetti = false }
+                }
+            }
+    }
+}
+
 struct StoreDegradedBanner: View {
     var body: some View {
         HStack(spacing: 8) {

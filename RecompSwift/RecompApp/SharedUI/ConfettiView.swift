@@ -4,7 +4,7 @@ struct ConfettiView: View {
     @State private var particles: [ConfettiParticle] = []
     @State private var isAnimating = false
 
-    let colors: [Color] = [.red, .blue, .green, .yellow, .purple, .orange, .pink]
+    let colors: [Color] = [.appAccent, .appSage, .appWarm, .appTerracotta, .appSlate, .appSuccess]
 
     var body: some View {
         GeometryReader { geo in

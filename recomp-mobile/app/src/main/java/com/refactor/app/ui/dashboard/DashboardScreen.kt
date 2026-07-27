@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -25,7 +27,11 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.refactor.app.util.StreakCalculator
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.material3.AlertDialog
@@ -145,7 +151,16 @@ fun DashboardScreen(
                     Text(greetingForHour(firstName), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                     Text(today, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                AvatarCircle(name = authDisplayName, size = 44.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val streak = remember(snap) {
+                        StreakCalculator.streakLength(snap?.meals.orEmpty().map { it.date })
+                    }
+                    if (streak >= 2) StreakBadge(streak)
+                    AvatarCircle(name = authDisplayName, size = 44.dp)
+                }
             }
 
             when (val s = ui) {
@@ -448,6 +463,33 @@ private fun PlanGeneratingCard(programWeeks: Int = 1) {
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Flame badge showing the current consecutive-day meal-logging streak. Mirrors iOS StreakBadge. */
+@Composable
+private fun StreakBadge(days: Int) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                Icons.Filled.LocalFireDepartment,
+                contentDescription = null,
+                tint = Color(0xFFF97316),
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                "$days",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
             )
         }
     }

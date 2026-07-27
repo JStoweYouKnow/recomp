@@ -198,6 +198,17 @@ private fun MainShell(
 
     var coachOpen by remember { mutableStateOf(false) }
     var tabIndex by remember { mutableIntStateOf(0) }
+
+    // App-shortcut / deep-link routing (recomp://<host>): jump to the matching tab.
+    LaunchedEffect(ShortcutRouter.pending) {
+        when (ShortcutRouter.pending) {
+            "workout", "workouts" -> tabIndex = 2
+            "meal", "meals", "log-meal" -> tabIndex = 1
+            "dashboard", "today", "calories", "log-water" -> tabIndex = 0
+            else -> {}
+        }
+        if (ShortcutRouter.pending != null) ShortcutRouter.pending = null
+    }
     val scope = rememberCoroutineScope()
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(

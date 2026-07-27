@@ -7,4 +7,11 @@
     <string name="tab_meals">Meals</string>
     <string name="tab_workouts">Training</string>
     <string name="tab_more">More</string>
+
+    <string name="shortcut_workout_short">Workout</string>
+    <string name="shortcut_workout_long">Start today\'s workout</string>
+    <string name="shortcut_water_short">Log Water</string>
+    <string name="shortcut_water_long">Log water</string>
+    <string name="shortcut_calories_short">Calories</string>
+    <string name="shortcut_calories_long">Calories remaining</string>
 </resources>

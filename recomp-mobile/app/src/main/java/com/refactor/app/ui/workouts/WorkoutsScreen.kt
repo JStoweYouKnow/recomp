@@ -27,6 +27,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import com.refactor.app.util.Feedback
+import com.refactor.app.util.HealthConnectWriter
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -145,7 +149,12 @@ fun WorkoutsScreen(
     var showMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var restTimer by remember { mutableStateOf<RestTimerState?>(null) }
+    var workoutSummary by remember { mutableStateOf<WorkoutSummaryData?>(null) }
     val scope = rememberCoroutineScope()
+
+    val sessionClock = remember { WorkoutSessionClock(context) }
+    val prStore = remember { PersonalRecordStore(context) }
+    val weightLogStore = remember { WorkoutWeightLogStore(context) }
 
     val selectedPlanIndex = remember(days, selectedDate, plan) {
         plan?.let { WorkoutProgramSchedule.planIndexForDate(it, selectedDate) }
@@ -310,6 +319,53 @@ fun WorkoutsScreen(
                                     }
                                 }
                             },
+                            onSetCompleted = { ex, setIdx, weight, reps ->
+                                val day = selectedDay ?: return@WorkoutDayCard
+                                if (planId.isNotBlank()) {
+                                    val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
+                                        day.day, selectedDate,
+                                    )
+                                    sessionClock.markStartedIfNeeded(progressDayKey)
+                                    if (weight != null && weight > 0 && reps != null && reps > 0) {
+                                        weightLogStore.record(planId, progressDayKey, ex.name, setIdx, weight, reps)
+                                        if (prStore.record(ex.name, weight, reps)) {
+                                            Feedback.celebrate(context, "New PR: ${ex.name}! 🏆")
+                                        }
+                                    }
+                                }
+                            },
+                            onCompleted = {
+                                val day = selectedDay ?: return@WorkoutDayCard
+                                if (planId.isBlank()) return@WorkoutDayCard
+                                val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
+                                    day.day, selectedDate,
+                                )
+                                Feedback.success(context)
+                                val startMs = sessionClock.startMillis(progressDayKey)
+                                val logs = weightLogStore.logsForDay(planId, progressDayKey)
+                                workoutSummary = WorkoutSummaryData(
+                                    dayLabel = day.day,
+                                    focus = day.focus,
+                                    exercisesCompleted = day.enumeratedExerciseSlots().count { (slot, ex) ->
+                                        (0 until ex.effectiveSetCount()).all { s ->
+                                            vm.isSetComplete(
+                                                planId, progressDayKey, day.day,
+                                                day.sectionForGlobalSlot(slot), ex, slot, s,
+                                            )
+                                        }
+                                    },
+                                    totalExercises = day.enumeratedExerciseSlots().size,
+                                    setsLogged = logs.size,
+                                    totalVolumeLbs = logs.sumOf { it.weightLbs * it.reps },
+                                    durationMs = startMs?.let { System.currentTimeMillis() - it },
+                                )
+                                if (startMs != null) {
+                                    scope.launch {
+                                        HealthConnectWriter.saveWorkout(context, day.focus, startMs, System.currentTimeMillis())
+                                    }
+                                }
+                                sessionClock.clear(progressDayKey)
+                            },
                             workoutExtrasRepository = workoutExtrasRepository,
                             onEdit = {
                                 selectedPlanIndex?.let { editIndex = it }
@@ -380,6 +436,10 @@ fun WorkoutsScreen(
             },
         )
     }
+
+    workoutSummary?.let { summary ->
+        WorkoutSummaryDialog(summary = summary, onDismiss = { workoutSummary = null })
+    }
 }
 
 // ─── Day Card ────────────────────────────────────────────────────────────────
@@ -393,6 +453,8 @@ private fun WorkoutDayCard(
     setProgressEnabled: Boolean,
     isSetComplete: (WorkoutExerciseDto, Int, Int) -> Boolean,
     onToggleSet: (WorkoutExerciseDto, Int, Int) -> Unit,
+    onSetCompleted: (WorkoutExerciseDto, Int, Double?, Int?) -> Unit,
+    onCompleted: () -> Unit,
     workoutExtrasRepository: WorkoutExtrasRepository,
     onEdit: () -> Unit,
 ) {
@@ -401,6 +463,15 @@ private fun WorkoutDayCard(
         (0 until ex.effectiveSetCount()).all { setIdx ->
             isSetComplete(ex, slot, setIdx)
         }
+    }
+
+    // Fire the summary/celebration exactly when the day tips from incomplete → complete.
+    // Seeded with the current value so re-opening an already-done day stays quiet.
+    val allDone = totalExercises > 0 && completedExercises == totalExercises
+    var prevAllDone by rememberSaveable(day.day) { mutableStateOf(allDone) }
+    LaunchedEffect(allDone) {
+        if (allDone && !prevAllDone) onCompleted()
+        prevAllDone = allDone
     }
 
     var isExpanded by rememberSaveable { mutableStateOf(isToday) }
@@ -512,6 +583,7 @@ private fun WorkoutDayCard(
                         day = day,
                         isSetComplete = isSetComplete,
                         onToggleSet = onToggleSet,
+                        onSetCompleted = onSetCompleted,
                         setProgressEnabled = setProgressEnabled,
                         workoutExtrasRepository = workoutExtrasRepository,
                     )
@@ -527,6 +599,7 @@ private fun WorkoutDayCard(
                     day = day,
                     isSetComplete = isSetComplete,
                     onToggleSet = onToggleSet,
+                    onSetCompleted = onSetCompleted,
                     setProgressEnabled = setProgressEnabled,
                     workoutExtrasRepository = workoutExtrasRepository,
                 )
@@ -542,6 +615,7 @@ private fun WorkoutDayCard(
                         day = day,
                         isSetComplete = isSetComplete,
                         onToggleSet = onToggleSet,
+                        onSetCompleted = onSetCompleted,
                         setProgressEnabled = setProgressEnabled,
                         workoutExtrasRepository = workoutExtrasRepository,
                     )
@@ -643,6 +717,7 @@ private fun ExerciseSection(
     day: WorkoutDayDto,
     isSetComplete: (WorkoutExerciseDto, Int, Int) -> Boolean,
     onToggleSet: (WorkoutExerciseDto, Int, Int) -> Unit,
+    onSetCompleted: (WorkoutExerciseDto, Int, Double?, Int?) -> Unit,
     setProgressEnabled: Boolean,
     workoutExtrasRepository: WorkoutExtrasRepository,
 ) {
@@ -662,6 +737,7 @@ private fun ExerciseSection(
                 setProgressEnabled = setProgressEnabled,
                 isSetComplete = { setIdx -> isSetComplete(exercise, globalSlot, setIdx) },
                 onToggleSet = { setIdx -> onToggleSet(exercise, globalSlot, setIdx) },
+                onSetCompleted = { setIdx, weight, reps -> onSetCompleted(exercise, setIdx, weight, reps) },
                 workoutExtrasRepository = workoutExtrasRepository,
             )
             if (j < exercises.lastIndex) {
@@ -680,16 +756,29 @@ private fun ExerciseRow(
     setProgressEnabled: Boolean,
     isSetComplete: (Int) -> Boolean,
     onToggleSet: (Int) -> Unit,
+    onSetCompleted: (Int, Double?, Int?) -> Unit,
     workoutExtrasRepository: WorkoutExtrasRepository,
 ) {
+    val context = LocalContext.current
     val numSets = exercise.effectiveSetCount()
     var gifBytes by remember(globalSlot, exercise.name) { mutableStateOf<ByteArray?>(null) }
     var showGif by remember(globalSlot, exercise.name) { mutableStateOf(false) }
+    var weightText by rememberSaveable(exercise.name) { mutableStateOf("") }
 
     // Prefetch the demo so the play button only appears when a real demo exists.
     LaunchedEffect(globalSlot, exercise.name) {
         if (gifBytes == null) {
             gifBytes = workoutExtrasRepository.fetchExerciseGif(exercise.name).getOrNull()
+        }
+    }
+
+    // Prefill the weight field with the last weight used for this lift (progressive overload).
+    val weightLogStore = remember { WorkoutWeightLogStore(context) }
+    LaunchedEffect(exercise.name) {
+        if (weightText.isBlank()) {
+            weightLogStore.lastWeight(exercise.name)?.let { last ->
+                weightText = if (last % 1.0 == 0.0) last.toInt().toString() else last.toString()
+            }
         }
     }
 
@@ -744,6 +833,20 @@ private fun ExerciseRow(
             }
         }
 
+        // Working-weight input — feeds set logs, PR detection, and the post-workout summary.
+        if (setProgressEnabled) {
+            OutlinedTextField(
+                value = weightText,
+                onValueChange = { new -> weightText = new.filter { it.isDigit() || it == '.' } },
+                label = { Text("Weight (lbs)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier
+                    .padding(top = 8.dp)
+                    .width(140.dp),
+            )
+        }
+
         // Set buttons — animated rounded squares
         Row(
             Modifier
@@ -768,7 +871,18 @@ private fun ExerciseRow(
                         .clip(RoundedCornerShape(8.dp))
                         .background(bgColor)
                         .then(
-                            if (setProgressEnabled) Modifier.clickable { onToggleSet(setIdx) }
+                            if (setProgressEnabled) Modifier.clickable {
+                                val markingComplete = !done
+                                onToggleSet(setIdx)
+                                Feedback.tick(context)
+                                if (markingComplete) {
+                                    onSetCompleted(
+                                        setIdx,
+                                        weightText.toDoubleOrNull(),
+                                        parsePrescribedReps(exercise.reps),
+                                    )
+                                }
+                            }
                             else Modifier
                         ),
                     contentAlignment = Alignment.Center,

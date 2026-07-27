@@ -64,8 +64,15 @@ class MainActivity : FragmentActivity() {
     private val userToolsRepository by lazy { UserToolsRepository(httpClient) }
     private val themePrefs by lazy { ThemePrefs(applicationContext) }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.host?.let { com.refactor.app.ui.ShortcutRouter.pending = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        intent?.data?.host?.let { com.refactor.app.ui.ShortcutRouter.pending = it }
         LocalReminderScheduler.rescheduleAll(applicationContext, notificationPrefs)
         enableEdgeToEdge()
         val factory = AuthViewModel.Factory(authRepository, appDb.coachMessageDao(), application)

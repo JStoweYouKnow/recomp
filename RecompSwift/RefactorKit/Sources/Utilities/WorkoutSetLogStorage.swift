@@ -82,6 +82,23 @@ public enum WorkoutSetLogStorage {
         save(load().filter { $0.id != id })
     }
 
+    /// Most recently logged working weight for an exercise (by name), for prefilling the input.
+    public static func lastWeight(forExercise name: String) -> Double? {
+        let target = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return load()
+            .filter {
+                $0.exerciseName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == target
+                    && ($0.weightLbs ?? 0) > 0
+            }
+            .max { $0.loggedAt < $1.loggedAt }?
+            .weightLbs
+    }
+
+    /// All logs recorded for a given plan/day/date, for the post-workout summary.
+    public static func logs(planId: String, dayLabel: String, date: String) -> [WorkoutSetLogDTO] {
+        load().filter { $0.planId == planId && $0.dayLabel == dayLabel && $0.date == date }
+    }
+
     public static func merge(local: [WorkoutSetLogDTO], remote: [WorkoutSetLogDTO]) -> [WorkoutSetLogDTO] {
         var byId: [String: WorkoutSetLogDTO] = [:]
         for log in remote { byId[log.id] = log }
