@@ -1,0 +1,65 @@
+{
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Models/WearableData.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WearableData.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WearableData.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WearableData.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WearableData.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WearableData.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Models/WorkoutDay.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WorkoutDay.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WorkoutDay.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WorkoutDay.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WorkoutDay.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/WorkoutDay.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/APIClient.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIClient.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIClient.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIClient.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIClient.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIClient.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/APIRouter.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIRouter.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIRouter.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIRouter.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIRouter.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/APIRouter.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/ActEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/ActEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/ActEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/ActEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/ActEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/ActEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/AuthEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/AuthEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/AuthEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/AuthEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/AuthEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/AuthEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/BiofeedbackEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/BiofeedbackEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/BiofeedbackEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/BiofeedbackEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/BiofeedbackEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/BiofeedbackEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/CalendarEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CalendarEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CalendarEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CalendarEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CalendarEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CalendarEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/CoachEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CoachEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CoachEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CoachEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CoachEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/CoachEndpoints.swiftdeps"
+  }
+}

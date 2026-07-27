@@ -8,9 +8,9 @@ struct DashboardView: View {
     @Environment(\.syncEngine) private var syncEngine
     @State private var mealService = MealService()
     @State private var planService = PlanService()
-    @State private var syncError: String?
     @State private var regenerateError: String?
     @State private var showRegenerateSheet = false
+    @State private var showWidgetGrid = false
     @State private var programWeeks = 1
     @State private var workoutDaysPerWeek = 4
 
@@ -52,13 +52,22 @@ struct DashboardView: View {
                         .padding(.horizontal)
                     CoachCheckInDashboardCard()
                         .padding(.horizontal)
-                    widgetGrid
+                    if showWidgetGrid {
+                        widgetGrid
+                    }
                 }
                 .padding(.vertical)
             }
             .navigationTitle("Dashboard")
             .onAppear {
                 workoutDaysPerWeek = profileDaysPerWeek
+                NotificationCenter.default.post(name: .recompDashboardDidAppear, object: nil)
+                if !showWidgetGrid {
+                    Task { @MainActor in
+                        await Task.yield()
+                        showWidgetGrid = true
+                    }
+                }
             }
             .onChange(of: profileDaysPerWeek) { _, newValue in
                 workoutDaysPerWeek = newValue
@@ -98,18 +107,10 @@ struct DashboardView: View {
                         try await engine.fetchAndApply()
                     } catch {
                         if !SyncPullErrorFiltering.shouldSuppressUserAlert(for: error) {
-                            syncError = error.localizedDescription
+                            ToastCenter.show("Sync failed — pull to try again", type: .error)
                         }
                     }
                 }
-            }
-            .alert("Sync Failed", isPresented: Binding(
-                get: { syncError != nil },
-                set: { if !$0 { syncError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(syncError ?? "")
             }
             .alert("Couldn't regenerate plan", isPresented: Binding(
                 get: { regenerateError != nil },
@@ -172,13 +173,21 @@ struct DashboardView: View {
         do {
             _ = try await planService.regeneratePlan(context: context, options: options)
             await syncEngine?.syncNow()
+            ToastCenter.celebrate()
+            ToastCenter.show("Your plan is ready", type: .success)
         } catch {
+            Haptics.error()
             regenerateError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
+    /// Consecutive days (up to today) with at least one logged meal.
+    private var loggingStreak: Int {
+        DateHelpers.streakLength(dates: Array(Set(allMeals.map(\.date))))
+    }
+
     private var greetingSection: some View {
-        HStack {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(greetingText)
                     .font(.title2.weight(.bold))
@@ -187,6 +196,9 @@ struct DashboardView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if loggingStreak >= 2 {
+                StreakBadge(days: loggingStreak)
+            }
             AvatarView(dataUrl: auth.currentUser?.avatarDataUrl, name: auth.currentUser?.name ?? "User", size: 44)
         }
         .padding(.horizontal)
@@ -369,6 +381,31 @@ private struct RegeneratePlanSheet: View {
                 }
             }
         }
+    }
+}
+
+/// A flame badge showing the current consecutive-day logging streak.
+struct StreakBadge: View {
+    let days: Int
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "flame.fill")
+                .font(.caption)
+                .foregroundStyle(LinearGradient(
+                    colors: [Color.appWarm, Color.appError],
+                    startPoint: .top, endPoint: .bottom
+                ))
+            Text("\(days)")
+                .font(.subheadline.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(Color.primary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.appWarm.opacity(0.14), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(days) day logging streak")
     }
 }
 

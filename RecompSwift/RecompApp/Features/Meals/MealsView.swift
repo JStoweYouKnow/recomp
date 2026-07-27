@@ -106,7 +106,9 @@ struct MealsView: View {
                                 context.delete(meal)
                                 do {
                                     try context.save()
+                                    Haptics.impact(.rigid)
                                     MealChangeNotifier.postLocalMealsChanged()
+                                    ToastCenter.show("Meal deleted", type: .info)
                                     Task {
                                         await syncEngine?.markDirty()
                                         await syncEngine?.syncNow()

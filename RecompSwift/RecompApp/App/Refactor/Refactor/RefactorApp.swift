@@ -14,6 +14,7 @@ struct RefactorApp: App {
     @State private var authService = AuthService()
     @State private var subscriptionService = SubscriptionService()
     @State private var coordinator = AppCoordinator()
+    @State private var toastManager = ToastManager()
 
     private let modelContainer: ModelContainer
     private let syncEngine: SyncEngine
@@ -68,6 +69,7 @@ struct RefactorApp: App {
                 .environment(authService)
                 .environment(subscriptionService)
                 .environment(coordinator)
+                .environment(toastManager)
                 .environment(\.syncEngine, syncEngine)
         }
         .modelContainer(modelContainer)
@@ -108,6 +110,7 @@ struct RootView: View {
 
     @State private var showPaywall = false
     @State private var showAIConsentOnboarding = false
+    @State private var didRunAuthenticatedBootstrap = false
 
     private var preferredScheme: ColorScheme? {
         AppColorScheme(rawValue: colorSchemePref)?.colorScheme
@@ -137,6 +140,7 @@ struct RootView: View {
             }
         }
         .preferredColorScheme(preferredScheme)
+        .modifier(RootFeedbackOverlay())
         .safeAreaInset(edge: .top) {
             if storeDegraded {
                 StoreDegradedBanner()
@@ -156,12 +160,12 @@ struct RootView: View {
                 }
             }
             if auth.isAuthenticated, let engine = syncEngine {
-                // Let dashboard @Query views finish their first pass before pull-merge updates the store.
-                await Task.yield()
+                await waitForDashboardBeforeInitialSync()
                 try? await engine.fetchAndApply()
                 auth.refreshCurrentUserFromStore()
                 subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
                 pushWatchDashboard(from: modelContext)
+                didRunAuthenticatedBootstrap = true
             }
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
@@ -171,7 +175,18 @@ struct RootView: View {
                 if !auth.isDemo && !aiConsentGiven {
                     showAIConsentOnboarding = true
                 }
+                // Fresh sign-in after onboarding: `.task` already finished while logged out.
+                guard !didRunAuthenticatedBootstrap, let engine = syncEngine else { return }
+                Task {
+                    await waitForDashboardBeforeInitialSync()
+                    try? await engine.fetchAndApply()
+                    auth.refreshCurrentUserFromStore()
+                    subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
+                    pushWatchDashboard(from: modelContext)
+                    didRunAuthenticatedBootstrap = true
+                }
             } else {
+                didRunAuthenticatedBootstrap = false
                 // Sign-out: tell the paired watch to drop its cached session.
                 PhoneSessionManager.shared.clearUserId()
             }
@@ -179,19 +194,15 @@ struct RootView: View {
         .onChange(of: subscriptions.status) { _, _ in
             showPaywallIfNeeded()
         }
-        .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
-            guard isAuthenticated, let engine = syncEngine else { return }
-            Task {
-                try? await engine.fetchAndApply()
-                auth.refreshCurrentUserFromStore()
-                subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
-                pushWatchDashboard(from: modelContext)
-            }
-        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, auth.isAuthenticated, let engine = syncEngine else { return }
             Task {
                 try? await engine.fetchAndApply()
+                // Push through any change an App Intent made while the app was closed.
+                if PendingIntentSync.consume() {
+                    await engine.markDirty()
+                    _ = await engine.syncNow()
+                }
                 auth.refreshCurrentUserFromStore()
                 pushWatchDashboard(from: modelContext)
             }
@@ -255,9 +266,60 @@ struct RootView: View {
         showPaywall = true
     }
 
+    /// Waits for the dashboard to lay out (or a short timeout) before the first sync pull.
+    /// Bulk SwiftData updates while `@Query` views are still initializing crash on iOS 26.
+    private func waitForDashboardBeforeInitialSync() async {
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await _ in NotificationCenter.default.notifications(named: .recompDashboardDidAppear) {
+                    break
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .milliseconds(450))
+            }
+            _ = await group.next()
+            group.cancelAll()
+        }
+    }
+
     private func pushWatchDashboard(from context: ModelContext) {
         WatchDashboardSnapshotPublisher.publish(from: context)
         PhoneSessionManager.shared.pushDataRefresh()
+    }
+}
+
+/// Bundles the app-wide feedback surfaces (toast + confetti) and their notification
+/// observers into one modifier so `RootView.body` stays small enough for the type-checker.
+private struct RootFeedbackOverlay: ViewModifier {
+    @Environment(ToastManager.self) private var toastManager
+    @State private var showConfetti = false
+
+    func body(content: Content) -> some View {
+        content
+            .toastOverlay()
+            .overlay {
+                if showConfetti {
+                    ConfettiView()
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .recompShowToast)) { note in
+                let message = note.userInfo?["message"] as? String ?? ""
+                let type = note.userInfo?["type"] as? ToastType ?? .info
+                guard !message.isEmpty else { return }
+                toastManager.show(message, type: type)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .recompCelebrate)) { _ in
+                Haptics.success()
+                withAnimation(.easeIn(duration: 0.2)) { showConfetti = true }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2.2))
+                    withAnimation(.easeOut(duration: 0.4)) { showConfetti = false }
+                }
+            }
     }
 }
 

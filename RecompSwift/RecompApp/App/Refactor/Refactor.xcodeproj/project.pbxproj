@@ -517,7 +517,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -525,7 +525,8 @@
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you enable “Write meals & workouts to Health” in Wearables, Refactor saves the meals (calories & macros) and completed workouts you log to Apple Health.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Refactor uses the camera to scan food barcodes so it can look up nutrition automatically.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -537,7 +538,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -558,7 +559,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -566,7 +567,8 @@
 				INFOPLIST_KEY_CFBundleIconName = AppIcon;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Refactor reads activity, weight, body composition, heart rate, and sleep from Apple Health that you allow—only when you use Wearables › Connect & Sync—so your progress matches across Refactor and your devices.";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you authorize Apple Health, Refactor only reads the metrics you pick in Wearables › Connect & Sync. This app does not add or change measurements in Apple Health.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "When you enable “Write meals & workouts to Health” in Wearables, Refactor saves the meals (calories & macros) and completed workouts you log to Apple Health.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Refactor uses the camera to scan food barcodes so it can look up nutrition automatically.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Refactor uses the microphone when you dictate your meal in the text field.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Refactor uses speech recognition to turn what you say into text for meal logging. The text is sent to Refactor to estimate your meal.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -578,7 +580,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -602,7 +604,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -615,7 +617,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
 				PRODUCT_NAME = RefactorWatch;
@@ -643,7 +645,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -656,7 +658,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
 				PRODUCT_NAME = RefactorWatch;
@@ -684,7 +686,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -696,7 +698,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -723,7 +725,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 98;
+				CURRENT_PROJECT_VERSION = 99;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -735,7 +737,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 5.6;
+				MARKETING_VERSION = 5.7;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";

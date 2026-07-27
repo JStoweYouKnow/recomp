@@ -1,13 +1,38 @@
 import SwiftUI
 
+extension Notification.Name {
+    /// Fire a toast from anywhere (including sheets that don't inherit the environment).
+    /// userInfo: `["message": String, "type": ToastType]`.
+    static let recompShowToast = Notification.Name("recompShowToast")
+    /// Trigger the celebratory confetti + success haptic at the root.
+    static let recompCelebrate = Notification.Name("recompCelebrate")
+}
+
+/// Convenience entry point for firing a toast from imperative code without needing the
+/// `ToastManager` from the environment. The root view observes `.recompShowToast`.
+enum ToastCenter {
+    static func show(_ message: String, type: ToastType = .info) {
+        NotificationCenter.default.post(
+            name: .recompShowToast,
+            object: nil,
+            userInfo: ["message": message, "type": type]
+        )
+    }
+
+    /// Fire confetti + a success haptic at the root of the app.
+    static func celebrate() {
+        NotificationCenter.default.post(name: .recompCelebrate, object: nil)
+    }
+}
+
 enum ToastType {
     case success, error, info
 
     var color: Color {
         switch self {
-        case .success: return .green
-        case .error: return .red
-        case .info: return .blue
+        case .success: return .appSuccess
+        case .error: return .appError
+        case .info: return .appAccent
         }
     }
 

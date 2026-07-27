@@ -32,4 +32,6 @@ public extension Notification.Name {
     static let recompPlanDidChange = Notification.Name("recompPlanDidChange")
     /// Posted when user taps "Skip Today" on a workout reminder notification.
     static let recompSkipTodayWorkout = Notification.Name("recompSkipTodayWorkout")
+    /// Posted once when the dashboard tab finishes its first layout pass (iOS cold start).
+    static let recompDashboardDidAppear = Notification.Name("recompDashboardDidAppear")
 }

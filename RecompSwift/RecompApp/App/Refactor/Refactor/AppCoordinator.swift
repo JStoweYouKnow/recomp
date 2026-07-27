@@ -74,7 +74,7 @@ struct MainTabView: View {
                     .tag(tab)
             }
         }
-        .tint(.blue)
+        .tint(Color.appAccent)
     }
 }
 

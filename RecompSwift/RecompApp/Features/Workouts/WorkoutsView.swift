@@ -115,9 +115,11 @@ struct WorkoutsView: View {
                                                 totalSeconds: seconds
                                             )
                                         }
+                                        RestTimerNotifier.schedule(after: seconds, exerciseName: exerciseName)
                                     },
                                     onCancelRestTimer: {
                                         withAnimation { restTimer = nil }
+                                        RestTimerNotifier.cancel()
                                     }
                                 )
                             } else {
@@ -139,13 +141,27 @@ struct WorkoutsView: View {
                     if let restTimer {
                         RestTimerBanner(
                             state: restTimer,
-                            onSkip: { withAnimation { self.restTimer = nil } },
+                            onSkip: {
+                                withAnimation { self.restTimer = nil }
+                                RestTimerNotifier.cancel()
+                            },
                             onAdd15: {
                                 withAnimation {
                                     self.restTimer?.extend(by: 15)
                                 }
+                                // Reschedule the background alert to the new end time.
+                                if let end = self.restTimer?.endDate {
+                                    RestTimerNotifier.schedule(
+                                        after: Int(end.timeIntervalSinceNow.rounded()),
+                                        exerciseName: self.restTimer?.exerciseName ?? ""
+                                    )
+                                }
                             },
-                            onFinished: { withAnimation { self.restTimer = nil } }
+                            onFinished: {
+                                Haptics.chime()
+                                withAnimation { self.restTimer = nil }
+                                RestTimerNotifier.cancel()
+                            }
                         )
                         .padding(.horizontal)
                         .padding(.bottom, 8)
@@ -418,6 +434,7 @@ struct WorkoutDayCard: View {
     @State private var isLoadingMusic = false
     @State private var showMusic = false
     @State private var musicError: String?
+    @State private var summary: WorkoutDaySummary?
 
     init(
         planId: String,
@@ -542,6 +559,7 @@ struct WorkoutDayCard: View {
                     if totalExercises > 0 {
                         HStack(spacing: 8) {
                             Button {
+                                let willClear = allExercisesComplete
                                 withAnimation {
                                     workoutService.setDayCompletion(
                                         day: day,
@@ -551,6 +569,9 @@ struct WorkoutDayCard: View {
                                         complete: !allExercisesComplete
                                     )
                                 }
+                                // Completion is celebrated by onChange(allExercisesComplete);
+                                // give the clear action its own light tick.
+                                if willClear { Haptics.impact(.soft) }
                             } label: {
                                 Text(allExercisesComplete ? "Clear completion" : "Mark all complete")
                                     .font(.caption.weight(.medium))
@@ -618,6 +639,33 @@ struct WorkoutDayCard: View {
             }
         }
         .padding(.horizontal)
+        .onChange(of: allExercisesComplete) { _, complete in
+            // Fires when the final set (or "Mark all complete") tips the day over.
+            // onChange never fires on initial render, so re-opening a done day stays quiet.
+            if complete { finishWorkoutDay() }
+        }
+        .sheet(item: $summary) { WorkoutSummarySheet(summary: $0) }
+    }
+
+    /// Builds the session summary, exports the workout to Apple Health, and presents the recap.
+    private func finishWorkoutDay() {
+        Haptics.success()
+        let logs = WorkoutSetLogStorage.logs(planId: planId, dayLabel: day.day, date: progressDayKey)
+        let volume = logs.reduce(0.0) { $0 + ($1.weightLbs ?? 0) * Double($1.reps ?? 0) }
+        let start = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+        summary = WorkoutDaySummary(
+            dayLabel: day.day,
+            focus: day.focus,
+            exercisesCompleted: completedExercises,
+            totalExercises: totalExercises,
+            setsLogged: logs.count,
+            totalVolumeLbs: volume,
+            duration: start.map { Date.now.timeIntervalSince($0) }
+        )
+        if let start {
+            Task { await HealthKitWriter.saveWorkout(focus: day.focus, start: start, end: .now) }
+        }
+        WorkoutSessionClock.clear(dayKey: progressDayKey)
     }
 
     // MARK: Exercise section
@@ -800,8 +848,25 @@ struct ExerciseRow: View {
     var onCancelRestTimer: (() -> Void)? = nil
 
     @State private var showGif = false
+    @State private var weightText = ""
 
     private var numSets: Int { exercise.effectiveSetCount }
+
+    /// Working weight the user typed for this exercise, if any.
+    private var enteredWeight: Double? {
+        let normalized = weightText.replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized), value > 0 else { return nil }
+        return value
+    }
+
+    /// Representative rep count parsed from the prescription (first integer in e.g. "8-12").
+    private var prescribedReps: Int? {
+        let digits = exercise.reps.prefix { !$0.isNumber }.isEmpty
+            ? exercise.reps
+            : String(exercise.reps.drop { !$0.isNumber })
+        let leading = digits.prefix { $0.isNumber }
+        return Int(leading)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -843,6 +908,26 @@ struct ExerciseRow: View {
                 }
             }
 
+            // Working-weight input — feeds set logs, PR detection, and the post-workout summary.
+            if !setsDisabled {
+                HStack(spacing: 6) {
+                    Image(systemName: "scalemass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextField("Weight", text: $weightText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.center)
+                        .frame(width: 60)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
+                    Text("lbs")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Working weight in pounds for \(exercise.name)")
+            }
+
             // Set completion checkboxes — horizontal scroll so many sets stay one row (no wrap / “calendar” illusion).
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -869,6 +954,7 @@ struct ExerciseRow: View {
                                         webContext: webContext,
                                         exerciseForWeb: exercise
                                     )
+                                    Haptics.impact(.soft)
                                     onCancelRestTimer?()
                                 } else {
                                     workoutService.markSetComplete(
@@ -878,8 +964,12 @@ struct ExerciseRow: View {
                                         planIndex: planIndex,
                                         globalSlot: globalSlot,
                                         webContext: webContext,
-                                        exerciseForWeb: exercise
+                                        exerciseForWeb: exercise,
+                                        weightLbs: enteredWeight,
+                                        reps: prescribedReps
                                     )
+                                    Haptics.impact(.light)
+                                    celebratePRIfEarned()
                                     if setIdx < numSets - 1 {
                                         onStartRestTimer?(exercise.name, exercise.restSeconds)
                                     }
@@ -924,7 +1014,24 @@ struct ExerciseRow: View {
         .padding(.horizontal)
         .padding(.vertical, 6)
         .task { await onLoadGif() }
+        .onAppear {
+            // Prefill with the last weight used for this lift so progressive overload is one tap.
+            if weightText.isEmpty, let last = WorkoutSetLogStorage.lastWeight(forExercise: exercise.name) {
+                weightText = last.truncatingRemainder(dividingBy: 1) == 0
+                    ? "\(Int(last))"
+                    : String(format: "%.1f", last)
+            }
+        }
         Divider().padding(.leading)
+    }
+
+    /// Records the just-completed set against the user's PRs and celebrates a new best.
+    private func celebratePRIfEarned() {
+        guard let weight = enteredWeight, let reps = prescribedReps, reps > 0 else { return }
+        if PersonalRecordStore.record(exerciseName: exercise.name, weightLbs: weight, reps: reps) {
+            ToastCenter.celebrate()
+            ToastCenter.show("New PR: \(exercise.name)! 🏆", type: .success)
+        }
     }
 }
 
@@ -1005,6 +1112,116 @@ struct RestTimerBanner: View {
         let m = seconds / 60
         let s = seconds % 60
         return m > 0 ? String(format: "%d:%02d", m, s) : "\(s)s"
+    }
+}
+
+// MARK: - Post-workout summary
+
+struct WorkoutDaySummary: Identifiable {
+    let id = UUID()
+    let dayLabel: String
+    let focus: String
+    let exercisesCompleted: Int
+    let totalExercises: Int
+    let setsLogged: Int
+    let totalVolumeLbs: Double
+    let duration: TimeInterval?
+}
+
+struct WorkoutSummarySheet: View {
+    let summary: WorkoutDaySummary
+    @Environment(\.dismiss) private var dismiss
+    @State private var showConfetti = false
+
+    private var durationText: String? {
+        guard let d = summary.duration, d > 0 else { return nil }
+        let minutes = Int((d / 60).rounded())
+        if minutes < 60 { return "\(minutes) min" }
+        return "\(minutes / 60)h \(minutes % 60)m"
+    }
+
+    private var volumeText: String? {
+        guard summary.totalVolumeLbs > 0 else { return nil }
+        return "\(Int(summary.totalVolumeLbs.rounded())) lbs"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 24) {
+                VStack(spacing: 10) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 56))
+                        .foregroundStyle(LinearGradient.appAccentGradient)
+                        .accessibilityHidden(true)
+                    Text("Workout Complete")
+                        .font(.title2.weight(.bold))
+                    Text("\(summary.dayLabel) · \(summary.focus)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.top, 12)
+
+                LazyVGrid(columns: [.init(.flexible()), .init(.flexible())], spacing: 12) {
+                    statTile("Exercises", "\(summary.exercisesCompleted)/\(summary.totalExercises)", "dumbbell.fill")
+                    statTile("Sets logged", "\(summary.setsLogged)", "checklist")
+                    if let volumeText {
+                        statTile("Volume", volumeText, "scalemass.fill")
+                    }
+                    if let durationText {
+                        statTile("Duration", durationText, "clock.fill")
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Done").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .overlay {
+                if showConfetti {
+                    ConfettiView().allowsHitTesting(false)
+                }
+            }
+            .onAppear {
+                showConfetti = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2.2))
+                    showConfetti = false
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    private func statTile(_ label: String, _ value: String, _ icon: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(Color.appAccent)
+            Text(value)
+                .font(.title3.weight(.bold))
+                .monospacedDigit()
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 }
 

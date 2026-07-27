@@ -9,6 +9,7 @@ struct AddMealSheet: View {
     @Environment(\.syncEngine) private var syncEngine
     @Environment(AuthService.self) private var auth
     @State private var vm = AddMealViewModel()
+    @State private var planService = PlanService()
 
     @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
 
@@ -28,6 +29,10 @@ struct AddMealSheet: View {
     @State private var selectedReceiptPhoto: PhotosPickerItem?
     @State private var recipeURL = ""
     @State private var foodSearchQuery = ""
+    @State private var barcodeQuery = ""
+    @State private var barcodeError: String?
+    @State private var isLookingUpBarcode = false
+    @State private var showScanner = false
     @State private var voiceTranscript = ""
     @State private var speech = MealSpeechTranscription()
     @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
@@ -40,6 +45,7 @@ struct AddMealSheet: View {
         case photo = "Photo"
         case menu = "Menu scan"
         case receipt = "Receipt scan"
+        case barcode = "Barcode"
         case search = "Food search"
         case voice = "Voice"
         case recipe = "Recipe URL"
@@ -75,6 +81,8 @@ struct AddMealSheet: View {
                     menuScanSection
                 case .receipt:
                     receiptScanSection
+                case .barcode:
+                    barcodeSection
                 case .search:
                     foodSearchSection
                 case .voice:
@@ -306,6 +314,72 @@ struct AddMealSheet: View {
         }
     }
 
+    private var barcodeSection: some View {
+        Section("Barcode") {
+            if BarcodeScannerView.isSupported {
+                Button {
+                    barcodeError = nil
+                    showScanner = true
+                } label: {
+                    Label("Scan barcode", systemImage: "barcode.viewfinder")
+                }
+            }
+
+            HStack {
+                TextField("Or enter barcode number", text: $barcodeQuery)
+                    .keyboardType(.numberPad)
+                Button("Look up") {
+                    Task { await lookupBarcode(barcodeQuery) }
+                }
+                .disabled(barcodeQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isLookingUpBarcode)
+            }
+
+            if isLookingUpBarcode {
+                ProgressView("Looking up product…")
+            }
+            if let barcodeError {
+                Text(barcodeError).font(.caption).foregroundStyle(.red)
+            }
+            Text("Values are per 100 g — adjust servings below to match your portion.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .fullScreenCover(isPresented: $showScanner) {
+            NavigationStack {
+                BarcodeScannerView { code in
+                    showScanner = false
+                    Task { await lookupBarcode(code) }
+                }
+                .ignoresSafeArea()
+                .navigationTitle("Scan Barcode")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showScanner = false }
+                    }
+                }
+            }
+        }
+    }
+
+    private func lookupBarcode(_ code: String) async {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        barcodeError = nil
+        isLookingUpBarcode = true
+        defer { isLookingUpBarcode = false }
+        if let product = await OpenFoodFactsClient.lookup(barcode: trimmed) {
+            name = product.name
+            calories = product.macrosPer100g.calories
+            protein = product.macrosPer100g.protein
+            carbs = product.macrosPer100g.carbs
+            fat = product.macrosPer100g.fat
+            barcodeQuery = trimmed
+        } else {
+            barcodeError = "No nutrition found for that barcode. Try Food search or enter it manually."
+        }
+    }
+
     private var foodSearchSection: some View {
         Section("Food search") {
             TextField("e.g. grilled chicken breast 200g", text: $foodSearchQuery)
@@ -503,17 +577,42 @@ struct AddMealSheet: View {
             notes: notes.isEmpty ? nil : notes,
             synced: false
         )
+        // Capture today's protein total *before* inserting so we can detect the exact
+        // moment this meal tips the user over their daily protein goal.
+        let crossedProteinGoal = mealCrossesProteinGoal(adding: meal.macros.protein)
+
         context.insert(meal)
         do {
             try context.save()
             MealChangeNotifier.postLocalMealsChanged()
+            HealthKitWriter.saveMeal(name: meal.name, macros: meal.macros, date: DateHelpers.date(from: date) ?? .now)
+            if crossedProteinGoal {
+                ToastCenter.celebrate() // success haptic + confetti
+                ToastCenter.show("Protein goal hit! 🎯", type: .success)
+            } else {
+                Haptics.success()
+                ToastCenter.show("Meal logged", type: .success)
+            }
             dismiss()
             Task {
                 await syncEngine?.markDirty()
                 _ = await syncEngine?.syncNow()
             }
         } catch {
+            Haptics.error()
             saveError = error.localizedDescription
         }
+    }
+
+    /// True when today's logged protein was below target and this meal reaches or exceeds it.
+    /// Only celebrates for meals logged on the current day.
+    private func mealCrossesProteinGoal(adding addedProtein: Double) -> Bool {
+        guard date == DateHelpers.todayString() else { return false }
+        let target = planService.targets(for: .now, context: context).protein
+        guard target > 0 else { return false }
+        let priorProtein = allMeals
+            .filter { $0.date == date }
+            .reduce(0.0) { $0 + $1.macros.protein }
+        return priorProtein < target && priorProtein + addedProtein >= target
     }
 }

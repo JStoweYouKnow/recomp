@@ -1,0 +1,69 @@
+{
+  "" : {
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsExtension-primary-emit-module.dia",
+    "pch" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsExtension-primary.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Widgets/AppIntent.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/AppIntent~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Widgets/RefactorWidgets.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgets~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Widgets/RefactorWidgetsBundle.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsBundle~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Widgets/RefactorWidgetsControl.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/RefactorWidgetsControl~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Widgets/WidgetSharedModelContainer.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/WidgetSharedModelContainer~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/RefactorWidgetsExtension.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  }
+}

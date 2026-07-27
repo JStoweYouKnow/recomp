@@ -237,23 +237,11 @@ public actor SyncService: ModelActor {
         }
 
         if let hydrationDTOs = response.hydration {
-            for x in (try? modelContext.fetch(FetchDescriptor<HydrationEntry>())) ?? [] {
-                modelContext.delete(x)
-            }
-            for dto in hydrationDTOs {
-                modelContext.insert(HydrationEntry(dto: dto))
-            }
+            upsertHydrationEntries(hydrationDTOs)
         }
 
         if let fastingDTOs = response.fastingSessions {
-            for x in (try? modelContext.fetch(FetchDescriptor<FastingSession>())) ?? [] {
-                modelContext.delete(x)
-            }
-            for dto in fastingDTOs {
-                if let session = FastingSession(dto: dto, iso8601: iso8601) {
-                    modelContext.insert(session)
-                }
-            }
+            upsertFastingSessions(fastingDTOs)
         }
 
         if let biofeedbackDTOs = response.biofeedback {
@@ -530,6 +518,50 @@ public actor SyncService: ModelActor {
     /// and `AuthService` apply server profiles identically (including `proAccess`).
     private func upsertProfile(_ dto: UserProfileDTO) {
         UserProfile.upsert(from: dto, in: modelContext)
+    }
+
+    /// Upsert-by-id avoids delete-all churn that crashes SwiftData `@Query` views on iOS 26.
+    private func upsertHydrationEntries(_ dtos: [HydrationEntryDTO]) {
+        let existing = (try? modelContext.fetch(FetchDescriptor<HydrationEntry>())) ?? []
+        var byId = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        let serverIds = Set(dtos.map(\.id))
+        for dto in dtos {
+            if let row = byId[dto.id] {
+                row.date = dto.date
+                row.time = dto.time
+                row.amountMl = dto.amountMl
+                row.source = dto.source.flatMap { HydrationSource(rawValue: $0) } ?? .water
+            } else {
+                let row = HydrationEntry(dto: dto)
+                modelContext.insert(row)
+                byId[row.id] = row
+            }
+        }
+        for row in existing where !serverIds.contains(row.id) {
+            modelContext.delete(row)
+        }
+    }
+
+    private func upsertFastingSessions(_ dtos: [FastingSessionDTO]) {
+        let existing = (try? modelContext.fetch(FetchDescriptor<FastingSession>())) ?? []
+        var byId = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        let serverIds = Set(dtos.map(\.id))
+        for dto in dtos {
+            if let row = byId[dto.id] {
+                guard let start = iso8601.date(from: dto.startTime),
+                      let proto = FastingProtocol(rawValue: dto.fastingProtocol) else { continue }
+                row.startTime = start
+                row.endTime = dto.endTime.flatMap { iso8601.date(from: $0) }
+                row.targetHours = dto.targetHours
+                row.fastingProtocol = proto
+            } else if let session = FastingSession(dto: dto, iso8601: iso8601) {
+                modelContext.insert(session)
+                byId[session.id] = session
+            }
+        }
+        for row in existing where !serverIds.contains(row.id) {
+            modelContext.delete(row)
+        }
     }
 
     private func upsertPlan(_ dto: FitnessPlanDTO) {

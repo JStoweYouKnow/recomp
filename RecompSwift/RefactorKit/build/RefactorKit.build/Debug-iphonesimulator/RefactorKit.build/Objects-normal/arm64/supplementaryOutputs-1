@@ -1,0 +1,23 @@
+{
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/GroupEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/GroupEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/GroupEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/GroupEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/GroupEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/GroupEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/MealEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MealEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MealEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MealEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MealEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MealEndpoints.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/Sources/Networking/Endpoints/MusicEndpoints.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MusicEndpoints.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MusicEndpoints.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MusicEndpoints.dia",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MusicEndpoints.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RefactorKit/build/RefactorKit.build/Debug-iphonesimulator/RefactorKit.build/Objects-normal/arm64/MusicEndpoints.swiftdeps"
+  }
+}

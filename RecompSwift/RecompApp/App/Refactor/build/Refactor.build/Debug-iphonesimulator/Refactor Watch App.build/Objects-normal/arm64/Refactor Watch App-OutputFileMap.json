@@ -1,0 +1,129 @@
+{
+  "" : {
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/Refactor Watch App-primary.dia",
+    "emit-module-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/Refactor Watch App-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/Refactor Watch App-primary-emit-module.dia",
+    "pch" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/Refactor Watch App-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/Refactor Watch App-primary.swiftdeps"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Watch App/RefactorWatchApp.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/RefactorWatchApp~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/Refactor Watch App/WatchSessionManager.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchSessionManager~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/GeneratedAssetSymbols~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Complications/ComplicationProvider.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/ComplicationProvider~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/BiofeedbackWatch/WatchBiofeedbackView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchBiofeedbackView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/CoachWatch/WatchCoachView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchCoachView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/DashboardWatch/WatchDashboardView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchDashboardView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/FastingWatch/WatchFastingView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchFastingView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/HydrationWatch/WatchHydrationView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchHydrationView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/QuickMealLog/QuickMealLogView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/QuickMealLogView~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/QuickMealLog/WatchVoiceMealLogSheet.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchVoiceMealLogSheet~partial.swiftmodule"
+  },
+  "/Users/v/Downloads/Richard Rider/RecompSwift/RecompWatch/Features/WorkoutWatch/WatchWorkoutView.swift" : {
+    "const-values" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.swiftconstvalues",
+    "dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.d",
+    "diagnostics" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.dia",
+    "index-unit-output-path" : "/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.o",
+    "llvm-bc" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.bc",
+    "object" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.o",
+    "swift-dependencies" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView.swiftdeps",
+    "swiftmodule" : "/Users/v/Downloads/Richard Rider/RecompSwift/RecompApp/App/Refactor/build/Refactor.build/Debug-iphonesimulator/Refactor Watch App.build/Objects-normal/arm64/WatchWorkoutView~partial.swiftmodule"
+  }
+}

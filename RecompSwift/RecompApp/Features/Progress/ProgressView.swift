@@ -785,7 +785,12 @@ struct BiofeedbackInsightsView: View {
                     .disabled(isLoading)
                 }
                 if isLoading {
-                    ProgressView()
+                    VStack(alignment: .leading, spacing: 10) {
+                        SkeletonBlock(width: 140, height: 13)
+                        TextSkeleton(lines: 2)
+                        SkeletonBlock(width: 180, height: 13)
+                    }
+                    .padding(.vertical, 2)
                 } else if let error {
                     Text(error).font(.caption).foregroundStyle(Color.appError)
                 } else if let insights {

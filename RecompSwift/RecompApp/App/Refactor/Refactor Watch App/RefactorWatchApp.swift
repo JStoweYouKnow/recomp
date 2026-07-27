@@ -18,20 +18,12 @@ struct RefactorWatchApp: App {
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
             )
         } catch {
-            logger.error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Attempting recovery.")
-            RefactorSchema.deleteStore(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
+            // Never delete the shared App Group store from watch — the phone app may hold it open.
+            logger.error("On-disk SwiftData store failed to open (watch): \(error, privacy: .public). Using a temporary in-memory store.")
             do {
-                modelContainer = try RefactorSchema.makeContainer(
-                    appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
-                )
-                logger.info("SwiftData store recovered on watch.")
+                modelContainer = try RefactorSchema.makeContainer(inMemory: true)
             } catch {
-                logger.error("SwiftData recovery failed (watch): \(error, privacy: .public). Using a temporary in-memory store.")
-                do {
-                    modelContainer = try RefactorSchema.makeContainer(inMemory: true)
-                } catch {
-                    fatalError("SwiftData could not start (watch): \(error)")
-                }
+                fatalError("SwiftData could not start (watch): \(error)")
             }
         }
         syncEngine = SyncEngine(modelContainer: modelContainer)

@@ -350,6 +350,7 @@ struct WearableConnectionsView: View {
     @State private var showOuraSheet = false
     @State private var isConnectingFitbit = false
     @State private var errorMessage: String?
+    @AppStorage(HealthKitWriter.enabledKey) private var healthKitWriteEnabled = false
 
     private let healthStore = HKHealthStore()
 
@@ -402,6 +403,16 @@ struct WearableConnectionsView: View {
                     }
                 }
                 .disabled(isSyncingApple)
+
+                Toggle("Write meals & workouts to Health", isOn: $healthKitWriteEnabled)
+                    .onChange(of: healthKitWriteEnabled) { _, enabled in
+                        if enabled {
+                            Task {
+                                let granted = await HealthKitWriter.requestAuthorization()
+                                if !granted { healthKitWriteEnabled = false }
+                            }
+                        }
+                    }
             } else {
                 Text("Health data not available on this device.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -409,7 +420,7 @@ struct WearableConnectionsView: View {
         } header: {
             Text("Apple Health")
         } footer: {
-            Text("Refactor reads steps, active calories, heart rate, resting heart rate, sleep duration, and body weight from Apple Health. No health data is written back to Apple Health.")
+            Text("Refactor reads steps, active calories, heart rate, resting heart rate, sleep duration, and body weight from Apple Health. With writing enabled, logged meals (calories & macros) and completed workouts are also saved to Apple Health.")
                 .font(.caption2)
         }
     }

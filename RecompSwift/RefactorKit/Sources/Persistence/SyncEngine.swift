@@ -7,6 +7,8 @@ public actor SyncEngine {
     private var debounceTask: Task<Void, Never>?
     /// Debounced pull-then-push for workout Web progress (separate from `scheduleSync` so meal `markDirty` stays push-only).
     private var workoutPullPushDebounceTask: Task<Void, Never>?
+    /// Coalesces overlapping `fetchAndApply()` calls (e.g. `.task` + `onChange` on cold start).
+    private var fetchAndApplyTask: Task<Void, Error>?
     private let debounceInterval: Duration = .milliseconds(800)
 
     public init(api: APIClient = .shared, modelContainer: ModelContainer) {
@@ -40,11 +42,20 @@ public actor SyncEngine {
     /// Workout progress: `WorkoutService.replaceWebProgressFromServer` only clears day buckets
     /// for dates present in the server map, preserving in-progress days not yet on the server.
     public func fetchAndApply() async throws {
-        if await syncService.hasPendingChanges {
+        if let inFlight = fetchAndApplyTask {
+            try await inFlight.value
+            return
+        }
+        let task = Task<Void, Error> {
+            if await syncService.hasPendingChanges {
+                await performSync()
+            }
+            try await syncService.fetchAndApply()
             await performSync()
         }
-        try await syncService.fetchAndApply()
-        await performSync()
+        fetchAndApplyTask = task
+        defer { fetchAndApplyTask = nil }
+        try await task.value
     }
 
     /// Debounced `fetchAndApply()` for workout completion / Web progress keys (`recompScheduleDataSync`).

@@ -10,21 +10,14 @@ enum WidgetSharedModelContainer {
                 appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
             )
         } catch {
+            // Never delete the shared App Group store from an extension — the main app may
+            // have it open and concurrent deletion corrupts SQLite.
             Logger(subsystem: "com.refactor.ios", category: "SwiftData")
-                .error("RecompWidgetsExtension: shared store failed to open (\(error, privacy: .public)); attempting recovery.")
-            RefactorSchema.deleteStore(appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier)
+                .error("RecompWidgetsExtension: shared store failed to open (\(error, privacy: .public)); using in-memory fallback.")
             do {
-                return try RefactorSchema.makeContainerNonisolated(
-                    appGroupIdentifier: RefactorSchema.sharedAppGroupIdentifier
-                )
+                return try RefactorSchema.makeContainerNonisolated(inMemory: true)
             } catch {
-                Logger(subsystem: "com.refactor.ios", category: "SwiftData")
-                    .error("RecompWidgetsExtension: recovery failed (\(error, privacy: .public)); using a temporary in-memory store.")
-                do {
-                    return try RefactorSchema.makeContainerNonisolated(inMemory: true)
-                } catch {
-                    fatalError("Widget SwiftData store could not start: \(error)")
-                }
+                fatalError("Widget SwiftData store could not start: \(error)")
             }
         }
     }()

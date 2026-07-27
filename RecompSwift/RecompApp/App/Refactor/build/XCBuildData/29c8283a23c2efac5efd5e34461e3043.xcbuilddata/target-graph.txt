@@ -1,0 +1,12 @@
+Target dependency graph (5 targets)
+Target 'Refactor' in project 'Refactor'
+➜ Explicit dependency on target 'Refactor Watch App' in project 'Refactor'
+➜ Explicit dependency on target 'RefactorKit' in project 'RefactorKit'
+Target 'Refactor Watch App' in project 'Refactor'
+➜ Explicit dependency on target 'RefactorWidgetsExtension' in project 'Refactor'
+➜ Explicit dependency on target 'RefactorKit' in project 'RefactorKit'
+Target 'RefactorWidgetsExtension' in project 'Refactor'
+➜ Explicit dependency on target 'RefactorKit' in project 'RefactorKit'
+Target 'RefactorKit' in project 'RefactorKit'
+➜ Explicit dependency on target 'RefactorKit' in project 'RefactorKit'
+Target 'RefactorKit' in project 'RefactorKit' (no dependencies)
