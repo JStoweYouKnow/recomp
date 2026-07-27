@@ -3,6 +3,7 @@ import RefactorKit
 
 struct GroupsView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(AppCoordinator.self) private var coordinator
     @State private var groupService = GroupService()
     @State private var selectedTab = 0
     @State private var showCreate = false
@@ -75,7 +76,8 @@ struct GroupsView: View {
             .sheet(item: $selectedGroupId) { item in
                 GroupDetailView(groupId: item.value, groupService: groupService)
             }
-            .task {
+            .task(id: coordinator.selectedTab) {
+                guard coordinator.selectedTab == .groups else { return }
                 do {
                     try await groupService.fetchMyGroups()
                 } catch {

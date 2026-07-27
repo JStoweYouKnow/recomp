@@ -126,7 +126,7 @@ struct WatchVoiceMealLogSheet: View {
         MealChangeNotifier.postLocalMealsChanged()
         Task {
             await syncEngine?.markDirty()
-            await syncEngine?.syncNow()
+            _ = await syncEngine?.syncNow()
         }
         statusMessage = "Logged \(suggestion.name)"
         parsedMeals.removeAll { $0.name == suggestion.name && $0.macros.calories == suggestion.macros.calories }

@@ -205,6 +205,7 @@ struct WorkoutsView: View {
                     .accessibilityLabel("Workout options")
                 }
             }
+            .keyboardDoneButton()
             .sheet(item: $editRoute) { route in
                 NavigationStack {
                     if let plan = currentPlan {
@@ -846,6 +847,7 @@ struct ExerciseRow: View {
 
     @State private var showGif = false
     @State private var weightText = ""
+    @FocusState private var weightFocused: Bool
 
     private var numSets: Int { exercise.effectiveSetCount }
 
@@ -910,6 +912,7 @@ struct ExerciseRow: View {
                         .foregroundStyle(.secondary)
                     TextField("Weight", text: $weightText)
                         .keyboardType(.decimalPad)
+                        .focused($weightFocused)
                         .multilineTextAlignment(.center)
                         .frame(width: 60)
                         .padding(.vertical, 4)
@@ -937,6 +940,7 @@ struct ExerciseRow: View {
                         )
                         Button {
                             guard !setsDisabled else { return }
+                            weightFocused = false
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
                                 if done {
                                     workoutService.unmarkSetComplete(

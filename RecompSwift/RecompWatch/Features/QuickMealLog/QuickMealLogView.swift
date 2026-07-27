@@ -94,7 +94,7 @@ struct QuickMealLogView: View {
         MealChangeNotifier.postLocalMealsChanged()
         Task {
             await syncEngine?.markDirty()
-            await syncEngine?.syncNow()
+            _ = await syncEngine?.syncNow()
         }
         loggedMessage = "\(name) logged!"
 

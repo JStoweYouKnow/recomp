@@ -12,6 +12,9 @@ struct DashboardView: View {
     @State private var showRegenerateSheet = false
     @State private var programWeeks = 1
     @State private var workoutDaysPerWeek = 4
+    /// Secondary dashboard cards/widgets mount after the first frame so cold launch
+    /// does not register a dozen SwiftData @Query observers before sync runs.
+    @State private var secondaryDashboardReady = false
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var plans: [FitnessPlan]
@@ -47,17 +50,24 @@ struct DashboardView: View {
 
                     calorieBudgetSection
                     todaysPlanSection
-                    MetabolicModelDashboardCard()
-                        .padding(.horizontal)
-                    CoachCheckInDashboardCard()
-                        .padding(.horizontal)
-                    widgetGrid
+                    if secondaryDashboardReady {
+                        MetabolicModelDashboardCard()
+                            .padding(.horizontal)
+                        CoachCheckInDashboardCard()
+                            .padding(.horizontal)
+                        widgetGrid
+                    }
                 }
                 .padding(.vertical)
             }
             .navigationTitle("Dashboard")
             .onAppear {
                 workoutDaysPerWeek = profileDaysPerWeek
+                guard !secondaryDashboardReady else { return }
+                Task { @MainActor in
+                    await Task.yield()
+                    secondaryDashboardReady = true
+                }
             }
             .onChange(of: profileDaysPerWeek) { _, newValue in
                 workoutDaysPerWeek = newValue

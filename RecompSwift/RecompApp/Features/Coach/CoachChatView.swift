@@ -156,7 +156,7 @@ struct CoachChatView: View {
                             if coachService.shouldRegeneratePlan {
                                 isRegeneratingPlan = true
                                 defer { isRegeneratingPlan = false }
-                                try await planService.regeneratePlan(
+                                _ = try await planService.regeneratePlan(
                                     context: context,
                                     options: coachService.pendingRegenerateOptions
                                 )

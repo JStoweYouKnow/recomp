@@ -57,7 +57,15 @@ struct RefactorApp: App {
                     syncEngine = SyncEngine(modelContainer: container)
                     storeDegraded = true
                 } catch {
-                    fatalError("SwiftData could not start: \(error)")
+                    logger.fault("SwiftData in-memory fallback failed: \(error, privacy: .public). Using emergency empty store.")
+                    let schema = Schema(RefactorSchema.models)
+                    let container = try! ModelContainer(
+                        for: schema,
+                        configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]
+                    )
+                    modelContainer = container
+                    syncEngine = SyncEngine(modelContainer: container)
+                    storeDegraded = true
                 }
             }
         }
@@ -110,6 +118,10 @@ struct RootView: View {
 
     @State private var showPaywall = false
     @State private var showAIConsentOnboarding = false
+    /// Tab shell stays hidden until the first pull-merge sync completes so SwiftData
+    /// @Query views are not observing the store while fetchAndApply bulk-deletes/reinserts rows.
+    @State private var mainShellReady = false
+    @State private var startupSyncTask: Task<Void, Never>?
 
     private var preferredScheme: ColorScheme? {
         AppColorScheme(rawValue: colorSchemePref)?.colorScheme
@@ -118,22 +130,33 @@ struct RootView: View {
     var body: some View {
         Group {
             if auth.isAuthenticated {
-                MainTabView()
-                    .overlay(alignment: .bottomTrailing) {
-                        CoachFloatingButton()
+                if mainShellReady {
+                    MainTabView()
+                        .overlay(alignment: .bottomTrailing) {
+                            CoachFloatingButton()
+                        }
+                        .sheet(isPresented: $showAIConsentOnboarding) {
+                            AIConsentView(
+                                onAccept: {
+                                    aiConsentGiven = true
+                                    showAIConsentOnboarding = false
+                                },
+                                onDecline: { showAIConsentOnboarding = false }
+                            )
+                        }
+                        .sheet(isPresented: $showPaywall) {
+                            PaywallView()
+                        }
+                } else {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Syncing your data…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                    .sheet(isPresented: $showAIConsentOnboarding) {
-                        AIConsentView(
-                            onAccept: {
-                                aiConsentGiven = true
-                                showAIConsentOnboarding = false
-                            },
-                            onDecline: { showAIConsentOnboarding = false }
-                        )
-                    }
-                    .sheet(isPresented: $showPaywall) {
-                        PaywallView()
-                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.recompBackground)
+                }
             } else {
                 OnboardingView()
             }
@@ -157,14 +180,9 @@ struct RootView: View {
                 if !auth.isDemo && !aiConsentGiven {
                     showAIConsentOnboarding = true
                 }
-            }
-            if auth.isAuthenticated, let engine = syncEngine {
-                // Let dashboard @Query views finish their first pass before pull-merge updates the store.
-                await Task.yield()
-                try? await engine.fetchAndApply()
-                auth.refreshCurrentUserFromStore()
-                subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
-                pushWatchDashboard(from: modelContext)
+                scheduleStartupSync()
+            } else {
+                mainShellReady = false
             }
         }
         .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
@@ -174,7 +192,10 @@ struct RootView: View {
                 if !auth.isDemo && !aiConsentGiven {
                     showAIConsentOnboarding = true
                 }
+                scheduleStartupSync()
             } else {
+                startupSyncTask?.cancel()
+                mainShellReady = false
                 // Sign-out: tell the paired watch to drop its cached session.
                 PhoneSessionManager.shared.clearUserId()
             }
@@ -182,17 +203,8 @@ struct RootView: View {
         .onChange(of: subscriptions.status) { _, _ in
             showPaywallIfNeeded()
         }
-        .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
-            guard isAuthenticated, let engine = syncEngine else { return }
-            Task {
-                try? await engine.fetchAndApply()
-                auth.refreshCurrentUserFromStore()
-                subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
-                pushWatchDashboard(from: modelContext)
-            }
-        }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active, auth.isAuthenticated, let engine = syncEngine else { return }
+            guard phase == .active, mainShellReady, auth.isAuthenticated, let engine = syncEngine else { return }
             Task {
                 try? await engine.fetchAndApply()
                 if PendingIntentSync.consume() {
@@ -260,6 +272,36 @@ struct RootView: View {
     private func showPaywallIfNeeded() {
         guard auth.isAuthenticated, !auth.isDemo, subscriptions.status == .notPurchased else { return }
         showPaywall = true
+    }
+
+    @MainActor
+    private func scheduleStartupSync() {
+        startupSyncTask?.cancel()
+        startupSyncTask = Task { await prepareMainShellAndSync() }
+    }
+
+    /// Pull-merge **before** mounting tabs. Prior builds mounted MainTabView first; on
+    /// TestFlight, fetchAndApply then deleted/reinserted meals, fasting sessions, etc. while
+    /// dashboard @Query observers were live, which crashed SwiftData on iOS 26.
+    @MainActor
+    private func prepareMainShellAndSync() async {
+        guard auth.isAuthenticated else {
+            mainShellReady = false
+            return
+        }
+        mainShellReady = false
+        defer {
+            if auth.isAuthenticated {
+                mainShellReady = true
+            }
+        }
+
+        guard !Task.isCancelled, let engine = syncEngine else { return }
+        try? await engine.fetchAndApply()
+        guard !Task.isCancelled, auth.isAuthenticated else { return }
+        auth.refreshCurrentUserFromStore()
+        subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
+        pushWatchDashboard(from: modelContext)
     }
 
     private func pushWatchDashboard(from context: ModelContext) {

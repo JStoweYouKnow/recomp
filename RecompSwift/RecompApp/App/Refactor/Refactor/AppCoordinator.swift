@@ -90,10 +90,10 @@ private struct LazyTabContent: View {
     let tab: AppCoordinator.Tab
     @State private var activated = false
 
-    /// Only defer Workouts (in the tab bar). Progress/Groups/Profile live under "More"
-    /// and must mount immediately — deferred placeholders collapse in that UIKit nav stack.
+    /// Defer heavy tabs until first visit. Workouts and Progress carry the most
+    /// SwiftData @Query load; Groups/Profile stay mounted for the More tab stack.
     private var defersUntilSelected: Bool {
-        tab == .workouts
+        tab == .workouts || tab == .progress
     }
 
     var body: some View {
