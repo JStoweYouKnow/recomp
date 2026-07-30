@@ -207,6 +207,7 @@ struct ProfileView: View {
                 PaywallView()
             }
         }
+        .hidesUIKitNavigationBar()
         .background(Color.recompBackground.ignoresSafeArea())
     }
 
@@ -1083,110 +1084,143 @@ struct SupplementsView: View {
     @State private var analysisError: String?
     @AppStorage("aiCoachConsentGiven") private var aiConsentGiven = false
     @State private var showAIConsent = false
+    @State private var showAddSheet = false
 
     var body: some View {
-        List {
-            ForEach(supplements, id: \.id) { supp in
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(supp.name).font(.body.weight(.medium))
-                        Text("\(supp.dosage) · \(supp.frequency.rawValue.replacingOccurrences(of: "_", with: " "))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: supp.takenToday ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(supp.takenToday ? Color.appSuccess : Color.secondary)
-                        .onTapGesture {
-                            supp.takenToday.toggle()
-                            try? context.save()
-                            Task { await syncEngine?.markDirty() }
-                        }
-                }
-            }
-            .onDelete { indices in
-                for i in indices { context.delete(supplements[i]) }
-                try? context.save()
-                Task { await syncEngine?.markDirty() }
-            }
-
-            if !supplements.isEmpty {
-                Section {
-                    Button {
-                        if aiConsentGiven {
-                            Task { await analyze() }
-                        } else {
-                            showAIConsent = true
-                        }
-                    } label: {
+        Group {
+            if supplements.isEmpty {
+                EmptyStateView(
+                    icon: "pills",
+                    title: "No Supplements",
+                    subtitle: "Track vitamins and supplements, then run AI analysis",
+                    actionTitle: "Add Supplement"
+                ) { showAddSheet = true }
+            } else {
+                List {
+                    ForEach(supplements, id: \.id) { supp in
                         HStack {
-                            Label("AI Analysis", systemImage: "sparkles")
-                            if isAnalyzing { Spacer(); ProgressView().scaleEffect(0.8) }
-                        }
-                    }
-                    .disabled(isAnalyzing)
-
-                    if let err = analysisError {
-                        Text(err).font(.caption).foregroundStyle(Color.appError)
-                    }
-                }
-
-                if let result = analysisResult {
-                    if !result.deficiencies.isEmpty {
-                        Section("Potential Deficiencies") {
-                            ForEach(result.deficiencies, id: \.nutrient) { d in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text(d.nutrient).font(.subheadline.weight(.medium))
-                                        Spacer()
-                                        Text(d.severity.capitalized)
-                                            .font(.caption2)
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(severityColor(d.severity).opacity(0.15))
-                                            .foregroundStyle(severityColor(d.severity))
-                                            .clipShape(Capsule())
-                                    }
-                                    Text(d.evidence).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    if !result.recommendations.isEmpty {
-                        Section("Recommendations") {
-                            ForEach(result.recommendations, id: \.action) { r in
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text(r.action).font(.subheadline.weight(.medium))
-                                        Spacer()
-                                        Text(r.priority.capitalized)
-                                            .font(.caption2)
-                                            .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(priorityColor(r.priority).opacity(0.15))
-                                            .foregroundStyle(priorityColor(r.priority))
-                                            .clipShape(Capsule())
-                                    }
-                                    Text(r.reason).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-                    if !result.interactions.isEmpty {
-                        Section("Interactions to Note") {
-                            ForEach(result.interactions, id: \.self) { i in
-                                Label(i, systemImage: "exclamationmark.triangle")
+                            VStack(alignment: .leading) {
+                                Text(supp.name).font(.body.weight(.medium))
+                                Text("\(supp.dosage) · \(supp.frequency.rawValue.replacingOccurrences(of: "_", with: " "))")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            Spacer()
+                            Image(systemName: supp.takenToday ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(supp.takenToday ? Color.appSuccess : Color.secondary)
+                                .onTapGesture {
+                                    supp.takenToday.toggle()
+                                    try? context.save()
+                                    Task { await syncEngine?.markDirty() }
+                                }
                         }
                     }
+                    .onDelete { indices in
+                        for i in indices { context.delete(supplements[i]) }
+                        try? context.save()
+                        Task { await syncEngine?.markDirty() }
+                    }
+
                     Section {
-                        Text("Not medical advice. Discuss with a healthcare provider.")
-                            .font(.caption2).foregroundStyle(.secondary)
+                        Button {
+                            if aiConsentGiven {
+                                Task { await analyze() }
+                            } else {
+                                showAIConsent = true
+                            }
+                        } label: {
+                            HStack {
+                                Label("AI Analysis", systemImage: "sparkles")
+                                if isAnalyzing { Spacer(); ProgressView().scaleEffect(0.8) }
+                            }
+                        }
+                        .disabled(isAnalyzing)
+
+                        if let err = analysisError {
+                            Text(err).font(.caption).foregroundStyle(Color.appError)
+                        }
+                    }
+
+                    if let result = analysisResult {
+                        if !result.deficiencies.isEmpty {
+                            Section("Potential Deficiencies") {
+                                ForEach(result.deficiencies, id: \.nutrient) { d in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text(d.nutrient).font(.subheadline.weight(.medium))
+                                            Spacer()
+                                            Text(d.severity.capitalized)
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                                .background(severityColor(d.severity).opacity(0.15))
+                                                .foregroundStyle(severityColor(d.severity))
+                                                .clipShape(Capsule())
+                                        }
+                                        Text(d.evidence).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        if !result.recommendations.isEmpty {
+                            Section("Recommendations") {
+                                ForEach(result.recommendations, id: \.action) { r in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text(r.action).font(.subheadline.weight(.medium))
+                                            Spacer()
+                                            Text(r.priority.capitalized)
+                                                .font(.caption2)
+                                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                                .background(priorityColor(r.priority).opacity(0.15))
+                                                .foregroundStyle(priorityColor(r.priority))
+                                                .clipShape(Capsule())
+                                        }
+                                        Text(r.reason).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                        if !result.interactions.isEmpty {
+                            Section("Interactions to Note") {
+                                ForEach(result.interactions, id: \.self) { i in
+                                    Label(i, systemImage: "exclamationmark.triangle")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        Section {
+                            Text("Not medical advice. Discuss with a healthcare provider.")
+                                .font(.caption2).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
         }
         .navigationTitle("Supplements")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showAddSheet = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add Supplement")
+            }
+        }
+        .sheet(isPresented: $showAddSheet) {
+            AddSupplementSheet { name, dosage, frequency, timing in
+                let supp = Supplement(
+                    name: name,
+                    dosage: dosage,
+                    frequency: frequency,
+                    timing: timing
+                )
+                context.insert(supp)
+                try? context.save()
+                Task { await syncEngine?.markDirty() }
+            }
+        }
         .sheet(isPresented: $showAIConsent) {
             AIConsentView(
                 onAccept: {
@@ -1226,6 +1260,67 @@ struct SupplementsView: View {
         case "high": return Color.appError
         case "medium": return Color.appWarm
         default: return Color.appSuccess
+        }
+    }
+}
+
+private struct AddSupplementSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let onSave: (String, String, SupplementFrequency, SupplementTiming) -> Void
+
+    @State private var name = ""
+    @State private var dosage = ""
+    @State private var frequency: SupplementFrequency = .daily
+    @State private var timing: SupplementTiming = .morning
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Name (e.g. Vitamin D)", text: $name)
+                    TextField("Dosage (e.g. 500 IU)", text: $dosage)
+                }
+                Section {
+                    Picker("Frequency", selection: $frequency) {
+                        ForEach(SupplementFrequency.allCases, id: \.self) { freq in
+                            Text(freq.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
+                                .tag(freq)
+                        }
+                    }
+                    Picker("Timing", selection: $timing) {
+                        ForEach(SupplementTiming.allCases, id: \.self) { t in
+                            Text(t.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
+                                .tag(t)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Add Supplement")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let trimmedDosage = dosage.trimmingCharacters(in: .whitespacesAndNewlines)
+                        onSave(
+                            trimmedName,
+                            trimmedDosage.isEmpty ? "—" : trimmedDosage,
+                            frequency,
+                            timing
+                        )
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
         }
     }
 }

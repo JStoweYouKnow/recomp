@@ -78,22 +78,22 @@ struct MainTabView: View {
     }
 }
 
-/// SwiftUI `TabView` builds every tab's body at launch. Defer only heavy tabs
-/// (Workouts catch-up, Progress charts) until first visit so cold start stays stable.
+/// SwiftUI `TabView` builds every tab's body at launch. Defer only Workouts
+/// (catch-up queries) until first visit so cold start stays stable.
 ///
-/// Do **not** placeholder overflow/"More" tabs (Groups, Profile) with `Color.clear` —
-/// UIKit's More navigation pushes those VCs with a collapsed clear layout, which
-/// shows as a blank screen in dark mode. Always mount those destinations, and use
-/// `Color.recompBackground` (not clear) for deferred placeholders.
+/// Do **not** placeholder overflow/"More" tabs (Progress, Groups, Profile) —
+/// UIKit's More navigation pushes those VCs with a collapsed placeholder layout,
+/// which shows as a blank screen. Always mount those destinations. Sync finishes
+/// before `MainTabView` appears, so mounting Progress at tab-shell time is safe.
 private struct LazyTabContent: View {
     @Environment(AppCoordinator.self) private var coordinator
     let tab: AppCoordinator.Tab
     @State private var activated = false
 
-    /// Defer heavy tabs until first visit. Workouts and Progress carry the most
-    /// SwiftData @Query load; Groups/Profile stay mounted for the More tab stack.
+    /// Only defer Workouts (visible tab bar). Progress/Groups/Profile live under
+    /// "More" and must mount immediately — deferred placeholders collapse there.
     private var defersUntilSelected: Bool {
-        tab == .workouts || tab == .progress
+        tab == .workouts
     }
 
     var body: some View {

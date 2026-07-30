@@ -90,6 +90,7 @@ struct GroupsView: View {
                 Text(actionError ?? "")
             }
         }
+        .hidesUIKitNavigationBar()
     }
 
     private var myGroupsList: some View {

@@ -62,6 +62,7 @@ struct MyProgressView: View {
                 )
             }
         }
+        .hidesUIKitNavigationBar()
     }
 
     private var badgesSection: some View {

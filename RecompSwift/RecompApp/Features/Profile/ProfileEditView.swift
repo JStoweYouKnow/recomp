@@ -59,34 +59,32 @@ struct ProfileEditView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                avatarSection
-                identitySection
-                measurementsSection
-                fitnessSection
-                workoutSection
-                restrictionsSection
+        Form {
+            avatarSection
+            identitySection
+            measurementsSection
+            fitnessSection
+            workoutSection
+            restrictionsSection
 
-                if let saveError {
-                    Section {
-                        Text(saveError).font(.caption).foregroundStyle(Color.appError)
-                    }
+            if let saveError {
+                Section {
+                    Text(saveError).font(.caption).foregroundStyle(Color.appError)
                 }
             }
-            .navigationTitle("Edit Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
-                        ProgressView().scaleEffect(0.8)
-                    } else {
-                        Button("Save") { Task { await save() } }
-                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
+        }
+        .navigationTitle("Edit Profile")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                if isSaving {
+                    ProgressView().scaleEffect(0.8)
+                } else {
+                    Button("Save") { Task { await save() } }
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
