@@ -53,6 +53,8 @@ export async function rankWithDiscovery(
     limit?: number;
     query?: string;
     includeDiscover?: boolean;
+    minProtein?: number;
+    maxCalories?: number;
   }
 ): Promise<ScoredRecipe[]> {
   const base = rankSavedAndCuratedRecipes(saved, budget, {
@@ -67,8 +69,8 @@ export async function rankWithDiscovery(
   try {
     external = await discoverRecipes({
       query: opts.query,
-      maxCalories: budget.calories * 1.1,
-      minProtein: opts.goal === "build_muscle" ? 20 : undefined,
+      maxCalories: opts.maxCalories ?? budget.calories * 1.1,
+      minProtein: opts.minProtein ?? (opts.goal === "build_muscle" ? 20 : undefined),
       mealType: opts?.mealType,
       limit: 5,
     });

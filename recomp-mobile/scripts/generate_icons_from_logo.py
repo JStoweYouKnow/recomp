@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Play Store + Android launcher PNGs (chevron mark, readable at small sizes)."""
+"""Generate Play Store + Android launcher PNGs from refactor-app-icon.png."""
 
 from __future__ import annotations
 
@@ -21,10 +21,9 @@ MIPMAP_SIZES = {
 
 def main() -> None:
     mark = load_mark()
-    logo = mark  # for background sampling
-    bg = background_color(logo.convert("RGBA"))
+    bg = background_color(mark)
 
-    store = square_mark_icon(mark, 512, padding_ratio=0.16, bg=bg)
+    store = square_mark_icon(mark, 512)
     store_path = ROOT / "play-store-icon.png"
     store.convert("RGB").save(store_path, format="PNG", optimize=True)
     print(f"wrote {store_path}")
@@ -42,7 +41,7 @@ def main() -> None:
     for folder, size in MIPMAP_SIZES.items():
         out_dir = RES / folder
         out_dir.mkdir(parents=True, exist_ok=True)
-        icon = square_mark_icon(mark, size, padding_ratio=0.16, bg=bg)
+        icon = square_mark_icon(mark, size)
         icon.save(out_dir / "ic_launcher.png")
         icon.save(out_dir / "ic_launcher_round.png")
         print(f"wrote {folder} ({size}px)")
@@ -56,7 +55,7 @@ def main() -> None:
     ]:
         out_dir = RES / folder
         out_dir.mkdir(parents=True, exist_ok=True)
-        foreground_mark_icon(mark, scale, padding_ratio=0.16).save(out_dir / "ic_launcher_foreground.png")
+        foreground_mark_icon(mark, scale).save(out_dir / "ic_launcher_foreground.png")
         print(f"wrote {folder}/ic_launcher_foreground.png ({scale}px)")
 
 

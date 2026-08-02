@@ -7,6 +7,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
+from icon_brand import APP_ICON_PATH, load_mark, square_mark_icon
+
 ROOT = Path(__file__).resolve().parents[1]
 LOGO_PATH = ROOT / "assets" / "refactor-logo.png"
 OUTPUT_PATH = ROOT / "play-feature-graphic.png"
@@ -70,25 +72,24 @@ def load_font(name: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageF
 def main() -> None:
     if not LOGO_PATH.exists():
         raise FileNotFoundError(f"Logo not found: {LOGO_PATH}")
+    if not APP_ICON_PATH.exists():
+        raise FileNotFoundError(f"App icon not found: {APP_ICON_PATH}")
 
-    logo = Image.open(LOGO_PATH)
-    mark = trim_logo(logo)
-    icon = crop_icon(mark)
+    app_icon = square_mark_icon(load_mark(), 320)
 
     canvas = Image.new("RGBA", (WIDTH, HEIGHT), BG_COLOR)
     draw = ImageDraw.Draw(canvas)
 
-    # Left: large chevron mark
-    icon_target_h = 300
-    icon_scale = icon_target_h / icon.height
-    icon_w = max(1, int(icon.width * icon_scale))
-    icon_resized = icon.resize((icon_w, icon_target_h), Image.Resampling.LANCZOS)
+    # Left: app icon
+    icon_target = 300
+    icon_resized = app_icon.resize((icon_target, icon_target), Image.Resampling.LANCZOS)
     icon_x = 88
-    icon_y = (HEIGHT - icon_target_h) // 2 - 24
+    icon_y = (HEIGHT - icon_target) // 2 - 24
     canvas.paste(icon_resized, (icon_x, icon_y), icon_resized)
 
-    # Right: brand typography
-    text_x = icon_x + icon_w + 56
+    # Right: brand typography from horizontal wordmark
+    logo = trim_logo(Image.open(LOGO_PATH))
+    text_x = icon_x + icon_target + 56
     title_font = load_font("Arial Bold.ttf", 92)
     subtitle_font = load_font("Arial.ttf", 34)
     features_font = load_font("Arial.ttf", 28)

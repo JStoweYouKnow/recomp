@@ -14,6 +14,7 @@ struct AddMealSheet: View {
     @Query(sort: \MealEntry.date, order: .reverse) private var allMeals: [MealEntry]
 
     let date: String
+    var prefill: MealRecommendation? = nil
 
     @State private var name = ""
     @State private var mealType: MealType = .lunch
@@ -119,6 +120,17 @@ struct AddMealSheet: View {
             }
             .navigationTitle("Add Meal")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                if let p = prefill {
+                    name = p.name
+                    mealType = p.mealType
+                    calories = p.macros.calories
+                    protein = p.macros.protein
+                    carbs = p.macros.carbs
+                    fat = p.macros.fat
+                }
+            }
+            .interactiveDismissDisabled(showScanner)
             .onChange(of: inputMode) { _, mode in
                 if mode != .voice {
                     speech.stopRecording()
@@ -162,6 +174,22 @@ struct AddMealSheet: View {
                         pendingAIAction = nil
                     }
                 )
+            }
+            .fullScreenCover(isPresented: $showScanner) {
+                NavigationStack {
+                    BarcodeScannerView { code in
+                        showScanner = false
+                        Task { await lookupBarcode(code) }
+                    }
+                    .ignoresSafeArea()
+                    .navigationTitle("Scan Barcode")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { showScanner = false }
+                        }
+                    }
+                }
             }
         }
     }
@@ -319,7 +347,13 @@ struct AddMealSheet: View {
             if BarcodeScannerView.isSupported {
                 Button {
                     barcodeError = nil
-                    showScanner = true
+                    Task {
+                        if await BarcodeScannerView.requestCameraAccess() {
+                            showScanner = true
+                        } else {
+                            barcodeError = "Camera access is required to scan barcodes. Enable it in Settings."
+                        }
+                    }
                 } label: {
                     Label("Scan barcode", systemImage: "barcode.viewfinder")
                 }
@@ -343,22 +377,6 @@ struct AddMealSheet: View {
             Text("Values are per 100 g — adjust servings below to match your portion.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-        }
-        .fullScreenCover(isPresented: $showScanner) {
-            NavigationStack {
-                BarcodeScannerView { code in
-                    showScanner = false
-                    Task { await lookupBarcode(code) }
-                }
-                .ignoresSafeArea()
-                .navigationTitle("Scan Barcode")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showScanner = false }
-                    }
-                }
-            }
         }
     }
 

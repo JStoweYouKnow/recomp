@@ -8,6 +8,8 @@ struct MealsView: View {
     @State private var planService = PlanService()
     @State private var selectedDate = Date.now
     @State private var showAddMeal = false
+    @State private var addMealPrefill: MealRecommendation?
+    @State private var recTab: RecommendationCategory = .meal
     @State private var selectedTab = 0
     @State private var mealEditToken: EditableMealToken?
 
@@ -30,6 +32,10 @@ struct MealsView: View {
                     .padding(.vertical, 8)
 
                 macroSummary
+
+                if selectedTab == 0 {
+                    memoryRecommendationsSection
+                }
 
                 Picker("View", selection: $selectedTab) {
                     Text("Meals").tag(0)
@@ -61,7 +67,13 @@ struct MealsView: View {
                 }
             }
             .sheet(isPresented: $showAddMeal) {
-                AddMealSheet(date: DateHelpers.dateString(from: selectedDate))
+                AddMealSheet(
+                    date: DateHelpers.dateString(from: selectedDate),
+                    prefill: addMealPrefill
+                )
+            }
+            .onChange(of: showAddMeal) { _, open in
+                if !open { addMealPrefill = nil }
             }
             .sheet(item: $mealEditToken) { token in
                 EditMealSheet(meal: token.meal)
@@ -79,6 +91,81 @@ struct MealsView: View {
         return MacroPillsView(consumed: consumed, target: targets)
             .padding(.horizontal)
             .padding(.bottom, 8)
+    }
+
+    private var memoryRecommendationsSection: some View {
+        let consumed = mealsForDate.reduce(Macros.zero) { $0.adding($1.macros) }
+        let targets = planService.targets(for: selectedDate, context: context)
+        let result = MemoryMealRecommender.recommend(
+            meals: allMeals,
+            targets: targets,
+            consumed: consumed
+        )
+        let items = recTab == .meal ? result.meals : result.snacks
+
+        return Group {
+            if !result.meals.isEmpty || !result.snacks.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Recommended for you")
+                                .font(.subheadline.weight(.semibold))
+                            Text("From your history · \(result.budget.calories) cal left")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("Category", selection: $recTab) {
+                            Text("Meals").tag(RecommendationCategory.meal)
+                            Text("Snacks").tag(RecommendationCategory.snack)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 180)
+                    }
+                    .padding(.horizontal)
+
+                    if items.isEmpty {
+                        Text(recTab == .snack
+                             ? "Log a few snacks to get picks here."
+                             : "No meal matches right now.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal)
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(items) { item in
+                                    Button {
+                                        addMealPrefill = item
+                                        showAddMeal = true
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(item.name)
+                                                .font(.subheadline.weight(.medium))
+                                                .lineLimit(2)
+                                                .multilineTextAlignment(.leading)
+                                            Text("\(item.macros.calories) cal · P \(Int(item.macros.protein))g")
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            Text(item.fitReason)
+                                                .font(.caption2)
+                                                .foregroundStyle(.tertiary)
+                                                .lineLimit(1)
+                                        }
+                                        .frame(width: 150, alignment: .leading)
+                                        .padding(10)
+                                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+        }
     }
 
     private var mealListSection: some View {

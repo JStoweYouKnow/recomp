@@ -102,7 +102,7 @@ export function AskRefRecipes({
         <div>
           <h3 className="font-semibold">Ask Ref what to cook</h3>
           <p className="text-xs text-[var(--muted)]">
-            Ranks your saved recipes against today&apos;s remaining macros. Optionally discovers new ideas via Edamam.
+            Ranks saved recipes against today&apos;s macros. Discovery searches Edamam using your meal history, pantry, and workouts.
           </p>
         </div>
         <button

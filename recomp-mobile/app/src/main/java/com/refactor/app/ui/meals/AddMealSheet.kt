@@ -95,16 +95,17 @@ fun AddMealSheet(
     aiConsentPrefs: AiConsentPrefs,
     onDismiss: () -> Unit,
     onSave: (MealEntryDto) -> Unit,
+    prefill: com.refactor.app.util.MealRecommendation? = null,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var inputMode by remember { mutableStateOf(MealInputMode.Manual) }
-    var mealType by remember { mutableStateOf("lunch") }
-    var name by remember { mutableStateOf("") }
-    var calories by remember { mutableStateOf(0) }
-    var protein by remember { mutableStateOf(0.0) }
-    var carbs by remember { mutableStateOf(0.0) }
-    var fat by remember { mutableStateOf(0.0) }
+    var mealType by remember { mutableStateOf(prefill?.mealType ?: "lunch") }
+    var name by remember { mutableStateOf(prefill?.name ?: "") }
+    var calories by remember { mutableStateOf(prefill?.macros?.calories?.roundToInt() ?: 0) }
+    var protein by remember { mutableStateOf(prefill?.macros?.protein ?: 0.0) }
+    var carbs by remember { mutableStateOf(prefill?.macros?.carbs ?: 0.0) }
+    var fat by remember { mutableStateOf(prefill?.macros?.fat ?: 0.0) }
     var notes by remember { mutableStateOf("") }
     var foodSearchQuery by remember { mutableStateOf("") }
     var barcodeQuery by remember { mutableStateOf("") }
@@ -126,6 +127,30 @@ fun AddMealSheet(
     }
 
     val speech = remember(ctx) { SpeechRecognizer.createSpeechRecognizer(ctx) }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            launchBarcodeScanner(ctx, { analyzing = it }, { error = it }) { code ->
+                barcodeQuery = code
+                scope.launch {
+                    analyzing = true
+                    error = null
+                    val p = OpenFoodFactsClient.lookup(code)
+                    if (p != null) {
+                        name = p.name
+                        calories = p.calories
+                        protein = p.protein
+                        carbs = p.carbs
+                        fat = p.fat
+                    } else {
+                        error = "No nutrition found for that barcode. Try Food search."
+                    }
+                    analyzing = false
+                }
+            }
+        } else {
+            error = "Camera access is required to scan barcodes."
+        }
+    }
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startVoiceListening(speech, ctx) { listening = true }
     }
@@ -294,23 +319,19 @@ fun AddMealSheet(
                     }
                     Button(
                         onClick = {
-                            val options = GmsBarcodeScannerOptions.Builder()
-                                .setBarcodeFormats(
-                                    Barcode.FORMAT_EAN_13, Barcode.FORMAT_EAN_8,
-                                    Barcode.FORMAT_UPC_A, Barcode.FORMAT_UPC_E,
-                                )
-                                .build()
-                            GmsBarcodeScanning.getClient(ctx, options).startScan()
-                                .addOnSuccessListener { bc ->
-                                    val code = bc.rawValue ?: return@addOnSuccessListener
-                                    barcodeQuery = code
-                                    scope.launch {
-                                        analyzing = true; error = null
-                                        applyProduct(OpenFoodFactsClient.lookup(code))
-                                        analyzing = false
+                            when {
+                                ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED ->
+                                    launchBarcodeScanner(ctx, { analyzing = it }, { error = it }) { code ->
+                                        barcodeQuery = code
+                                        scope.launch {
+                                            analyzing = true
+                                            error = null
+                                            applyProduct(OpenFoodFactsClient.lookup(code))
+                                            analyzing = false
+                                        }
                                     }
-                                }
-                                .addOnFailureListener { error = "Couldn't start the scanner." }
+                                else -> cameraPermission.launch(Manifest.permission.CAMERA)
+                            }
                         },
                         enabled = !analyzing,
                     ) { Text("Scan barcode") }
@@ -518,6 +539,33 @@ private fun MealModeDropdown(mode: MealInputMode, onSelect: (MealInputMode) -> U
             }
         }
     }
+}
+
+private fun launchBarcodeScanner(
+    ctx: android.content.Context,
+    setAnalyzing: (Boolean) -> Unit,
+    setError: (String?) -> Unit,
+    onCode: (String) -> Unit,
+) {
+    val options = GmsBarcodeScannerOptions.Builder()
+        .setBarcodeFormats(
+            Barcode.FORMAT_EAN_13,
+            Barcode.FORMAT_EAN_8,
+            Barcode.FORMAT_UPC_A,
+            Barcode.FORMAT_UPC_E,
+        )
+        .build()
+    setAnalyzing(true)
+    GmsBarcodeScanning.getClient(ctx, options).startScan()
+        .addOnSuccessListener { barcode ->
+            setAnalyzing(false)
+            val code = barcode.rawValue?.trim().orEmpty()
+            if (code.isNotEmpty()) onCode(code)
+        }
+        .addOnFailureListener { e ->
+            setAnalyzing(false)
+            setError(e.localizedMessage ?: "Couldn't start the scanner.")
+        }
 }
 
 private fun startVoiceListening(speech: SpeechRecognizer, ctx: android.content.Context, onStarted: () -> Unit) {

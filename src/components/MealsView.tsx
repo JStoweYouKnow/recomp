@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache, getPantry, getActiveFastingSession, getSavedRestaurantMeals, saveSavedRestaurantMeals, syncToServer } from "@/lib/storage";
+import { getMealEmbeddings, saveMealEmbeddings, getCookingAppRecipes, getProfile, getRecentMealTemplates, saveRecentMealTemplate, getNutritionCache, saveNutritionCache, getPantry, getActiveFastingSession, getSavedRestaurantMeals, saveSavedRestaurantMeals, syncToServer, getSavedRecipes } from "@/lib/storage";
 import { rankMealQuickPicks } from "@/lib/meal-quick-picks";
+import type { MealRecommendation } from "@/lib/meal-recommendations";
+import { MemoryRecommendations } from "./meals/MemoryRecommendations";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
@@ -138,6 +140,18 @@ export function MealsView({
   const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
   const remainingCarbs = Math.max(0, targets.carbs - displayTotals.carbs);
   const remainingFat = Math.max(0, targets.fat - displayTotals.fat);
+
+  const savedRecipes = useMemo(() => getSavedRecipes(), [meals.length]);
+
+  const applyRecommendation = (item: MealRecommendation) => {
+    setName(item.name);
+    setMealType(item.mealType);
+    setCal(String(item.macros.calories ?? ""));
+    setPro(String(item.macros.protein ?? ""));
+    setCarb(String(item.macros.carbs ?? ""));
+    setFat(String(item.macros.fat ?? ""));
+    setShowAdd(true);
+  };
 
   const rankedQuickPicks = useMemo(
     () =>
@@ -817,6 +831,18 @@ export function MealsView({
           </div>
         ))}
       </div>
+
+      {isViewingToday && !showAdd && (
+        <MemoryRecommendations
+          meals={meals}
+          templates={getRecentMealTemplates()}
+          savedRecipes={savedRecipes}
+          targets={targets}
+          consumed={displayTotals}
+          goal={goal}
+          onSelect={applyRecommendation}
+        />
+      )}
 
       {!showAdd ? (
         <div className="space-y-2">

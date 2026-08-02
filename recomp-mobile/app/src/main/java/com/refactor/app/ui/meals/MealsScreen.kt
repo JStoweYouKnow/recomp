@@ -1,6 +1,8 @@
 package com.refactor.app.ui.meals
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +24,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +55,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import com.refactor.app.util.Feedback
 import com.refactor.app.util.HealthConnectWriter
+import com.refactor.app.util.MemoryMealRecommender
+import com.refactor.app.util.MealRecommendation
+import com.refactor.app.util.RecommendationCategory
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.MealPrepRepository
 import com.refactor.app.api.MealRepository
@@ -106,6 +112,7 @@ fun MealsScreen(
 
     var editorTarget by remember { mutableStateOf<MealEntryDto?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var addPrefill by remember { mutableStateOf<MealRecommendation?>(null) }
     var deleteTarget by remember { mutableStateOf<MealEntryDto?>(null) }
     var busy by remember { mutableStateOf(false) }
     var isRefreshing by remember { mutableStateOf(false) }
@@ -227,6 +234,15 @@ fun MealsScreen(
 
             when (sectionTab) {
                 0 -> {
+                    val isToday = selectedDate == LocalDate.now()
+                    val memoryRecs = remember(allMeals, syncSnapshot, dateStr) {
+                        val snap = syncSnapshot ?: return@remember null
+                        val consumed = sumMacrosForDate(snap.meals, dateStr)
+                        val targets = todaysMacroTargets(snap, selectedDate)
+                        MemoryMealRecommender.recommend(allMeals, targets, consumed)
+                    }
+                    var recTab by remember { mutableStateOf(RecommendationCategory.meal) }
+
                     PullToRefreshBox(
                         isRefreshing = isRefreshing,
                         onRefresh = {
@@ -237,18 +253,35 @@ fun MealsScreen(
                             }
                         },
                     ) {
-                        if (mealsForDay.isEmpty() && !busy) {
-                            Text(
-                                "No meals for this day. Tap + to log one (same flow as iOS).",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(20.dp),
-                            )
-                        } else {
-                            LazyColumn(
-                                contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                        LazyColumn(
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            if (isToday && memoryRecs != null &&
+                                (memoryRecs.meals.isNotEmpty() || memoryRecs.snacks.isNotEmpty())
                             ) {
+                                item(key = "memory-recs") {
+                                    MemoryRecommendationsSection(
+                                        result = memoryRecs,
+                                        recTab = recTab,
+                                        onTabChange = { recTab = it },
+                                        onSelect = { rec ->
+                                            addPrefill = rec
+                                            showAdd = true
+                                        },
+                                    )
+                                }
+                            }
+                            if (mealsForDay.isEmpty() && !busy) {
+                                item(key = "empty-hint") {
+                                    Text(
+                                        "No meals for this day. Tap + to log one (same flow as iOS).",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(4.dp),
+                                    )
+                                }
+                            } else {
                                 items(mealsForDay, key = { "${it.date}#${it.id}" }) { meal ->
                                     Card(
                                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
@@ -340,7 +373,11 @@ fun MealsScreen(
             mealRepository = mealRepository,
             syncCacheDao = syncCacheDao,
             aiConsentPrefs = aiConsentPrefs,
-            onDismiss = { showAdd = false },
+            prefill = addPrefill,
+            onDismiss = {
+                showAdd = false
+                addPrefill = null
+            },
             onSave = { draft ->
                 val next = allMeals + draft
                 persistAll(next)
@@ -802,6 +839,83 @@ private fun SavedRecipesTab(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryRecommendationsSection(
+    result: com.refactor.app.util.MemoryRecommendationsResult,
+    recTab: RecommendationCategory,
+    onTabChange: (RecommendationCategory) -> Unit,
+    onSelect: (MealRecommendation) -> Unit,
+) {
+    val items = if (recTab == RecommendationCategory.meal) result.meals else result.snacks
+    Card(
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column {
+                Text("Recommended for you", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "From your history · ${result.budget.calories.roundToInt()} cal left",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = recTab == RecommendationCategory.meal,
+                    onClick = { onTabChange(RecommendationCategory.meal) },
+                    label = { Text("Meals (${result.meals.size})") },
+                )
+                FilterChip(
+                    selected = recTab == RecommendationCategory.snack,
+                    onClick = { onTabChange(RecommendationCategory.snack) },
+                    label = { Text("Snacks (${result.snacks.size})") },
+                )
+            }
+            if (items.isEmpty()) {
+                Text(
+                    if (recTab == RecommendationCategory.snack) "Log a few snacks to get picks here."
+                    else "No meal matches right now.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items.forEach { item ->
+                        Card(
+                            modifier = Modifier
+                                .width(150.dp)
+                                .clickable { onSelect(item) },
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                            ),
+                        ) {
+                            Column(Modifier.padding(10.dp)) {
+                                Text(item.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+                                Text(
+                                    "${item.macros.calories.roundToInt()} cal · P ${item.macros.protein.roundToInt()}g",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    item.fitReason,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                 }
             }

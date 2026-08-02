@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import VisionKit
 
@@ -11,7 +12,20 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
         DataScannerViewController.isSupported && DataScannerViewController.isAvailable
     }
 
-    func makeUIViewController(context: Context) -> DataScannerViewController {
+    static func requestCameraAccess() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: .video)
+        case .denied, .restricted:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    func makeUIViewController(context: Context) -> ScannerHostViewController {
         let scanner = DataScannerViewController(
             recognizedDataTypes: [.barcode()],
             qualityLevel: .balanced,
@@ -19,14 +33,45 @@ struct BarcodeScannerView: UIViewControllerRepresentable {
             isHighlightingEnabled: true
         )
         scanner.delegate = context.coordinator
-        return scanner
+        return ScannerHostViewController(scanner: scanner)
     }
 
-    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
-        try? uiViewController.startScanning()
-    }
+    func updateUIViewController(_ uiViewController: ScannerHostViewController, context: Context) {}
 
     func makeCoordinator() -> Coordinator { Coordinator(onScan: onScan) }
+
+    /// Hosts the scanner so start/stop happen in UIKit lifecycle instead of every SwiftUI update.
+    final class ScannerHostViewController: UIViewController {
+        private let scanner: DataScannerViewController
+
+        init(scanner: DataScannerViewController) {
+            self.scanner = scanner
+            super.init(nibName: nil, bundle: nil)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) { nil }
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            addChild(scanner)
+            scanner.view.frame = view.bounds
+            scanner.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            view.addSubview(scanner.view)
+            scanner.didMove(toParent: self)
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard !scanner.isScanning else { return }
+            try? scanner.startScanning()
+        }
+
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            scanner.stopScanning()
+        }
+    }
 
     final class Coordinator: NSObject, DataScannerViewControllerDelegate {
         private let onScan: (String) -> Void

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Generate iOS + watchOS App Store / home-screen icons (chevron mark only)."""
+"""Generate iOS + watchOS App Store / home-screen icons from refactor-app-icon.png."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from icon_brand import background_color, load_mark, square_mark_icon
+from icon_brand import load_mark, square_mark_icon
 
 ROOT = Path(__file__).resolve().parents[1]
 IOS_ICONSET = (
@@ -40,12 +40,10 @@ def main() -> None:
         raise FileNotFoundError(f"iOS icon set not found: {IOS_ICONSET}")
 
     mark = load_mark()
-    bg = background_color(mark.convert("RGBA"))
 
     for filename, px in IOS_SIZES.items():
         out = IOS_ICONSET / filename
-        pad = 0.18 if px <= 60 else 0.16
-        icon = square_mark_icon(mark, px, padding_ratio=pad, bg=bg)
+        icon = square_mark_icon(mark, px)
         # App Store marketing icon: opaque RGB (no alpha channel).
         if px == 1024:
             icon.convert("RGB").save(out, format="PNG", optimize=True)
@@ -54,7 +52,7 @@ def main() -> None:
         print(f"wrote {out} ({px}px)")
 
     WATCH_ICON.parent.mkdir(parents=True, exist_ok=True)
-    watch = square_mark_icon(mark, 1024, padding_ratio=0.16, bg=bg)
+    watch = square_mark_icon(mark, 1024)
     watch.convert("RGB").save(WATCH_ICON, format="PNG", optimize=True)
     print(f"wrote {WATCH_ICON}")
 

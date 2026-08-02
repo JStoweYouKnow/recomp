@@ -10,8 +10,8 @@ self.addEventListener("push", (event) => {
   }
   const options = {
     body: payload.body || "You have an update from Refactor.",
-    icon: "/icon.svg",
-    badge: "/icon.svg",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
     tag: payload.tag || "refactor-default",
     data: payload.data || { url: "/" },
     renotify: true,

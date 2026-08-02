@@ -59,11 +59,16 @@ function macroFitScore(m: Macros, remaining: RemainingMacros, targets: Macros): 
   return Math.min(1, Math.max(0.08, score));
 }
 
+export type MealTypeValue = MealEntry["mealType"];
+
 type Agg = {
   displayName: string;
   count: number;
   sum: Macros;
   lastIso: string;
+  /** How often this food was logged as each meal type */
+  typeCounts: Partial<Record<MealTypeValue, number>>;
+  lastMealType: MealTypeValue;
 };
 
 function aggregateHistory(meals: MealEntry[], maxAgeDays: number): Map<string, Agg> {
@@ -82,6 +87,8 @@ function aggregateHistory(meals: MealEntry[], maxAgeDays: number): Map<string, A
         count: 1,
         sum: { ...m },
         lastIso: meal.loggedAt || `${meal.date}T12:00:00.000Z`,
+        typeCounts: { [meal.mealType]: 1 },
+        lastMealType: meal.mealType,
       });
     } else {
       cur.count += 1;
@@ -89,15 +96,47 @@ function aggregateHistory(meals: MealEntry[], maxAgeDays: number): Map<string, A
       cur.sum.protein += m.protein;
       cur.sum.carbs += m.carbs;
       cur.sum.fat += m.fat;
+      cur.typeCounts[meal.mealType] = (cur.typeCounts[meal.mealType] ?? 0) + 1;
       const last = meal.loggedAt || `${meal.date}T12:00:00.000Z`;
       if (last > cur.lastIso) {
         cur.lastIso = last;
         cur.displayName = meal.name.trim();
+        cur.lastMealType = meal.mealType;
       }
     }
   }
   return map;
 }
+
+/** True when history or calories suggest this item works as a snack. */
+export function isSnackLike(
+  macros: Macros,
+  typeCounts?: Partial<Record<MealTypeValue, number>>,
+): boolean {
+  if (macros.calories > 0 && macros.calories <= 280) return true;
+  if (!typeCounts) return false;
+  const snackCount = typeCounts.snack ?? 0;
+  const mealCount = (typeCounts.breakfast ?? 0) + (typeCounts.lunch ?? 0) + (typeCounts.dinner ?? 0);
+  return snackCount > 0 && snackCount >= mealCount;
+}
+
+export function dominantMealType(
+  typeCounts?: Partial<Record<MealTypeValue, number>>,
+  fallback: MealTypeValue = "lunch",
+): MealTypeValue {
+  if (!typeCounts) return fallback;
+  let best: MealTypeValue = fallback;
+  let bestCount = 0;
+  for (const [type, count] of Object.entries(typeCounts) as [MealTypeValue, number][]) {
+    if (count > bestCount) {
+      bestCount = count;
+      best = type;
+    }
+  }
+  return best;
+}
+
+export { aggregateHistory, macroFitScore, normKey };
 
 /**
  * Rank saved templates + frequently logged meals for the quick-pick row.
