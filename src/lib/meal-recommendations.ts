@@ -173,7 +173,6 @@ function buildRecipeRows(
         fitReason: fitReason || "Saved recipe",
         mealType: (r.mealTypes?.[0] as MealTypeValue | undefined) ?? (snack ? "snack" : "dinner"),
         recipeUrl: r.recipeUrl,
-        imageUrl: r.imageUrl,
         _rawScore: fitScore / 100,
       };
     })
