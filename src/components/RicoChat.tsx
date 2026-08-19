@@ -43,6 +43,10 @@ export function RicoChat({
 }: {
   userName: string;
   context: {
+    /** Client-local calendar day (YYYY-MM-DD) for server-side meal logging */
+    today?: string;
+    /** Same convention as `Date.getTimezoneOffset()` (minutes) */
+    timezoneOffsetMinutes?: number;
     streak?: number;
     mealsLogged?: number;
     xp?: number;

@@ -753,7 +753,7 @@ export async function persistHeadlessRicoActions(
   });
 
   if (result.touchedMeals) {
-    const beforeByKey = new Map(meals.map((m) => [`${m.date}#${m.id}`, m] as const));
+    const beforeByKey = new Map<string, MealEntry>(meals.map((m) => [`${m.date}#${m.id}`, m]));
     for (const meal of state.meals) {
       const key = `${meal.date}#${meal.id}`;
       const before = beforeByKey.get(key);
