@@ -78,7 +78,18 @@ import RefactorKit
             ]
         )
     )
-    #expect(WorkoutScheduleService.countRecentMissed(plan: plan, progress: [:], today: "2026-06-30") == 0)
+    // Mark the real Monday session complete so detection contributes nothing. Anything left
+    // in the count could only come from the orphaned planIndex-99 entry, which is the point.
+    let monday = plan.workoutPlan.weeklyPlan[0]
+    let progress: [String: String] = [
+        WorkoutWebProgress.legacyKey(
+            planId: plan.id,
+            dayLabel: monday.day,
+            section: "main",
+            exercise: monday.exercises[0]
+        ): "2026-06-29T18:00:00.000Z",
+    ]
+    #expect(WorkoutScheduleService.countRecentMissed(plan: plan, progress: progress, today: "2026-06-30") == 0)
 }
 
 @Test func workoutSchedule_countsWeekScopedProgressAsComplete() async throws {
@@ -93,9 +104,11 @@ import RefactorKit
         )
     )
     let day = plan.workoutPlan.weeklyPlan[0]
+    // 2026-06-29 is itself a Monday, so it is its own week start. (The old fixture used
+    // 2026-06-23 — a Tuesday — so the scoped key could never match.)
     let scoped = WorkoutWebProgress.weekScopedKey(
         planId: plan.id,
-        weekStartMondayYyyyMmDd: "2026-06-23",
+        weekStartMondayYyyyMmDd: "2026-06-29",
         dayLabel: day.day,
         section: "main",
         exercise: day.exercises[0]

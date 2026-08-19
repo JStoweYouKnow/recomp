@@ -3,9 +3,17 @@
 import { useState } from "react";
 import { getCookingAppRecipes, saveCookingAppRecipes, saveSavedRecipes, getSavedRecipes, syncToServer } from "@/lib/storage";
 import { useToast } from "@/components/Toast";
+import { getTodayLocal } from "@/lib/date-utils";
 import type { MealEntry, CookingAppRecipe } from "@/lib/types";
 
 type CookingTab = "off" | "connect" | "import" | "recipes" | "history";
+
+function clientMealDateContext() {
+  return {
+    clientDate: getTodayLocal(),
+    timezoneOffsetMinutes: new Date().getTimezoneOffset(),
+  };
+}
 
 export function CookingAppSync({
   meals,
@@ -192,8 +200,11 @@ export function CookingAppSync({
                   setCookingImportLoading(true);
                   setCookingImportResult(null);
                   try {
+                    const ctx = clientMealDateContext();
                     const form = new FormData();
                     form.append("file", file);
+                    form.append("clientDate", ctx.clientDate);
+                    form.append("timezoneOffsetMinutes", String(ctx.timezoneOffsetMinutes));
                     const res = await fetch("/api/cooking/import", { method: "POST", body: form });
                     const data = await res.json();
                     if (res.ok && (data.meals || data.recipes)) {
@@ -233,7 +244,7 @@ export function CookingAppSync({
                 const res = await fetch("/api/cooking/import", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ data: text }),
+                  body: JSON.stringify({ data: text, ...clientMealDateContext() }),
                 });
                 const data = await res.json();
                 if (res.ok && (data.meals || data.recipes)) {

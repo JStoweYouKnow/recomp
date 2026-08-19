@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/components/Toast";
-import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
+import { getBadgeInfo, SEASONAL_BADGES, HIDDEN_BADGES, OUTCOME_BADGES, getCurrentSeason, getSeasonDaysLeft } from "@/lib/milestones";
 import { getTodayLocal } from "@/lib/date-utils";
 import { getMeasurementTargets, saveMeasurementTargets, getBiofeedback, getMeals, syncToServer, getProfile, getBodyScans, saveBodyScans } from "@/lib/storage";
 import { WeeklyRecapCard } from "@/components/WeeklyRecapCard";
@@ -12,6 +12,20 @@ import { getUnitSystem, kgToLbs, lbsToKg } from "@/lib/units";
 
 
 const BADGE_ICONS: Record<string, string> = {
+  first_pr: "🥇",
+  strength_up_5: "💪",
+  strength_up_10: "🦾",
+  strength_up_25: "🏋️",
+  volume_balanced: "⚖️",
+  deload_completed: "🌙",
+  consistent_lifter: "⛓️",
+  trend_down_5: "📉",
+  trend_down_15: "🎯",
+  trend_down_30: "🏆",
+  bodyfat_down_2: "🔥",
+  bodyfat_down_5: "✨",
+  lean_mass_gained: "🧬",
+  recomp_achieved: "🔄",
   first_meal: "🍽️",
   meal_streak_3: "🔥",
   meal_streak_7: "⚡",
@@ -328,9 +342,13 @@ export function MilestonesView({
   const earnedIds = new Set<string>(milestones.map((m) => m.id));
   const seasonalSet = new Set<string>(SEASONAL_BADGES);
   const hiddenSet = new Set<string>(HIDDEN_BADGES);
+  const outcomeSet = new Set<string>(OUTCOME_BADGES);
   const allBadges = Object.entries(badgeInfo).filter(
-    ([id]) => !seasonalSet.has(id) && !hiddenSet.has(id)
+    ([id]) => !seasonalSet.has(id) && !hiddenSet.has(id) && !outcomeSet.has(id)
   );
+
+  // Transformation badges lead: they mark the body changing, not the app being used.
+  const outcomeBadges = OUTCOME_BADGES.map((id) => ({ id, ...badgeInfo[id] }));
 
   // Seasonal
   const season = getCurrentSeason();
@@ -1075,6 +1093,43 @@ export function MilestonesView({
               />
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card rounded-xl p-4">
+        <h2 className="text-base font-semibold text-[var(--accent)]">Transformation</h2>
+        <p className="mb-3 text-xs text-[var(--muted)]">
+          Earned by your body changing — strength, volume balance, and body composition.
+        </p>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          {outcomeBadges.map(({ id, name, desc }) => {
+            const earned = earnedIds.has(id);
+            const displayProgress = progress[id];
+            return (
+              <div
+                key={id}
+                className={`flex flex-col items-center rounded-lg border p-2 transition ${
+                  earned
+                    ? "border-[var(--accent)]/50 bg-[var(--accent)]/10"
+                    : "border-[var(--border)] bg-[var(--surface-elevated)] opacity-90"
+                }`}
+              >
+                <span className="mb-1 text-lg">{BADGE_ICONS[id] ?? "🏅"}</span>
+                <p className="text-center text-label-lg font-medium text-[var(--foreground)] leading-tight">{name}</p>
+                <p className="mt-0.5 text-center text-[9px] text-[var(--muted)] leading-tight line-clamp-2">{desc}</p>
+                {!earned && displayProgress != null && displayProgress > 0 && (
+                  <div className="mt-1 w-full">
+                    <div className="h-0.5 overflow-hidden rounded-full bg-[var(--border-soft)]">
+                      <div
+                        className="h-full rounded-full bg-[var(--accent)]/50"
+                        style={{ width: `${displayProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

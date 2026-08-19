@@ -104,7 +104,7 @@ struct SignUpFormView: View {
                     TextField("", value: $weight, format: .number)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 80)
+                        .frame(minWidth: 80, alignment: .trailing)
                 }
 
                 if unitSystem == .metric {
@@ -114,7 +114,7 @@ struct SignUpFormView: View {
                         TextField("", value: $heightCm, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 80)
+                            .frame(minWidth: 80, alignment: .trailing)
                     }
                 } else {
                     HStack {

@@ -65,7 +65,7 @@ struct EditMealSheet: View {
                         TextField("0", value: $calories, format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 72)
+                            .frame(minWidth: 72, alignment: .trailing)
                     }
                     HStack {
                         Text("Protein (g)")
@@ -73,7 +73,7 @@ struct EditMealSheet: View {
                         TextField("0", value: $protein, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 72)
+                            .frame(minWidth: 72, alignment: .trailing)
                     }
                     HStack {
                         Text("Carbs (g)")
@@ -81,7 +81,7 @@ struct EditMealSheet: View {
                         TextField("0", value: $carbs, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 72)
+                            .frame(minWidth: 72, alignment: .trailing)
                     }
                     HStack {
                         Text("Fat (g)")
@@ -89,7 +89,7 @@ struct EditMealSheet: View {
                         TextField("0", value: $fat, format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                            .frame(width: 72)
+                            .frame(minWidth: 72, alignment: .trailing)
                     }
                 }
 

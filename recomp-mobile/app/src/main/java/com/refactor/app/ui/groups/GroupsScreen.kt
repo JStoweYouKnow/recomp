@@ -26,6 +26,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Tab
+import androidx.compose.foundation.background
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,6 +56,8 @@ fun GroupsScreen(
     groupRepository: GroupRepository,
     userId: String,
     userDisplayName: String,
+    /** Set when shown as an overlay (Groups is no longer a tab); renders a back action. */
+    onBack: (() -> Unit)? = null,
 ) {
     val vm: GroupsViewModel = viewModel(factory = GroupsViewModel.Factory(groupRepository))
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -81,9 +84,20 @@ fun GroupsScreen(
         return
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         TopAppBar(
             title = { Text("Groups") },
+            navigationIcon = {
+                onBack?.let {
+                    IconButton(onClick = it) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            },
             actions = {
                 TextButton(onClick = { showJoin = true }, enabled = !busy) { Text("Join code") }
                 TextButton(onClick = { showCreate = true }, enabled = !busy) { Text("New") }

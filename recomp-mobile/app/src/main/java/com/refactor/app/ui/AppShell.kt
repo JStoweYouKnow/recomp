@@ -73,6 +73,9 @@ import com.refactor.app.ui.profile.ProfileHubScreen
 
 private data class RootTab(val label: String, val icon: @Composable () -> Unit)
 
+/** Destinations reachable from Profile and deep links, but not worth a tab slot. */
+private enum class RootOverlay { Adjust, Groups }
+
 @Composable
 fun AppShell(
     loginUi: LoginUiState,
@@ -198,6 +201,8 @@ private fun MainShell(
 
     var coachOpen by remember { mutableStateOf(false) }
     var tabIndex by remember { mutableIntStateOf(0) }
+    /** Full-screen destinations that are routable but no longer tabs. */
+    var overlay by remember { mutableStateOf<RootOverlay?>(null) }
 
     // App-shortcut / deep-link routing (recomp://<host>): jump to the matching tab.
     LaunchedEffect(ShortcutRouter.pending) {
@@ -205,6 +210,8 @@ private fun MainShell(
             "workout", "workouts" -> tabIndex = 2
             "meal", "meals", "log-meal" -> tabIndex = 1
             "dashboard", "today", "calories", "log-water" -> tabIndex = 0
+            "adjust" -> overlay = RootOverlay.Adjust
+            "groups" -> overlay = RootOverlay.Groups
             else -> {}
         }
         if (ShortcutRouter.pending != null) ShortcutRouter.pending = null
@@ -227,14 +234,16 @@ private fun MainShell(
         }
     }
 
+    // Five destinations, matching iOS. Material guidance caps a NavigationBar at 3–5:
+    // at seven, labels are suppressed for unselected tabs and targets get cramped.
+    // Adjust and Groups are still routable — they open as full-screen destinations
+    // from Profile and from deep links, they are just not tabs.
     val tabs = remember {
         listOf(
             RootTab("Today") { Icon(Icons.Outlined.Home, contentDescription = null) },
             RootTab("Meals") { Icon(Icons.Outlined.RestaurantMenu, contentDescription = null) },
             RootTab("Train") { Icon(Icons.Outlined.FitnessCenter, contentDescription = null) },
-            RootTab("Adjust") { Icon(Icons.Outlined.Tune, contentDescription = null) },
             RootTab("Stats") { Icon(Icons.AutoMirrored.Outlined.ShowChart, contentDescription = null) },
-            RootTab("Groups") { Icon(Icons.Outlined.Groups, contentDescription = null) },
             RootTab("Profile") { Icon(Icons.Outlined.Person, contentDescription = null) },
         )
     }
@@ -284,17 +293,7 @@ private fun MainShell(
                         syncCacheDao = syncCacheDao,
                         workoutExtrasRepository = workoutExtrasRepository,
                     )
-                    3 -> SyncAdjustScreen(
-                        onBack = null,
-                        syncRepository = syncRepository,
-                        syncCacheDao = syncCacheDao,
-                    )
-                    4 -> SyncMilestonesScreen(onBack = null, syncCacheDao = syncCacheDao, syncRepository = syncRepository)
-                    5 -> GroupsScreen(
-                        groupRepository = groupRepository,
-                        userId = userId,
-                        userDisplayName = userLabel,
-                    )
+                    3 -> SyncMilestonesScreen(onBack = null, syncCacheDao = syncCacheDao, syncRepository = syncRepository)
                     else -> ProfileHubScreen(
                         userId = userId,
                         userDisplayName = userLabel,
@@ -319,8 +318,28 @@ private fun MainShell(
                         userToolsRepository = userToolsRepository,
                         musicPrefs = musicPrefs,
                         coachSchedulePrefs = coachSchedulePrefs,
+                        onOpenAdjust = { overlay = RootOverlay.Adjust },
+                        onOpenGroups = { overlay = RootOverlay.Groups },
                     )
                 }
+
+                // Adjust and Groups render over the shell with their own back affordance,
+                // so losing their tab slots didn't cost reachability.
+                when (overlay) {
+                    RootOverlay.Adjust -> SyncAdjustScreen(
+                        onBack = { overlay = null },
+                        syncRepository = syncRepository,
+                        syncCacheDao = syncCacheDao,
+                    )
+                    RootOverlay.Groups -> GroupsScreen(
+                        groupRepository = groupRepository,
+                        userId = userId,
+                        userDisplayName = userLabel,
+                        onBack = { overlay = null },
+                    )
+                    null -> {}
+                }
+
                 if (coachOpen) {
                     CoachChatDialog(
                         coachRepository = coachRepository,

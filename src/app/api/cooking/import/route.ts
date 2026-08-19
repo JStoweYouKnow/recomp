@@ -9,6 +9,7 @@ import {
 } from "@/lib/server-rate-limit";
 import { withRequestLogging } from "@/lib/logger";
 import { detectRecipeKeeperFormat, parseRecipeKeeperExport } from "@/lib/recipe-keeper";
+import { parseClientDateString, resolveMealLogDate } from "@/lib/date-utils";
 
 /**
  * Cooking App Data Import
@@ -79,11 +80,19 @@ export const POST = withRequestLogging("/api/cooking/import", async function POS
     const contentType = req.headers.get("content-type") ?? "";
     let rawData: string;
     let sourceFormat: string;
+    let clientDate: string | undefined;
+    let timezoneOffsetMinutes: number | undefined;
 
     if (contentType.includes("multipart/form-data")) {
       // File upload
       const formData = await req.formData();
       const file = formData.get("file") as File | null;
+      clientDate = parseClientDateString(formData.get("clientDate"));
+      const offsetRaw = formData.get("timezoneOffsetMinutes");
+      if (typeof offsetRaw === "string" && offsetRaw !== "") {
+        const n = Number(offsetRaw);
+        if (Number.isFinite(n)) timezoneOffsetMinutes = n;
+      }
       if (!file) {
         return NextResponse.json(
           { error: "File required" },
@@ -130,6 +139,10 @@ export const POST = withRequestLogging("/api/cooking/import", async function POS
       }
       rawData = body.data;
       sourceFormat = body.format ?? "AUTO";
+      clientDate = parseClientDateString(body.clientDate);
+      if (typeof body.timezoneOffsetMinutes === "number" && Number.isFinite(body.timezoneOffsetMinutes)) {
+        timezoneOffsetMinutes = body.timezoneOffsetMinutes;
+      }
 
       if (detectRecipeKeeperFormat(rawData)) {
         const recipes = parseRecipeKeeperExport(rawData);
@@ -159,7 +172,8 @@ export const POST = withRequestLogging("/api/cooking/import", async function POS
     // Truncate very large payloads to prevent token overflow
     const truncated = rawData.slice(0, 15_000);
 
-    const prompt = `Parse this ${sourceFormat} exported data from a cooking/nutrition app. Today's date is ${new Date().toISOString().slice(0, 10)}.
+    const fallbackDate = resolveMealLogDate({ clientDate, timezoneOffsetMinutes });
+    const prompt = `Parse this ${sourceFormat} exported data from a cooking/nutrition app. Today's date is ${fallbackDate}.
 
 DATA:
 ${truncated}`;
@@ -175,12 +189,11 @@ ${truncated}`;
 
     const parsed = JSON.parse(match[0]);
     const now = new Date().toISOString();
-    const today = now.slice(0, 10);
 
     const mealEntries = (Array.isArray(parsed) ? parsed : [parsed]).map(
       (m: Record<string, unknown>, i: number) => ({
         id: `import_${Date.now()}_${i}`,
-        date: (m.date as string) ?? today,
+        date: parseClientDateString(m.date) ?? fallbackDate,
         mealType: m.mealType ?? "snack",
         name: (m.name as string) ?? "Imported meal",
         macros: {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getTodayLocal } from "@/lib/date-utils";
 import { processRicoActions, formatRicoApplyStatus } from "@/lib/rico-actions";
 import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 
@@ -41,7 +42,7 @@ export function PostWorkoutRecommendationBanner({
     if (recommendation.actions.length === 0) return;
     setApplying(true);
     try {
-      const result = processRicoActions(recommendation.actions);
+      const result = processRicoActions(recommendation.actions, { defaultDate: getTodayLocal() });
       if (result.regeneratePlan && onRegeneratePlan) {
         await onRegeneratePlan(result.regeneratePlanOptions);
       }

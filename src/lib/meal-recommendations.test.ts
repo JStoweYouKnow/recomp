@@ -77,6 +77,7 @@ describe("recommendFromMemory", () => {
           fat: 10,
           mealTypes: ["breakfast"],
           source: "curated",
+          addedAt: "2026-05-01T00:00:00.000Z",
         },
       ],
       targets,

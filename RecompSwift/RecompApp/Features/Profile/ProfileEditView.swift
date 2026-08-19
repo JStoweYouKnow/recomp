@@ -138,7 +138,7 @@ struct ProfileEditView: View {
                     TextField("", value: $weightLbs, format: .number.precision(.fractionLength(1)))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 72)
+                        .frame(minWidth: 72, alignment: .trailing)
                     Text("lbs").foregroundStyle(.secondary)
                 }
                 HStack {
@@ -162,7 +162,7 @@ struct ProfileEditView: View {
                     TextField("", value: $weightKg, format: .number.precision(.fractionLength(1)))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 72)
+                        .frame(minWidth: 72, alignment: .trailing)
                     Text("kg").foregroundStyle(.secondary)
                 }
                 HStack {
@@ -171,7 +171,7 @@ struct ProfileEditView: View {
                     TextField("", value: $heightCm, format: .number.precision(.fractionLength(0)))
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
-                        .frame(width: 72)
+                        .frame(minWidth: 72, alignment: .trailing)
                     Text("cm").foregroundStyle(.secondary)
                 }
             }

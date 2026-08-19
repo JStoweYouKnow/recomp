@@ -36,6 +36,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,16 +75,21 @@ import java.util.UUID
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
-private enum class MealInputMode(val label: String) {
-    Manual("Manual"),
-    Photo("Photo"),
-    Menu("Menu scan"),
-    Receipt("Receipt scan"),
-    Barcode("Barcode"),
-    Search("Food search"),
-    Voice("Voice"),
-    Recipe("Recipe URL"),
-    Suggest("AI Suggest"),
+private enum class MealInputMode(val label: String, val shortLabel: String) {
+    Photo("Photo", "Photo"),
+    Menu("Menu scan", "Menu"),
+    Receipt("Receipt scan", "Receipt"),
+    Barcode("Barcode", "Scan"),
+    Search("Food search", "Search"),
+    Voice("Voice", "Voice"),
+    Recipe("Recipe URL", "Recipe"),
+    Suggest("AI Suggest", "Coach");
+
+    companion object {
+        /** The four that earn a one-tap button; the rest live behind "More ways to add". */
+        val quickActions = listOf(Barcode, Photo, Voice, Suggest)
+        val secondaryActions = listOf(Search, Menu, Receipt, Recipe)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,7 +106,12 @@ fun AddMealSheet(
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var inputMode by remember { mutableStateOf(MealInputMode.Manual) }
+    // Null is the default flow: search your own history, or type a name and fill macros in.
+    // The capture modes are opt-in — breadth stays available without making the user
+    // choose an input method before they can start.
+    var advancedMode by remember { mutableStateOf<MealInputMode?>(null) }
+    var scannedProduct by remember { mutableStateOf<OpenFoodFactsClient.Product?>(null) }
+    var selectedPortion by remember { mutableStateOf<OpenFoodFactsClient.Portion?>(null) }
     var mealType by remember { mutableStateOf(prefill?.mealType ?: "lunch") }
     var name by remember { mutableStateOf(prefill?.name ?: "") }
     var calories by remember { mutableStateOf(prefill?.macros?.calories?.roundToInt() ?: 0) }
@@ -162,7 +174,7 @@ fun AddMealSheet(
             runCatching {
                 val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: error("Could not read image")
-                val analyze = when (inputMode) {
+                val analyze = when (advancedMode) {
                     MealInputMode.Menu -> mealRepository::analyzeMenu
                     MealInputMode.Receipt -> mealRepository::analyzeReceipt
                     else -> mealRepository::analyzePhoto
@@ -271,28 +283,114 @@ fun AddMealSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(Modifier.height(4.dp))
-            MealModeDropdown(inputMode, { inputMode = it }, !analyzing)
 
-            when (inputMode) {
-                MealInputMode.Manual -> {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Meal name") }, modifier = Modifier.fillMaxWidth())
-                    val matches = if (name.length >= 2) {
-                        recentMeals.filter { it.name.contains(name, ignoreCase = true) }
-                            .distinctBy { it.name.lowercase() }
-                            .take(5)
-                    } else emptyList()
-                    if (matches.isNotEmpty()) {
-                        Text("Recent matches", style = MaterialTheme.typography.labelLarge)
-                        matches.forEach { entry ->
-                            TextButton(onClick = { applySuggestion(SuggestedMealDto(entry.name, macros = entry.macros, mealType = entry.mealType)) }, modifier = Modifier.fillMaxWidth()) {
-                                Text("${entry.name} · ${entry.macros.calories.roundToInt()} cal", modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Search your meals, or type a name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            // Four one-tap capture modes. Barcode goes straight to the camera — making
+            // the user pick a mode and then tap "Scan barcode" was two taps for the
+            // fastest path in the app.
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MealInputMode.quickActions.forEach { mode ->
+                    val selected = advancedMode == mode
+                    OutlinedButton(
+                        onClick = {
+                            if (selected) {
+                                advancedMode = null
+                            } else {
+                                advancedMode = mode
+                                if (mode == MealInputMode.Barcode) {
+                                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA) ==
+                                        PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        launchBarcodeScanner(ctx, { analyzing = it }, { error = it }) { code ->
+                                            barcodeQuery = code
+                                            scope.launch {
+                                                analyzing = true; error = null
+                                                val p = OpenFoodFactsClient.lookup(code)
+                                                if (p != null) {
+                                                    name = p.name
+                                                    scannedProduct = p
+                                                    p.defaultPortion?.let { portion ->
+                                                        selectedPortion = portion
+                                                        calories = portion.calories
+                                                        protein = portion.protein
+                                                        carbs = portion.carbs
+                                                        fat = portion.fat
+                                                    }
+                                                } else {
+                                                    scannedProduct = null
+                                                    selectedPortion = null
+                                                    error = "No nutrition found for that barcode. Try Food search."
+                                                }
+                                                analyzing = false
+                                            }
+                                        }
+                                    } else {
+                                        cameraPermission.launch(Manifest.permission.CAMERA)
+                                    }
+                                }
                             }
-                        }
+                        },
+                        enabled = !analyzing,
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            mode.shortLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            color = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
+            }
+
+            // The most common action for a returning user is re-logging something they
+            // have eaten before, so it sits directly under the field rather than behind
+            // an input-method choice.
+            val suggested = recentMeals
+                .filter { name.isBlank() || it.name.contains(name.trim(), ignoreCase = true) }
+                .distinctBy { it.name.lowercase() }
+                .take(if (name.isBlank()) 6 else 8)
+            if (suggested.isNotEmpty()) {
+                Text(
+                    if (name.isBlank()) "Recent meals" else "Your meals matching \"${name.trim()}\"",
+                    style = MaterialTheme.typography.labelLarge,
+                )
+                suggested.forEach { entry ->
+                    TextButton(
+                        onClick = {
+                            applySuggestion(
+                                SuggestedMealDto(entry.name, macros = entry.macros, mealType = entry.mealType)
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            "${entry.name} · ${entry.macros.calories.roundToInt()} cal",
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+            }
+
+            MealModeDropdown(advancedMode, { advancedMode = it }, !analyzing)
+
+            when (advancedMode) {
+                null -> {}
                 MealInputMode.Photo, MealInputMode.Menu, MealInputMode.Receipt -> {
                     Text(
-                        when (inputMode) {
+                        when (advancedMode) {
                             MealInputMode.Menu -> "Select a menu photo to extract items and macros."
                             MealInputMode.Receipt -> "Select a receipt photo to extract food items."
                             else -> "Select a meal photo for AI nutrition analysis."
@@ -306,14 +404,26 @@ fun AddMealSheet(
                 }
                 MealInputMode.Barcode -> {
                     Text(
-                        "Scan a product barcode or enter it manually. Values are per 100g — adjust servings below.",
+                        "Scan a product barcode or enter it manually.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // Portion choices come from the product's own label. Handing the user
+                    // "per 100 g" and asking them to divide is arithmetic at a shelf.
                     val applyProduct: (OpenFoodFactsClient.Product?) -> Unit = { p ->
                         if (p != null) {
-                            name = p.name; calories = p.calories; protein = p.protein; carbs = p.carbs; fat = p.fat
+                            name = p.name
+                            scannedProduct = p
+                            p.defaultPortion?.let { portion ->
+                                selectedPortion = portion
+                                calories = portion.calories
+                                protein = portion.protein
+                                carbs = portion.carbs
+                                fat = portion.fat
+                            }
                         } else {
+                            scannedProduct = null
+                            selectedPortion = null
                             error = "No nutrition found for that barcode. Try Food search."
                         }
                     }
@@ -353,6 +463,51 @@ fun AddMealSheet(
                         },
                         enabled = barcodeQuery.isNotBlank() && !analyzing,
                     ) { Text("Look up") }
+
+                    scannedProduct?.let { product ->
+                        Text("Portion", style = MaterialTheme.typography.labelLarge)
+                        product.portions.forEach { portion ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        selectedPortion = portion
+                                        calories = portion.calories
+                                        protein = portion.protein
+                                        carbs = portion.carbs
+                                        fat = portion.fat
+                                    }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = selectedPortion?.label == portion.label,
+                                    onClick = {
+                                        selectedPortion = portion
+                                        calories = portion.calories
+                                        protein = portion.protein
+                                        carbs = portion.carbs
+                                        fat = portion.fat
+                                    },
+                                )
+                                Column(Modifier.weight(1f)) {
+                                    Text(portion.label, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "${portion.calories} cal · P ${portion.protein.roundToInt()}g",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+                        if (product.servingSizeGrams == null) {
+                            Text(
+                                "This product doesn't declare a serving size — pick 100 g and adjust below, or edit the macros directly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 MealInputMode.Search -> {
                     OutlinedTextField(value = foodSearchQuery, onValueChange = { foodSearchQuery = it }, label = { Text("e.g. grilled chicken 200g") }, modifier = Modifier.fillMaxWidth())
@@ -523,19 +678,25 @@ fun AddMealSheet(
 }
 
 @Composable
-private fun MealModeDropdown(mode: MealInputMode, onSelect: (MealInputMode) -> Unit, enabled: Boolean) {
+private fun MealModeDropdown(mode: MealInputMode?, onSelect: (MealInputMode?) -> Unit, enabled: Boolean) {
     var expanded by remember { mutableStateOf(false) }
     Column {
-        Text("Input method", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick = { expanded = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(mode.label, modifier = Modifier.weight(1f))
+                Text(mode?.label ?: "More ways to add", modifier = Modifier.weight(1f))
                 Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
             }
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            MealInputMode.entries.forEach { m ->
+            MealInputMode.secondaryActions.forEach { m ->
                 DropdownMenuItem(text = { Text(m.label) }, onClick = { onSelect(m); expanded = false })
+            }
+            if (mode != null) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Clear input method") },
+                    onClick = { onSelect(null); expanded = false },
+                )
             }
         }
     }

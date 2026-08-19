@@ -53,6 +53,8 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import com.refactor.app.api.dto.MilestoneDto
+import com.refactor.app.api.dto.WorkoutSetLogDto
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
@@ -119,6 +121,59 @@ class SyncRepository(
                 ),
             )
         }
+
+    /**
+     * Detects transformation badges from local training and weigh-in history and folds any
+     * newly earned ones into the cached snapshot.
+     *
+     * Web computes milestones and syncs them down, so a user who only ever opens Android
+     * would otherwise never earn an outcome badge. Writing them into the snapshot means they
+     * both display immediately and ride along on the next `pushCachedSnapshot`.
+     *
+     * Returns the ids earned on this pass so the caller can celebrate them.
+     */
+    suspend fun applyOutcomeMilestones(
+        setLogs: List<WorkoutSetLogDto>,
+        completedDeload: Boolean = false,
+    ): Result<List<String>> = runCatching {
+        var newlyEarned: List<String> = emptyList()
+
+        mutateCachedSnapshot { snap ->
+            val earned = snap.milestones.orEmpty().map { it.id }.toSet()
+            val weighIns = snap.wearableData.orEmpty()
+                .filter { (it.weight ?: 0.0) > 0 }
+                .map {
+                    DietPhase.WeighIn(
+                        date = it.date,
+                        weightLbs = it.weight,
+                        bodyFatPercent = it.bodyFatPercent,
+                    )
+                }
+
+            val result = OutcomeMilestones.evaluate(
+                OutcomeMilestones.Input(
+                    setLogs = setLogs,
+                    weighIns = weighIns,
+                    completedDeload = completedDeload,
+                    fitnessLevel = snap.profile?.fitnessLevel,
+                    earned = earned,
+                )
+            )
+            newlyEarned = result.newlyEarned
+
+            if (newlyEarned.isEmpty()) {
+                snap
+            } else {
+                val now = java.time.Instant.now().toString()
+                snap.copy(
+                    milestones = snap.milestones.orEmpty() +
+                        newlyEarned.map { MilestoneDto(id = it, earnedAt = now) },
+                )
+            }
+        }.getOrThrow()
+
+        newlyEarned
+    }
 
     /** AI-assisted or explicit workout schedule adjustment (web `/api/plans/adjust-schedule` parity). */
     suspend fun adjustWorkoutSchedule(

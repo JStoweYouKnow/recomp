@@ -2,7 +2,6 @@
     <string name="app_name">Refactor</string>
     <string name="notification_channel_push_name">Messages &amp; reminders</string>
     <string name="notification_channel_reminders_name">Daily reminders</string>
-    <string name="widget_xp_line">XP · %1$d</string>
     <string name="tab_dashboard">Today</string>
     <string name="tab_meals">Meals</string>
     <string name="tab_workouts">Training</string>

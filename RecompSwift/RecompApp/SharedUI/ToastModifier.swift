@@ -10,6 +10,20 @@ extension Notification.Name {
 
 /// Convenience entry point for firing a toast from imperative code without needing the
 /// `ToastManager` from the environment. The root view observes `.recompShowToast`.
+///
+/// **Error presentation convention.** The app previously mixed four idioms — alerts,
+/// inline red text, toasts, and one silent `catch` — so the same class of failure looked
+/// different depending on which screen you were on. Pick by what the user has to do next:
+///
+/// - **Toast** (`ToastCenter.show(_:type:)`) — transient and recoverable, nothing to fix:
+///   a failed sync, a failed delete, "meal logged". The default choice.
+/// - **Inline text** — field-level validation the user can correct in place, rendered next
+///   to the offending control in `Color.appError`. Never a bare `.red`.
+/// - **Alert** — only when the flow genuinely cannot continue, or the action is
+///   destructive and needs confirmation.
+///
+/// A failure must never be swallowed. If there is nothing useful to say, that is still a
+/// toast — a control that silently does nothing reads as a bug.
 enum ToastCenter {
     static func show(_ message: String, type: ToastType = .info) {
         NotificationCenter.default.post(

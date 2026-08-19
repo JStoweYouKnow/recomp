@@ -76,6 +76,11 @@ data class WorkoutExerciseDto(
     val sets: String,
     val reps: String,
     val notes: String? = null,
+    /**
+     * Muscles this movement trains, from ExerciseDB when available. Used for weekly volume
+     * accounting; falls back to name-based classification in [com.refactor.app.api.MuscleVolume].
+     */
+    val muscles: List<String>? = null,
 )
 
 @Serializable
@@ -260,6 +265,8 @@ data class WearableDaySummaryDto(
     val sleepScore: Int? = null,
     /** Body mass in pounds (sync contract). */
     val weight: Double? = null,
+    /** Body fat % (0–100) from a smart scale. Feeds the lean-mass signal in [com.refactor.app.api.DietPhase]. */
+    val bodyFatPercent: Double? = null,
 )
 
 @Serializable

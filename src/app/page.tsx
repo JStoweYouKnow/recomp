@@ -14,9 +14,11 @@ import {
   replaceWorkoutSetLogsFromServer,
 } from "@/lib/storage";
 import { buildRicoWorkoutLearningContext } from "@/lib/workout-learning";
+import { hasCompletedDeloadWeek } from "@/lib/mesocycle";
+import { trainingWeeksElapsed } from "@/lib/workout-schedule";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { UserProfile, FitnessPlan, MealEntry, WearableDaySummary } from "@/lib/types";
-import { getTodayLocal } from "@/lib/date-utils";
+import { getTodayLocal, getWeekStart } from "@/lib/date-utils";
 import { generatePlanWithOptions } from "@/lib/plan-orchestrator";
 import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
@@ -273,20 +275,42 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!plan || meals.length === 0) return;
+    if (!plan) return;
+    const setLogs = getWorkoutSetLogs();
+    const wData = getWearableData();
+    // Outcome badges come from lifting and weigh-ins, so a user who trains but does not
+    // log meals must still be evaluated.
+    if (meals.length === 0 && setLogs.length === 0 && wData.length === 0) return;
+
     const targets = plan.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
     const conns = getWearableConnections();
-    const wData = getWearableData();
     const wearableCount = conns.length + (wData.length > 0 ? 1 : 0);
     const stored = getMilestones();
     const earned = new Set(stored.map((m) => m.id));
+
+    const loggedWeekStarts = new Set(setLogs.map((l) => getWeekStart(l.date)));
+    const anchorWeekStart = getWeekStart(
+      plan.workoutPlan?.programWeek1Start ?? plan.createdAt?.slice(0, 10) ?? getTodayLocal(),
+    );
+    const completedDeload = hasCompletedDeloadWeek(
+      anchorWeekStart,
+      trainingWeeksElapsed(plan, getTodayLocal()),
+      loggedWeekStarts,
+    );
+
     const { newMilestones, xpGained, progress } = computeMilestones(
       meals,
       plan,
       targets,
       wearableCount,
       getHasAdjustedPlan(),
-      earned
+      earned,
+      {
+        setLogs,
+        weighIns: wData,
+        completedDeload,
+        fitnessLevel: profile?.fitnessLevel,
+      }
     );
     if (newMilestones.length > 0) {
       const next = [...stored, ...newMilestones];
@@ -312,7 +336,7 @@ export default function Home() {
       }
     }
     setMilestoneProgress(progress);
-  }, [meals, plan]);
+  }, [meals, plan, profile?.fitnessLevel]);
 
   useEffect(() => {
     if (!profile) return;
@@ -887,6 +911,8 @@ export default function Home() {
           <RicoChat
             userName={profile.name}
             context={{
+              today: getTodayLocal(),
+              timezoneOffsetMinutes: new Date().getTimezoneOffset(),
               streak: getCurrentStreakFromMeals(meals),
               mealsLogged: meals.length,
               xp,

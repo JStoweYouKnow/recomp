@@ -6,12 +6,16 @@ public struct WorkoutExercise: Codable, Identifiable, Hashable, Sendable {
     public var sets: String
     public var reps: String
     public var notes: String?
+    /// Muscles this movement trains, from ExerciseDB when available. Used for weekly volume
+    /// accounting; falls back to name-based classification in `MuscleVolume`.
+    public var muscles: [String]?
 
-    public init(name: String, sets: String, reps: String, notes: String? = nil) {
+    public init(name: String, sets: String, reps: String, notes: String? = nil, muscles: [String]? = nil) {
         self.name = name
         self.sets = sets
         self.reps = reps
         self.notes = notes
+        self.muscles = muscles
     }
 
     /// Parsed set count for UI and local progress (`"4"`, `"3-5"`, **`3x10`** / **`3×12`** sets×reps, etc.). Clamped so

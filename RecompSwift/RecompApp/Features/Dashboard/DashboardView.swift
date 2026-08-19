@@ -24,7 +24,20 @@ struct DashboardView: View {
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
     private var allMeals: [MealEntry]
 
+    /// Observed rather than fetched per render — the activity adjustment used to run a
+    /// SwiftData fetch inside `body`.
+    @Query private var activityLog: [ActivityLogEntry]
+
     private var hasPlan: Bool { !plans.isEmpty }
+
+    /// Sum of today's activity calorie adjustments, from the observed query.
+    private var todaysActivityAdjustment: Int {
+        let today = DateHelpers.todayString()
+        return activityLog.reduce(0) { $0 + ($1.date == today ? $1.calorieAdjustment : 0) }
+    }
+
+    /// The same row `PlanService.currentPlan(context:)` would fetch, but already observed.
+    private var currentPlan: FitnessPlan? { plans.first }
     private var todaysMeals: [MealEntry] {
         let today = DateHelpers.todayString()
         return allMeals.filter { $0.date == today }
@@ -48,10 +61,17 @@ struct DashboardView: View {
                         planGeneratingSection
                     }
 
+                    // Hero: the two things the user opened the app to see.
                     calorieBudgetSection
                     todaysPlanSection
+
                     if secondaryDashboardReady {
+                        // The differentiator, above the fold rather than buried in Workouts.
+                        TrainingBlockCard()
+                            .padding(.horizontal)
+
                         MetabolicModelDashboardCard()
+                        DietPhaseDashboardCard()
                             .padding(.horizontal)
                         CoachCheckInDashboardCard()
                             .padding(.horizontal)
@@ -61,6 +81,7 @@ struct DashboardView: View {
                 .padding(.vertical)
             }
             .navigationTitle("Dashboard")
+            .coachToolbarItem()
             .onAppear {
                 workoutDaysPerWeek = profileDaysPerWeek
                 guard !secondaryDashboardReady else { return }
@@ -142,7 +163,7 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .cardSurface(cornerRadius: 16)
         .padding(.horizontal)
     }
 
@@ -159,7 +180,7 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .cardSurface(cornerRadius: 16)
         .padding(.horizontal)
     }
 
@@ -207,8 +228,8 @@ struct DashboardView: View {
     private var calorieBudgetSection: some View {
         VStack(spacing: 12) {
             let consumed = todaysMeals.reduce(Macros.zero) { $0.adding($1.macros) }
-            let targets = planService.todaysTargets(context: context)
-            let activityAdj = mealService.todaysActivityCalorieAdjustment(context: context)
+            let targets = planService.todaysTargets(plan: currentPlan)
+            let activityAdj = todaysActivityAdjustment
             let adjustedCalorieTarget = targets.calories + activityAdj
 
             CalorieBudgetCard(
@@ -224,7 +245,7 @@ struct DashboardView: View {
 
     private var todaysPlanSection: some View {
         Group {
-            if let workout = planService.todaysWorkout(context: context) {
+            if let workout = planService.todaysWorkout(plan: currentPlan) {
                 HStack(spacing: 14) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 12)
@@ -257,11 +278,7 @@ struct DashboardView: View {
                     }
                 }
                 .padding(14)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.appAccent.opacity(0.2), lineWidth: 1)
-                )
+                .cardSurface(cornerRadius: 18, borderColor: Color.appAccent.opacity(0.2))
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Today's workout: \(workout.day), \(workout.focus), \(workout.exerciseSlotCount) exercises")
             }
@@ -471,10 +488,9 @@ struct CalorieBudgetCard: View {
             .frame(height: 16)
         }
         .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke((isOver ? Color.appError : Color.appAccent).opacity(0.15), lineWidth: 1)
+        .cardSurface(
+            cornerRadius: 20,
+            borderColor: (isOver ? Color.appError : Color.appAccent).opacity(0.15)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Calorie budget")

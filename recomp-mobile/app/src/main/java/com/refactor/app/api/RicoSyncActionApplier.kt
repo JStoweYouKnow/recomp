@@ -65,6 +65,9 @@ internal object RicoSyncActionApplier {
     private fun applyLogMeal(root: JsonObject, payload: JsonObject): StepOutcome {
         val existing = root["meals"]?.jsonArray?.toMutableList() ?: mutableListOf()
         val today = LocalDate.now().toString()
+        val id = payload.stringOr("id") ?: UUID.randomUUID().toString()
+        // Anchor Rico logs to device calendar day — server echoes can be UTC-shifted.
+        val date = today
         val macros = buildJsonObject {
             put("calories", JsonPrimitive(payload.doubleOr("calories").toInt()))
             put("protein", JsonPrimitive(payload.doubleOr("protein")))
@@ -72,14 +75,21 @@ internal object RicoSyncActionApplier {
             put("fat", JsonPrimitive(payload.doubleOr("fat")))
         }
         val meal = buildJsonObject {
-            put("id", JsonPrimitive(payload.stringOr("id") ?: UUID.randomUUID().toString()))
-            put("date", JsonPrimitive(payload.stringOr("date") ?: today))
+            put("id", JsonPrimitive(id))
+            put("date", JsonPrimitive(date))
             put("mealType", JsonPrimitive(parseMealType(payload)))
             put("name", JsonPrimitive(payload.stringOr("name") ?: "Meal"))
             put("loggedAt", JsonPrimitive(Instant.now().toString()))
             put("macros", macros)
         }
-        existing.add(meal)
+        val dupIdx = existing.indexOfFirst {
+            it.jsonObject.stringOr("id") == id && it.jsonObject.stringOr("date") == date
+        }
+        if (dupIdx >= 0) {
+            existing[dupIdx] = meal
+        } else {
+            existing.add(meal)
+        }
         return StepOutcome(root.replaceTopLevel("meals", JsonArray(existing)), applied = true)
     }
 

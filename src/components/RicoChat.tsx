@@ -11,6 +11,7 @@ import {
   getSavedRecipes,
   syncToServer,
 } from "@/lib/storage";
+import { getTodayLocal } from "@/lib/date-utils";
 import { processRicoActions, formatRicoApplyStatus } from "@/lib/rico-actions";
 import {
   startRecording,
@@ -200,7 +201,7 @@ export function RicoChat({
       }
 
       if (data.actions && Array.isArray(data.actions)) {
-        const applyResult = processRicoActions(data.actions);
+        const applyResult = processRicoActions(data.actions, { defaultDate: getTodayLocal() });
         reply += formatRicoApplyStatus(applyResult);
         if (applyResult.regeneratePlan && onRegeneratePlan) {
           void onRegeneratePlan(applyResult.regeneratePlanOptions);
@@ -401,7 +402,7 @@ export function RicoChat({
                         if (data.error) throw new Error(data.error);
                         let reply = data.reply as string;
                         if (data.actions?.length) {
-                          const applyResult = processRicoActions(data.actions);
+                          const applyResult = processRicoActions(data.actions, { defaultDate: getTodayLocal() });
                           reply += formatRicoApplyStatus(applyResult);
                           if (applyResult.regeneratePlan && onRegeneratePlan) {
                             void onRegeneratePlan(applyResult.regeneratePlanOptions);

@@ -80,15 +80,40 @@ struct PaywallView: View {
 
     private var featuresSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            Text("What Pro adds")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.5)
+
             FeatureRow(icon: "brain.head.profile", title: "Ref AI Coach", subtitle: "Unlimited chat — log meals, swap exercises, get plan changes instantly")
             FeatureRow(icon: "chart.line.uptrend.xyaxis", title: "Adaptive Macro Engine", subtitle: "Weekly calorie & macro recalibration based on real results")
             FeatureRow(icon: "figure.strengthtraining.traditional", title: "AI Workout Plans", subtitle: "Personalised progressive programs, auto-adjusted for recovery")
             FeatureRow(icon: "waveform.path.ecg", title: "Biofeedback Insights", subtitle: "HRV, sleep, and stress data turned into daily action")
             FeatureRow(icon: "apple.watch", title: "Wearable Sync", subtitle: "Oura, Apple Watch, Garmin, Fitbit — all in one place")
             FeatureRow(icon: "person.3.fill", title: "Groups & Challenges", subtitle: "Compete with friends, join leaderboards, win")
+
+            // Without this, the list above is a set of claims with nothing to weigh them
+            // against — the reader can't tell what they'd actually be giving up.
+            freeTierNote
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 28)
+    }
+
+    private var freeTierNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text("Free keeps manual meal and workout logging, your history, and Apple Health sync — forever.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.top, 4)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Plan Picker

@@ -27,6 +27,21 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 });
 vi.mock("@/lib/nova", () => ({ NOVA_LITE_MODEL_ID: "amazon.nova-2-lite-v1:0" }));
 
+// The route resolves the caller via `getUserId`, which reads Next's request-scoped
+// `cookies()`. Outside a real request that throws and the route 500s, so the auth and
+// db layers are stubbed the same way the sibling route tests do it.
+vi.mock("@/lib/auth", () => ({
+  getUserId: vi.fn(async (..._args: unknown[]) => "user-1"),
+}));
+vi.mock("@/lib/db", () => ({
+  dbGetMeals: vi.fn(async (..._args: unknown[]) => []),
+  dbGetPlan: vi.fn(async (..._args: unknown[]) => null),
+  dbSaveMeal: vi.fn(async (..._args: unknown[]) => {}),
+  dbSavePlan: vi.fn(async (..._args: unknown[]) => {}),
+  dbGetSavedRecipes: vi.fn(async (..._args: unknown[]) => []),
+  dbSaveSavedRecipes: vi.fn(async (..._args: unknown[]) => {}),
+}));
+
 describe("Rico flow integration", () => {
   it("accepts a message and returns a reply", async () => {
     const { POST } = await import("@/app/api/rico/route");

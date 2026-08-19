@@ -4,6 +4,7 @@ import type { FitnessPlan, MealEntry } from "./types";
 
 const basePlan: FitnessPlan = {
   id: "plan-1",
+  userId: "user-1",
   createdAt: new Date().toISOString(),
   dietPlan: {
     dailyTargets: { calories: 2000, protein: 150, carbs: 200, fat: 65 },
@@ -46,14 +47,65 @@ describe("applyRicoActionsToState", () => {
       fat: 8,
       mealType: "breakfast",
     };
-    const result = applyRicoActionsToState([{ type: "log_meal", payload }], state);
+    const result = applyRicoActionsToState([{ type: "log_meal", payload }], state, {
+      defaultDate: "2026-08-07",
+    });
     expect(result.touchedMeals).toBe(true);
     expect(state.meals).toHaveLength(1);
     expect(state.meals[0]?.mealType).toBe("breakfast");
     expect(typeof payload.id).toBe("string");
     expect(typeof payload.date).toBe("string");
     expect(state.meals[0]?.id).toBe(payload.id);
-    expect(state.meals[0]?.date).toBe(payload.date);
+    expect(state.meals[0]?.date).toBe("2026-08-07");
+    expect(payload.date).toBe("2026-08-07");
+  });
+
+  it("ignores model-supplied date for new log_meal when defaultDate is set", () => {
+    const state = { meals: [] as MealEntry[], plan: null };
+    const payload: Record<string, unknown> = {
+      name: "Dinner",
+      date: "2099-01-01",
+      calories: 500,
+      protein: 30,
+      carbs: 40,
+      fat: 20,
+    };
+    applyRicoActionsToState([{ type: "log_meal", payload }], state, {
+      defaultDate: "2026-08-07",
+    });
+    expect(state.meals[0]?.date).toBe("2026-08-07");
+    expect(payload.date).toBe("2026-08-07");
+  });
+
+  it("upserts log_meal when server echoes id and date", () => {
+    const state = {
+      meals: [
+        {
+          id: "meal-1",
+          date: "2026-08-07",
+          name: "Old",
+          mealType: "lunch" as const,
+          loggedAt: "2026-08-07T12:00:00.000Z",
+          macros: { calories: 100, protein: 10, carbs: 10, fat: 5 },
+        },
+      ],
+      plan: null,
+    };
+    const payload: Record<string, unknown> = {
+      id: "meal-1",
+      date: "2026-08-07",
+      name: "Updated",
+      calories: 500,
+      protein: 40,
+      carbs: 30,
+      fat: 15,
+    };
+    applyRicoActionsToState([{ type: "log_meal", payload }], state, {
+      defaultDate: "2026-08-06",
+    });
+    expect(state.meals).toHaveLength(1);
+    expect(state.meals[0]?.name).toBe("Updated");
+    expect(state.meals[0]?.date).toBe("2026-08-07");
   });
 
   it("reports skipped swap when exercise is missing", () => {

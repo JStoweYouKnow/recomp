@@ -70,6 +70,22 @@ function planUsesNamedWeekdays(weeklyPlan: WorkoutDay[]): boolean {
   });
 }
 
+/**
+ * 1-based count of calendar weeks the lifter has been training this plan.
+ *
+ * Distinct from `effectiveProgramWeek`, which answers "which week's template applies" and
+ * deliberately pins single-week plans to 1 so weekday matching keeps working. Periodization
+ * needs elapsed training time instead, so a repeating one-week plan still advances through
+ * accumulation → peak → deload. Falls back to the plan's creation date when no explicit
+ * program anchor was set.
+ */
+export function trainingWeeksElapsed(plan: FitnessPlan, today = getTodayLocal()): number {
+  const anchor = plan.workoutPlan.programWeek1Start ?? plan.createdAt?.slice(0, 10);
+  if (!anchor) return 1;
+  const weeks = mondayWeeksElapsed(getWeekStart(anchor), getWeekStart(today));
+  return Math.max(1, weeks + 1);
+}
+
 /** 1-based program week for a Monday week-start, honoring offset, pause, and completion mode. */
 export function effectiveProgramWeek(plan: FitnessPlan, weekStartMonday: string, today = getTodayLocal()): number {
   const wp = plan.workoutPlan;
@@ -277,9 +293,14 @@ export function getCatchUpQueue(plan: FitnessPlan): MissedSession[] {
 
 export function countRecentMissed(plan: FitnessPlan, progress: WorkoutProgressMap, days = 7, today = getTodayLocal()): number {
   const detected = detectMissedSessions(plan, progress, today, days);
+  const dayCount = plan.workoutPlan.weeklyPlan.length;
   const tracked = (plan.workoutPlan.missedSessions ?? []).filter(
     (s) =>
       s.status === "missed" &&
+      // Entries orphaned by a regenerated or shortened plan point at days that no longer
+      // exist. Counting them inflates the missed total and triggers a phantom catch-up banner.
+      s.planIndex >= 0 &&
+      s.planIndex < dayCount &&
       s.scheduledDate >= offsetDate(today, -days) &&
       !isWorkoutSessionComplete(plan, s.planIndex, s.scheduledDate, progress),
   );

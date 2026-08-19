@@ -332,7 +332,10 @@ public final class WorkoutService {
         webContext: WorkoutSetProgressContext? = nil,
         exerciseForWeb: WorkoutExercise? = nil,
         weightLbs: Double? = nil,
-        reps: Int? = nil
+        reps: Int? = nil,
+        /// Rating of perceived exertion (6–10). Feeds RIR-adjusted e1RM in `Progression`,
+        /// so submaximal sets stay comparable across sessions.
+        rpe: Double? = nil
     ) {
         let day = dayKey ?? DateHelpers.todayString()
         WorkoutSessionClock.markStartedIfNeeded(dayKey: day)
@@ -355,7 +358,8 @@ public final class WorkoutService {
                     globalSlot: ctx.globalSlot,
                     setIndex: setIndex,
                     weightLbs: weightLbs,
-                    reps: reps
+                    reps: reps,
+                    rpe: rpe
                 )
             )
             refreshWebProgressKeys(context: ctx, exercise: ex)

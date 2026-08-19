@@ -1,5 +1,9 @@
 import type { MealEntry, FitnessPlan, Macros, Milestone, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, PantryItem, BodyScan, Supplement, BloodWork, Challenge, MusicPreference, CoachSchedule } from "./types";
-import { getTodayLocal } from "./date-utils";
+import type { WorkoutSetLog, WearableDaySummary } from "./types";
+import { getTodayLocal, getWeekStart } from "./date-utils";
+import { buildAllProgressions } from "./progression";
+import { computeWeeklyVolume } from "./muscle-volume";
+import { computeWeightTrend } from "./diet-phase";
 
 const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   first_meal: { name: "First Bite", desc: "Logged your first meal", xp: 25 },
@@ -54,7 +58,42 @@ const BADGE_INFO: Record<string, { name: string; desc: string; xp: number }> = {
   perfectionist: { name: "Perfectionist", desc: "Hit exact calorie target (within 1%) for 7 days", xp: 200 },
   social_butterfly: { name: "Social Butterfly", desc: "Joined 3+ groups", xp: 75 },
   chatterbox: { name: "Chatterbox", desc: "Sent 50+ messages to The Ref", xp: 100 },
+  // ── Transformation outcomes ──
+  // Deliberately worth more than the engagement badges: these mark the body changing,
+  // not the app being used.
+  first_pr: { name: "First PR", desc: "Set your first estimated 1RM record", xp: 75 },
+  strength_up_5: { name: "Stronger", desc: "A lift's estimated 1RM up 5%", xp: 150 },
+  strength_up_10: { name: "Much Stronger", desc: "A lift's estimated 1RM up 10%", xp: 300 },
+  strength_up_25: { name: "Transformed Strength", desc: "A lift's estimated 1RM up 25%", xp: 750 },
+  volume_balanced: { name: "Balanced Build", desc: "Every trained muscle hit its weekly minimum", xp: 150 },
+  deload_completed: { name: "Smart Recovery", desc: "Completed a full deload week", xp: 100 },
+  consistent_lifter: { name: "Iron Habit", desc: "Logged sets in 8 straight weeks", xp: 300 },
+  trend_down_5: { name: "5 Pounds Down", desc: "Trend weight down 5 lb from your start", xp: 150 },
+  trend_down_15: { name: "15 Pounds Down", desc: "Trend weight down 15 lb", xp: 400 },
+  trend_down_30: { name: "30 Pounds Down", desc: "Trend weight down 30 lb", xp: 900 },
+  bodyfat_down_2: { name: "Leaner", desc: "Body fat down 2 percentage points", xp: 250 },
+  bodyfat_down_5: { name: "Visibly Leaner", desc: "Body fat down 5 percentage points", xp: 600 },
+  lean_mass_gained: { name: "Real Muscle", desc: "Gained 3+ lb of lean mass", xp: 500 },
+  recomp_achieved: { name: "Recomposition", desc: "Lost fat and gained lean mass at once", xp: 800 },
 };
+
+/** Badges that mark the body changing rather than the app being used. */
+export const OUTCOME_BADGES = [
+  "first_pr",
+  "strength_up_5",
+  "strength_up_10",
+  "strength_up_25",
+  "volume_balanced",
+  "deload_completed",
+  "consistent_lifter",
+  "trend_down_5",
+  "trend_down_15",
+  "trend_down_30",
+  "bodyfat_down_2",
+  "bodyfat_down_5",
+  "lean_mass_gained",
+  "recomp_achieved",
+] as const;
 
 export function getBadgeInfo() {
   return BADGE_INFO;
@@ -134,6 +173,124 @@ export interface MilestoneExtras {
   bodyScans?: BodyScan[];
   supplements?: Supplement[];
   bloodWork?: BloodWork[];
+  /** Per-set performance history — drives every strength and volume outcome badge. */
+  setLogs?: WorkoutSetLog[];
+  /** Weigh-ins with optional body fat — drives every body-composition outcome badge. */
+  weighIns?: Pick<WearableDaySummary, "date" | "weight" | "bodyFatPercent">[];
+  /** True once a scheduled or fatigue-driven deload week has been trained through. */
+  completedDeload?: boolean;
+  /** User's training level, for scaling volume landmarks. */
+  fitnessLevel?: string;
+}
+
+/**
+ * Badges earned by the body changing rather than the app being used.
+ *
+ * Every detector here reads from the deterministic engines (`progression`, `muscle-volume`,
+ * `diet-phase`) rather than re-deriving anything, so a badge can never celebrate a number
+ * the coach would not also report.
+ */
+function computeOutcomeMilestones(
+  extras: MilestoneExtras | undefined,
+  award: (id: string) => void,
+  progress: Record<string, number>,
+): void {
+  const setLogs = extras?.setLogs ?? [];
+  const weighIns = extras?.weighIns ?? [];
+
+  // ── Strength ──
+  if (setLogs.length > 0) {
+    const progressions = buildAllProgressions(setLogs);
+
+    // A first PR requires a second session to beat the first — otherwise every new
+    // exercise would instantly "PR" on the day it is introduced.
+    if (progressions.some((p) => p.sessions.length >= 2 && p.bestE1rmDate !== p.sessions[0].date)) {
+      award("first_pr");
+    }
+
+    const bestGain = progressions.reduce((max, p) => Math.max(max, p.changePct), 0);
+    progress.strength_up_5 = Math.min(100, (bestGain / 5) * 100);
+    if (bestGain >= 5) award("strength_up_5");
+    if (bestGain >= 10) award("strength_up_10");
+    if (bestGain >= 25) award("strength_up_25");
+
+    // Eight distinct training weeks with logged sets.
+    const weeks = new Set(setLogs.filter((l) => l.reps != null).map((l) => getWeekStart(l.date)));
+    progress.consistent_lifter = Math.min(100, (weeks.size / 8) * 100);
+    if (weeks.size >= 8) award("consistent_lifter");
+
+    // Every muscle that was trained at all cleared its weekly minimum. Untouched groups
+    // are excluded — a well-run upper/lower split should not be penalized for rest days.
+    const volume = computeWeeklyVolume(setLogs, getWeekStart(getTodayLocal()), {
+      fitnessLevel: extras?.fitnessLevel,
+    });
+    const trained = volume.entries.filter((e) => e.sets > 0);
+    if (trained.length >= 4 && trained.every((e) => e.status !== "under")) {
+      award("volume_balanced");
+    }
+  }
+
+  if (extras?.completedDeload) award("deload_completed");
+
+  // ── Body composition ──
+  if (weighIns.length >= 2) {
+    const sorted = [...weighIns]
+      .filter((w) => typeof w.weight === "number" && w.weight > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    if (sorted.length >= 2) {
+      /*
+       * Compare the mean of the first three weigh-ins against the mean of the last three.
+       *
+       * The EWMA trend used elsewhere is deliberately laggy — good for "what do I weigh
+       * today", wrong for "how much have I lost in total", where it under-credits by ~8 lb
+       * on a 20 lb loss. A short mean at each end is lag-free and still immune to a single
+       * anomalous reading, which is exactly what a cumulative badge needs.
+       */
+      const meanOf = (window: typeof sorted) =>
+        window.reduce((sum, w) => sum + (w.weight ?? 0), 0) / window.length;
+      const windowSize = Math.min(3, Math.floor(sorted.length / 2)) || 1;
+      const baseline = meanOf(sorted.slice(0, windowSize));
+      const current = meanOf(sorted.slice(-windowSize));
+      const lost = baseline - current;
+
+      // Same reliability bar the diet engine uses (4+ weigh-ins across 10+ days). Without it,
+      // a handful of readings with one light day would mint a badge the user did not earn.
+      if (computeWeightTrend(sorted).reliable) {
+        progress.trend_down_5 = Math.min(100, (lost / 5) * 100);
+        if (lost >= 5) award("trend_down_5");
+        if (lost >= 15) award("trend_down_15");
+        if (lost >= 30) award("trend_down_30");
+      }
+    }
+
+    const withBodyFat = sorted.filter(
+      (w): w is { date: string; weight: number; bodyFatPercent: number } =>
+        typeof w.bodyFatPercent === "number" && w.bodyFatPercent > 0 && typeof w.weight === "number",
+    );
+
+    if (withBodyFat.length >= 2) {
+      const first = withBodyFat[0];
+      const last = withBodyFat[withBodyFat.length - 1];
+      const bodyFatDrop = first.bodyFatPercent - last.bodyFatPercent;
+
+      progress.bodyfat_down_2 = Math.min(100, (bodyFatDrop / 2) * 100);
+      if (bodyFatDrop >= 2) award("bodyfat_down_2");
+      if (bodyFatDrop >= 5) award("bodyfat_down_5");
+
+      const leanFirst = first.weight * (1 - first.bodyFatPercent / 100);
+      const leanLast = last.weight * (1 - last.bodyFatPercent / 100);
+      const leanGain = leanLast - leanFirst;
+      const fatFirst = first.weight - leanFirst;
+      const fatLast = last.weight - leanLast;
+
+      progress.lean_mass_gained = Math.min(100, (leanGain / 3) * 100);
+      if (leanGain >= 3) award("lean_mass_gained");
+
+      // The hardest outcome in the app: fat down and lean up over the same window.
+      if (leanGain >= 1 && fatLast < fatFirst - 1) award("recomp_achieved");
+    }
+  }
 }
 
 export function computeMilestones(
@@ -355,6 +512,8 @@ export function computeMilestones(
     if (Math.abs(cal - targets.calories) <= targets.calories * 0.01) perfectDays++;
   });
   if (perfectDays >= 7) award("perfectionist");
+
+  computeOutcomeMilestones(extras, award, progress);
 
   return { newMilestones, xpGained, progress };
 }

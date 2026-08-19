@@ -138,7 +138,7 @@ struct MealPrepView: View {
                     Color.black.opacity(0.15).ignoresSafeArea()
                     ProgressView("Generating…")
                         .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .cardSurface(cornerRadius: 16)
                 }
             }
         }

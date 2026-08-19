@@ -10,19 +10,27 @@
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="@android:style/TextAppearance.Material.Title" />
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textAppearance="@android:style/TextAppearance.Material.Caption" />
 
+    <!-- Calories left is the headline: it is the number the widget exists to answer. -->
     <TextView
-        android:id="@+id/widget_xp"
+        android:id="@+id/widget_headline"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="4dp"
-        android:textAppearance="@android:style/TextAppearance.Material.Body1" />
+        android:paddingTop="2dp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:textStyle="bold"
+        android:textAppearance="@android:style/TextAppearance.Material.Title" />
 
     <TextView
         android:id="@+id/widget_subtitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="2dp"
-        android:textAppearance="@android:style/TextAppearance.Material.Caption" />
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:textAppearance="@android:style/TextAppearance.Material.Body1" />
 </LinearLayout>

@@ -58,6 +58,8 @@ data class RicoContextDto(
     val completedWorkoutToday: CompletedSessionSummaryDto? = null,
     val workoutHistory: WorkoutHistorySummaryDto? = null,
     val nextWorkout: NextWorkoutPreviewDto? = null,
+    val today: String? = null,
+    val timezoneOffsetMinutes: Int? = null,
 )
 
 @Serializable

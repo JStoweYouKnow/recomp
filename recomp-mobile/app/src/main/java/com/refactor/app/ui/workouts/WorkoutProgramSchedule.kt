@@ -26,6 +26,27 @@ object WorkoutProgramSchedule {
         return days / 7
     }
 
+    /**
+     * 1-based count of calendar weeks the lifter has been training this plan.
+     *
+     * Distinct from the plan-index lookup, which pins single-week plans to their weekday
+     * template. Periodization needs elapsed training time instead, so a repeating one-week
+     * plan still advances through accumulation → peak → deload. Falls back to the plan's
+     * creation date when no explicit program anchor was set.
+     */
+    fun trainingWeeksElapsed(plan: FitnessPlanDto, today: String = LocalDate.now().toString()): Int {
+        val anchor = plan.workoutPlan?.programWeek1Start?.takeIf { it.isNotBlank() }
+            ?: plan.createdAt.takeIf { it.isNotBlank() }?.take(10)
+            ?: return 1
+        return runCatching {
+            val weeks = mondayWeeksElapsed(
+                mondayWeekStartContaining(LocalDate.parse(anchor, isoDate)),
+                mondayWeekStartContaining(LocalDate.parse(today, isoDate)),
+            )
+            maxOf(1, weeks + 1)
+        }.getOrDefault(1)
+    }
+
     fun extractProgramWeek(dayLabel: String): Int? {
         val lower = dayLabel.lowercase()
         val idx = lower.indexOf("week")

@@ -14,6 +14,8 @@ struct WorkoutsView: View {
     @State private var editRoute: WorkoutDayEditRoute?
     @State private var showImportSheet = false
     @State private var restTimer: RestTimerState?
+    /// Recomputed only when `mesocycleInputsToken` changes — see `recomputeMesocycle()`.
+    @State private var mesocycleResolution: Mesocycle.Resolution?
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var allPlans: [FitnessPlan]
@@ -21,7 +23,15 @@ struct WorkoutsView: View {
     @Query(sort: \BiofeedbackEntry.time, order: .reverse)
     private var biofeedbackEntries: [BiofeedbackEntry]
 
+    @Query private var profiles: [UserProfile]
+
     private var currentPlan: FitnessPlan? { allPlans.first }
+
+    /// The unit the lifter chose at signup. Set logs stay in pounds; only entry and
+    /// display are converted.
+    private var massUnit: MassUnit {
+        MassUnit(system: profiles.first?.unitSystem ?? .us)
+    }
 
     private var todaysBiofeedback: BiofeedbackEntry? {
         biofeedbackEntries.first { $0.date == DateHelpers.todayString() }
@@ -57,6 +67,12 @@ struct WorkoutsView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         recoverySection
+
+                        if let resolution = mesocycleResolution {
+                            MesocycleBanner(resolution: resolution)
+                        }
+
+                        WeeklyVolumeCard(summary: weeklyVolumeSummary)
 
                         if let plan = currentPlan {
                             CatchUpBannerView(
@@ -104,6 +120,9 @@ struct WorkoutsView: View {
                                     isMissed: isMissed,
                                     setsDisabled: isSelectedDateFuture,
                                     recoveryModifier: recoveryModifier(for: item.day),
+                                    readinessScore: recoveryAssessment?.score,
+                                    mesocycleState: mesocycleResolution?.state,
+                                    massUnit: massUnit,
                                     onEdit: {
                                         editRoute = WorkoutDayEditRoute(planIndex: item.planIndex)
                                     },
@@ -129,7 +148,7 @@ struct WorkoutsView: View {
                             EmptyStateView(
                                 icon: "dumbbell",
                                 title: "No Workout Plan",
-                                subtitle: "Generate a plan from the Adjust tab to see your weekly workouts"
+                                subtitle: "Generate a plan from the Dashboard to see your weekly workouts"
                             )
                             .padding(.top, 40)
                         }
@@ -169,6 +188,10 @@ struct WorkoutsView: View {
                 }
             }
             .navigationTitle("Workouts")
+            .coachToolbarItem()
+            .task(id: mesocycleInputsToken) {
+                recomputeMesocycle()
+            }
             .onAppear {
                 if let plan = currentPlan {
                     workoutService.migrateWorkoutRowProgressKeysIfNeeded(plan: plan)
@@ -222,6 +245,54 @@ struct WorkoutsView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Weekly volume
+
+    /// Hard sets per muscle for the current Monday-start week, from all logged sets.
+    /// Memoised against the set-log generation — this used to rescan every log on each
+    /// body evaluation.
+    private var weeklyVolumeSummary: MuscleVolume.Summary {
+        WorkoutAnalyticsCache.weeklyVolume(
+            weekStart: DateHelpers.mondayWeekStartString(containingCalendarDay: DateHelpers.todayString())
+        )
+    }
+
+    // MARK: - Training block
+
+    /// Current block phase, with an early deload substituted when fatigue signals
+    /// (stalls, RPE creep, volume past MRV, low readiness, missed sessions) demand one.
+    ///
+    /// Held in `@State` rather than computed per body pass: building the fatigue signals
+    /// walks every logged set once per tracked exercise, which is far too expensive to
+    /// repeat on every render.
+    private func recomputeMesocycle() {
+        guard let plan = currentPlan else {
+            mesocycleResolution = nil
+            return
+        }
+        let today = DateHelpers.todayString()
+        let logs = WorkoutSetLogStorage.load()
+        let progress = workoutService.webWorkoutProgressMergedForSync(plan: plan)
+        let programWeek = WorkoutScheduleService.trainingWeeksElapsed(for: plan, today: today)
+
+        let signals: Mesocycle.FatigueSignals? = logs.isEmpty ? nil : Mesocycle.buildFatigueSignals(
+            progressions: WorkoutAnalyticsCache.progressions(),
+            setLogs: logs,
+            musclesOverMrv: weeklyVolumeSummary.overdosed.count,
+            readinessScore: recoveryAssessment?.score,
+            missedSessions: WorkoutScheduleService.countRecentMissed(
+                plan: plan, progress: progress, days: 7, today: today
+            ),
+            today: today
+        )
+
+        mesocycleResolution = Mesocycle.resolve(programWeek: programWeek, signals: signals)
+    }
+
+    /// Cheap key that changes only when something the block state depends on changes.
+    private var mesocycleInputsToken: String {
+        "\(currentPlan?.id ?? "none")-\(WorkoutSetLogStorage.generation)-\(recoveryAssessment?.score.description ?? "nil")"
     }
 
     // MARK: - Recovery section
@@ -388,11 +459,7 @@ struct RecoveryCard: View {
             }
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(levelColor.opacity(0.3), lineWidth: 1)
-        )
+        .cardSurface(cornerRadius: 16, borderColor: levelColor.opacity(0.3))
     }
 
     private func adjustmentPill(_ label: String, value: Double) -> some View {
@@ -422,6 +489,12 @@ struct WorkoutDayCard: View {
     var isMissed: Bool = false
     var setsDisabled: Bool = false
     var recoveryModifier: Double? = nil
+    /// 0–100 recovery score; low readiness suppresses prescribed load jumps.
+    var readinessScore: Double? = nil
+    /// Current block phase; scales prescribed sets and load (deload weeks cut both).
+    var mesocycleState: Mesocycle.State? = nil
+    /// The unit the lifter types weights in; storage stays in pounds.
+    var massUnit: MassUnit = .pounds
     var onEdit: (() -> Void)? = nil
     var onStartRestTimer: ((String, Int) -> Void)? = nil
     var onCancelRestTimer: (() -> Void)? = nil
@@ -431,6 +504,8 @@ struct WorkoutDayCard: View {
     @State private var loadingGifs: Set<String> = []
     @State private var gifErrors: [String: String] = [:]
     @State private var summary: WorkoutDaySummary?
+    /// Non-nil once the session has an explicit start; drives the live elapsed clock.
+    @State private var sessionStart: Date?
     @State private var musicSuggestions: [PlaylistSuggestion] = []
     @State private var isLoadingMusic = false
     @State private var showMusic = false
@@ -446,6 +521,9 @@ struct WorkoutDayCard: View {
         isMissed: Bool = false,
         setsDisabled: Bool = false,
         recoveryModifier: Double? = nil,
+        readinessScore: Double? = nil,
+        mesocycleState: Mesocycle.State? = nil,
+        massUnit: MassUnit = .pounds,
         onEdit: (() -> Void)? = nil,
         onStartRestTimer: ((String, Int) -> Void)? = nil,
         onCancelRestTimer: (() -> Void)? = nil
@@ -459,6 +537,9 @@ struct WorkoutDayCard: View {
         self.isMissed = isMissed
         self.setsDisabled = setsDisabled
         self.recoveryModifier = recoveryModifier
+        self.readinessScore = readinessScore
+        self.mesocycleState = mesocycleState
+        self.massUnit = massUnit
         self.onEdit = onEdit
         self.onStartRestTimer = onStartRestTimer
         self.onCancelRestTimer = onCancelRestTimer
@@ -467,6 +548,25 @@ struct WorkoutDayCard: View {
 
     private var allExercisesComplete: Bool {
         totalExercises > 0 && completedExercises == totalExercises
+    }
+
+    /// Computed load target per normalized exercise name for this day's main + finisher work.
+    /// Warmups are excluded — they are not load-progressed.
+    ///
+    /// Memoised: prescribing walks the whole log history per exercise, and this card
+    /// re-renders on every set tap.
+    private var prescriptions: [String: Progression.SetPrescription] {
+        let intensity = mesocycleState?.intensityMultiplier ?? 1
+        let volume = mesocycleState?.volumeMultiplier ?? 1
+        return WorkoutAnalyticsCache.prescriptions(
+            cacheKey: "\(planId)|\(progressDayKey)|\(planIndex)|\(readinessScore ?? -1)|\(intensity)|\(volume)",
+            exercises: day.exercises + (day.finishers ?? []),
+            options: Progression.Options(
+                readinessScore: readinessScore,
+                intensityMultiplier: intensity,
+                volumeMultiplier: volume
+            )
+        )
     }
 
     /// Matches web planner header: completed / total **exercises** (rows), not sum of sets.
@@ -557,35 +657,7 @@ struct WorkoutDayCard: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     if totalExercises > 0 {
-                        HStack(spacing: 8) {
-                            Button {
-                                let willClear = allExercisesComplete
-                                withAnimation {
-                                    workoutService.setDayCompletion(
-                                        day: day,
-                                        dayKey: progressDayKey,
-                                        planIndex: planIndex,
-                                        planId: planId,
-                                        complete: !allExercisesComplete
-                                    )
-                                }
-                                if willClear { Haptics.impact(.soft) }
-                            } label: {
-                                Text(allExercisesComplete ? "Clear completion" : "Mark all complete")
-                                    .font(.caption.weight(.medium))
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .disabled(setsDisabled)
-                            .padding(.horizontal)
-                            .padding(.top, 8)
-
-                            if setsDisabled {
-                                Text("Future workouts can't be marked complete")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        sessionBar
                     }
 
                     if let warmups = day.warmups, !warmups.isEmpty {
@@ -629,28 +701,151 @@ struct WorkoutDayCard: View {
                 }
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            if isMissed {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(Color.appWarm.opacity(0.45), lineWidth: 1.5)
+        .cardSurface(
+            cornerRadius: 16,
+            borderColor: isMissed ? Color.appWarm.opacity(0.45) : nil,
+            borderWidth: isMissed ? 1.5 : 1
+        )
+        .padding(.horizontal)
+        .onAppear {
+            sessionStart = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+        }
+        .onChange(of: completedExercises) { _, _ in
+            // `markSetComplete` stamps the clock itself, so logging a set without tapping
+            // Start still begins a session — pick that up so the timer appears.
+            if sessionStart == nil {
+                sessionStart = WorkoutSessionClock.startDate(dayKey: progressDayKey)
             }
         }
-        .padding(.horizontal)
         .onChange(of: allExercisesComplete) { _, complete in
-            // Fires when the final set (or "Mark all complete") tips the day over.
-            // onChange never fires on initial render, so re-opening a done day stays quiet.
-            if complete { finishWorkoutDay() }
+            // Only auto-present for a session happening today. Reviewing a past workout
+            // and toggling its last set used to pop the celebration sheet.
+            guard complete, isToday, !setsDisabled else { return }
+            Task { @MainActor in
+                finishWorkoutDay()
+            }
         }
-        .sheet(item: $summary) { WorkoutSummarySheet(summary: $0) }
+        .sheet(item: $summary) { WorkoutSummarySheet(summary: $0, massUnit: massUnit) }
+    }
+
+    // MARK: Session bar
+
+    /// Explicit start and finish for a session.
+    ///
+    /// Before this, a workout had no beginning (start time was inferred from the first
+    /// completed set, and elapsed time was never shown while training) and an accidental
+    /// end (an `onChange` watching all-exercises-complete, which also fired when reviewing
+    /// a past day and toggling its last set).
+    @ViewBuilder
+    private var sessionBar: some View {
+        HStack(spacing: 8) {
+            if setsDisabled {
+                Text("Future workouts can't be logged yet")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if sessionStart == nil && !allExercisesComplete {
+                Button {
+                    startSession()
+                } label: {
+                    Label("Start workout", systemImage: "play.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color.appAccent)
+            } else {
+                if let sessionStart {
+                    // A live clock is the difference between "logging sets" and "in a session".
+                    Label {
+                        Text(sessionStart, style: .timer)
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                    } icon: {
+                        Image(systemName: "stopwatch")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Color.appAccent)
+                    .accessibilityLabel("Session elapsed time")
+                }
+
+                Button {
+                    finishWorkoutDay(userInitiated: true)
+                } label: {
+                    Label("Finish", systemImage: "flag.checkered")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(Color.appSuccess)
+            }
+
+            Spacer(minLength: 0)
+
+            Menu {
+                Button {
+                    let willClear = allExercisesComplete
+                    withAnimation {
+                        workoutService.setDayCompletion(
+                            day: day,
+                            dayKey: progressDayKey,
+                            planIndex: planIndex,
+                            planId: planId,
+                            complete: !allExercisesComplete
+                        )
+                    }
+                    if willClear { Haptics.impact(.soft) }
+                } label: {
+                    Label(
+                        allExercisesComplete ? "Clear completion" : "Mark all complete",
+                        systemImage: allExercisesComplete ? "arrow.uturn.backward" : "checkmark.circle"
+                    )
+                }
+                .disabled(setsDisabled)
+
+                if sessionStart != nil {
+                    Button(role: .destructive) {
+                        WorkoutSessionClock.clear(dayKey: progressDayKey)
+                        sessionStart = nil
+                    } label: {
+                        Label("Discard session timer", systemImage: "stopwatch.fill")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Session options")
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
+    private func startSession() {
+        WorkoutSessionClock.markStartedIfNeeded(dayKey: progressDayKey)
+        sessionStart = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+        Haptics.impact(.light)
     }
 
     /// Builds the session summary, exports the workout to Apple Health, and presents the recap.
-    private func finishWorkoutDay() {
+    ///
+    /// `userInitiated` distinguishes tapping Finish from every exercise happening to be
+    /// ticked. A user finishing early keeps whatever they logged; the auto path still
+    /// only fires for today's session.
+    private func finishWorkoutDay(userInitiated: Bool = false) {
         Haptics.success()
         let logs = WorkoutSetLogStorage.logs(planId: planId, dayLabel: day.day, date: progressDayKey)
         let volume = logs.reduce(0.0) { $0 + ($1.weightLbs ?? 0) * Double($1.reps ?? 0) }
         let start = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+
+        // Nothing logged and nothing ticked — finishing would present an empty recap.
+        if userInitiated, logs.isEmpty, completedExercises == 0 {
+            ToastCenter.show("Log at least one set to finish this workout", type: .info)
+            return
+        }
+
         summary = WorkoutDaySummary(
             dayLabel: day.day,
             focus: day.focus,
@@ -664,6 +859,7 @@ struct WorkoutDayCard: View {
             Task { await HealthKitWriter.saveWorkout(focus: day.focus, start: start, end: .now) }
         }
         WorkoutSessionClock.clear(dayKey: progressDayKey)
+        sessionStart = nil
     }
 
     // MARK: Exercise section
@@ -701,11 +897,16 @@ struct WorkoutDayCard: View {
                     globalSlot: globalSlot,
                     webContext: webCtx,
                     setsDisabled: setsDisabled,
+                    prescription: sectionKey == "warmup"
+                        ? nil
+                        : prescriptions[exercise.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()],
+                    massUnit: massUnit,
                     gifData: gifData["\(globalSlot)-\(exercise.name)"],
                     onLoadGif: { await loadGif(slotTag: "\(globalSlot)-\(exercise.name)", searchName: exercise.name) },
                     onStartRestTimer: onStartRestTimer,
                     onCancelRestTimer: onCancelRestTimer
                 )
+                .id("\(progressDayKey)-\(sectionKey)-\(globalSlot)-\(exercise.name)")
             }
         }
     }
@@ -832,6 +1033,27 @@ struct WorkoutDayCard: View {
 
 // MARK: - Exercise Row
 
+/// One set's user-entered performance. Weight is held as text so a half-typed
+/// "12." doesn't collapse to a number mid-edit.
+struct SetInput: Identifiable, Equatable {
+    let id = UUID()
+    var weightText: String = ""
+    var repsText: String = ""
+    /// Rating of perceived exertion (6–10). Nil until rated.
+    var rpe: Double?
+
+    var weight: Double? {
+        let normalized = weightText.replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized), value > 0 else { return nil }
+        return value
+    }
+
+    var reps: Int? {
+        guard let value = Int(repsText.trimmingCharacters(in: .whitespaces)), value > 0 else { return nil }
+        return value
+    }
+}
+
 struct ExerciseRow: View {
     let exercise: WorkoutExercise
     let workoutService: WorkoutService
@@ -840,23 +1062,23 @@ struct ExerciseRow: View {
     let globalSlot: Int
     let webContext: WorkoutSetProgressContext
     var setsDisabled: Bool = false
+    /// Computed next-session target from the progression engine; nil for warmups/untracked lifts.
+    var prescription: Progression.SetPrescription? = nil
+    /// The unit the lifter types in. Storage stays in pounds regardless.
+    var massUnit: MassUnit = .pounds
     let gifData: Data?
     let onLoadGif: () async -> Void
     var onStartRestTimer: ((String, Int) -> Void)? = nil
     var onCancelRestTimer: (() -> Void)? = nil
 
     @State private var showGif = false
-    @State private var weightText = ""
-    @FocusState private var weightFocused: Bool
+    /// One entry per set — this is what makes drop sets, top-set-plus-backoffs and
+    /// rep-outs recordable, and what stops the progression engine being fed N
+    /// identical rows synthesised from a single weight field.
+    @State private var sets: [SetInput] = []
+    @State private var didPrefill = false
 
-    private var numSets: Int { exercise.effectiveSetCount }
-
-    /// Working weight the user typed for this exercise, if any.
-    private var enteredWeight: Double? {
-        let normalized = weightText.replacingOccurrences(of: ",", with: ".")
-        guard let value = Double(normalized), value > 0 else { return nil }
-        return value
-    }
+    private var prescribedSetCount: Int { exercise.effectiveSetCount }
 
     /// Representative rep count parsed from the prescription (first integer in e.g. "8-12").
     private var prescribedReps: Int? {
@@ -865,142 +1087,17 @@ struct ExerciseRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(exercise.name)
-                        .font(.subheadline)
-                    Text("\(exercise.sets) × \(exercise.reps)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let restLabel = exercise.restDisplayLabel {
-                        Text("\(restLabel) rest")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.appSlate)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.appSlate.opacity(0.12), in: Capsule())
-                    } else if let notes = exercise.notes, !notes.isEmpty {
-                        Text(notes)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                Spacer()
-                // GIF demo toggle — only rendered once the demo has actually loaded,
-                // so exercises without an available demo never show a play button.
-                if gifData != nil {
-                    Button {
-                        withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
-                    } label: {
-                        Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
-                            .frame(width: 32, height: 32)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
-                }
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            header
 
-            // Working-weight input — feeds set logs, PR detection, and the post-workout summary.
-            if !setsDisabled {
-                HStack(spacing: 6) {
-                    Image(systemName: "scalemass")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("Weight", text: $weightText)
-                        .keyboardType(.decimalPad)
-                        .focused($weightFocused)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 60)
-                        .padding(.vertical, 4)
-                        .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                    Text("lbs")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Working weight in pounds for \(exercise.name)")
-            }
+            // Computed target for today, derived from logged history.
+            ProgressionTargetView(prescription: prescription)
 
-            // Set completion checkboxes — horizontal scroll so many sets stay one row (no wrap / “calendar” illusion).
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(0..<numSets, id: \.self) { setIdx in
-                        let done = workoutService.isSetComplete(
-                            exerciseName: exercise.name,
-                            setIndex: setIdx,
-                            dayKey: progressDayKey,
-                            planIndex: planIndex,
-                            globalSlot: globalSlot,
-                            webContext: webContext,
-                            exercise: exercise
-                        )
-                        Button {
-                            guard !setsDisabled else { return }
-                            weightFocused = false
-                            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                                if done {
-                                    workoutService.unmarkSetComplete(
-                                        exerciseName: exercise.name,
-                                        setIndex: setIdx,
-                                        dayKey: progressDayKey,
-                                        planIndex: planIndex,
-                                        globalSlot: globalSlot,
-                                        webContext: webContext,
-                                        exerciseForWeb: exercise
-                                    )
-                                    Haptics.impact(.soft)
-                                    onCancelRestTimer?()
-                                } else {
-                                    workoutService.markSetComplete(
-                                        exerciseName: exercise.name,
-                                        setIndex: setIdx,
-                                        dayKey: progressDayKey,
-                                        planIndex: planIndex,
-                                        globalSlot: globalSlot,
-                                        webContext: webContext,
-                                        exerciseForWeb: exercise,
-                                        weightLbs: enteredWeight,
-                                        reps: prescribedReps
-                                    )
-                                    Haptics.impact(.light)
-                                    celebratePRIfEarned()
-                                    if setIdx < numSets - 1 {
-                                        onStartRestTimer?(exercise.name, exercise.restSeconds)
-                                    }
-                                }
-                            }
-                        } label: {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.12))
-                                    .frame(width: 38, height: 38)
-                                    .shadow(color: done ? Color.appAccent.opacity(0.3) : .clear, radius: 4, y: 2)
-                                if done {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption.weight(.black))
-                                        .foregroundStyle(.white)
-                                } else {
-                                    Text("\(setIdx + 1)")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .scaleEffect(done ? 1.05 : 1.0)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(setsDisabled)
-                        .opacity(setsDisabled ? 0.45 : 1)
-                        .accessibilityLabel("Set \(setIdx + 1)")
-                        .accessibilityValue(done ? "Completed" : "Not completed")
-                    }
-                }
+            if setsDisabled {
+                futureDayNotice
+            } else {
+                setsTable
             }
-            .frame(minHeight: 36)
-            .allowsHitTesting(!setsDisabled)
 
             // GIF display — WKWebView so animated GIFs play correctly
             if showGif, let data = gifData {
@@ -1012,24 +1109,394 @@ struct ExerciseRow: View {
         .padding(.horizontal)
         .padding(.vertical, 6)
         .task { await onLoadGif() }
-        .onAppear {
-            // Prefill with the last weight used for this lift so progressive overload is one tap.
-            if weightText.isEmpty, let last = WorkoutSetLogStorage.lastWeight(forExercise: exercise.name) {
-                weightText = last.truncatingRemainder(dividingBy: 1) == 0
-                    ? "\(Int(last))"
-                    : String(format: "%.1f", last)
-            }
-        }
+        .onAppear(perform: prefillIfNeeded)
+
         Divider().padding(.leading)
     }
 
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(exercise.name)
+                    .font(.subheadline)
+                Text("\(exercise.sets) × \(exercise.reps)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let restLabel = exercise.restDisplayLabel {
+                    Text("\(restLabel) rest")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.appSlate)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.appSlate.opacity(0.12), in: Capsule())
+                } else if let notes = exercise.notes, !notes.isEmpty {
+                    Text(notes)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+            // GIF demo toggle — only rendered once the demo has actually loaded,
+            // so exercises without an available demo never show a play button.
+            if gifData != nil {
+                Button {
+                    withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
+                } label: {
+                    Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
+            }
+        }
+    }
+
+    private var futureDayNotice: some View {
+        Text("Future workouts can't be logged yet.")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+    }
+
+    // MARK: Sets
+
+    private var setsTable: some View {
+        VStack(spacing: 6) {
+            columnHeadings
+
+            ForEach(Array(sets.enumerated()), id: \.element.id) { index, _ in
+                setRow(index: index)
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    withAnimation(.snappy(duration: 0.2)) { addSet() }
+                } label: {
+                    Label("Add set", systemImage: "plus.circle")
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.appAccent)
+
+                if sets.count > prescribedSetCount {
+                    Button(role: .destructive) {
+                        withAnimation(.snappy(duration: 0.2)) { removeLastSet() }
+                    } label: {
+                        Label("Remove set", systemImage: "minus.circle")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Color.appError)
+                }
+
+                Spacer()
+            }
+            .padding(.top, 2)
+            .frame(minHeight: 44)
+        }
+        // Five numeric columns can't survive the top of the accessibility range. Clamping
+        // keeps the grid usable while still honouring most of the scale; VoiceOver users
+        // get the per-set labels regardless of visual size.
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+    }
+
+    private var columnHeadings: some View {
+        HStack(spacing: 8) {
+            Text("SET")
+                .frame(width: 30, alignment: .leading)
+            Text(massUnit.label.uppercased())
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("REPS")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("RPE")
+                .frame(width: 52, alignment: .leading)
+            Spacer().frame(width: 44)
+        }
+        .font(.system(size: 9, weight: .semibold))
+        .tracking(0.6)
+        .foregroundStyle(.tertiary)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func setRow(index: Int) -> some View {
+        let done = isSetComplete(index)
+
+        HStack(spacing: 8) {
+            Text("\(index + 1)")
+                .font(.caption.weight(.bold))
+                .monospacedDigit()
+                .foregroundStyle(index >= prescribedSetCount ? Color.appAccent : .secondary)
+                .frame(width: 30, alignment: .leading)
+                .accessibilityLabel(
+                    index >= prescribedSetCount ? "Extra set \(index + 1)" : "Set \(index + 1)"
+                )
+
+            numericField(
+                text: binding(index, \.weightText),
+                placeholder: "—",
+                keyboard: .decimalPad,
+                label: "Weight in \(massUnit.label) for set \(index + 1)",
+                isDone: done
+            )
+
+            numericField(
+                text: binding(index, \.repsText),
+                placeholder: exercise.reps,
+                keyboard: .numberPad,
+                label: "Reps for set \(index + 1)",
+                isDone: done
+            )
+
+            rpeMenu(index: index, done: done)
+
+            completionToggle(index: index, done: done)
+        }
+    }
+
+    private func numericField(
+        text: Binding<String>,
+        placeholder: String,
+        keyboard: UIKeyboardType,
+        label: String,
+        isDone: Bool
+    ) -> some View {
+        TextField(placeholder, text: text)
+            .keyboardType(keyboard)
+            .multilineTextAlignment(.center)
+            .font(.subheadline)
+            .monospacedDigit()
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 36)
+            .background(
+                (isDone ? Color.appAccent.opacity(0.10) : Color.secondary.opacity(0.10)),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+            .accessibilityLabel(label)
+    }
+
+    private func rpeMenu(index: Int, done: Bool) -> some View {
+        Menu {
+            Button("Not rated") { setRPE(index, nil) }
+            ForEach(Array(stride(from: 10.0, through: 6.0, by: -0.5)), id: \.self) { value in
+                Button(Self.rpeLabel(value)) { setRPE(index, value) }
+            }
+        } label: {
+            Text(sets[safe: index]?.rpe.map { Self.rpeLabel($0) } ?? "—")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(sets[safe: index]?.rpe == nil ? Color.secondary : Color.appAccent)
+                .frame(width: 52)
+                .frame(minHeight: 36)
+                .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .accessibilityLabel("Rate of perceived exertion for set \(index + 1)")
+        .accessibilityValue(sets[safe: index]?.rpe.map { Self.rpeLabel($0) } ?? "Not rated")
+    }
+
+    private func completionToggle(index: Int, done: Bool) -> some View {
+        Button {
+            toggleSet(index)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(done ? Color.appAccent : Color.secondary.opacity(0.12))
+                    .shadow(color: done ? Color.appAccent.opacity(0.3) : .clear, radius: 4, y: 2)
+                Image(systemName: done ? "checkmark" : "circle")
+                    .font(.caption.weight(.black))
+                    .foregroundStyle(done ? .white : Color.secondary)
+            }
+            // 44pt is the Apple minimum touch target, and this is the control the user
+            // taps most — mid-set, with sweaty hands.
+            .frame(width: 44, height: 44)
+            .scaleEffect(done ? 1.04 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: done)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Set \(index + 1)")
+        .accessibilityValue(done ? "Completed" : "Not completed")
+        .accessibilityAddTraits(done ? [.isSelected] : [])
+    }
+
+    // MARK: State helpers
+
+    /// "8" rather than "8.0"; half-points stay as "8.5".
+    static func rpeLabel(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.1f", value)
+    }
+
+    private func isSetComplete(_ index: Int) -> Bool {
+        workoutService.isSetComplete(
+            exerciseName: exercise.name,
+            setIndex: index,
+            dayKey: progressDayKey,
+            planIndex: planIndex,
+            globalSlot: globalSlot,
+            webContext: webContext,
+            exercise: exercise
+        )
+    }
+
+    /// Binding onto one field of one set, safe against the row list shrinking underneath it.
+    private func binding(_ index: Int, _ keyPath: WritableKeyPath<SetInput, String>) -> Binding<String> {
+        Binding(
+            get: { sets.indices.contains(index) ? sets[index][keyPath: keyPath] : "" },
+            set: { newValue in
+                guard sets.indices.contains(index) else { return }
+                sets[index][keyPath: keyPath] = newValue
+            }
+        )
+    }
+
+    private func setRPE(_ index: Int, _ value: Double?) {
+        guard sets.indices.contains(index) else { return }
+        sets[index].rpe = value
+        // Keep an already-logged set in sync so a rating added after the checkmark
+        // still reaches the progression engine.
+        relogIfComplete(index)
+    }
+
+    private func addSet() {
+        // A new set repeats the previous one — the common case is another set at the
+        // same load, and it stays editable either way.
+        let previous = sets.last
+        sets.append(
+            SetInput(
+                weightText: previous?.weightText ?? "",
+                repsText: previous?.repsText ?? "",
+                rpe: nil
+            )
+        )
+    }
+
+    private func removeLastSet() {
+        guard sets.count > prescribedSetCount, let index = sets.indices.last else { return }
+        if isSetComplete(index) {
+            workoutService.unmarkSetComplete(
+                exerciseName: exercise.name,
+                setIndex: index,
+                dayKey: progressDayKey,
+                planIndex: planIndex,
+                globalSlot: globalSlot,
+                webContext: webContext,
+                exerciseForWeb: exercise
+            )
+        }
+        sets.removeLast()
+    }
+
+    private func toggleSet(_ index: Int) {
+        guard !setsDisabled, sets.indices.contains(index) else { return }
+        hideKeyboard()
+
+        if isSetComplete(index) {
+            workoutService.unmarkSetComplete(
+                exerciseName: exercise.name,
+                setIndex: index,
+                dayKey: progressDayKey,
+                planIndex: planIndex,
+                globalSlot: globalSlot,
+                webContext: webContext,
+                exerciseForWeb: exercise
+            )
+            Haptics.impact(.soft)
+            onCancelRestTimer?()
+            return
+        }
+
+        logSet(index)
+        Haptics.impact(.light)
+        celebratePRIfEarned(index)
+        if index < sets.count - 1 {
+            onStartRestTimer?(exercise.name, exercise.restSeconds)
+        }
+    }
+
+    /// Writes this set's own weight/reps/RPE. Weight is converted to pounds because
+    /// every downstream consumer (progression, PRs, sync) stores pounds.
+    private func logSet(_ index: Int) {
+        guard let input = sets[safe: index] else { return }
+        workoutService.markSetComplete(
+            exerciseName: exercise.name,
+            setIndex: index,
+            dayKey: progressDayKey,
+            planIndex: planIndex,
+            globalSlot: globalSlot,
+            webContext: webContext,
+            exerciseForWeb: exercise,
+            weightLbs: input.weight.map { massUnit.toPounds($0) },
+            reps: input.reps ?? prescribedReps,
+            rpe: input.rpe
+        )
+    }
+
+    /// Re-writes an already-completed set after an RPE change so the rating isn't lost.
+    private func relogIfComplete(_ index: Int) {
+        guard isSetComplete(index) else { return }
+        logSet(index)
+    }
+
+    /// Restores what was already logged for this day, falling back to the last session's
+    /// matching set, then to the prescription.
+    private func prefillIfNeeded() {
+        guard !didPrefill else { return }
+        didPrefill = true
+
+        let existing = WorkoutSetLogStorage.logs(
+            planId: webContext.planId,
+            date: progressDayKey,
+            dayLabel: webContext.workoutDay.day,
+            section: webContext.section,
+            exerciseName: exercise.name,
+            globalSlot: globalSlot
+        )
+        let lastSession = WorkoutSetLogStorage.lastSessionSets(forExercise: exercise.name)
+
+        // Extra sets logged earlier in the session must survive a card collapse.
+        let highestLoggedIndex = existing.keys.max() ?? -1
+        let count = max(prescribedSetCount, highestLoggedIndex + 1)
+
+        sets = (0..<max(count, 1)).map { index in
+            if let logged = existing[index] {
+                return SetInput(
+                    weightText: logged.weightLbs.map { massUnit.display(fromPounds: $0) } ?? "",
+                    repsText: logged.reps.map(String.init) ?? "",
+                    rpe: logged.rpe
+                )
+            }
+            let previous = lastSession[index]
+            return SetInput(
+                weightText: previous?.weightLbs.map { massUnit.display(fromPounds: $0) } ?? "",
+                repsText: previous?.reps.map(String.init) ?? "",
+                rpe: nil
+            )
+        }
+    }
+
     /// Records the just-completed set against the user's PRs and celebrates a new best.
-    private func celebratePRIfEarned() {
-        guard let weight = enteredWeight, let reps = prescribedReps, reps > 0 else { return }
-        if PersonalRecordStore.record(exerciseName: exercise.name, weightLbs: weight, reps: reps) {
+    private func celebratePRIfEarned(_ index: Int) {
+        guard let input = sets[safe: index],
+              let weight = input.weight,
+              let reps = input.reps ?? prescribedReps,
+              reps > 0
+        else { return }
+        let weightLbs = massUnit.toPounds(weight)
+        if PersonalRecordStore.record(exerciseName: exercise.name, weightLbs: weightLbs, reps: reps) {
             ToastCenter.celebrate()
             ToastCenter.show("New PR: \(exercise.name)! 🏆", type: .success)
         }
+    }
+}
+
+private extension Array {
+    /// Index-safe read — set rows are rebuilt on prescription changes, so an index can
+    /// briefly outlive its element.
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 
@@ -1097,7 +1564,7 @@ struct RestTimerBanner: View {
                     }
                 }
                 .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .cardSurface(cornerRadius: 16)
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
             } else {
                 Color.clear
@@ -1128,6 +1595,8 @@ struct WorkoutDaySummary: Identifiable {
 
 struct WorkoutSummarySheet: View {
     let summary: WorkoutDaySummary
+    /// Volume is accumulated in pounds; display follows the lifter's chosen unit.
+    var massUnit: MassUnit = .pounds
     @Environment(\.dismiss) private var dismiss
     @State private var showConfetti = false
 
@@ -1140,7 +1609,17 @@ struct WorkoutSummarySheet: View {
 
     private var volumeText: String? {
         guard summary.totalVolumeLbs > 0 else { return nil }
-        return "\(Int(summary.totalVolumeLbs.rounded())) lbs"
+        let converted = massUnit.fromPounds(summary.totalVolumeLbs)
+        return "\(Int(converted.rounded())) \(massUnit.label)"
+    }
+
+    private var shareText: String {
+        var parts = ["\(summary.dayLabel) — \(summary.focus)"]
+        parts.append("\(summary.exercisesCompleted)/\(summary.totalExercises) exercises · \(summary.setsLogged) sets")
+        if let volumeText { parts.append("\(volumeText) total volume") }
+        if let durationText { parts.append("in \(durationText)") }
+        parts.append("Tracked with Refactor")
+        return parts.joined(separator: "\n")
     }
 
     var body: some View {
@@ -1172,6 +1651,14 @@ struct WorkoutSummarySheet: View {
                 }
 
                 Spacer()
+
+                // The one thing in this app anyone would post. Hevy grew on exactly
+                // this loop, and the recap was already being built — it just had no way out.
+                ShareLink(item: shareText) {
+                    Label("Share workout", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
 
                 Button {
                     dismiss()
@@ -1217,7 +1704,7 @@ struct WorkoutSummarySheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .cardSurface(cornerRadius: 14)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
     }

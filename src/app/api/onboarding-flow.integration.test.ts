@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { calculateMacros } from "@/lib/macro-calculator";
+import type { UserProfile } from "@/lib/types";
 
 vi.mock("@/lib/auth", () => ({ getUserId: vi.fn() }));
 vi.mock("@/lib/server-rate-limit", () => ({
@@ -22,7 +23,8 @@ vi.mock("@/lib/logger", async (importOriginal) => {
   };
 });
 
-const mockProfile = {
+// Typed so literal fields keep their union types instead of widening to `string`.
+const mockProfile: Omit<UserProfile, "id" | "createdAt" | "injuriesOrLimitations"> = {
   name: "Test User",
   age: 30,
   weight: 70,

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CookingAppSync } from "./CookingAppSync";
+import type { MealEntry } from "@/lib/types";
 
 // Mock storage functions
 vi.mock("@/lib/storage", () => ({
@@ -86,7 +87,7 @@ describe("CookingAppSync", () => {
   });
 
   it("renders with meals prop", () => {
-    const meals = [{ id: "m1", name: "Pasta", date: "2026-03-13", mealType: "dinner", macros: { calories: 400, protein: 15, carbs: 55, fat: 12 }, loggedAt: "2026-03-13T19:00:00Z", notes: "Imported from" }];
+    const meals: MealEntry[] = [{ id: "m1", name: "Pasta", date: "2026-03-13", mealType: "dinner", macros: { calories: 400, protein: 15, carbs: 55, fat: 12 }, loggedAt: "2026-03-13T19:00:00Z", notes: "Imported from" }];
     render(<CookingAppSync {...defaultProps} meals={meals} />);
     expect(screen.getByText("Cooking App Sync")).toBeInTheDocument();
   });

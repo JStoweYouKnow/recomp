@@ -2,6 +2,11 @@ import SwiftUI
 import SwiftData
 import RefactorKit
 
+/// Pushed destinations that used to be segments of the Meals screen.
+enum MealsDestination: Hashable {
+    case pantry, mealPrep, recipes
+}
+
 struct MealsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
@@ -10,7 +15,6 @@ struct MealsView: View {
     @State private var showAddMeal = false
     @State private var addMealPrefill: MealRecommendation?
     @State private var recTab: RecommendationCategory = .meal
-    @State private var selectedTab = 0
     @State private var mealEditToken: EditableMealToken?
 
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
@@ -29,33 +33,27 @@ struct MealsView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 CalendarStripView(selectedDate: $selectedDate, dotDates: mealDates)
-                    .padding(.vertical, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
 
                 macroSummary
 
-                if selectedTab == 0 {
-                    memoryRecommendationsSection
-                }
+                memoryRecommendationsSection
 
-                Picker("View", selection: $selectedTab) {
-                    Text("Meals").tag(0)
-                    Text("Pantry").tag(1)
-                    Text("Meal Prep").tag(2)
-                    Text("Recipes").tag(3)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-
-                switch selectedTab {
-                case 0: mealListSection
-                case 1: PantryView()
-                case 2: MealPrepView()
-                case 3: SavedRecipesView()
-                default: mealListSection
-                }
+                // Pantry, Meal Prep and Recipes are destinations, not views of today.
+                // As segments they cost a control row above every meal list and
+                // truncated badly at large text sizes.
+                mealListSection
             }
             .navigationTitle("Meals")
+            .coachToolbarItem()
+            .navigationDestination(for: MealsDestination.self) { destination in
+                switch destination {
+                case .pantry:   PantryView().navigationTitle("Pantry")
+                case .mealPrep: MealPrepView().navigationTitle("Meal Prep")
+                case .recipes:  SavedRecipesView().navigationTitle("Saved Recipes")
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -64,6 +62,22 @@ struct MealsView: View {
                         Image(systemName: "plus.circle.fill")
                     }
                     .accessibilityLabel("Add meal")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        NavigationLink(value: MealsDestination.pantry) {
+                            Label("Pantry", systemImage: "cabinet")
+                        }
+                        NavigationLink(value: MealsDestination.mealPrep) {
+                            Label("Meal Prep", systemImage: "takeoutbag.and.cup.and.straw")
+                        }
+                        NavigationLink(value: MealsDestination.recipes) {
+                            Label("Saved Recipes", systemImage: "book")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("More meal tools")
                 }
             }
             .sheet(isPresented: $showAddMeal) {
@@ -90,6 +104,7 @@ struct MealsView: View {
         let targets = planService.targets(for: selectedDate, context: context)
         return MacroPillsView(consumed: consumed, target: targets)
             .padding(.horizontal)
+            .padding(.top, 12)
             .padding(.bottom, 8)
     }
 
@@ -201,7 +216,11 @@ struct MealsView: View {
                                         _ = await syncEngine?.syncNow()
                                     }
                                 } catch {
-                                    // Deletion failed locally; meal row remains.
+                                    // The row snaps back with no explanation otherwise —
+                                    // a swipe that silently did nothing reads as a bug.
+                                    context.rollback()
+                                    Haptics.error()
+                                    ToastCenter.show("Couldn't delete that meal — try again", type: .error)
                                 }
                             } label: {
                                 Label("Delete", systemImage: "trash")

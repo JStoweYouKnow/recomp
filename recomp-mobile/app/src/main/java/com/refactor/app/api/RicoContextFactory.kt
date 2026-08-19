@@ -109,6 +109,8 @@ internal object RicoContextFactory {
             completedWorkoutToday = learning.completedWorkoutToday,
             workoutHistory = learning.workoutHistory,
             nextWorkout = learning.nextWorkout,
+            today = today,
+            timezoneOffsetMinutes = -java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000,
         )
     }
 

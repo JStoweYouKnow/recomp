@@ -56,7 +56,7 @@ describe("normalizeOneWearableRow", () => {
     );
     expect(out.weight).toBeCloseTo(180.779, 1);
     expect(out.muscleMass).toBeCloseTo(77.16, 1);
-    expect((out as Record<string, unknown>).weightUnit).toBeUndefined();
+    expect((out as unknown as Record<string, unknown>).weightUnit).toBeUndefined();
   });
 
   it("reconciles BMI when inconsistent with profile", () => {

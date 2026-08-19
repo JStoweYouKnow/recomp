@@ -8,6 +8,7 @@ import {
   getRateLimitHeaderValues,
   getRequestIp,
 } from "@/lib/server-rate-limit";
+import { parseClientDateString, resolveMealLogDate } from "@/lib/date-utils";
 
 /**
  * Cooking App Webhook Receiver
@@ -64,6 +65,8 @@ const mealPayloadSchema = z.object({
 
 const webhookBodySchema = z.object({
   meals: z.array(mealPayloadSchema).min(1).max(50),
+  clientDate: z.string().optional(),
+  timezoneOffsetMinutes: z.number().optional(),
 });
 
 function verifySignature(
@@ -135,14 +138,17 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const today = now.slice(0, 10);
+    const fallbackDate = resolveMealLogDate({
+      clientDate: parsed.data.clientDate,
+      timezoneOffsetMinutes: parsed.data.timezoneOffsetMinutes,
+    });
 
     // Transform each inbound meal into our MealEntry format
     const mealEntries = parsed.data.meals.map((m, i) => {
       const servings = m.servings ?? 1;
       return {
         id: `cook_${Date.now()}_${i}`,
-        date: m.date ?? today,
+        date: parseClientDateString(m.date) ?? fallbackDate,
         mealType: m.mealType ?? guessMealType(),
         name: m.name,
         macros: {

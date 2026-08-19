@@ -4,6 +4,7 @@ import Combine
 import RefactorKit
 import UIKit
 import WatchConnectivity
+import WidgetKit
 import OSLog
 
 // MARK: - App entry point
@@ -123,44 +124,38 @@ struct RootView: View {
     @State private var mainShellReady = false
     @State private var startupSyncTask: Task<Void, Never>?
 
+    // MARK: Launch gate
+    /// True until the landing screen has been dismissed. Only ever set once per process.
+    @State private var isLaunching = true
+    /// When the landing screen went up, so it can be held to a minimum on-screen time.
+    @State private var launchedAt = Date.now
+    /// Flips once `checkSession()` returns, so we can tell "signed out" from "not asked yet".
+    @State private var didResolveSession = false
+
     private var preferredScheme: ColorScheme? {
         AppColorScheme(rawValue: colorSchemePref)?.colorScheme
     }
 
     var body: some View {
-        Group {
-            if auth.isAuthenticated {
-                if mainShellReady {
-                    MainTabView()
-                        .overlay(alignment: .bottomTrailing) {
-                            CoachFloatingButton()
-                        }
-                        .sheet(isPresented: $showAIConsentOnboarding) {
-                            AIConsentView(
-                                onAccept: {
-                                    aiConsentGiven = true
-                                    showAIConsentOnboarding = false
-                                },
-                                onDecline: { showAIConsentOnboarding = false }
-                            )
-                        }
-                        .sheet(isPresented: $showPaywall) {
-                            PaywallView()
-                        }
-                } else {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Syncing your data…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.recompBackground)
-                }
-            } else {
-                OnboardingView()
+        ZStack {
+            authenticatedContent
+
+            // The splash sits *over* the content and fades away, rather than cross-fading
+            // with it. Dissolving two full-screen layouts against each other showed both
+            // wordmarks at once — a visible double exposure. Fading one layer out reveals
+            // the finished screen underneath cleanly.
+            //
+            // It covers the whole cold-launch window: the session check (a network call,
+            // during which `isAuthenticated` is still false) and the first sync. Without
+            // it, a signed-in user saw the login screen flash before their data loaded.
+            if isLaunching {
+                LaunchAnimationView()
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
+        .animation(.easeInOut(duration: 0.35), value: isLaunching)
+        .task(id: launchGateToken) { await resolveLaunchIfReady() }
         .preferredColorScheme(preferredScheme)
         .modifier(RootFeedbackOverlay())
         .safeAreaInset(edge: .top) {
@@ -172,7 +167,11 @@ struct RootView: View {
             subscriptions.start()
             auth.bind(modelContext: modelContext)
             await auth.checkSession()
+            // Signals the launch gate that "signed out" is now a real answer rather than
+            // just the pre-check default.
+            didResolveSession = true
             if auth.isAuthenticated {
+                PaywallTiming.recordSession()
                 WearableMassStoredPoundsMigration.runOnceIfNeeded(
                     context: modelContext,
                     profileWeightLbs: auth.currentUser?.weight
@@ -196,8 +195,11 @@ struct RootView: View {
             } else {
                 startupSyncTask?.cancel()
                 mainShellReady = false
-                // Sign-out: tell the paired watch to drop its cached session.
+                // Sign-out: tell the paired watch to drop its cached session, and clear
+                // paywall timing so the next account isn't judged by this one's history.
                 PhoneSessionManager.shared.clearUserId()
+                PaywallTiming.reset()
+                WorkoutAnalyticsCache.reset()
             }
         }
         .onChange(of: subscriptions.status) { _, _ in
@@ -269,9 +271,64 @@ struct RootView: View {
         coordinator.navigate(to: .meals)
     }
 
+    /// The paywall used to fire the moment `isAuthenticated` flipped — a purchase sheet
+    /// before the user had a plan, a logged meal, or any reason to want one. It now waits
+    /// for the aha moment (a generated plan) and for the user to have opened the app more
+    /// than once, so the pitch lands against something they've actually seen work.
+    @ViewBuilder
+    private var authenticatedContent: some View {
+        if auth.isAuthenticated {
+            if mainShellReady {
+                MainTabView()
+                    .sheet(isPresented: $showAIConsentOnboarding) {
+                        AIConsentView(
+                            onAccept: {
+                                aiConsentGiven = true
+                                showAIConsentOnboarding = false
+                            },
+                            onDecline: { showAIConsentOnboarding = false }
+                        )
+                    }
+                    .sheet(isPresented: $showPaywall) {
+                        PaywallView()
+                    }
+            } else {
+                // Re-entry after sign-in mid-session: a second branded splash would be
+                // odd here, so the shape-matching skeleton carries it instead.
+                LaunchSkeletonView()
+            }
+        } else {
+            OnboardingView()
+        }
+    }
+
+    // MARK: - Launch gate
+
+    /// Recomputed whenever something the gate depends on changes, so `task(id:)` re-runs.
+    private var launchGateToken: String {
+        "\(didResolveSession)-\(auth.isAuthenticated)-\(mainShellReady)"
+    }
+
+    /// The landing screen is done when the session is known, and — for a signed-in user —
+    /// the first sync has mounted the shell. A signed-out user goes straight to onboarding.
+    private var launchWorkComplete: Bool {
+        guard didResolveSession else { return false }
+        return auth.isAuthenticated ? mainShellReady : true
+    }
+
+    private func resolveLaunchIfReady() async {
+        guard isLaunching, launchWorkComplete else { return }
+        // Pads only a launch that finished early; never delays a slow one.
+        await LaunchTiming.waitOutRemainder(since: launchedAt)
+        guard !Task.isCancelled else { return }
+        isLaunching = false
+    }
+
     private func showPaywallIfNeeded() {
         guard auth.isAuthenticated, !auth.isDemo, subscriptions.status == .notPurchased else { return }
+        guard PaywallTiming.shouldPresent(context: modelContext) else { return }
         showPaywall = true
+        PaywallTiming.markPresented()
     }
 
     @MainActor
@@ -306,6 +363,10 @@ struct RootView: View {
 
     private func pushWatchDashboard(from context: ModelContext) {
         WatchDashboardSnapshotPublisher.publish(from: context)
+        // Complications read this flattened snapshot rather than opening the SwiftData
+        // store themselves, so it has to be republished alongside the watch payload.
+        TodayWidgetSnapshotPublisher.publish(from: context)
+        WidgetCenter.shared.reloadAllTimelines()
         PhoneSessionManager.shared.pushDataRefresh()
     }
 }
@@ -364,11 +425,16 @@ struct StoreDegradedBanner: View {
     }
 }
 
-struct CoachFloatingButton: View {
+/// Toolbar entry point for the AI coach.
+///
+/// This used to be a 56pt circle floated over the whole authenticated app, which sat on
+/// top of the last row of every list, covered the trailing swipe zone on meal rows, and
+/// fought the rest-timer banner for the same corner mid-workout. As a toolbar item it
+/// stays reachable on every screen without ever covering content.
+struct CoachToolbarButton: View {
     @AppStorage("aiCoachConsentGiven") private var consentGiven = false
     @State private var showChat = false
     @State private var showConsent = false
-    @State private var keyboardVisible = false
 
     var body: some View {
         Button {
@@ -379,30 +445,9 @@ struct CoachFloatingButton: View {
             }
         } label: {
             Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                .font(.title2)
-                .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
-                .background(
-                    LinearGradient(
-                        colors: [Color.appSage, Color.appAccent],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .clipShape(Circle())
-                .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
+                .foregroundStyle(Color.appAccent)
         }
-        .padding(.trailing, 16)
-        .padding(.bottom, 90)
-        .opacity(keyboardVisible ? 0 : 1)
-        .allowsHitTesting(!keyboardVisible)
-        .animation(.easeInOut(duration: 0.2), value: keyboardVisible)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-            keyboardVisible = true
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardVisible = false
-        }
+        .accessibilityLabel("Ask the coach")
         .sheet(isPresented: $showChat) {
             CoachChatView()
         }
@@ -417,6 +462,18 @@ struct CoachFloatingButton: View {
                     showConsent = false
                 }
             )
+        }
+    }
+}
+
+extension View {
+    /// Adds the coach button to a screen's navigation bar. Apply inside the screen's
+    /// `NavigationStack` so it lands in that screen's toolbar.
+    func coachToolbarItem() -> some View {
+        toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                CoachToolbarButton()
+            }
         }
     }
 }

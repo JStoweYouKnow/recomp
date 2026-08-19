@@ -104,6 +104,10 @@ public struct RicoContextPayload: Encodable, Sendable {
     public let completedWorkoutToday: CompletedSessionSummary?
     public let workoutHistory: WorkoutHistorySummary?
     public let nextWorkout: NextWorkoutPreview?
+    /// Client-local calendar day (YYYY-MM-DD) for server-side meal logging.
+    public let today: String?
+    /// Same convention as JavaScript `Date.getTimezoneOffset()` (minutes).
+    public let timezoneOffsetMinutes: Int?
 
     public init(
         name: String? = nil,
@@ -124,7 +128,9 @@ public struct RicoContextPayload: Encodable, Sendable {
         bodyWeight: Double? = nil,
         completedWorkoutToday: CompletedSessionSummary? = nil,
         workoutHistory: WorkoutHistorySummary? = nil,
-        nextWorkout: NextWorkoutPreview? = nil
+        nextWorkout: NextWorkoutPreview? = nil,
+        today: String? = nil,
+        timezoneOffsetMinutes: Int? = nil
     ) {
         self.name = name
         self.goal = goal
@@ -145,6 +151,8 @@ public struct RicoContextPayload: Encodable, Sendable {
         self.completedWorkoutToday = completedWorkoutToday
         self.workoutHistory = workoutHistory
         self.nextWorkout = nextWorkout
+        self.today = today
+        self.timezoneOffsetMinutes = timezoneOffsetMinutes
     }
 }
 

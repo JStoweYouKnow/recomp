@@ -42,6 +42,7 @@ struct MyProgressView: View {
                 }
             }
             .navigationTitle("My Progress")
+            .coachToolbarItem()
             .task(id: selectedTab) {
                 if selectedTab == 2 && aiConsentGiven {
                     await loadInsights()
@@ -62,7 +63,6 @@ struct MyProgressView: View {
                 )
             }
         }
-        .hidesUIKitNavigationBar()
     }
 
     private var badgesSection: some View {
@@ -270,7 +270,7 @@ struct XPLevelView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .cardSurface(cornerRadius: 16)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Level \(level), \(xp) XP")
         .accessibilityValue("\(progress.current) of \(progress.needed) XP to next level")
@@ -334,6 +334,16 @@ struct BadgesGrid: View {
         case .musicConnected: return "music.note"
         case .supplementTracker: return "pills"
         case .bloodWorkUploaded: return "cross.case"
+        // Transformation outcomes
+        case .firstPR: return "medal"
+        case .strengthUp5, .strengthUp10, .strengthUp25: return "figure.strengthtraining.traditional"
+        case .volumeBalanced: return "scalemass"
+        case .deloadCompleted: return "moon.zzz"
+        case .consistentLifter: return "link"
+        case .trendDown5, .trendDown15, .trendDown30: return "chart.line.downtrend.xyaxis"
+        case .bodyfatDown2, .bodyfatDown5: return "flame.circle"
+        case .leanMassGained: return "figure.arms.open"
+        case .recompAchieved: return "arrow.triangle.2.circlepath"
         }
     }
 
@@ -485,7 +495,7 @@ struct BodyMeasurementTargetsCard: View {
             TextField("–", text: text)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
-                .frame(width: 80)
+                .frame(minWidth: 80, alignment: .trailing)
             Text(unit)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -636,7 +646,7 @@ struct SmartScaleEntryView: View {
             TextField("–", text: text)
                 .keyboardType(decimal ? .decimalPad : .numberPad)
                 .multilineTextAlignment(.trailing)
-                .frame(width: 80)
+                .frame(minWidth: 80, alignment: .trailing)
             Text(unit)
                 .font(.caption)
                 .foregroundStyle(.secondary)

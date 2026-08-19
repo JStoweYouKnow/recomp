@@ -65,7 +65,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -87,6 +86,15 @@ import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import com.refactor.app.BuildConfig
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.refactor.app.api.MassUnit
+import com.refactor.app.api.Mesocycle
+import com.refactor.app.api.MuscleVolume
+import com.refactor.app.api.OutcomeMilestones
+import com.refactor.app.api.Progression
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.WorkoutExtrasRepository
@@ -140,6 +148,18 @@ fun WorkoutsScreen(
         }
     }
 
+    // The unit the lifter chose at signup. Set logs stay in pounds; only entry and
+    // display are converted, so history stays comparable across platforms.
+    val massUnit = remember(cacheEntity) {
+        cacheEntity?.payloadJson?.let { raw ->
+            runCatching {
+                MassUnit.forSystem(
+                    SyncJson.format.decodeFromString<SyncGetResponse>(raw).profile.unitSystem
+                )
+            }.getOrNull()
+        } ?: MassUnit.POUNDS
+    }
+
     var selectedDate by rememberSaveable { mutableStateOf(LocalDate.now()) }
     var recoveryAssessment by remember { mutableStateOf<RecoveryAssessmentDto?>(null) }
     var isLoadingRecovery by remember { mutableStateOf(false) }
@@ -158,6 +178,40 @@ fun WorkoutsScreen(
 
     val selectedPlanIndex = remember(days, selectedDate, plan) {
         plan?.let { WorkoutProgramSchedule.planIndexForDate(it, selectedDate) }
+    }
+
+    // Hard sets per muscle for the current Monday-start week, from all logged sets.
+    val weeklyVolume = remember(progressUiEpoch, selectedDate) {
+        val monday = LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+        MuscleVolume.computeWeekly(
+            setLogs = weightLogStore.allLogsAsDto(),
+            weekStart = monday.toString(),
+        )
+    }
+
+    /*
+     * Current training block phase, with an early deload substituted when fatigue signals
+     * (stalls, RPE creep, volume past MRV, low readiness, missed sessions) demand one.
+     * Scales every prescription below, so it is resolved first.
+     */
+    val mesocycle = remember(plan, progressUiEpoch, recoveryAssessment, weeklyVolume) {
+        plan?.let { currentPlan ->
+            val today = LocalDate.now().toString()
+            val logs = weightLogStore.allLogsAsDto()
+            val programWeek = WorkoutProgramSchedule.trainingWeeksElapsed(currentPlan, today)
+
+            val signals = if (logs.isEmpty()) null else Mesocycle.buildFatigueSignals(
+                progressions = Progression.buildAllProgressions(logs),
+                setLogs = logs,
+                musclesOverMrv = weeklyVolume.overdosed.size,
+                readinessScore = recoveryAssessment?.score,
+                missedSessions = WorkoutScheduleService.countRecentMissed(
+                    currentPlan, vm.mergedWorkoutProgress(currentPlan), 7, today,
+                ),
+                today = today,
+            )
+            Mesocycle.resolve(programWeek = programWeek, signals = signals)
+        }
     }
     val selectedDay = selectedPlanIndex?.let { days.getOrNull(it) }
 
@@ -209,6 +263,10 @@ fun WorkoutsScreen(
                 .padding(bottom = if (restTimer != null) 112.dp else 16.dp),
         ) {
             Spacer(Modifier.height(12.dp))
+
+            mesocycle?.let { MesocycleBanner(resolution = it) }
+
+            WeeklyVolumeCard(summary = weeklyVolume)
 
             plan?.let { currentPlan ->
                 CatchUpBanner(
@@ -270,13 +328,14 @@ fun WorkoutsScreen(
                 days.isEmpty() -> EmptyWorkoutState()
                 selectedDay == null -> NoWorkoutForDay(selectedDate)
                 else -> {
-                    key(progressUiEpoch, selectedPlanIndex) {
-                        WorkoutDayCard(
-                            planId = planId,
-                            day = selectedDay,
-                            isToday = selectedDate == LocalDate.now(),
-                            recoveryVolumeModifier = recoveryAssessment?.modifiedWorkout?.volumeAdjustment,
-                            setProgressEnabled = planId.isNotBlank(),
+                    WorkoutDayCard(
+                        planId = planId,
+                        day = selectedDay,
+                        isToday = selectedDate == LocalDate.now(),
+                        recoveryVolumeModifier = recoveryAssessment?.modifiedWorkout?.volumeAdjustment,
+                        readinessScore = recoveryAssessment?.score,
+                        mesocycleState = mesocycle?.state,
+                        setProgressEnabled = planId.isNotBlank() && !busy,
                             isSetComplete = { ex, globalSlot, setIdx ->
                                 vm.isSetComplete(
                                     planId = planId,
@@ -292,17 +351,17 @@ fun WorkoutsScreen(
                             },
                             onToggleSet = { ex, globalSlot, setIdx ->
                                 val day = selectedDay ?: return@WorkoutDayCard
-                                if (planId.isNotBlank()) {
-                                    val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
-                                        day.day, selectedDate,
-                                    )
-                                    busy = true
-                                    scope.launch {
+                                if (planId.isBlank() || busy) return@WorkoutDayCard
+                                val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
+                                    day.day, selectedDate,
+                                )
+                                busy = true
+                                scope.launch {
+                                    try {
                                         vm.toggleSetAndSync(
                                             planId, progressDayKey, day, globalSlot, ex, setIdx,
                                         ).fold(
                                             onSuccess = { markedComplete ->
-                                                busy = false
                                                 if (markedComplete && setIdx < ex.effectiveSetCount() - 1) {
                                                     val seconds = ex.restSeconds()
                                                     restTimer = RestTimerState(
@@ -314,20 +373,33 @@ fun WorkoutsScreen(
                                                     restTimer = null
                                                 }
                                             },
-                                            onFailure = { busy = false },
+                                            onFailure = { },
                                         )
+                                    } finally {
+                                        busy = false
                                     }
                                 }
                             },
-                            onSetCompleted = { ex, setIdx, weight, reps ->
+                            onSetCompleted = { ex, setIdx, performed ->
                                 val day = selectedDay ?: return@WorkoutDayCard
                                 if (planId.isNotBlank()) {
                                     val progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
                                         day.day, selectedDate,
                                     )
                                     sessionClock.markStartedIfNeeded(progressDayKey)
+                                    val weight = performed.weightLbs
+                                    val reps = performed.reps
                                     if (weight != null && weight > 0 && reps != null && reps > 0) {
-                                        weightLogStore.record(planId, progressDayKey, ex.name, setIdx, weight, reps)
+                                        weightLogStore.record(
+                                            planId = planId,
+                                            dayKey = progressDayKey,
+                                            exerciseName = ex.name,
+                                            setIndex = setIdx,
+                                            weightLbs = weight,
+                                            reps = reps,
+                                            rpe = performed.rpe,
+                                            section = performed.section,
+                                        )
                                         if (prStore.record(ex.name, weight, reps)) {
                                             Feedback.celebrate(context, "New PR: ${ex.name}! 🏆")
                                         }
@@ -365,13 +437,50 @@ fun WorkoutsScreen(
                                     }
                                 }
                                 sessionClock.clear(progressDayKey)
+
+                                // Finishing a session is when a strength or volume badge is
+                                // most likely to land, and when celebrating it means the most.
+                                val activePlan = plan
+                                scope.launch {
+                                    val anchor = activePlan?.let {
+                                        it.workoutPlan?.programWeek1Start
+                                            ?: it.createdAt.takeIf { c -> c.isNotBlank() }?.take(10)
+                                    }
+                                    val loggedWeekStarts: Set<String> = weightLogStore.allLogsAsDto()
+                                        .map { entry ->
+                                            WorkoutProgramSchedule.mondayWeekStartStringContaining(entry.date)
+                                        }
+                                        .toSet()
+                                    val completedDeload = if (anchor != null && activePlan != null) {
+                                        OutcomeMilestones.hasCompletedDeloadWeek(
+                                            anchorWeekStart = WorkoutProgramSchedule.mondayWeekStartStringContaining(anchor),
+                                            programWeekNow = WorkoutProgramSchedule.trainingWeeksElapsed(activePlan),
+                                            loggedWeekStarts = loggedWeekStarts,
+                                        )
+                                    } else false
+
+                                    syncRepository.applyOutcomeMilestones(
+                                        setLogs = weightLogStore.allLogsAsDto(),
+                                        completedDeload = completedDeload,
+                                    ).getOrNull()
+                                        ?.takeIf { it.isNotEmpty() }
+                                        ?.let { earnedNow ->
+                                            val names = OutcomeMilestones.BADGES
+                                                .filter { it.id in earnedNow }
+                                                .joinToString { it.name }
+                                            Feedback.celebrate(context, "Badge earned: $names")
+                                        }
+                                }
                             },
                             workoutExtrasRepository = workoutExtrasRepository,
                             onEdit = {
                                 selectedPlanIndex?.let { editIndex = it }
                             },
+                            massUnit = massUnit,
+                            progressDayKey = WorkoutProgramSchedule.progressDayKeyForWorkoutDay(
+                                selectedDay.day, selectedDate,
+                            ),
                         )
-                    }
                 }
             }
         }
@@ -450,14 +559,43 @@ private fun WorkoutDayCard(
     day: WorkoutDayDto,
     isToday: Boolean,
     recoveryVolumeModifier: Double?,
+    /** 0–100 recovery score; low readiness suppresses prescribed load jumps. */
+    readinessScore: Double?,
+    /** Current block phase; scales prescribed sets and load (deload weeks cut both). */
+    mesocycleState: Mesocycle.State?,
     setProgressEnabled: Boolean,
     isSetComplete: (WorkoutExerciseDto, Int, Int) -> Boolean,
     onToggleSet: (WorkoutExerciseDto, Int, Int) -> Unit,
-    onSetCompleted: (WorkoutExerciseDto, Int, Double?, Int?) -> Unit,
+    onSetCompleted: (WorkoutExerciseDto, Int, LoggedSet) -> Unit,
     onCompleted: () -> Unit,
     workoutExtrasRepository: WorkoutExtrasRepository,
     onEdit: () -> Unit,
+    /** The unit the lifter types in; set logs stay in pounds. */
+    massUnit: MassUnit = MassUnit.POUNDS,
+    /** Calendar day (`yyyy-MM-dd`) these sets are logged against. */
+    progressDayKey: String,
 ) {
+    val context = LocalContext.current
+
+    // Computed load target per normalized exercise name for this day's main + finisher work.
+    // Warmups are excluded — they are not load-progressed.
+    val prescriptions = remember(day, readinessScore, mesocycleState) {
+        val logs = WorkoutWeightLogStore(context).allLogsAsDto()
+        if (logs.isEmpty()) {
+            emptyMap()
+        } else {
+            Progression.prescribeWorkoutDay(
+                exercises = day.exercises + (day.finishers ?: emptyList()),
+                logs = logs,
+                options = Progression.Options(
+                    readinessScore = readinessScore,
+                    intensityMultiplier = mesocycleState?.intensityMultiplier ?: 1.0,
+                    volumeMultiplier = mesocycleState?.volumeMultiplier ?: 1.0,
+                ),
+            )
+        }
+    }
+
     val totalExercises = day.enumeratedExerciseSlots().size
     val completedExercises = day.enumeratedExerciseSlots().count { (slot, ex) ->
         (0 until ex.effectiveSetCount()).all { setIdx ->
@@ -576,6 +714,7 @@ private fun WorkoutDayCard(
                 day.warmups?.takeIf { it.isNotEmpty() }?.let { warmups ->
                     ExerciseSection(
                         title = "Warm-up",
+                        section = "warmup",
                         color = Color(0xFFF59E0B),
                         exercises = warmups,
                         baseGlobalSlot = 0,
@@ -586,12 +725,15 @@ private fun WorkoutDayCard(
                         onSetCompleted = onSetCompleted,
                         setProgressEnabled = setProgressEnabled,
                         workoutExtrasRepository = workoutExtrasRepository,
+                        massUnit = massUnit,
+                        progressDayKey = progressDayKey,
                     )
                 }
 
                 // Main section
                 ExerciseSection(
                     title = "Main",
+                    section = "main",
                     color = MaterialTheme.colorScheme.primary,
                     exercises = day.exercises,
                     baseGlobalSlot = day.warmups?.size ?: 0,
@@ -602,12 +744,16 @@ private fun WorkoutDayCard(
                     onSetCompleted = onSetCompleted,
                     setProgressEnabled = setProgressEnabled,
                     workoutExtrasRepository = workoutExtrasRepository,
+                    prescriptions = prescriptions,
+                    massUnit = massUnit,
+                    progressDayKey = progressDayKey,
                 )
 
                 // Finisher section
                 day.finishers?.takeIf { it.isNotEmpty() }?.let { finishers ->
                     ExerciseSection(
                         title = "Finisher",
+                        section = "finisher",
                         color = Color(0xFF64748B),
                         exercises = finishers,
                         baseGlobalSlot = (day.warmups?.size ?: 0) + day.exercises.size,
@@ -618,6 +764,9 @@ private fun WorkoutDayCard(
                         onSetCompleted = onSetCompleted,
                         setProgressEnabled = setProgressEnabled,
                         workoutExtrasRepository = workoutExtrasRepository,
+                        prescriptions = prescriptions,
+                        massUnit = massUnit,
+                        progressDayKey = progressDayKey,
                     )
                 }
 
@@ -710,6 +859,8 @@ private fun WorkoutDayCard(
 @Composable
 private fun ExerciseSection(
     title: String,
+    /** "warmup" | "main" | "finisher" — recorded on each set log. */
+    section: String,
     color: Color,
     exercises: List<WorkoutExerciseDto>,
     baseGlobalSlot: Int,
@@ -717,9 +868,13 @@ private fun ExerciseSection(
     day: WorkoutDayDto,
     isSetComplete: (WorkoutExerciseDto, Int, Int) -> Boolean,
     onToggleSet: (WorkoutExerciseDto, Int, Int) -> Unit,
-    onSetCompleted: (WorkoutExerciseDto, Int, Double?, Int?) -> Unit,
+    onSetCompleted: (WorkoutExerciseDto, Int, LoggedSet) -> Unit,
     setProgressEnabled: Boolean,
     workoutExtrasRepository: WorkoutExtrasRepository,
+    prescriptions: Map<String, Progression.SetPrescription> = emptyMap(),
+    /** The unit the lifter types in; storage stays in pounds. */
+    massUnit: MassUnit = MassUnit.POUNDS,
+    progressDayKey: String,
 ) {
     Column {
         Text(
@@ -734,10 +889,15 @@ private fun ExerciseSection(
             ExerciseRow(
                 exercise = exercise,
                 globalSlot = globalSlot,
+                prescription = prescriptions[exercise.name.trim().lowercase()],
+                section = section,
                 setProgressEnabled = setProgressEnabled,
+                massUnit = massUnit,
+                planId = planId,
+                progressDayKey = progressDayKey,
                 isSetComplete = { setIdx -> isSetComplete(exercise, globalSlot, setIdx) },
                 onToggleSet = { setIdx -> onToggleSet(exercise, globalSlot, setIdx) },
-                onSetCompleted = { setIdx, weight, reps -> onSetCompleted(exercise, setIdx, weight, reps) },
+                onSetCompleted = { setIdx, performed -> onSetCompleted(exercise, setIdx, performed) },
                 workoutExtrasRepository = workoutExtrasRepository,
             )
             if (j < exercises.lastIndex) {
@@ -749,21 +909,50 @@ private fun ExerciseSection(
 
 // ─── Exercise Row ────────────────────────────────────────────────────────────
 
+/**
+ * One set's user-entered performance. Weight and reps are held as text so a
+ * half-typed "12." doesn't collapse to a number mid-edit.
+ */
+private data class SetInput(
+    val weightText: String = "",
+    val repsText: String = "",
+    /** Rating of perceived exertion (6–10). Null until rated. */
+    val rpe: Double? = null,
+) {
+    val weight: Double? get() = weightText.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
+    val reps: Int? get() = repsText.trim().toIntOrNull()?.takeIf { it > 0 }
+}
+
 @Composable
 private fun ExerciseRow(
     exercise: WorkoutExerciseDto,
     globalSlot: Int,
+    /** Computed next-session target; null for warmups and untracked lifts. */
+    prescription: Progression.SetPrescription? = null,
+    /** "warmup" | "main" | "finisher" — recorded on each set log. */
+    section: String,
     setProgressEnabled: Boolean,
+    /** The unit the lifter types in. Storage stays in pounds. */
+    massUnit: MassUnit,
+    planId: String,
+    progressDayKey: String,
     isSetComplete: (Int) -> Boolean,
     onToggleSet: (Int) -> Unit,
-    onSetCompleted: (Int, Double?, Int?) -> Unit,
+    onSetCompleted: (Int, LoggedSet) -> Unit,
     workoutExtrasRepository: WorkoutExtrasRepository,
 ) {
     val context = LocalContext.current
-    val numSets = exercise.effectiveSetCount()
+    val prescribedSetCount = exercise.effectiveSetCount()
     var gifBytes by remember(globalSlot, exercise.name) { mutableStateOf<ByteArray?>(null) }
     var showGif by remember(globalSlot, exercise.name) { mutableStateOf(false) }
-    var weightText by rememberSaveable(exercise.name) { mutableStateOf("") }
+
+    // One entry per set — this is what makes drop sets, top-set-plus-backoffs and
+    // rep-outs recordable, and what stops the progression engine being fed N identical
+    // rows synthesised from a single weight field.
+    var sets by remember(exercise.name, progressDayKey) { mutableStateOf(listOf<SetInput>()) }
+    var rpeMenuFor by remember { mutableStateOf<Int?>(null) }
+
+    val weightLogStore = remember { WorkoutWeightLogStore(context) }
 
     // Prefetch the demo so the play button only appears when a real demo exists.
     LaunchedEffect(globalSlot, exercise.name) {
@@ -772,14 +961,49 @@ private fun ExerciseRow(
         }
     }
 
-    // Prefill the weight field with the last weight used for this lift (progressive overload).
-    val weightLogStore = remember { WorkoutWeightLogStore(context) }
-    LaunchedEffect(exercise.name) {
-        if (weightText.isBlank()) {
-            weightLogStore.lastWeight(exercise.name)?.let { last ->
-                weightText = if (last % 1.0 == 0.0) last.toInt().toString() else last.toString()
+    // Restore what was already logged today, falling back to the last session's matching
+    // set, then to the prescription.
+    LaunchedEffect(exercise.name, progressDayKey, prescribedSetCount) {
+        if (sets.isNotEmpty()) return@LaunchedEffect
+        val existing = weightLogStore.setsForExerciseOnDay(planId, progressDayKey, exercise.name)
+        val lastSession = weightLogStore.lastSessionSets(exercise.name)
+        // Extra sets logged earlier in the session must survive a card collapse.
+        val highestLogged = existing.keys.maxOrNull() ?: -1
+        val count = maxOf(prescribedSetCount, highestLogged + 1, 1)
+        sets = (0 until count).map { index ->
+            val logged = existing[index]
+            if (logged != null) {
+                SetInput(
+                    weightText = massUnit.display(logged.weightLbs),
+                    repsText = logged.reps.toString(),
+                    rpe = logged.rpe,
+                )
+            } else {
+                val previous = lastSession[index]
+                SetInput(
+                    weightText = previous?.let { massUnit.display(it.weightLbs) } ?: "",
+                    repsText = previous?.reps?.toString() ?: "",
+                )
             }
         }
+    }
+
+    fun updateSet(index: Int, transform: (SetInput) -> SetInput) {
+        sets = sets.mapIndexed { i, value -> if (i == index) transform(value) else value }
+    }
+
+    /** Writes this set's own weight/reps/RPE, converting entry units to stored pounds. */
+    fun logSet(index: Int) {
+        val input = sets.getOrNull(index) ?: return
+        onSetCompleted(
+            index,
+            LoggedSet(
+                weightLbs = input.weight?.let { massUnit.toPounds(it) },
+                reps = input.reps ?: parsePrescribedReps(exercise.reps),
+                rpe = input.rpe,
+                section = section,
+            ),
+        )
     }
 
     Column(
@@ -833,73 +1057,219 @@ private fun ExerciseRow(
             }
         }
 
-        // Working-weight input — feeds set logs, PR detection, and the post-workout summary.
-        if (setProgressEnabled) {
-            OutlinedTextField(
-                value = weightText,
-                onValueChange = { new -> weightText = new.filter { it.isDigit() || it == '.' } },
-                label = { Text("Weight (lbs)") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .width(140.dp),
-            )
-        }
+        // Computed target for today, derived from logged history.
+        ProgressionTarget(prescription = prescription)
 
-        // Set buttons — animated rounded squares
-        Row(
-            Modifier
-                .horizontalScroll(rememberScrollState())
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            repeat(numSets) { setIdx ->
-                val done = isSetComplete(setIdx)
-                val bgColor by animateColorAsState(
-                    targetValue = if (done) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                    animationSpec = spring(),
-                    label = "set_bg_$setIdx",
+        if (!setProgressEnabled) {
+            Text(
+                "Future workouts can't be logged yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        } else {
+            // Column headings
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "SET",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(28.dp),
                 )
-                val contentColor by animateColorAsState(
-                    targetValue = if (done) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    label = "set_fg_$setIdx",
+                Text(
+                    massUnit.label.uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(bgColor)
-                        .then(
-                            if (setProgressEnabled) Modifier.clickable {
-                                val markingComplete = !done
-                                onToggleSet(setIdx)
-                                Feedback.tick(context)
-                                if (markingComplete) {
-                                    onSetCompleted(
-                                        setIdx,
-                                        weightText.toDoubleOrNull(),
-                                        parsePrescribedReps(exercise.reps),
-                                    )
-                                }
-                            }
-                            else Modifier
-                        ),
-                    contentAlignment = Alignment.Center,
+                Text(
+                    "REPS",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "RPE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(56.dp),
+                )
+                Spacer(Modifier.width(48.dp))
+            }
+
+            sets.forEachIndexed { index, input ->
+                val done = isSetComplete(index)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (done) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = "Set ${setIdx + 1} complete",
-                            tint = contentColor,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    } else {
+                    Text(
+                        "${index + 1}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (index >= prescribedSetCount) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(28.dp),
+                    )
+
+                    OutlinedTextField(
+                        value = input.weightText,
+                        onValueChange = { new ->
+                            updateSet(index) { it.copy(weightText = new.filter { c -> c.isDigit() || c == '.' }) }
+                        },
+                        placeholder = { Text("—", style = MaterialTheme.typography.bodySmall) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Weight in ${massUnit.label} for set ${index + 1}" },
+                    )
+
+                    OutlinedTextField(
+                        value = input.repsText,
+                        onValueChange = { new ->
+                            updateSet(index) { it.copy(repsText = new.filter { c -> c.isDigit() }) }
+                        },
+                        placeholder = { Text(exercise.reps, style = MaterialTheme.typography.bodySmall, maxLines = 1) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Reps for set ${index + 1}" },
+                    )
+
+                    // RPE — how hard the set felt. Optional, but it unlocks RIR-adjusted
+                    // e1RM so submaximal work still moves the strength trend.
+                    Box(Modifier.width(56.dp)) {
+                        TextButton(
+                            onClick = { rpeMenuFor = index },
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                        ) {
+                            Text(
+                                input.rpe?.let { formatRpe(it) } ?: "—",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = rpeMenuFor == index,
+                            onDismissRequest = { rpeMenuFor = null },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Not rated") },
+                                onClick = {
+                                    updateSet(index) { it.copy(rpe = null) }
+                                    rpeMenuFor = null
+                                    // Keep an already-logged set in sync so a rating change
+                                    // still reaches the progression engine.
+                                    if (isSetComplete(index)) logSet(index)
+                                },
+                            )
+                            var value = 10.0
+                            while (value >= 6.0) {
+                                val option = value
+                                DropdownMenuItem(
+                                    text = { Text(formatRpe(option)) },
+                                    onClick = {
+                                        updateSet(index) { it.copy(rpe = option) }
+                                        rpeMenuFor = null
+                                        if (isSetComplete(index)) logSet(index)
+                                    },
+                                )
+                                value -= 0.5
+                            }
+                        }
+                    }
+
+                    val bgColor by animateColorAsState(
+                        targetValue = if (done) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        animationSpec = spring(),
+                        label = "set_bg_$index",
+                    )
+                    val contentColor by animateColorAsState(
+                        targetValue = if (done) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = "set_fg_$index",
+                    )
+                    Box(
+                        modifier = Modifier
+                            // 48dp is the Android minimum touch target, and this is the
+                            // control the user taps most — mid-set, with sweaty hands.
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(bgColor)
+                            .clickable {
+                                val markingComplete = !done
+                                onToggleSet(index)
+                                Feedback.tick(context)
+                                if (markingComplete) logSet(index)
+                            }
+                            .semantics {
+                                contentDescription =
+                                    "Set ${index + 1}, ${if (done) "completed" else "not completed"}"
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (done) {
+                            Icon(
+                                Icons.Filled.Check,
+                                contentDescription = null,
+                                tint = contentColor,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        } else {
+                            Text(
+                                "${index + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = contentColor,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            Row(
+                Modifier.padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = {
+                    // A new set repeats the previous one — the common case is another set
+                    // at the same load, and it stays editable either way.
+                    val previous = sets.lastOrNull()
+                    sets = sets + SetInput(
+                        weightText = previous?.weightText ?: "",
+                        repsText = previous?.repsText ?: "",
+                    )
+                }) {
+                    Text("+ Add set", style = MaterialTheme.typography.bodySmall)
+                }
+
+                if (sets.size > prescribedSetCount) {
+                    TextButton(onClick = {
+                        val lastIndex = sets.lastIndex
+                        if (lastIndex >= 0) {
+                            if (isSetComplete(lastIndex)) onToggleSet(lastIndex)
+                            weightLogStore.remove(planId, progressDayKey, exercise.name, lastIndex)
+                            sets = sets.dropLast(1)
+                        }
+                    }) {
                         Text(
-                            "${setIdx + 1}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = contentColor,
-                            fontWeight = FontWeight.SemiBold,
+                            "− Remove set",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
@@ -910,7 +1280,6 @@ private fun ExerciseRow(
         // ImageLoader so demos animate instead of showing a static first frame.
         AnimatedVisibility(visible = showGif && gifBytes != null) {
             gifBytes?.let { bytes ->
-                val context = LocalContext.current
                 val gifLoader = remember {
                     ImageLoader.Builder(context)
                         .components {

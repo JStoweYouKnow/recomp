@@ -31,8 +31,8 @@ android {
         applicationId = "com.refactor.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 45
-        versionName = "5.9"
+        versionCode = 52
+        versionName = "6.6"
         // Optional: set in `gradle.properties` to enable FCM (`FirebaseMessaging`). Leave empty for CI/local without Firebase.
         val fbAppId = (project.findProperty("FIREBASE_APP_ID") as String?) ?: ""
         val fbApiKey = (project.findProperty("FIREBASE_API_KEY") as String?) ?: ""
@@ -133,4 +133,6 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:7.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
+
+    testImplementation("junit:junit:4.13.2")
 }

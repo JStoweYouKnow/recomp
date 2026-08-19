@@ -101,6 +101,21 @@ public enum MacroCalculator {
         case .musicConnected: return 20
         case .supplementTracker: return 30
         case .bloodWorkUploaded: return 50
+        // Transformation outcomes — deliberately worth more than the engagement badges.
+        case .firstPR: return 75
+        case .strengthUp5: return 150
+        case .strengthUp10: return 300
+        case .strengthUp25: return 750
+        case .volumeBalanced: return 150
+        case .deloadCompleted: return 100
+        case .consistentLifter: return 300
+        case .trendDown5: return 150
+        case .trendDown15: return 400
+        case .trendDown30: return 900
+        case .bodyfatDown2: return 250
+        case .bodyfatDown5: return 600
+        case .leanMassGained: return 500
+        case .recompAchieved: return 800
         }
     }
 

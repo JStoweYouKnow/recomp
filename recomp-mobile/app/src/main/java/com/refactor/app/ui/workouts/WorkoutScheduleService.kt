@@ -84,8 +84,12 @@ object WorkoutScheduleService {
         today: String = today(),
     ): Int {
         val detected = detectMissedSessions(plan, progress, today, days)
+        val dayCount = plan.workoutPlan?.weeklyPlan?.size ?: 0
         val tracked = plan.workoutPlan?.missedSessions.orEmpty().filter {
             it.status == "missed" &&
+                // Entries orphaned by a regenerated or shortened plan point at days that no longer
+                // exist. Counting them inflates the missed total and triggers a phantom catch-up banner.
+                it.planIndex >= 0 && it.planIndex < dayCount &&
                 it.scheduledDate >= offsetDate(today, -days) &&
                 !isWorkoutSessionComplete(plan, it.planIndex, it.scheduledDate, progress)
         }

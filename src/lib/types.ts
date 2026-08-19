@@ -62,6 +62,11 @@ export interface WorkoutExercise {
   sets: string;
   reps: string;
   notes?: string;
+  /**
+   * Muscles this movement trains, from ExerciseDB when available.
+   * Used for weekly volume accounting; falls back to name-based classification.
+   */
+  muscles?: string[];
 }
 
 export interface WorkoutDay {
@@ -232,7 +237,25 @@ export type MilestoneType =
   | "music_connected"
   // Supplements
   | "supplement_tracker"
-  | "blood_work_uploaded";
+  | "blood_work_uploaded"
+  /*
+   * Transformation outcomes. Every badge above rewards using the app; these reward the body
+   * actually changing, which is the thing the user came for.
+   */
+  | "first_pr"
+  | "strength_up_5"
+  | "strength_up_10"
+  | "strength_up_25"
+  | "volume_balanced"
+  | "deload_completed"
+  | "consistent_lifter"
+  | "trend_down_5"
+  | "trend_down_15"
+  | "trend_down_30"
+  | "bodyfat_down_2"
+  | "bodyfat_down_5"
+  | "lean_mass_gained"
+  | "recomp_achieved";
 
 export interface Milestone {
   id: MilestoneType;

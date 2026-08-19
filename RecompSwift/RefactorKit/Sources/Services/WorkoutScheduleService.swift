@@ -3,6 +3,26 @@ import Foundation
 /// Shared workout scheduling: program week resolution, missed-session detection, catch-up queue.
 public enum WorkoutScheduleService {
 
+    /// 1-based count of calendar weeks the lifter has been training this plan.
+    ///
+    /// Distinct from `effectiveProgramWeek`, which answers "which week's template applies" and
+    /// deliberately pins single-week plans to 1 so weekday matching keeps working. Periodization
+    /// needs elapsed training time instead, so a repeating one-week plan still advances through
+    /// accumulation → peak → deload. Falls back to the plan's creation date when no explicit
+    /// program anchor was set.
+    public static func trainingWeeksElapsed(
+        for plan: FitnessPlan,
+        today: String = DateHelpers.todayString()
+    ) -> Int {
+        let anchor = plan.workoutPlan.programWeek1Start
+            ?? DateHelpers.dateString(from: plan.createdAt)
+        let weeks = DateHelpers.mondayWeeksElapsed(
+            from: DateHelpers.mondayWeekStartString(containingCalendarDay: anchor),
+            to: DateHelpers.mondayWeekStartString(containingCalendarDay: today)
+        )
+        return Swift.max(1, weeks + 1)
+    }
+
     public static func effectiveProgramWeek(
         for plan: FitnessPlan,
         weekStartMonday: String,
@@ -81,8 +101,12 @@ public enum WorkoutScheduleService {
         today: String = DateHelpers.todayString()
     ) -> Int {
         let detected = detectMissedSessions(plan: plan, progress: progress, today: today, lookbackDays: days)
+        let dayCount = plan.workoutPlan.weeklyPlan.count
         let tracked = (plan.workoutPlan.missedSessions ?? []).filter {
             $0.status == .missed &&
+                // Entries orphaned by a regenerated or shortened plan point at days that no longer
+                // exist. Counting them inflates the missed total and triggers a phantom catch-up banner.
+                $0.planIndex >= 0 && $0.planIndex < dayCount &&
                 $0.scheduledDate >= (DateHelpers.offsetDate(today, by: -days) ?? "") &&
                 !isWorkoutSessionComplete(plan: plan, planIndex: $0.planIndex, date: $0.scheduledDate, progress: progress)
         }

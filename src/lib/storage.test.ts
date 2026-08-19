@@ -78,7 +78,7 @@ describe("storage", () => {
 
   it("saveRicoHistory caps at 50 messages (stress: 100 messages)", () => {
     const many = Array.from({ length: 100 }, (_, i) => ({
-      role: (i % 2 === 0 ? "user" : "assistant") as const,
+      role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
       content: `msg ${i}`,
       at: new Date().toISOString(),
     }));

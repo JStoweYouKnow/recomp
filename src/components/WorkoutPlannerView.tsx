@@ -28,6 +28,12 @@ import {
 } from "./workouts/PostWorkoutRecommendationBanner";
 import { detectNewlyCompletedSession } from "@/lib/workout-learning";
 import { ExerciseSetPerformanceGrid } from "./workouts/ExerciseSetPerformanceGrid";
+import { ProgressionTarget } from "./workouts/ProgressionTarget";
+import { WeeklyVolumeCard } from "./workouts/WeeklyVolumeCard";
+import { MesocycleBanner } from "./workouts/MesocycleBanner";
+import { buildMesocycleContext } from "@/lib/workout-learning";
+import { computeWeeklyVolume } from "@/lib/muscle-volume";
+import { buildExerciseProgression, prescribeNextSession, type SetPrescription } from "@/lib/progression";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
 const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
@@ -130,6 +136,67 @@ export function WorkoutPlannerView({
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [musicSuggestions, setMusicSuggestions] = useState<Record<number, MusicSuggestion[]>>({});
   const [musicLoading, setMusicLoading] = useState<Record<number, boolean>>({});
+
+  /**
+   * Computed load target per exercise name for the day being viewed.
+   * Recomputed when logs change so a freshly logged set immediately updates
+   * the next session's prescription. Readiness comes from the recovery
+   * assessment, so a bad night's sleep suppresses load jumps automatically.
+   */
+  /**
+   * Tagged muscles per exercise name, sourced from ExerciseDB results already cached for
+   * demo GIFs. Plans are generated as free text, so this is the only real tagging we get;
+   * anything missing falls back to name-based classification inside the volume engine.
+   */
+  const muscleLookup = useMemo(() => {
+    const cache = getGifCache();
+    const lookup: Record<string, string[]> = {};
+    for (const [key, entry] of Object.entries(cache)) {
+      if (entry?.targetMuscles?.length) lookup[key] = entry.targetMuscles;
+    }
+    return lookup;
+    // Recomputed when logs change — a freshly demoed exercise lands in the cache by then.
+  }, [setLogs]);
+
+  /**
+   * Current training block phase, with an early deload substituted when fatigue signals
+   * (stalls, RPE creep, volume past MRV, low readiness, missed sessions) demand one.
+   * Scales every prescription below, so it is resolved first.
+   */
+  const mesocycle = useMemo(() => {
+    if (!plan) return null;
+    const volume =
+      setLogs.length > 0 ? computeWeeklyVolume(setLogs, getWeekStart(today), { muscleLookup }) : undefined;
+    return buildMesocycleContext(plan, progress, today, setLogs, {
+      readinessScore: recoveryAssessment?.score,
+      musclesOverMrv: volume?.overdosed.length ?? 0,
+    });
+  }, [plan, progress, today, setLogs, recoveryAssessment?.score, muscleLookup]);
+
+  const prescriptions = useMemo(() => {
+    if (setLogs.length === 0) return new Map<string, SetPrescription>();
+    const map = new Map<string, SetPrescription>();
+    const readinessScore = recoveryAssessment?.score;
+    const seen = new Set<string>();
+    const block = mesocycle?.state;
+
+    for (const day of plan?.workoutPlan.weeklyPlan ?? []) {
+      for (const exercise of [...day.exercises, ...(day.finishers ?? [])]) {
+        const key = exercise.name.trim().toLowerCase();
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        map.set(
+          key,
+          prescribeNextSession(exercise, buildExerciseProgression(setLogs, exercise.name), {
+            readinessScore,
+            intensityMultiplier: block?.intensityMultiplier,
+            volumeMultiplier: block?.volumeMultiplier,
+          }),
+        );
+      }
+    }
+    return map;
+  }, [plan, setLogs, recoveryAssessment?.score, mesocycle]);
 
   const [workoutImportUrl, setWorkoutImportUrl] = useState("");
   const [workoutImportLoading, setWorkoutImportLoading] = useState(false);
@@ -849,6 +916,19 @@ export function WorkoutPlannerView({
       {postWorkoutLoading && (
         <p className="text-sm text-[var(--muted-foreground)] animate-pulse">Ref is reviewing your workout…</p>
       )}
+      {mesocycle && (
+        <MesocycleBanner
+          state={mesocycle.state}
+          deload={mesocycle.deload}
+          deloadForced={mesocycle.deloadForced}
+        />
+      )}
+      <WeeklyVolumeCard
+        setLogs={setLogs}
+        weekStart={getWeekStart(today)}
+        muscleLookup={muscleLookup}
+      />
+
       <datalist id="workout-exercise-names">
         {suggestedExerciseNames.map((name) => (
           <option key={name} value={name} />
@@ -1575,6 +1655,11 @@ export function WorkoutPlannerView({
                                         </span>
                                       )}
                                     </div>
+                                    {!isViewingFutureDate && (
+                                      <ProgressionTarget
+                                        prescription={prescriptions.get(exercise.name.trim().toLowerCase())}
+                                      />
+                                    )}
                                     {plan && (
                                       <ExerciseSetPerformanceGrid
                                         planId={plan.id}
@@ -1666,6 +1751,11 @@ export function WorkoutPlannerView({
                                           {restTime && <span className="inline-flex items-center gap-1 rounded-md bg-[var(--accent-warm)]/10 px-2 py-0.5 text-xs"><span className="font-semibold text-[var(--accent-warm)]">{restTime}</span> <span className="text-[var(--muted)]">rest</span></span>}
                                         </div>
                                         {exercise.notes && !restTime && <p className="mt-1 text-xs text-[var(--muted)] italic">{exercise.notes}</p>}
+                                        {!isViewingFutureDate && (
+                                          <ProgressionTarget
+                                            prescription={prescriptions.get(exercise.name.trim().toLowerCase())}
+                                          />
+                                        )}
                                         {isDone && completedAt && <p className="mt-1 text-label text-[var(--accent)]">Completed {new Date(completedAt).toLocaleString()}</p>}
                                       </div>
                                     </div>

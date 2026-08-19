@@ -96,7 +96,37 @@ public enum MilestoneType: String, Codable, CaseIterable, Identifiable {
     case musicConnected = "music_connected"
     case supplementTracker = "supplement_tracker"
     case bloodWorkUploaded = "blood_work_uploaded"
+
+    /*
+     * Transformation outcomes. Every case above rewards using the app; these reward the body
+     * actually changing, which is the thing the user came for.
+     */
+    case firstPR = "first_pr"
+    case strengthUp5 = "strength_up_5"
+    case strengthUp10 = "strength_up_10"
+    case strengthUp25 = "strength_up_25"
+    case volumeBalanced = "volume_balanced"
+    case deloadCompleted = "deload_completed"
+    case consistentLifter = "consistent_lifter"
+    case trendDown5 = "trend_down_5"
+    case trendDown15 = "trend_down_15"
+    case trendDown30 = "trend_down_30"
+    case bodyfatDown2 = "bodyfat_down_2"
+    case bodyfatDown5 = "bodyfat_down_5"
+    case leanMassGained = "lean_mass_gained"
+    case recompAchieved = "recomp_achieved"
+
     public var id: String { rawValue }
+
+    /// Badges that mark the body changing rather than the app being used.
+    public static let outcomeBadges: [MilestoneType] = [
+        .firstPR, .strengthUp5, .strengthUp10, .strengthUp25,
+        .volumeBalanced, .deloadCompleted, .consistentLifter,
+        .trendDown5, .trendDown15, .trendDown30,
+        .bodyfatDown2, .bodyfatDown5, .leanMassGained, .recompAchieved,
+    ]
+
+    public var isOutcome: Bool { Self.outcomeBadges.contains(self) }
 }
 
 // MARK: - Activity Enums

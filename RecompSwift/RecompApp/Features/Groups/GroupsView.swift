@@ -3,7 +3,10 @@ import RefactorKit
 
 struct GroupsView: View {
     @Environment(AuthService.self) private var auth
-    @Environment(AppCoordinator.self) private var coordinator
+
+    /// Set when presented as a sheet (Groups is no longer a tab); adds a Done button.
+    var onDone: (() -> Void)? = nil
+
     @State private var groupService = GroupService()
     @State private var selectedTab = 0
     @State private var showCreate = false
@@ -36,6 +39,11 @@ struct GroupsView: View {
             }
             .navigationTitle("Groups")
             .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { showCreate = true } label: {
@@ -76,8 +84,7 @@ struct GroupsView: View {
             .sheet(item: $selectedGroupId) { item in
                 GroupDetailView(groupId: item.value, groupService: groupService)
             }
-            .task(id: coordinator.selectedTab) {
-                guard coordinator.selectedTab == .groups else { return }
+            .task {
                 do {
                     try await groupService.fetchMyGroups()
                 } catch {
@@ -90,7 +97,6 @@ struct GroupsView: View {
                 Text(actionError ?? "")
             }
         }
-        .hidesUIKitNavigationBar()
     }
 
     private var myGroupsList: some View {
@@ -599,6 +605,8 @@ struct GroupDetailView: View {
             }
             .background(.regularMaterial)
         }
+        // Same reasoning as the Ref chat: removing this keyboard accessory let the input
+        // bar slip behind the keyboard. Restored until that is fixed properly.
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()

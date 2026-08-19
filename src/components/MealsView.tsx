@@ -45,9 +45,34 @@ export function MealsView({
   onEditMeal: (m: MealEntry) => void;
   onDeleteMeal: (date: string, id: string) => void;
 }) {
-  const today = getTodayLocal();
+  const [today, setToday] = useState(() => getTodayLocal());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
+
+  useEffect(() => {
+    const refreshToday = () => {
+      const next = getTodayLocal();
+      setToday((prev) => (prev === next ? prev : next));
+    };
+    refreshToday();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refreshToday();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    const msUntilMidnight =
+      new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate() + 1).getTime() -
+      Date.now();
+    const midnightTimer = window.setTimeout(refreshToday, Math.max(msUntilMidnight + 250, 1000));
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.clearTimeout(midnightTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedDate === today) return;
+    if (!calendarOpen) setSelectedDate(today);
+  }, [today, calendarOpen, selectedDate]);
 
   // Dates that have meal entries (for dot indicators + counts)
   const mealDates = useMemo(() => new Set(meals.map((m) => m.date)), [meals]);
@@ -393,6 +418,7 @@ export function MealsView({
 
   /** Date to assign to new meals — uses calendar selection when open, otherwise today */
   const activeDate = calendarOpen ? selectedDate : today;
+  const loggingToPastDay = calendarOpen && selectedDate !== today;
 
   const handleAddReceiptItems = () => {
     const selected = receiptItems.filter((item) => item.selected);
@@ -698,6 +724,23 @@ export function MealsView({
         <div className="rounded-xl border border-[var(--accent-warm)]/40 bg-[var(--accent-warm)]/5 px-4 py-2.5 flex items-center gap-2">
           <span className="text-[var(--accent-warm)] font-medium">Fasting</span>
           <span className="text-xs text-[var(--muted)]">Log meals when you break your fast</span>
+        </div>
+      )}
+      {loggingToPastDay && (
+        <div className="rounded-xl border border-[var(--accent)]/40 bg-[var(--accent)]/5 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm text-[var(--foreground)]">
+            New meals will log to <strong>{dateLabel}</strong>, not today.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedDate(today);
+              setCalendarOpen(false);
+            }}
+            className="text-xs font-medium text-[var(--accent)] hover:underline"
+          >
+            Switch to today
+          </button>
         </div>
       )}
       <div className="flex flex-wrap items-start justify-between gap-3">

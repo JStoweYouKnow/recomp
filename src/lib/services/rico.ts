@@ -3,7 +3,7 @@
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
-import { dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
+import { dbDeleteMeal, dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
 import { getTodayLocal } from "../date-utils";
 import { applyRicoActionsToState, type RicoActionWire } from "../rico-actions";
@@ -34,6 +34,11 @@ CONTEXT YOU RECEIVE (JSON fields in the [Context: ...] prefix):
 - workoutHistory: recent completion patterns (sessionsCompletedLast7Days, recentSessions, exerciseFrequency, focusFrequency)
 - nextWorkout: their upcoming scheduled session (day, focus, mainExercises, scheduledDate)
 - workoutPerformance: recentHighlights with last logged weight/reps/RPE and volume per exercise
+- nextSessionTargets: PRE-COMPUTED load prescriptions for the next session (exerciseName, action, targetWeightLbs, targetReps, rationale). These come from a deterministic progression engine — quote them exactly, never recalculate or override them.
+- strengthTrend: which lifts are climbing vs stalled, estimated 1RM gains, and recent PRs
+- weeklyVolume: hard sets per muscle group this week vs landmarks (mev = minimum effective, mav = optimal ceiling, mrv = maximum recoverable), plus underdosed/overdosed lists
+- dietPhase: trend weight (EWMA, not the last weigh-in), weekly rate of change, whether that rate is productive (rateVerdict), a suggested calorie adjustment, lean-mass signal, and whether a diet break is due
+- mesocycle: position in the current training block (weekInBlock/blockLength, phase = accumulation | peak | deload), the multipliers already applied to nextSessionTargets, and whether fatigue forced an early deload (deloadForced, deloadUrgency, deloadReasons)
 - equipment: list of available equipment (e.g. "free_weights", "machines", "bodyweight", "cable_machine")
 - injuries: list of physical limitations (e.g. "lower back pain", "knee injury") – CRITICAL: never recommend exercises that stress these areas
 - dietaryRestrictions: list (e.g. "vegetarian", "gluten-free", "dairy-free") – always respect when logging meals or making food suggestions
@@ -49,6 +54,10 @@ You have access to tools! You are an AGENT, not just a chatbot.
 8. If the user shares a recipe URL to save (or asks to save a recipe link), use the 'save_recipe_from_url' tool with the URL.
 9. If the user asks to change when their imported or multi-week program starts (e.g. "start my program next Monday", "push week 1 to June 20"), use the 'adjust_program_start' tool with startDate as YYYY-MM-DD (any day in the week they want as program week 1).
 10. When completedWorkoutToday or workoutHistory is present, use it to personalize advice. After workouts, suggest recovery nutrition (protein/carbs timing). For nextWorkout, recommend progressive overload, exercise variety, or deloads based on exerciseFrequency, recentSessions, and workoutPerformance (last weights/reps/volume). Use swap_exercise, add_exercise, or update_workout_day to apply concrete plan tweaks when appropriate.
+11. PRESCRIBE NUMBERS, NOT VIBES. When nextSessionTargets is present, give the user the exact load and reps ("Squat 245 x 5 for 4 sets") and the reason from its rationale. Never say "go a little heavier" or "add some weight" when a target exists. If an entry's action is "deload", explain that backing off is what breaks the plateau. If it is "establish_baseline", ask them to log the session so future targets get sharper. When strengthTrend.stalled is non-empty, raise it directly and address it.
+12. WATCH THE VOLUME BALANCE. When weeklyVolume.underdosed is non-empty, name the specific muscles and how many sets short they are (entries[].setsToMev) — undertrained groups are the most common reason a physique stalls while the scale moves. When a group is overdosed (above mrv), say so plainly and suggest trimming sets rather than adding more. Use add_exercise or update_workout_day to fix real gaps.
+13. RESPECT THE BLOCK. mesocycle.phase tells you what this week is for. In "accumulation", volume is climbing — encourage consistency. In "peak", the loads are the heaviest of the block — focus them. In "deload", the reduced sets and load in nextSessionTargets are deliberate: tell them backing off IS the training, and do not let them talk themselves into more. When deloadForced is true, lead with deloadReasons — their body called this, not the calendar. When deloadUrgency is "soon", warn them a deload is coming so it does not feel arbitrary.
+14. COACH THE TREND, NOT THE SCALE. When dietPhase is present, quote trend.trendWeightLbs and the weekly rate — never react to a single weigh-in. rateVerdict is already judged: "too_fast" means they are losing muscle and should eat MORE, which users find counterintuitive, so explain it. If calorieAdjustment is non-zero, give the exact new target and offer update_macros. If dietBreakDue is true or suggestedPhase is "diet_break", push for it — a long deficit without a break is where adherence and metabolism both fail. If leanMass.losingLeanMass is true, that outranks everything else about the rate.
 Always confirm to the user what you just did when using a tool (e.g. "I've logged your chicken salad!", "Swapped Bench Press for Dumbbell Press on Monday!").
 
 MACRO ESTIMATION GUIDELINES (for log_meal – accuracy matters, be realistic not generous):
@@ -394,6 +403,72 @@ export interface RicoContext {
     }[];
     lastSessionVolumeLbs?: number;
   };
+  /**
+   * Computed load targets for the next session (from `progression.ts`).
+   * These are already-decided numbers — the coach explains them, never invents them.
+   */
+  nextSessionTargets?: {
+    exerciseName: string;
+    action: string;
+    targetWeightLbs?: number;
+    targetReps: number;
+    targetRepsMax?: number;
+    targetSets: number;
+    rationale: string;
+  }[];
+  /** Strength trend rollup: what is climbing, what has stalled, recent e1RM PRs. */
+  strengthTrend?: {
+    trackedExercises: number;
+    climbing: string[];
+    stalled: string[];
+    topGains: { exerciseName: string; changePct: number; currentE1rm: number }[];
+    recentPrs: { exerciseName: string; e1rm: number; date: string }[];
+  };
+  /** Hard sets per muscle this week, scored against volume landmarks. */
+  weeklyVolume?: {
+    weekStart: string;
+    entries: {
+      muscle: string;
+      sets: number;
+      landmarks: { mev: number; mav: number; mrv: number };
+      status: string;
+      setsToMev: number;
+    }[];
+    underdosed: string[];
+    overdosed: string[];
+    totalHardSets: number;
+  };
+  /** Diet trend, rate judgement, and any calorie change that follows from it. */
+  dietPhase?: {
+    phase: string;
+    rateVerdict: string;
+    trend: {
+      trendWeightLbs: number;
+      latestWeightLbs: number;
+      weeklyChangeLbs: number;
+      weeklyChangePct: number;
+      reliable: boolean;
+    };
+    leanMass?: { leanChangeLbs: number; leanShareOfLoss: number; losingLeanMass: boolean };
+    calorieAdjustment: number;
+    dietBreakDue: boolean;
+    headline: string;
+    details: string[];
+    suggestedPhase?: string;
+  };
+  /** Where they are in the current training block, and whether a deload is due. */
+  mesocycle?: {
+    weekInBlock: number;
+    blockLength: number;
+    blockNumber: number;
+    phase: string;
+    volumeMultiplier: number;
+    intensityMultiplier: number;
+    summary: string;
+    deloadForced: boolean;
+    deloadUrgency: string;
+    deloadReasons: string[];
+  };
 }
 
 export interface RicoHistoryMessage {
@@ -658,13 +733,13 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
  */
 export async function persistHeadlessRicoActions(
   userId: string,
-  actions: RicoOutput["actions"]
+  actions: RicoOutput["actions"],
+  opts?: { defaultDate?: string },
 ): Promise<{ replySuffix: string }> {
   if (actions.length === 0) return { replySuffix: "" };
 
   const meals = await dbGetMeals(userId);
   const plan = await dbGetPlan(userId);
-  const mealCountBefore = meals.length;
   const wireActions: RicoActionWire[] = actions.map((a) => ({
     type: a.type,
     payload: a.payload as Record<string, unknown>,
@@ -673,11 +748,30 @@ export async function persistHeadlessRicoActions(
     meals: [...meals],
     plan: plan ? structuredClone(plan) : null,
   };
-  const result = applyRicoActionsToState(wireActions, state);
+  const result = applyRicoActionsToState(wireActions, state, {
+    defaultDate: opts?.defaultDate,
+  });
 
   if (result.touchedMeals) {
-    for (const meal of state.meals.slice(mealCountBefore)) {
-      await dbSaveMeal(userId, meal);
+    const beforeByKey = new Map(meals.map((m) => [`${m.date}#${m.id}`, m] as const));
+    for (const meal of state.meals) {
+      const key = `${meal.date}#${meal.id}`;
+      const before = beforeByKey.get(key);
+      if (!before || JSON.stringify(before) !== JSON.stringify(meal)) {
+        await dbSaveMeal(userId, meal);
+      }
+    }
+    // When a meal id lands on a new calendar day, remove the old DynamoDB row.
+    for (const act of wireActions) {
+      if (act.type !== "log_meal") continue;
+      const id = typeof act.payload.id === "string" ? act.payload.id : undefined;
+      const date = typeof act.payload.date === "string" ? act.payload.date : undefined;
+      if (!id || !date) continue;
+      for (const old of meals) {
+        if (old.id === id && old.date !== date) {
+          await dbDeleteMeal(userId, old);
+        }
+      }
     }
   }
   if (result.touchedPlan && state.plan) {

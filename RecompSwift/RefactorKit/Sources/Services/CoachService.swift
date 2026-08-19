@@ -252,7 +252,9 @@ public final class CoachService {
             bodyWeight: latestWeight,
             completedWorkoutToday: learning.completedToday,
             workoutHistory: learning.history,
-            nextWorkout: learning.nextWorkout
+            nextWorkout: learning.nextWorkout,
+            today: DateHelpers.todayString(),
+            timezoneOffsetMinutes: -TimeZone.current.secondsFromGMT() / 60
         )
     }
 
@@ -284,7 +286,10 @@ public final class CoachService {
         for action in actions {
             switch action {
             case .logMeal(let payload):
-                let syncKey = "\(payload.resolvedDate)#\(payload.resolvedId)"
+                // Anchor Rico logs to the device calendar day — server echoes can be UTC-shifted
+                // when client timezone context is missing on the API (common late evening US).
+                let mealDate = DateHelpers.todayString()
+                let syncKey = "\(mealDate)#\(payload.resolvedId)"
                 var descriptor = FetchDescriptor<MealEntry>(
                     predicate: #Predicate { $0.syncKey == syncKey }
                 )
@@ -296,7 +301,7 @@ public final class CoachService {
                 }
                 let entry = MealEntry(
                     id: payload.resolvedId,
-                    date: payload.resolvedDate,
+                    date: mealDate,
                     mealType: payload.mealType ?? .snack,
                     name: payload.name,
                     macros: payload.asMacros,

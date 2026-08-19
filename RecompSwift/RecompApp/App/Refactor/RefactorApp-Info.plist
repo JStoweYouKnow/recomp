@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Everything else (usage strings, orientations, scene manifest) still comes from the
+	  target's INFOPLIST_KEY_* build settings and is merged in at build time.
+
+	  This file exists only because Xcode has no build setting for the launch screen's
+	  colour — `INFOPLIST_KEY_UILaunchScreen_Generation` is a boolean that emits an empty
+	  dictionary, which renders plain white. Pointing it at the same adaptive colour the
+	  app uses makes the handoff from the system splash into LaunchAnimationView invisible,
+	  in both light and dark, instead of a white flash.
+	-->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>AppBackground</string>
+	</dict>
+</dict>
+</plist>

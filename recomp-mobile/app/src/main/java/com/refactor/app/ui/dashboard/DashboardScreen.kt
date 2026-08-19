@@ -55,6 +55,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.RegeneratePlanOptions
+import com.refactor.app.api.DietPhase
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.ui.legal.MedicalDisclaimerText
@@ -294,6 +295,23 @@ private fun DashboardContent(
         applyingTargets = applyingTdeeTargets,
         onApplyToTargets = if (snap.plan?.dietPlan != null) onApplyTdeeToTargets else null,
     )
+
+    // Diet phase — trend weight, rate judgement, and any calorie change that follows
+    val weighIns = snap.wearableData.orEmpty()
+        .filter { (it.weight ?: 0.0) > 0 }
+        .map { DietPhase.WeighIn(date = it.date, weightLbs = it.weight, bodyFatPercent = it.bodyFatPercent) }
+    if (weighIns.isNotEmpty()) {
+        DietPhaseCard(
+            assessment = DietPhase.assess(
+                goal = snap.profile.goal,
+                weighIns = weighIns,
+                currentCalories = baseCal,
+                estimatedTDEE = snap.metabolicModel?.estimatedTDEE,
+                tdeeConfidence = snap.metabolicModel?.confidence,
+            ),
+            currentCalories = baseCal,
+        )
+    }
 
     // Coach Check-In
     CoachCheckInCard(message = checkInMessage, loading = checkInLoading, onFetch = onCheckIn)

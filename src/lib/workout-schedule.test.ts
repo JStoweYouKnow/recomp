@@ -1,12 +1,15 @@
 import { describe, it, expect } from "vitest";
 import type { FitnessPlan } from "./types";
+import { getWeekStart } from "./date-utils";
 import {
   applyScheduleAction,
+  countRecentMissed,
   detectMissedSessions,
   effectiveProgramWeek,
   getCatchUpQueue,
   matchDayToDate,
   shouldShowCatchUpBanner,
+  trainingWeeksElapsed,
 } from "./workout-schedule";
 
 function makePlan(overrides: Partial<FitnessPlan["workoutPlan"]> = {}): FitnessPlan {
@@ -129,5 +132,73 @@ describe("shouldShowCatchUpBanner", () => {
       [`${plan.id}:${friday.day}:Squat:3:8:`]: "2026-07-03T18:00:00.000Z",
     };
     expect(shouldShowCatchUpBanner(plan, progress, "2026-07-05")).toBe(false);
+  });
+});
+
+describe("trainingWeeksElapsed", () => {
+  it("advances a single-week plan so periodization still cycles", () => {
+    // effectiveProgramWeek pins these to 1 to keep weekday matching intact; the mesocycle
+    // needs elapsed training time instead, or a repeating plan never reaches a deload.
+    const plan = makePlan();
+    plan.createdAt = "2026-06-01T00:00:00.000Z";
+
+    expect(effectiveProgramWeek(plan, getWeekStart("2026-07-06"), "2026-07-06")).toBe(1);
+    expect(trainingWeeksElapsed(plan, "2026-06-01")).toBe(1);
+    expect(trainingWeeksElapsed(plan, "2026-06-08")).toBe(2);
+    expect(trainingWeeksElapsed(plan, "2026-07-06")).toBe(6);
+  });
+
+  it("prefers an explicit program anchor over the creation date", () => {
+    const plan = makePlan({ programWeek1Start: "2026-06-22" });
+    plan.createdAt = "2026-01-01T00:00:00.000Z";
+    expect(trainingWeeksElapsed(plan, "2026-07-06")).toBe(3);
+  });
+
+  it("never returns less than week 1", () => {
+    const plan = makePlan({ programWeek1Start: "2026-08-01" });
+    expect(trainingWeeksElapsed(plan, "2026-06-01")).toBe(1);
+  });
+});
+
+describe("countRecentMissed", () => {
+  it("ignores tracked sessions whose planIndex no longer exists", () => {
+    // A regenerated (shorter) plan leaves behind missedSessions pointing at removed days.
+    // Counting those inflates the total and shows a phantom catch-up banner.
+    const plan = makePlan({
+      weeklyPlan: [{ day: "Monday", focus: "Push", exercises: [{ name: "Bench", sets: "3", reps: "10" }] }],
+      missedSessions: [
+        {
+          id: "99:2026-06-29",
+          planIndex: 99,
+          scheduledDate: "2026-06-29",
+          status: "missed",
+          dayLabel: "Monday",
+          focus: "Push",
+        },
+      ],
+    });
+    const monday = plan.workoutPlan.weeklyPlan[0];
+    const progress = {
+      [`${plan.id}:${monday.day}:main:Bench:3:10:`]: "2026-06-29T18:00:00.000Z",
+      [`${plan.id}:${monday.day}:Bench:3:10:`]: "2026-06-29T18:00:00.000Z",
+    };
+    expect(countRecentMissed(plan, progress, 7, "2026-06-30")).toBe(0);
+  });
+
+  it("still counts tracked sessions that point at a real day", () => {
+    const plan = makePlan({
+      weeklyPlan: [{ day: "Monday", focus: "Push", exercises: [{ name: "Bench", sets: "3", reps: "10" }] }],
+      missedSessions: [
+        {
+          id: "0:2026-06-22",
+          planIndex: 0,
+          scheduledDate: "2026-06-22",
+          status: "missed",
+          dayLabel: "Monday",
+          focus: "Push",
+        },
+      ],
+    });
+    expect(countRecentMissed(plan, {}, 14, "2026-06-30")).toBeGreaterThan(0);
   });
 });

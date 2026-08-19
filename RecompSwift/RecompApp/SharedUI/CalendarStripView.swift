@@ -32,7 +32,7 @@ struct CalendarStripView: View {
                     Image(systemName: "chevron.left")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.appAccent)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -49,7 +49,7 @@ struct CalendarStripView: View {
                     Image(systemName: "chevron.right")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.appAccent)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -90,7 +90,7 @@ struct CalendarStripView: View {
                 }
             }
         }
-        .frame(height: 96)
+        .padding(.bottom, 4)
     }
 }
 

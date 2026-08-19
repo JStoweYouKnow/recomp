@@ -13,12 +13,12 @@ vi.mock("@/lib/server-rate-limit", () => ({
 }));
 vi.mock("@/lib/nova", () => ({ NOVA_LITE_MODEL_ID: "amazon.nova-2-lite-v1:0" }));
 
-const dbGetUserIdByApiToken = vi.fn(async () => "user-1");
-const dbGetMeals = vi.fn(async () => []);
-const dbGetPlan = vi.fn(async () => null);
-const dbGetProfile = vi.fn(async () => null);
-const dbGetMeta = vi.fn(async () => ({}));
-const dbSaveMeal = vi.fn(async () => {});
+const dbGetUserIdByApiToken = vi.fn(async (..._args: unknown[]) => "user-1");
+const dbGetMeals = vi.fn(async (..._args: unknown[]) => []);
+const dbGetPlan = vi.fn(async (..._args: unknown[]) => null);
+const dbGetProfile = vi.fn(async (..._args: unknown[]) => null);
+const dbGetMeta = vi.fn(async (..._args: unknown[]) => ({}));
+const dbSaveMeal = vi.fn(async (..._args: unknown[]) => {});
 
 vi.mock("@/lib/db", () => ({
   dbGetUserIdByApiToken: (...args: unknown[]) => dbGetUserIdByApiToken(...args),

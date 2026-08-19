@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class WorkoutsViewModel(
     application: Application,
@@ -30,6 +32,7 @@ class WorkoutsViewModel(
 ) : ViewModel() {
 
     private val progressStore = WorkoutSetProgressStore(application)
+    private val toggleMutex = Mutex()
 
     val workoutDays = syncCacheDao.observe()
         .map { entity ->
@@ -111,8 +114,8 @@ class WorkoutsViewModel(
         globalSlot: Int,
         exercise: WorkoutExerciseDto,
         setIndex: Int,
-    ): Result<Boolean> {
-        if (planId.isBlank()) return Result.failure(IllegalStateException("No plan id"))
+    ): Result<Boolean> = toggleMutex.withLock {
+        if (planId.isBlank()) return@withLock Result.failure(IllegalStateException("No plan id"))
         val section = day.sectionForGlobalSlot(globalSlot)
         val rowKey = WorkoutWebProgress.localRowSetProgressKey(planId, day.day, section, exercise, globalSlot)
         val wasComplete = progressStore.rowSetTags(progressDayKey, rowKey).contains("set_$setIndex")
@@ -120,9 +123,9 @@ class WorkoutsViewModel(
         _progressUiEpoch.value++
         val markedComplete = !wasComplete
 
-        val entity = syncCacheDao.getOnce() ?: return Result.failure(IllegalStateException("No cached snapshot"))
+        val entity = syncCacheDao.getOnce() ?: return@withLock Result.failure(IllegalStateException("No cached snapshot"))
         val snap = runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(entity.payloadJson) }.getOrNull()
-            ?: return Result.failure(IllegalStateException("Bad snapshot"))
+            ?: return@withLock Result.failure(IllegalStateException("Bad snapshot"))
         val merged = progressStore.mergedForPush(snap.plan)
         val prev = snap.workoutProgress.orEmpty()
 
@@ -136,13 +139,15 @@ class WorkoutsViewModel(
             WorkoutSetLogs.remove(snap.workoutSetLogs.orEmpty(), logId)
         }
         val logsChanged = nextLogs != snap.workoutSetLogs.orEmpty()
-        if (merged == prev && !logsChanged) return Result.success(markedComplete)
+        if (merged == prev && !logsChanged) return@withLock Result.success(markedComplete)
 
         val local = syncRepository.mutateCachedSnapshot {
             it.copy(workoutProgress = merged, workoutSetLogs = nextLogs)
         }
-        if (local.isFailure) return Result.failure(local.exceptionOrNull()!!)
-        return syncRepository.pushCachedSnapshot().map { markedComplete }
+        if (local.isFailure) {
+            return@withLock Result.failure(local.exceptionOrNull() ?: IllegalStateException("Snapshot mutate failed"))
+        }
+        syncRepository.pushCachedSnapshot().map { markedComplete }
     }
 
     suspend fun persistWeeklyPlanAndPush(days: List<WorkoutDayDto>): Result<Unit> =

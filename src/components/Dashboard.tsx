@@ -14,6 +14,8 @@ import { HydrationWidget } from "./dashboard/HydrationWidget";
 import { FastingWidget } from "./dashboard/FastingWidget";
 import { BiofeedbackQuickEntry } from "./dashboard/BiofeedbackQuickEntry";
 import { MetabolicModelCard } from "./dashboard/MetabolicModelCard";
+import { DietPhaseCard } from "./dashboard/DietPhaseCard";
+import { getMetabolicModel } from "@/lib/storage";
 import { CoachCheckInCard } from "./dashboard/CoachCheckInCard";
 import { ResearchCard } from "./dashboard/ResearchCard";
 import { DailyQuestsCard } from "./dashboard/DailyQuestsCard";
@@ -485,6 +487,12 @@ export function Dashboard({
           workoutCompleted={workoutCompletedToday}
         />
         <MetabolicModelCard onPlanUpdate={onPlanUpdate} />
+        <DietPhaseCard
+          goal={profile.goal}
+          weighIns={wearableData ?? []}
+          currentCalories={targets.calories}
+          metabolicModel={getMetabolicModel()}
+        />
       </div>
 
       {/* ── How are you feeling & Coach check-in (paired) ── */}

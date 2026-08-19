@@ -73,6 +73,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.refactor.app.api.OutcomeMilestones
+import com.refactor.app.util.Feedback
+import com.refactor.app.ui.workouts.WorkoutWeightLogStore
 import com.refactor.app.api.SyncJson
 import com.refactor.app.api.SyncRepository
 import com.refactor.app.api.WearableConnectRepository
@@ -793,6 +796,23 @@ fun SyncMilestonesScreen(
     }
     var tabIndex by rememberSaveable { mutableIntStateOf(0) }
 
+    // Web computes milestones server-side; an Android-only user would never earn a
+    // transformation badge without this local pass over their own training history.
+    val context = LocalContext.current
+    LaunchedEffect(entity?.fetchedAtEpochMillis) {
+        val setLogs = WorkoutWeightLogStore(context).allLogsAsDto()
+        if (setLogs.isNotEmpty() || snap?.wearableData?.isNotEmpty() == true) {
+            syncRepository.applyOutcomeMilestones(setLogs).getOrNull()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { earnedNow ->
+                    val names = OutcomeMilestones.BADGES
+                        .filter { it.id in earnedNow }
+                        .joinToString { it.name }
+                    Feedback.celebrate(context, "Badge earned: $names")
+                }
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text("Progress", style = MaterialTheme.typography.titleLarge) },
@@ -872,6 +892,22 @@ private fun MilestonesTab(snap: SyncGetResponse?) {
             }
         }
 
+        // Transformation badges lead: they mark the body changing, not the app being used.
+        Text("Transformation", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Earned by your body changing — strength, volume balance, and body composition.",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutcomeMilestones.BADGES.forEach { badge ->
+                BadgeChip(label = badge.name, earned = badge.id in earnedIds)
+            }
+        }
+
         // Badges
         Text("Achievements", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         FlowRow(
@@ -882,10 +918,14 @@ private fun MilestonesTab(snap: SyncGetResponse?) {
                 val earned = id in earnedIds
                 BadgeChip(label = label, earned = earned)
             }
-            // Show any server milestones not in our known list
-            snap?.milestones.orEmpty().filter { m -> knownMilestones.none { it.first == m.id } }.forEach { m ->
-                BadgeChip(label = m.id.replace('_', ' ').replaceFirstChar { it.uppercase() }, earned = true)
-            }
+            // Any server milestone we do not have a label for, excluding the ones already
+            // rendered in the Transformation section above.
+            val outcomeIds = OutcomeMilestones.BADGES.map { it.id }.toSet()
+            snap?.milestones.orEmpty()
+                .filter { m -> knownMilestones.none { it.first == m.id } && m.id !in outcomeIds }
+                .forEach { m ->
+                    BadgeChip(label = m.id.replace('_', ' ').replaceFirstChar { it.uppercase() }, earned = true)
+                }
         }
         Spacer(Modifier.height(8.dp))
     }

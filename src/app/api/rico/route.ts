@@ -6,7 +6,7 @@ import { logInfo, logError, withRequestLogging } from "@/lib/logger";
 import { invokeRico, persistHeadlessRicoActions, replyClaimsMealLogged } from "@/lib/services/rico";
 import { stripRicoDiagnosticMarkup } from "@/lib/rico-reply-sanitizer";
 import { dbGetMeals, dbGetSavedRecipes, dbSaveSavedRecipes } from "@/lib/db";
-import { getTodayLocal } from "@/lib/date-utils";
+import { resolveMealLogDate } from "@/lib/date-utils";
 import { rankWithDiscovery } from "@/lib/recipe-library";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { CookingAppRecipe } from "@/lib/types";
@@ -37,8 +37,13 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
 
     const userId = await getUserId(req.headers);
     let replyText = reply;
+    const ctx = (context ?? {}) as Record<string, unknown>;
+    const defaultDate = resolveMealLogDate({
+      clientDate: ctx.today ?? ctx.clientDate,
+      timezoneOffsetMinutes: ctx.timezoneOffsetMinutes,
+    });
     if (userId && actions.length > 0) {
-      const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
+      const { replySuffix } = await persistHeadlessRicoActions(userId, actions, { defaultDate });
       replyText += replySuffix;
     } else if (actions.length > 0 && !userId) {
       logError("Rico returned actions but user is not authenticated — meals will not persist server-side", undefined, {
@@ -49,7 +54,7 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
 
     if (userId && actions.some((a) => a.type === "log_meal")) {
       const meals = await dbGetMeals(userId);
-      const today = getTodayLocal();
+      const today = defaultDate;
       const protein = Math.round(
         meals.filter((m) => m.date.slice(0, 10) === today).reduce((sum, m) => sum + m.macros.protein, 0),
       );

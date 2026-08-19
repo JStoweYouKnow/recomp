@@ -267,9 +267,18 @@ public final class PlanService {
 
     /// Returns macro targets for a calendar day — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
     public func targets(for date: Date, context: ModelContext) -> Macros {
+        targets(for: date, plan: currentPlan(context: context))
+    }
+
+    /// Same as `targets(for:context:)` but takes an already-resolved plan.
+    ///
+    /// Views that already observe plans via `@Query` should prefer this: the context
+    /// variants re-fetch on every call, and calling them from `body` meant several
+    /// SwiftData fetches per render.
+    public func targets(for date: Date, plan: FitnessPlan?) -> Macros {
         let fallback = Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
-        guard let plan = currentPlan(context: context) else { return fallback }
-        if let workout = workout(for: date, context: context) {
+        guard let plan else { return fallback }
+        if let workout = workout(for: date, plan: plan) {
             let f = workout.focus.lowercased()
             let isRest = f.contains("rest") || f.contains("recovery") || f.contains("off")
             if isRest, let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
@@ -284,6 +293,10 @@ public final class PlanService {
     /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
     public func todaysTargets(context: ModelContext) -> Macros {
         targets(for: .now, context: context)
+    }
+
+    public func todaysTargets(plan: FitnessPlan?) -> Macros {
+        targets(for: .now, plan: plan)
     }
 
     /// Sets `dailyTargets` and re-derives the training/rest split (±200 kcal / ±50g carbs) from the new base.
@@ -369,8 +382,17 @@ public final class PlanService {
         workout(for: .now, context: context)
     }
 
+    public func todaysWorkout(plan: FitnessPlan?) -> WorkoutDay? {
+        workout(for: .now, plan: plan)
+    }
+
     public func workout(for date: Date, context: ModelContext) -> WorkoutDay? {
-        guard let plan = currentPlan(context: context) else { return nil }
+        workout(for: date, plan: currentPlan(context: context))
+    }
+
+    /// Fetch-free variant for views that already hold the plan.
+    public func workout(for date: Date, plan: FitnessPlan?) -> WorkoutDay? {
+        guard let plan else { return nil }
         guard let idx = WorkoutProgramSchedule.planIndex(for: plan, date: date) else { return nil }
         let weeklyPlan = plan.workoutPlan.weeklyPlan
         guard idx < weeklyPlan.count else { return nil }

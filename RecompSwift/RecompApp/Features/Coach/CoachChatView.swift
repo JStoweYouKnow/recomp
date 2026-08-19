@@ -41,9 +41,6 @@ struct CoachChatView: View {
                     .padding()
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .safeAreaInset(edge: .bottom) {
-                    inputBar
-                }
                 .onAppear { scrollProxy = proxy }
                 .onChange(of: coachService.messages.count) { _, _ in
                     if let last = coachService.messages.last {
@@ -52,6 +49,13 @@ struct CoachChatView: View {
                         }
                     }
                 }
+            }
+            // Attached to the container rather than the inner ScrollView. Keyboard
+            // avoidance is driven by the safe area of the view the inset is attached to;
+            // hanging it off a ScrollView nested inside a ScrollViewReader is the fragile
+            // placement that lets the bar end up behind the keyboard.
+            .safeAreaInset(edge: .bottom) {
+                inputBar
             }
             .navigationTitle("Ref")
             .navigationBarTitleDisplayMode(.inline)
@@ -69,6 +73,10 @@ struct CoachChatView: View {
                     }
                     .accessibilityLabel("Chat options")
                 }
+                // Keep this. Removing it to stop the "Done" pill covering the send button
+                // regressed something worse: without a keyboard accessory in the responder
+                // chain, the bottom input bar ended up *behind* the keyboard, so you could
+                // not read what you were typing. The covered button is the lesser bug.
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { isInputFocused = false }

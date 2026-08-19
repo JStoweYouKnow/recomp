@@ -23,6 +23,8 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Feedback
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Notifications
@@ -126,6 +128,9 @@ fun ProfileHubScreen(
     coachSchedulePrefs: CoachSchedulePrefs,
     themePreference: AppTheme = AppTheme.SYSTEM,
     onThemeChange: (AppTheme) -> Unit = {},
+    /** Adjust and Groups used to be tabs; Profile is now their entry point. */
+    onOpenAdjust: () -> Unit = {},
+    onOpenGroups: () -> Unit = {},
 ) {
     var section by remember { mutableStateOf(ProfileSection.Home) }
     val ctx = LocalContext.current
@@ -218,6 +223,8 @@ fun ProfileHubScreen(
             aiConsentPrefs = aiConsentPrefs,
             showSubscriptionEntry = billingState.configured || proAccess == true,
             onNavigate = { section = it },
+            onOpenAdjust = onOpenAdjust,
+            onOpenGroups = onOpenGroups,
         )
     }
 }
@@ -238,6 +245,8 @@ private fun ProfileHomeScreen(
     onLogout: () -> Unit,
     showSubscriptionEntry: Boolean,
     onNavigate: (ProfileSection) -> Unit,
+    onOpenAdjust: () -> Unit,
+    onOpenGroups: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
@@ -297,6 +306,20 @@ private fun ProfileHomeScreen(
                 icon = Icons.Outlined.Edit,
                 label = "Edit profile",
                 onClick = { onNavigate(ProfileSection.Edit) },
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            // Adjust and Groups lost their tab slots when the bar went from seven to
+            // five; this is now their entry point.
+            SettingsRow(
+                icon = Icons.Outlined.Tune,
+                label = "Adjust plan",
+                onClick = onOpenAdjust,
+            )
+            HorizontalDivider(Modifier.padding(start = 56.dp))
+            SettingsRow(
+                icon = Icons.Outlined.Groups,
+                label = "Groups & challenges",
+                onClick = onOpenGroups,
             )
             HorizontalDivider(Modifier.padding(start = 56.dp))
             if (showSubscriptionEntry) {

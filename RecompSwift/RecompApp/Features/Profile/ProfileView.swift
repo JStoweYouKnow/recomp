@@ -8,6 +8,7 @@ import RefactorKit
 struct ProfileView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SubscriptionService.self) private var subscriptions
+    @Environment(AppCoordinator.self) private var coordinator
     @Environment(\.modelContext) private var context
     @Environment(\.syncEngine) private var syncEngine
     @AppStorage("appColorScheme") private var colorSchemePref: String = AppColorScheme.system.rawValue
@@ -27,6 +28,22 @@ struct ProfileView: View {
                 }
 
                 subscriptionSection
+
+                // Adjust and Groups used to be tabs. They now live here, routed through
+                // the coordinator so deep links and coach actions reach the same sheet.
+                Section("Plan & Community") {
+                    Button {
+                        coordinator.navigate(to: .adjust)
+                    } label: {
+                        Label("Adjust Plan", systemImage: "slider.horizontal.3")
+                    }
+
+                    Button {
+                        coordinator.navigate(to: .groups)
+                    } label: {
+                        Label("Groups & Challenges", systemImage: "person.3")
+                    }
+                }
 
                 Section("Appearance") {
                     Picker("Theme", selection: $colorSchemePref) {
@@ -207,7 +224,6 @@ struct ProfileView: View {
                 PaywallView()
             }
         }
-        .hidesUIKitNavigationBar()
         .background(Color.recompBackground.ignoresSafeArea())
     }
 

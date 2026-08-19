@@ -16,11 +16,24 @@ public enum RecompAppGroupDefaults {
         "recomp_metabolic_model_cache_v1",
     ]
 
+    private static let migrationLock = NSLock()
+    nonisolated(unsafe) private static var didMigrate = false
+
     public static var shared: UserDefaults {
         guard let suite = UserDefaults(suiteName: RefactorSchema.sharedAppGroupIdentifier) else {
             return .standard
         }
-        migrateLegacyValuesIfNeeded(into: suite)
+        // The migration is a one-shot copy, but this property is read on nearly every
+        // storage access — including from SwiftUI `body`. Re-running 9 key lookups
+        // against two suites on every read was pure overhead once the copy was done.
+        migrationLock.lock()
+        let needsMigration = !didMigrate
+        if needsMigration { didMigrate = true }
+        migrationLock.unlock()
+
+        if needsMigration {
+            migrateLegacyValuesIfNeeded(into: suite)
+        }
         return suite
     }
 

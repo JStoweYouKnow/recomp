@@ -55,6 +55,8 @@ function buildBaseContext(data: {
     workoutHistory: learning.workoutHistory,
     nextWorkout: learning.nextWorkout,
     workoutPerformance: learning.workoutPerformance,
+    nextSessionTargets: learning.nextSessionTargets,
+    strengthTrend: learning.strengthTrend,
   };
 }
 

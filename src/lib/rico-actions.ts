@@ -1,7 +1,7 @@
 import type { FitnessPlan, MealEntry, WorkoutExercise } from "./types";
 import type { RegeneratePlanOptions } from "./multi-week-plan";
 import { parseRegeneratePlanPayload } from "./multi-week-plan";
-import { getTodayLocal, getWeekStart } from "./date-utils";
+import { getTodayLocal, getWeekStart, parseClientDateString } from "./date-utils";
 import { getMeals, getPlan, saveMeals, savePlan, syncToServer } from "./storage";
 
 export type RicoActionWire = { type: string; payload: Record<string, unknown> };
@@ -23,6 +23,11 @@ export type RicoMutableState = {
   plan: FitnessPlan | null;
 };
 
+export type ApplyRicoOptions = {
+  /** Client-local calendar day (YYYY-MM-DD) for new log_meal entries */
+  defaultDate?: string;
+};
+
 const MEAL_TYPES = new Set<MealEntry["mealType"]>(["breakfast", "lunch", "dinner", "snack"]);
 
 function parseMealType(value: unknown): MealEntry["mealType"] {
@@ -42,6 +47,7 @@ function findDayIndex(plan: FitnessPlan, day: string): number {
 export function applyRicoActionsToState(
   actions: RicoActionWire[],
   state: RicoMutableState,
+  opts?: ApplyRicoOptions,
 ): RicoApplyResult {
   let changed = false;
   let touchedMeals = false;
@@ -73,9 +79,17 @@ export function applyRicoActionsToState(
       }
       case "log_meal": {
         const p = act.payload;
-        const id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        const date = getTodayLocal();
-        state.meals.push({
+        const existingId = typeof p.id === "string" && p.id.trim() ? p.id.trim() : undefined;
+        const id =
+          existingId ??
+          crypto.randomUUID?.() ??
+          `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const date =
+          (existingId ? parseClientDateString(p.date) : undefined) ??
+          opts?.defaultDate ??
+          parseClientDateString(p.date) ??
+          getTodayLocal();
+        const meal: MealEntry = {
           id,
           date,
           name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : "Meal",
@@ -87,7 +101,13 @@ export function applyRicoActionsToState(
             carbs: num(p.carbs),
             fat: num(p.fat),
           },
-        });
+        };
+        const dupIdx = state.meals.findIndex((m) => m.id === id && m.date === date);
+        if (dupIdx >= 0) {
+          state.meals[dupIdx] = meal;
+        } else {
+          state.meals.push(meal);
+        }
         // Echo ids back on the action payload so mobile clients insert the same row the server saved.
         p.id = id;
         p.date = date;
@@ -243,10 +263,13 @@ export function formatRicoApplyStatus(result: RicoApplyResult): string {
 }
 
 /** Web client: apply to localStorage, sync, and broadcast UI refresh. */
-export function processRicoActions(actions: RicoActionWire[]): RicoApplyResult {
+export function processRicoActions(
+  actions: RicoActionWire[],
+  opts?: ApplyRicoOptions,
+): RicoApplyResult {
   const meals = getMeals();
   const plan = getPlan();
-  const result = applyRicoActionsToState(actions, { meals, plan });
+  const result = applyRicoActionsToState(actions, { meals, plan }, opts);
   if (result.touchedMeals) saveMeals(meals);
   if (result.touchedPlan && plan) savePlan(plan);
   if (result.changed) {

@@ -17,6 +17,54 @@ export function getTodayLocal(): string {
   return toLocalDateString(new Date());
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isValidDateString(s: string): boolean {
+  return DATE_RE.test(s);
+}
+
+export function parseClientDateString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const d = value.slice(0, 10);
+  return isValidDateString(d) ? d : undefined;
+}
+
+/**
+ * Calendar day in a client timezone from `Date.getTimezoneOffset()` (minutes).
+ * Used on the server when the client sends its offset but not an explicit date.
+ */
+export function getTodayFromTimezoneOffset(offsetMinutes: number): string {
+  const shifted = new Date(Date.now() - offsetMinutes * 60_000);
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Coerce client `Date.getTimezoneOffset()` values (number or numeric string). */
+export function coerceTimezoneOffsetMinutes(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return undefined;
+}
+
+/** Resolve the calendar day for a new meal log (client local > TZ offset > server local). */
+export function resolveMealLogDate(opts?: {
+  clientDate?: unknown;
+  timezoneOffsetMinutes?: unknown;
+}): string {
+  const fromClient = parseClientDateString(opts?.clientDate);
+  if (fromClient) return fromClient;
+  const offset = coerceTimezoneOffsetMinutes(opts?.timezoneOffsetMinutes);
+  if (offset !== undefined) {
+    return getTodayFromTimezoneOffset(offset);
+  }
+  return getTodayLocal();
+}
+
 /** Get the Monday (week start) for a given date string (YYYY-MM-DD). Returns YYYY-MM-DD. */
 export function getWeekStart(dateStr: string): string {
   const d = new Date(dateStr + "T12:00:00");

@@ -8,6 +8,10 @@ final class AppCoordinator {
     var workoutsPath = NavigationPath()
     var progressPath = NavigationPath()
 
+    /// Destinations that are routable but not tabs (`adjust`, `groups`). Presented as a
+    /// sheet so deep links and coach actions can still reach them from anywhere.
+    var modalDestination: Tab?
+
     enum Tab: String, CaseIterable, Identifiable {
         case dashboard = "Dashboard"
         case meals = "Meals"
@@ -31,16 +35,28 @@ final class AppCoordinator {
             }
         }
 
+        /// The tab bar. Five is the hard ceiling: at six or more, iOS collapses the
+        /// overflow into a UIKit "More" table, which buried Progress and forced the
+        /// navigation-bar workarounds this app used to carry.
+        ///
+        /// `adjust` and `groups` are still routable destinations (deep links, coach
+        /// actions, Profile rows) — they are just not tabs.
         static var mobileTabs: [Tab] {
-            [.dashboard, .meals, .workouts, .adjust]
+            [.dashboard, .meals, .workouts, .progress, .profile]
         }
 
         static var allTabs: [Tab] {
-            allCases
+            mobileTabs
         }
+
+        var isTab: Bool { Self.mobileTabs.contains(self) }
     }
 
     func navigate(to tab: Tab) {
+        guard tab.isTab else {
+            modalDestination = tab
+            return
+        }
         if selectedTab == tab {
             resetNavigation(for: tab)
         } else {
@@ -75,25 +91,34 @@ struct MainTabView: View {
             }
         }
         .tint(Color.appAccent)
+        // `adjust` and `groups` bring their own NavigationStack, so they are presented
+        // bare (no wrapper stack) and given an explicit Done button instead.
+        .sheet(item: $coord.modalDestination) { destination in
+            switch destination {
+            case .adjust:
+                AdjustView(onDone: { coord.modalDestination = nil })
+            case .groups:
+                GroupsView(onDone: { coord.modalDestination = nil })
+            default:
+                destination.destinationView
+            }
+        }
     }
 }
 
-/// SwiftUI `TabView` builds every tab's body at launch. Defer only Workouts
-/// (catch-up queries) until first visit so cold start stays stable.
+/// SwiftUI `TabView` builds every tab's body at launch. Defer Workouts (catch-up
+/// queries) and Progress (milestone/measurement queries) until first visit so cold
+/// start does not register their SwiftData observers before the user asks for them.
 ///
-/// Do **not** placeholder overflow/"More" tabs (Progress, Groups, Profile) —
-/// UIKit's More navigation pushes those VCs with a collapsed placeholder layout,
-/// which shows as a blank screen. Always mount those destinations. Sync finishes
-/// before `MainTabView` appears, so mounting Progress at tab-shell time is safe.
+/// With five tabs there is no UIKit "More" list, so deferred placeholders are safe
+/// everywhere — the collapsed-layout problem that forced eager mounting is gone.
 private struct LazyTabContent: View {
     @Environment(AppCoordinator.self) private var coordinator
     let tab: AppCoordinator.Tab
     @State private var activated = false
 
-    /// Only defer Workouts (visible tab bar). Progress/Groups/Profile live under
-    /// "More" and must mount immediately — deferred placeholders collapse there.
     private var defersUntilSelected: Bool {
-        tab == .workouts
+        tab == .workouts || tab == .progress
     }
 
     var body: some View {

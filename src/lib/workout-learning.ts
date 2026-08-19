@@ -12,10 +12,27 @@ import {
   type WorkoutPerformanceSummary,
 } from "./workout-set-logs";
 import {
+  countRecentMissed,
   isWorkoutSessionComplete,
   matchDayToDate,
+  trainingWeeksElapsed,
   type WorkoutProgressMap,
 } from "./workout-schedule";
+import {
+  buildFatigueSignals,
+  resolveMesocycle,
+  type DeloadRecommendation,
+  type MesocycleState,
+} from "./mesocycle";
+import {
+  buildAllProgressions,
+  prescribeWorkoutDay,
+  summarizeProgressions,
+  type ProgressionSummary,
+  type SetPrescription,
+} from "./progression";
+import { computeWeeklyVolume, type WeeklyVolumeSummary } from "./muscle-volume";
+import { getWeekStart } from "./date-utils";
 
 export interface CompletedSessionSummary {
   date: string;
@@ -243,23 +260,118 @@ export function findNextScheduledWorkout(
   return null;
 }
 
+/**
+ * Where the lifter sits in the current training block, with an early deload substituted
+ * when fatigue signals demand one. Drives both the prescription and the UI banner.
+ */
+export function buildMesocycleContext(
+  plan: FitnessPlan,
+  progress: WorkoutProgressMap,
+  today: string,
+  setLogs: WorkoutSetLog[],
+  options: { readinessScore?: number; musclesOverMrv?: number; blockLength?: number } = {},
+): { state: MesocycleState; deload: DeloadRecommendation; deloadForced: boolean } {
+  const programWeek = trainingWeeksElapsed(plan, today);
+  const signals =
+    setLogs.length > 0
+      ? buildFatigueSignals({
+          progressions: buildAllProgressions(setLogs),
+          setLogs,
+          musclesOverMrv: options.musclesOverMrv,
+          readinessScore: options.readinessScore,
+          missedSessions: countRecentMissed(plan, progress, 7, today),
+          today,
+        })
+      : undefined;
+
+  return resolveMesocycle({ programWeek, blockLength: options.blockLength, signals });
+}
+
+/**
+ * Load targets for the next scheduled session, computed from logged history and scaled
+ * by the current block phase (a deload week halves sets and drops load).
+ * Returns [] when there is no upcoming session or nothing has been logged yet.
+ */
+export function buildNextSessionPrescriptions(
+  plan: FitnessPlan | null,
+  progress: WorkoutProgressMap,
+  today = getTodayLocal(),
+  setLogs: WorkoutSetLog[] = [],
+  readinessScore?: number,
+  mesocycle?: MesocycleState,
+): SetPrescription[] {
+  if (!plan || setLogs.length === 0) return [];
+  const next = findNextScheduledWorkout(plan, progress, today);
+  if (!next) return [];
+
+  const day = plan.workoutPlan.weeklyPlan[next.planIndex];
+  if (!day) return [];
+
+  // Warmups are not load-progressed; finishers are.
+  const trained = [...day.exercises, ...(day.finishers ?? [])];
+  return prescribeWorkoutDay(trained, setLogs, {
+    readinessScore,
+    today,
+    intensityMultiplier: mesocycle?.intensityMultiplier,
+    volumeMultiplier: mesocycle?.volumeMultiplier,
+  });
+}
+
 export function buildRicoWorkoutLearningContext(
   plan: FitnessPlan | null,
   progress: WorkoutProgressMap,
   today = getTodayLocal(),
   setLogs: WorkoutSetLog[] = [],
+  readinessScore?: number,
+  options: { fitnessLevel?: string; muscleLookup?: Record<string, string[]> } = {},
 ): {
   workoutHistory?: WorkoutHistorySummary;
   completedWorkoutToday?: CompletedSessionSummary;
   nextWorkout?: NextWorkoutPreview;
   workoutPerformance?: WorkoutPerformanceSummary;
+  nextSessionTargets?: SetPrescription[];
+  strengthTrend?: ProgressionSummary;
+  weeklyVolume?: WeeklyVolumeSummary;
+  mesocycle?: MesocycleState & { deloadForced: boolean; deloadUrgency: string; deloadReasons: string[] };
 } {
   if (!plan) return {};
   const history = buildWorkoutHistorySummary(plan, progress, 28, today, setLogs);
+  const progressions = setLogs.length > 0 ? buildAllProgressions(setLogs) : [];
+  const volume =
+    setLogs.length > 0
+      ? computeWeeklyVolume(setLogs, getWeekStart(today), {
+          fitnessLevel: options.fitnessLevel,
+          muscleLookup: options.muscleLookup,
+        })
+      : undefined;
+
+  // The block phase scales the prescription, so it must be resolved first.
+  const meso = buildMesocycleContext(plan, progress, today, setLogs, {
+    readinessScore,
+    musclesOverMrv: volume?.overdosed.length ?? 0,
+  });
+  const targets = buildNextSessionPrescriptions(
+    plan,
+    progress,
+    today,
+    setLogs,
+    readinessScore,
+    meso.state,
+  );
+
   return {
+    mesocycle: {
+      ...meso.state,
+      deloadForced: meso.deloadForced,
+      deloadUrgency: meso.deload.urgency,
+      deloadReasons: meso.deload.reasons,
+    },
     workoutHistory: history,
     completedWorkoutToday: getCompletedSessionForDate(plan, progress, today, setLogs) ?? undefined,
     nextWorkout: findNextScheduledWorkout(plan, progress, today) ?? undefined,
     workoutPerformance: history.performance,
+    nextSessionTargets: targets.length > 0 ? targets : undefined,
+    strengthTrend: progressions.length > 0 ? summarizeProgressions(progressions, 14, today) : undefined,
+    weeklyVolume: volume,
   };
 }

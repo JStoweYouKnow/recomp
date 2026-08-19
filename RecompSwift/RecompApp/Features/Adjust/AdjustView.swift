@@ -8,6 +8,9 @@ struct AdjustView: View {
     @State private var planService = PlanService()
     @State private var researchService = ResearchService()
 
+    /// Set when presented as a sheet (Adjust is no longer a tab); adds a Done button.
+    var onDone: (() -> Void)? = nil
+
     @State private var feedback = ""
     @State private var suggestion: AdjustSuggestion?
     @State private var errorMessage: String?
@@ -31,6 +34,11 @@ struct AdjustView: View {
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Adjust Plan")
             .toolbar {
+                if let onDone {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onDone)
+                    }
+                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { feedbackFocused = false }

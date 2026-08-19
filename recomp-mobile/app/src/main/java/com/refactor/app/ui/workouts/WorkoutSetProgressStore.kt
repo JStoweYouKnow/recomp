@@ -33,31 +33,35 @@ class WorkoutSetProgressStore(context: Context) {
     private var webProgressMap: MutableMap<String, String> = mutableMapOf()
 
     fun load() {
-        val raw = prefs.getString(KEY_DATA, null) ?: return
-        runCatching {
-            val root = json.decodeFromString<WorkoutSetProgressRootWire>(raw)
-            byDay.clear()
-            root.byDay.forEach { (day, inner) ->
-                val m = mutableMapOf<String, MutableSet<String>>()
-                inner.forEach { (k, list) -> m[k] = list.toMutableSet() }
-                byDay[day] = m
+        synchronized(this) {
+            val raw = prefs.getString(KEY_DATA, null) ?: return
+            runCatching {
+                val root = json.decodeFromString<WorkoutSetProgressRootWire>(raw)
+                byDay.clear()
+                root.byDay.forEach { (day, inner) ->
+                    val m = mutableMapOf<String, MutableSet<String>>()
+                    inner.forEach { (k, list) -> m[k] = list.toMutableSet() }
+                    byDay[day] = m
+                }
+                webProgressMap = root.webProgress.orEmpty().toMutableMap()
             }
-            webProgressMap = root.webProgress.orEmpty().toMutableMap()
         }
     }
 
     private fun persist() {
-        val wire = WorkoutSetProgressRootWire(
-            byDay = byDay.mapValues { (_, inner) ->
-                inner.mapValues { (_, set) -> set.sorted() }
-            },
-            webProgress = webProgressMap.ifEmpty { null },
-        )
-        prefs.edit().putString(KEY_DATA, json.encodeToString(wire)).apply()
+        synchronized(this) {
+            val wire = WorkoutSetProgressRootWire(
+                byDay = byDay.mapValues { (_, inner) ->
+                    inner.mapValues { (_, set) -> set.sorted() }
+                },
+                webProgress = webProgressMap.ifEmpty { null },
+            )
+            prefs.edit().putString(KEY_DATA, json.encodeToString(wire)).apply()
+        }
     }
 
     /** Replace web map from server; merge completions into [byDay] additively (iOS parity). */
-    fun replaceFromServer(plan: FitnessPlanDto?, serverWorkoutProgress: Map<String, String>) {
+    fun replaceFromServer(plan: FitnessPlanDto?, serverWorkoutProgress: Map<String, String>) = synchronized(this) {
         webProgressMap = serverWorkoutProgress.toMutableMap()
         val pid = plan?.id.orEmpty()
         if (plan == null || pid.isEmpty()) {
@@ -89,8 +93,9 @@ class WorkoutSetProgressStore(context: Context) {
         persist()
     }
 
-    fun rowSetTags(progressDayKey: String, rowStorageKey: String): Set<String> =
+    fun rowSetTags(progressDayKey: String, rowStorageKey: String): Set<String> = synchronized(this) {
         byDay[progressDayKey]?.get(rowStorageKey).orEmpty()
+    }
 
     fun toggleSetTag(
         planId: String,
@@ -100,7 +105,7 @@ class WorkoutSetProgressStore(context: Context) {
         exercise: WorkoutExerciseDto,
         globalSlot: Int,
         setIndex: Int,
-    ) {
+    ) = synchronized(this) {
         val rowKey = WorkoutWebProgress.localRowSetProgressKey(planId, dayLabel, section, exercise, globalSlot)
         val dayMap = byDay.getOrPut(progressDayKey) { mutableMapOf() }
         val set = dayMap.getOrPut(rowKey) { mutableSetOf() }
@@ -138,8 +143,9 @@ class WorkoutSetProgressStore(context: Context) {
         }
     }
 
-    fun mergedForPush(plan: FitnessPlanDto?): Map<String, String> =
+    fun mergedForPush(plan: FitnessPlanDto?): Map<String, String> = synchronized(this) {
         mergeWebWorkoutProgressForSync(plan, webProgressMap, byDay)
+    }
 
     companion object {
         private const val PREFS_NAME = "recomp_workout_set_progress"
