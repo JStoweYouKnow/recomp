@@ -1411,9 +1411,7 @@ struct ExerciseRow: View {
         logSet(index)
         Haptics.impact(.light)
         celebratePRIfEarned(index)
-        if index < sets.count - 1 {
-            onStartRestTimer?(exercise.name, exercise.restSeconds)
-        }
+        onStartRestTimer?(exercise.name, exercise.restSeconds)
     }
 
     /// Writes this set's own weight/reps/RPE. Weight is converted to pounds because

@@ -615,7 +615,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -636,7 +636,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -657,7 +657,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = Refactor/Refactor.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -678,7 +678,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -702,7 +702,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -715,7 +715,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
 				PRODUCT_NAME = RefactorWatch;
@@ -743,7 +743,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Watch App/RefactorWatchApp.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -756,7 +756,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp;
 				PRODUCT_NAME = RefactorWatch;
@@ -784,7 +784,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -796,7 +796,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -823,7 +823,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor Widgets/RefactorWidgets.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor Widgets/Info.plist";
@@ -835,7 +835,7 @@
 					"@executable_path/../../Frameworks",
 					"@executable_path/../../../../Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				ONLY_ACTIVE_ARCH = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.watchkitapp.RefactorWidgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -858,7 +858,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor iOS Widgets/RefactorWidgetsiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor iOS Widgets/Info.plist";
@@ -870,7 +870,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.RefactorWidgetsiOS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -891,7 +891,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = "Refactor iOS Widgets/RefactorWidgetsiOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 103;
+				CURRENT_PROJECT_VERSION = 104;
 				DEVELOPMENT_TEAM = 4GG5889HS8;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Refactor iOS Widgets/Info.plist";
@@ -903,7 +903,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 6.0;
+				MARKETING_VERSION = 6.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.recomp.ios.RefactorWidgetsiOS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
