@@ -49,6 +49,23 @@ struct WorkoutsView: View {
         workoutService.calendarDatesWithProgress()
     }
 
+    private func dismissRestTimer(playChime: Bool = false) {
+        guard restTimer != nil else { return }
+        if playChime { Haptics.chime() }
+        withAnimation { restTimer = nil }
+        RestTimerNotifier.cancel()
+    }
+
+    private func extendRestTimer(by seconds: Int) {
+        guard var timer = restTimer else { return }
+        timer.extend(by: seconds)
+        withAnimation { restTimer = timer }
+        RestTimerNotifier.schedule(
+            after: max(1, Int(timer.endDate.timeIntervalSinceNow.rounded())),
+            exerciseName: timer.exerciseName
+        )
+    }
+
     private func selectedWorkoutItem(plan: FitnessPlan) -> WorkoutPlanDisplayItem? {
         guard let idx = WorkoutProgramSchedule.planIndex(for: plan, date: selectedDate) else { return nil }
         return WorkoutProgramSchedule.displayedPlanItems(plan: plan, selectedDate: selectedDate)
@@ -137,8 +154,7 @@ struct WorkoutsView: View {
                                         RestTimerNotifier.schedule(after: seconds, exerciseName: exerciseName)
                                     },
                                     onCancelRestTimer: {
-                                        withAnimation { restTimer = nil }
-                                        RestTimerNotifier.cancel()
+                                        dismissRestTimer()
                                     }
                                 )
                             } else {
@@ -161,24 +177,13 @@ struct WorkoutsView: View {
                         RestTimerBanner(
                             state: restTimer,
                             onSkip: {
-                                withAnimation { self.restTimer = nil }
-                                RestTimerNotifier.cancel()
+                                dismissRestTimer()
                             },
                             onAdd15: {
-                                withAnimation {
-                                    self.restTimer?.extend(by: 15)
-                                }
-                                if let end = self.restTimer?.endDate {
-                                    RestTimerNotifier.schedule(
-                                        after: Int(end.timeIntervalSinceNow.rounded()),
-                                        exerciseName: self.restTimer?.exerciseName ?? ""
-                                    )
-                                }
+                                extendRestTimer(by: 15)
                             },
                             onFinished: {
-                                Haptics.chime()
-                                withAnimation { self.restTimer = nil }
-                                RestTimerNotifier.cancel()
+                                dismissRestTimer(playChime: true)
                             }
                         )
                         .padding(.horizontal)
@@ -722,6 +727,7 @@ struct WorkoutDayCard: View {
             // and toggling its last set used to pop the celebration sheet.
             guard complete, isToday, !setsDisabled else { return }
             Task { @MainActor in
+                onCancelRestTimer?()
                 finishWorkoutDay()
             }
         }
@@ -835,6 +841,7 @@ struct WorkoutDayCard: View {
     /// ticked. A user finishing early keeps whatever they logged; the auto path still
     /// only fires for today's session.
     private func finishWorkoutDay(userInitiated: Bool = false) {
+        onCancelRestTimer?()
         Haptics.success()
         let logs = WorkoutSetLogStorage.logs(planId: planId, dayLabel: day.day, date: progressDayKey)
         let volume = logs.reduce(0.0) { $0 + ($1.weightLbs ?? 0) * Double($1.reps ?? 0) }
@@ -1520,55 +1527,67 @@ struct RestTimerBanner: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = max(0, Int(ceil(state.endDate.timeIntervalSince(context.date))))
-            if remaining > 0 {
-                VStack(spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Rest")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(state.exerciseName)
-                                .font(.subheadline.weight(.medium))
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Text(formatCountdown(remaining))
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.appAccent)
-                            .contentTransition(.numericText())
-                    }
-
-                    GeometryReader { geo in
-                        let progress = Double(remaining) / Double(max(1, state.totalSeconds))
-                        Capsule()
-                            .fill(Color.secondary.opacity(0.15))
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(Color.appAccent)
-                                    .frame(width: geo.size.width * progress)
-                            }
-                    }
-                    .frame(height: 6)
-
-                    HStack(spacing: 10) {
-                        Button("Skip", action: onSkip)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        Button("+15s", action: onAdd15)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        Spacer()
-                    }
-                }
-                .padding()
-                .cardSurface(cornerRadius: 16)
-                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-            } else {
-                Color.clear
-                    .onAppear { onFinished() }
+            bannerContent(remaining: remaining)
+        }
+        // Never call `onFinished` from `onAppear` inside TimelineView — that mutates
+        // parent `@State` during a view update and can crash SwiftUI mid-countdown.
+        .task(id: state.endDate) {
+            let delay = state.endDate.timeIntervalSinceNow
+            if delay > 0 {
+                try? await Task.sleep(for: .seconds(delay))
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                onFinished()
             }
         }
+    }
+
+    @ViewBuilder
+    private func bannerContent(remaining: Int) -> some View {
+        VStack(spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Rest")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(state.exerciseName)
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(formatCountdown(remaining))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.appAccent)
+                    .contentTransition(.numericText())
+            }
+
+            GeometryReader { geo in
+                let progress = Double(remaining) / Double(max(1, state.totalSeconds))
+                Capsule()
+                    .fill(Color.secondary.opacity(0.15))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.appAccent)
+                            .frame(width: geo.size.width * progress)
+                    }
+            }
+            .frame(height: 6)
+
+            HStack(spacing: 10) {
+                Button("Skip", action: onSkip)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Button("+15s", action: onAdd15)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                Spacer()
+            }
+        }
+        .padding()
+        .cardSurface(cornerRadius: 16)
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
     }
 
     private func formatCountdown(_ seconds: Int) -> String {
