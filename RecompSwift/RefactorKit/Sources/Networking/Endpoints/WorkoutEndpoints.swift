@@ -6,6 +6,8 @@ public enum WorkoutAPI: APIEndpoint {
     case recoveryAdjust(payload: RecoveryPayload)
     case parseUrl(url: String)
     case parsePdf
+    case adapt(workout: WorkoutDay?, days: [WorkoutDay]?)
+    case teachSubstitutions(substitutions: [SubstitutionTeachItem])
 
     public var path: String {
         switch self {
@@ -14,13 +16,15 @@ public enum WorkoutAPI: APIEndpoint {
         case .recoveryAdjust: return "/api/workouts/recovery-adjust"
         case .parseUrl: return "/api/workouts/parse-url"
         case .parsePdf: return "/api/workouts/parse-pdf"
+        case .adapt: return "/api/workouts/adapt"
+        case .teachSubstitutions: return "/api/workouts/substitutions"
         }
     }
 
     public var method: HTTPMethod {
         switch self {
         case .exerciseSearch, .exerciseGif: return .GET
-        case .recoveryAdjust, .parseUrl, .parsePdf: return .POST
+        case .recoveryAdjust, .parseUrl, .parsePdf, .adapt, .teachSubstitutions: return .POST
         }
     }
 
@@ -41,9 +45,66 @@ public enum WorkoutAPI: APIEndpoint {
             return AnyEncodable(payload)
         case .parseUrl(let url):
             return AnyEncodable(["url": url])
+        case .adapt(let workout, let days):
+            return AnyEncodable(AdaptWorkoutPayload(workout: workout, days: days))
+        case .teachSubstitutions(let substitutions):
+            return AnyEncodable(["substitutions": substitutions])
         default:
             return nil
         }
+    }
+}
+
+private struct AdaptWorkoutPayload: Encodable {
+    let workout: WorkoutDay?
+    let days: [WorkoutDay]?
+}
+
+public struct SubstitutionTeachItem: Encodable, Sendable {
+    public let original: String
+    public let replacement: String
+    public let reason: String?
+    public let source: String?
+
+    public init(original: String, replacement: String, reason: String? = nil, source: String? = "import") {
+        self.original = original
+        self.replacement = replacement
+        self.reason = reason
+        self.source = source
+    }
+}
+
+public struct WorkoutAdaptSwap: Codable, Identifiable, Sendable {
+    public let dayLabel: String?
+    public let section: String
+    public let index: Int
+    public let original: String
+    public var replacement: String
+    public let reason: String
+    public let source: String
+
+    public var id: String { "\(dayLabel ?? "")-\(section)-\(index)-\(original)" }
+}
+
+public struct WorkoutAdaptResponse: Decodable, Sendable {
+    public let workout: WorkoutDay?
+    public let days: [WorkoutDay]?
+    public let swaps: [WorkoutAdaptSwap]
+    public let learnedApplied: Int?
+    public let catalogApplied: Int?
+    public let llmApplied: Int?
+}
+
+public struct WorkoutAdaptResult: Sendable {
+    public let workout: WorkoutDay
+    public let days: [WorkoutDay]?
+    public let swaps: [WorkoutAdaptSwap]
+    public let learnedApplied: Int
+    public let catalogApplied: Int
+    public let llmApplied: Int
+
+    public var isFullProgram: Bool {
+        (days?.count ?? 0) > 1
     }
 }
 

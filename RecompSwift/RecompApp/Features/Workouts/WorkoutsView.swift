@@ -1779,6 +1779,7 @@ struct WorkoutImportSheet: View {
     @State private var showPdfPicker = false
     @State private var isImporting = false
     @State private var importedResult: WorkoutImportResult?
+    @State private var adaptSwaps: [WorkoutAdaptSwap] = []
     @State private var importError: String?
     @State private var mergeTargetIndex: Int? = nil
 
@@ -1794,6 +1795,7 @@ struct WorkoutImportSheet: View {
                     .pickerStyle(.segmented)
                     .onChange(of: importTab) { _, _ in
                         importedResult = nil
+                        adaptSwaps = []
                         importError = nil
                     }
                 }
@@ -1850,6 +1852,32 @@ struct WorkoutImportSheet: View {
 
                 if let result = importedResult {
                     let programDays = result.days ?? [result.workout]
+                    if !adaptSwaps.isEmpty {
+                        Section("Equipment adjustments") {
+                            Text("Edits you accept are remembered for future imports.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            ForEach(Array(adaptSwaps.enumerated()), id: \.offset) { index, swap in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("\(swap.original) →")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    if swap.source == "none" {
+                                        Text(swap.replacement).font(.subheadline)
+                                    } else {
+                                        TextField("Replacement", text: Binding(
+                                            get: { adaptSwaps[index].replacement },
+                                            set: { adaptSwaps[index].replacement = $0 }
+                                        ))
+                                        .font(.subheadline)
+                                    }
+                                    Text(swap.reason)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
                     if result.isFullProgram {
                         Section("Program ready") {
                             if let title = result.programTitle {
@@ -1867,7 +1895,7 @@ struct WorkoutImportSheet: View {
                                 Text("…and \(programDays.count - 6) more").font(.caption).foregroundStyle(.secondary)
                             }
                             Button("Replace workout plan") {
-                                replaceProgram(programDays)
+                                Task { await confirmReplaceProgram(programDays) }
                             }
                             .foregroundStyle(Color.appAccent)
                         }
@@ -1888,7 +1916,7 @@ struct WorkoutImportSheet: View {
 
                         Section("Add to plan") {
                             Button("Add as new workout day") {
-                                addAsNewDay(day)
+                                Task { await confirmAddAsNewDay(day) }
                             }
                             .foregroundStyle(Color.appAccent)
 
@@ -1901,7 +1929,7 @@ struct WorkoutImportSheet: View {
                                 }
                                 if let idx = mergeTargetIndex {
                                     Button("Merge into \(plan.workoutPlan.weeklyPlan[idx].day)") {
-                                        mergeIntoDay(day, targetIndex: idx)
+                                        Task { await confirmMergeIntoDay(day, targetIndex: idx) }
                                     }
                                     .foregroundStyle(Color.appAccent)
                                 }
@@ -1953,12 +1981,23 @@ struct WorkoutImportSheet: View {
     private func importFromUrl() async {
         importError = nil
         importedResult = nil
+        adaptSwaps = []
         isImporting = true
         defer { isImporting = false }
         do {
-            importedResult = try await WorkoutService.shared.parseWorkoutImport(
+            let parsed = try await WorkoutService.shared.parseWorkoutImport(
                 urlText.trimmingCharacters(in: .whitespacesAndNewlines)
             )
+            let adapted = try await WorkoutService.shared.adaptWorkoutImport(
+                workout: parsed.isFullProgram ? nil : parsed.workout,
+                days: parsed.days
+            )
+            importedResult = WorkoutImportResult(
+                workout: adapted.workout,
+                days: adapted.days,
+                programTitle: parsed.programTitle
+            )
+            adaptSwaps = adapted.swaps
             mergeTargetIndex = nil
         } catch {
             importError = error.localizedDescription
@@ -1969,17 +2008,87 @@ struct WorkoutImportSheet: View {
         guard let pdfData else { return }
         importError = nil
         importedResult = nil
+        adaptSwaps = []
         isImporting = true
         defer { isImporting = false }
         do {
-            importedResult = try await WorkoutService.shared.parseWorkoutPdf(
+            let parsed = try await WorkoutService.shared.parseWorkoutPdf(
                 pdfData,
                 fileName: pdfName ?? "workout.pdf"
             )
+            let adapted = try await WorkoutService.shared.adaptWorkoutImport(
+                workout: parsed.isFullProgram ? nil : parsed.workout,
+                days: parsed.days
+            )
+            importedResult = WorkoutImportResult(
+                workout: adapted.workout,
+                days: adapted.days,
+                programTitle: parsed.programTitle
+            )
+            adaptSwaps = adapted.swaps
             mergeTargetIndex = nil
         } catch {
             importError = error.localizedDescription
         }
+    }
+
+    private func teachAcceptedSwaps() async {
+        let items = adaptSwaps.compactMap { swap -> SubstitutionTeachItem? in
+            guard swap.source != "none" else { return nil }
+            guard swap.original.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                != swap.replacement.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() else { return nil }
+            return SubstitutionTeachItem(
+                original: swap.original,
+                replacement: swap.replacement,
+                reason: swap.reason,
+                source: "import"
+            )
+        }
+        guard !items.isEmpty else { return }
+        try? await WorkoutService.shared.teachExerciseSubstitutions(items)
+    }
+
+    private func applySwaps(to day: WorkoutDay) -> WorkoutDay {
+        var next = day
+        for swap in adaptSwaps {
+            if let dayLabel = swap.dayLabel, dayLabel != day.day { continue }
+            switch swap.section {
+            case "warmups":
+                var warmups = next.warmups ?? []
+                if swap.index < warmups.count {
+                    warmups[swap.index].name = swap.replacement
+                    next.warmups = warmups
+                }
+            case "finishers":
+                var finishers = next.finishers ?? []
+                if swap.index < finishers.count {
+                    finishers[swap.index].name = swap.replacement
+                    next.finishers = finishers
+                }
+            default:
+                var exercises = next.exercises
+                if swap.index < exercises.count {
+                    exercises[swap.index].name = swap.replacement
+                    next.exercises = exercises
+                }
+            }
+        }
+        return next
+    }
+
+    private func confirmReplaceProgram(_ days: [WorkoutDay]) async {
+        await teachAcceptedSwaps()
+        replaceProgram(days.map { applySwaps(to: $0) })
+    }
+
+    private func confirmAddAsNewDay(_ day: WorkoutDay) async {
+        await teachAcceptedSwaps()
+        addAsNewDay(applySwaps(to: day))
+    }
+
+    private func confirmMergeIntoDay(_ day: WorkoutDay, targetIndex: Int) async {
+        await teachAcceptedSwaps()
+        mergeIntoDay(applySwaps(to: day), targetIndex: targetIndex)
     }
 
     private func startLabel(for days: [WorkoutDay]) -> String {

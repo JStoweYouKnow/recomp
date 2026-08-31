@@ -38,6 +38,7 @@ import type {
   ActivityLogEntry,
   WorkoutSetLog,
   MeasurementTargets,
+  ExerciseSubstitutionPreference,
 } from "./types";
 
 const TABLE = process.env.DYNAMODB_TABLE_NAME ?? "RefactorTable";
@@ -245,6 +246,8 @@ export interface UserMeta {
   calendarFeedToken?: string;
   /** Body-composition targets (Milestones); synced via /api/data/sync */
   measurementTargets?: MeasurementTargets | null;
+  /** Learned exercise swaps for equipment-aware import; synced via /api/data/sync */
+  exerciseSubstitutions?: ExerciseSubstitutionPreference[];
 }
 
 export async function dbGetMeta(userId: string): Promise<UserMeta> {

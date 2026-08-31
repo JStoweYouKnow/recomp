@@ -10,6 +10,7 @@ import {
   saveHydration, saveFastingSessions, saveBiofeedback, savePantry,
   saveBodyScans, saveSupplements, saveBloodWork, saveRicoHistory,
   saveMetabolicModel, saveMeasurementTargets, getMetabolicModel, getMeasurementTargets,
+  saveExerciseSubstitutions, getExerciseSubstitutions,
   getSavedRecipes, saveSavedRecipes, saveMealPrepPlan, getWorkoutProgress, getWorkoutSetLogs,
   replaceWorkoutSetLogsFromServer,
 } from "@/lib/storage";
@@ -192,6 +193,7 @@ export default function Home() {
       if (meta.hasAdjusted) setHasAdjustedPlan();
       if (meta.ricoHistory) saveRicoHistory(meta.ricoHistory as Parameters<typeof saveRicoHistory>[0]);
       if (meta.measurementTargets != null) saveMeasurementTargets(meta.measurementTargets as Parameters<typeof saveMeasurementTargets>[0]);
+      if (meta.exerciseSubstitutions) saveExerciseSubstitutions(meta.exerciseSubstitutions as Parameters<typeof saveExerciseSubstitutions>[0]);
     }
     if (data.metabolicModel) saveMetabolicModel(data.metabolicModel as Parameters<typeof saveMetabolicModel>[0]);
     return true;

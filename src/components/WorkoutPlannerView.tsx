@@ -11,8 +11,9 @@ import {
   saveRecentExerciseNames,
   getMusicPreference,
   syncToServer,
+  saveExerciseSubstitutions,
 } from "@/lib/storage";
-import type { WorkoutSetLog } from "@/lib/types";
+import type { WorkoutSetLog, WorkoutAdaptSwap } from "@/lib/types";
 import type { FitnessPlan, WorkoutDay, WorkoutExercise, WearableDaySummary, RecoveryAssessment } from "@/lib/types";
 import { useToast } from "./Toast";
 import { CalendarView } from "./CalendarView";
@@ -34,6 +35,11 @@ import { MesocycleBanner } from "./workouts/MesocycleBanner";
 import { buildMesocycleContext } from "@/lib/workout-learning";
 import { computeWeeklyVolume } from "@/lib/muscle-volume";
 import { buildExerciseProgression, prescribeNextSession, type SetPrescription } from "@/lib/progression";
+import {
+  WorkoutImportAdaptReview,
+  applySwapsToProgram,
+  applySwapsToWorkoutDay,
+} from "./workouts/WorkoutImportAdaptReview";
 
 /* ── Exercise GIF cache (shared key with Dashboard) ── */
 const EX_CACHE_KEY = "recomp_exercise_gifs_v2";
@@ -205,6 +211,13 @@ export function WorkoutPlannerView({
   const [importedWorkout, setImportedWorkout] = useState<WorkoutDay | null>(null);
   const [importedProgram, setImportedProgram] = useState<WorkoutDay[] | null>(null);
   const [importedProgramTitle, setImportedProgramTitle] = useState<string | null>(null);
+  const [importAdaptSwaps, setImportAdaptSwaps] = useState<WorkoutAdaptSwap[] | null>(null);
+  const [importAdaptStats, setImportAdaptStats] = useState<{
+    learnedApplied: number;
+    catalogApplied: number;
+    llmApplied: number;
+  } | null>(null);
+  const [importAdaptLoading, setImportAdaptLoading] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(true);
   const [importFocus, setImportFocus] = useState<"url" | "pdf">("url");
   const urlImportSectionRef = useRef<HTMLDivElement>(null);
@@ -632,6 +645,104 @@ export function WorkoutPlannerView({
     });
   }, []);
 
+  const clearImportState = useCallback(() => {
+    setImportedWorkout(null);
+    setImportedProgram(null);
+    setImportedProgramTitle(null);
+    setImportAdaptSwaps(null);
+    setImportAdaptStats(null);
+    setWorkoutImportUrl("");
+    setWorkoutPdfFile(null);
+    if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+  }, []);
+
+  const adaptParsedImport = useCallback(
+    async (payload: { workout?: WorkoutDay; days?: WorkoutDay[] }) => {
+      setImportAdaptLoading(true);
+      setImportAdaptSwaps(null);
+      setImportAdaptStats(null);
+      try {
+        const res = await fetch("/api/workouts/adapt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            workout: payload.workout,
+            days: payload.days,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          workout?: WorkoutDay;
+          days?: WorkoutDay[];
+          swaps?: WorkoutAdaptSwap[];
+          learnedApplied?: number;
+          catalogApplied?: number;
+          llmApplied?: number;
+        };
+        if (!res.ok) throw new Error(data.error ?? `Adapt failed (${res.status})`);
+
+        if (data.days && data.days.length > 0) {
+          setImportedProgram(data.days);
+          setImportedWorkout(null);
+        } else if (data.workout) {
+          setImportedWorkout(data.workout);
+          setImportedProgram(null);
+        }
+
+        setImportAdaptSwaps(data.swaps ?? []);
+        setImportAdaptStats({
+          learnedApplied: data.learnedApplied ?? 0,
+          catalogApplied: data.catalogApplied ?? 0,
+          llmApplied: data.llmApplied ?? 0,
+        });
+        setShowImportPanel(true);
+
+        const adjusted = (data.swaps ?? []).filter(
+          (s) => s.source !== "none" && s.original !== s.replacement
+        ).length;
+        showToast(
+          adjusted > 0
+            ? `Adjusted ${adjusted} exercise${adjusted === 1 ? "" : "s"} for your equipment`
+            : "Workout matches your equipment — review and import"
+        );
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : "Could not adapt workout for equipment", "error");
+      } finally {
+        setImportAdaptLoading(false);
+      }
+    },
+    [showToast]
+  );
+
+  const teachImportSubstitutions = useCallback(async (swaps: WorkoutAdaptSwap[]) => {
+    const teachable = swaps.filter(
+      (s) =>
+        s.source !== "none" &&
+        s.original.trim().toLowerCase() !== s.replacement.trim().toLowerCase()
+    );
+    if (teachable.length === 0) return;
+    const res = await fetch("/api/workouts/substitutions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        substitutions: teachable.map((s) => ({
+          original: s.original,
+          replacement: s.replacement,
+          reason: s.reason,
+          source: "import" as const,
+        })),
+      }),
+    });
+    if (!res.ok) return;
+    const data = (await res.json()) as { substitutions?: Parameters<typeof saveExerciseSubstitutions>[0] };
+    if (data.substitutions) {
+      saveExerciseSubstitutions(data.substitutions);
+      syncToServer();
+    }
+  }, []);
+
   const handleWorkoutUrlImport = useCallback(async () => {
     const url = workoutImportUrl.trim();
     if (!url) return;
@@ -658,28 +769,18 @@ export function WorkoutPlannerView({
       }
       if (data.error) throw new Error(data.error);
       if (data.days && data.days.length > 1) {
-        setImportedProgram(data.days);
         setImportedProgramTitle(data.programTitle ?? null);
-        setImportedWorkout(null);
-        setShowImportPanel(true);
-        showToast(
-          data.programTitle
-            ? `Parsed “${data.programTitle}”: ${data.days.length} sessions from URL`
-            : `Parsed ${data.days.length} workout sessions from URL`
-        );
+        await adaptParsedImport({ days: data.days });
       } else if (data.workout) {
-        setImportedProgram(null);
         setImportedProgramTitle(null);
-        setImportedWorkout(data.workout);
-        setShowImportPanel(true);
-        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from URL`);
+        await adaptParsedImport({ workout: data.workout });
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Could not parse workout URL", "error");
     } finally {
       setWorkoutImportLoading(false);
     }
-  }, [workoutImportUrl, showToast]);
+  }, [workoutImportUrl, showToast, adaptParsedImport]);
 
   const handleWorkoutPdfImport = useCallback(async () => {
     const file = workoutPdfFile;
@@ -707,95 +808,111 @@ export function WorkoutPlannerView({
         throw new Error(data.error ?? `Import failed (${res.status})`);
       }
       if (data.days && data.days.length > 1) {
-        setImportedProgram(data.days);
         setImportedProgramTitle(data.programTitle ?? null);
-        setImportedWorkout(null);
-        setShowImportPanel(true);
-        showToast(
-          data.programTitle
-            ? `Parsed “${data.programTitle}”: ${data.days.length} sessions`
-            : `Parsed ${data.days.length} workout sessions from PDF`
-        );
         setWorkoutPdfFile(null);
         if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+        await adaptParsedImport({ days: data.days });
       } else if (data.workout) {
-        setImportedProgram(null);
         setImportedProgramTitle(null);
-        setImportedWorkout(data.workout);
-        setShowImportPanel(true);
-        showToast(`Imported ${data.workout.exercises?.length ?? 0} exercises from PDF`);
         setWorkoutPdfFile(null);
         if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+        await adaptParsedImport({ workout: data.workout });
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Could not parse workout PDF", "error");
     } finally {
       setWorkoutImportLoading(false);
     }
-  }, [workoutPdfFile, showToast]);
+  }, [workoutPdfFile, showToast, adaptParsedImport]);
 
-  const addImportedWorkout = useCallback(
-    (targetDayIndex: number | null) => {
-      if (!plan || !importedWorkout) return;
-      const next = [...weeklyPlan];
-      if (targetDayIndex === null) {
-        next.push(importedWorkout);
-        setExpandedDay(next.length - 1);
-        setEditingDay(next.length - 1);
-      } else {
-        const target = next[targetDayIndex];
-        next[targetDayIndex] = {
-          ...target,
-          exercises: [...(target.exercises ?? []), ...importedWorkout.exercises],
-        };
-      }
+  const confirmAdaptedProgramImport = useCallback(async () => {
+    if (!plan || !importedProgram?.length) return;
+    const swaps = importAdaptSwaps ?? [];
+    setImportAdaptLoading(true);
+    try {
+      await teachImportSubstitutions(swaps);
+      const adaptedDays = applySwapsToProgram(importedProgram, swaps);
+      const week1Start = inferProgramWeek1Start(adaptedDays);
+      const next = adaptedDays.map((d) => ({
+        ...d,
+        warmups: d.warmups ?? [],
+        exercises: d.exercises ?? [],
+        finishers: d.finishers ?? [],
+      }));
       const names = extractExerciseNames(next);
       if (names.length > 0) saveRecentExerciseNames(names);
-      onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next) });
+      onUpdatePlan({
+        ...plan,
+        workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next, {
+          programWeek1Start: week1Start,
+        }),
+      });
+      void flushSync().catch(() => {});
       onPlanSaved?.();
-      setImportedWorkout(null);
-      setWorkoutImportUrl("");
-      setWorkoutPdfFile(null);
-      if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
+      clearImportState();
       setShowImportPanel(false);
-      showToast("Workout added to plan");
-    },
-    [plan, weeklyPlan, importedWorkout, onUpdatePlan, onPlanSaved, showToast]
-  );
+      showToast(
+        week1Start
+          ? `Program imported — week 1 starts ${formatProgramStartLabel(week1Start)}`
+          : "Workout program imported"
+      );
+    } finally {
+      setImportAdaptLoading(false);
+    }
+  }, [
+    plan,
+    importedProgram,
+    importAdaptSwaps,
+    teachImportSubstitutions,
+    onUpdatePlan,
+    onPlanSaved,
+    clearImportState,
+    showToast,
+  ]);
 
-  const applyImportedProgram = useCallback(() => {
-    if (!plan || !importedProgram?.length) return;
-    const week1Start = inferProgramWeek1Start(importedProgram);
-    const next = importedProgram.map((d) => ({
-      ...d,
-      warmups: d.warmups ?? [],
-      exercises: d.exercises ?? [],
-      finishers: d.finishers ?? [],
-    }));
-    const names = extractExerciseNames(next);
-    if (names.length > 0) saveRecentExerciseNames(names);
-    onUpdatePlan({
-      ...plan,
-      workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next, {
-        programWeek1Start: week1Start,
-      }),
-    });
-    // Large plans were rejected by sync Zod (weeklyPlan max 14); flush immediately so Dynamo/other devices get the full plan before the next GET overwrites local state.
-    void flushSync().catch(() => {});
-    onPlanSaved?.();
-    setImportedProgram(null);
-    setImportedProgramTitle(null);
-    setImportedWorkout(null);
-    setWorkoutImportUrl("");
-    setWorkoutPdfFile(null);
-    if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
-    setShowImportPanel(false);
-    showToast(
-      week1Start
-        ? `Workout plan replaced with ${next.length} sessions (starts ${formatProgramStartLabel(week1Start)})`
-        : `Workout plan replaced with ${next.length} sessions`
-    );
-  }, [plan, importedProgram, onUpdatePlan, onPlanSaved, showToast]);
+  const confirmAdaptedDayImport = useCallback(
+    async (targetDayIndex: number | null) => {
+      if (!plan || !importedWorkout) return;
+      const swaps = importAdaptSwaps ?? [];
+      setImportAdaptLoading(true);
+      try {
+        await teachImportSubstitutions(swaps);
+        const day = applySwapsToWorkoutDay(importedWorkout, swaps);
+        const next = [...weeklyPlan];
+        if (targetDayIndex === null) {
+          next.push(day);
+          setExpandedDay(next.length - 1);
+          setEditingDay(next.length - 1);
+        } else {
+          const target = next[targetDayIndex];
+          next[targetDayIndex] = {
+            ...target,
+            exercises: [...(target.exercises ?? []), ...day.exercises],
+          };
+        }
+        const names = extractExerciseNames(next);
+        if (names.length > 0) saveRecentExerciseNames(names);
+        onUpdatePlan({ ...plan, workoutPlan: nextWorkoutPlanState(plan.workoutPlan, next) });
+        onPlanSaved?.();
+        clearImportState();
+        setShowImportPanel(false);
+        showToast("Workout added to plan");
+      } finally {
+        setImportAdaptLoading(false);
+      }
+    },
+    [
+      plan,
+      weeklyPlan,
+      importedWorkout,
+      importAdaptSwaps,
+      teachImportSubstitutions,
+      onUpdatePlan,
+      onPlanSaved,
+      clearImportState,
+      showToast,
+    ]
+  );
 
   /** Get today's or most recent wearable for recovery assessment */
   const getWearableForRecovery = useCallback((): { sleepScore?: number; readinessScore?: number; heartRateResting?: number } | null => {
@@ -1058,10 +1175,10 @@ export function WorkoutPlannerView({
                 <button
                   type="button"
                   onClick={handleWorkoutUrlImport}
-                  disabled={workoutImportLoading || !workoutImportUrl.trim()}
+                  disabled={workoutImportLoading || importAdaptLoading || !workoutImportUrl.trim()}
                   className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50"
                 >
-                  {workoutImportLoading ? "Working…" : "Import from URL"}
+                  {workoutImportLoading || importAdaptLoading ? "Working…" : "Import from URL"}
                 </button>
               </div>
             </div>
@@ -1100,97 +1217,54 @@ export function WorkoutPlannerView({
                 <button
                   type="button"
                   onClick={handleWorkoutPdfImport}
-                  disabled={workoutImportLoading || !workoutPdfFile}
+                  disabled={workoutImportLoading || importAdaptLoading || !workoutPdfFile}
                   className="rounded-lg border border-[var(--accent)] bg-[var(--accent)]/10 px-4 py-2 text-sm text-[var(--accent)] disabled:opacity-50"
                 >
-                  {workoutImportLoading ? "Working…" : "Extract from PDF"}
+                  {workoutImportLoading || importAdaptLoading ? "Working…" : "Extract from PDF"}
                 </button>
               </div>
             </div>
           </div>
-          {importedProgram && importedProgram.length > 0 && (
-            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {importedProgramTitle ? `${importedProgramTitle} · ` : ""}
-                {importedProgram.length} sessions ready to import
-              </p>
-              <p className="text-xs text-[var(--muted)]">
-                Replaces your current workout list. Week 1 aligns with the{" "}
-                <strong className="text-[var(--foreground)]">next session in the plan</strong>
-                {importedProgram[0]?.day
-                  ? ` (starting ${formatProgramStartLabel(
-                      getWeekStart(inferFirstSessionDate(importedProgram))
-                    )})`
-                  : ""}
-                . Ask The Ref to change the start date if you need a different week.
-              </p>
-              <ul className="text-xs text-[var(--muted)] space-y-1 max-h-32 overflow-y-auto">
-                {importedProgram.slice(0, 8).map((d, i) => (
-                  <li key={`${d.day}-${i}`}>
-                    {d.day} — {d.focus} ({d.exercises.length} exercises)
-                  </li>
-                ))}
-                {importedProgram.length > 8 && <li>…and {importedProgram.length - 8} more</li>}
-              </ul>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={applyImportedProgram}
-                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
-                >
-                  Replace workout plan
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImportedProgram(null);
-                    setImportedProgramTitle(null);
-                    setWorkoutPdfFile(null);
-                    if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
-                  }}
-                  className="text-xs text-[var(--muted)] hover:underline self-center"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+          {importedProgram && importedProgram.length > 0 && importAdaptSwaps && (
+            <WorkoutImportAdaptReview
+              swaps={importAdaptSwaps}
+              programDays={importedProgram}
+              programTitle={importedProgramTitle}
+              stats={importAdaptStats ?? undefined}
+              onSwapsChange={setImportAdaptSwaps}
+              onAccept={() => void confirmAdaptedProgramImport()}
+              onCancel={clearImportState}
+              acceptLabel="Replace workout plan"
+              loading={importAdaptLoading}
+            />
           )}
-          {importedWorkout && (
-            <div className="rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-3">
-              <p className="text-sm font-medium text-[var(--foreground)]">
-                {importedWorkout.day} — {importedWorkout.focus} ({importedWorkout.exercises.length} exercises)
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => addImportedWorkout(null)}
-                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-hover)]"
-                >
-                  Add as new day
-                </button>
-                {weeklyPlan.map((day, idx) => (
-                  <button
-                    key={`${day.day}-${idx}`}
-                    type="button"
-                    onClick={() => addImportedWorkout(idx)}
-                    className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--surface-elevated)]"
-                  >
-                    Add to {day.day}
-                  </button>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setImportedWorkout(null);
-                  setWorkoutImportUrl("");
-                  setWorkoutPdfFile(null);
-                  if (workoutPdfInputRef.current) workoutPdfInputRef.current.value = "";
-                }}
-                className="text-xs text-[var(--muted)] hover:underline"
-              >
-                Cancel
-              </button>
+          {importedWorkout && importAdaptSwaps && (
+            <div className="space-y-3">
+              <WorkoutImportAdaptReview
+                swaps={importAdaptSwaps}
+                workout={importedWorkout}
+                stats={importAdaptStats ?? undefined}
+                onSwapsChange={setImportAdaptSwaps}
+                onAccept={() => void confirmAdaptedDayImport(null)}
+                onCancel={clearImportState}
+                acceptLabel="Add as new day"
+                loading={importAdaptLoading}
+              />
+              {weeklyPlan.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-1">
+                  {weeklyPlan.map((day, idx) => (
+                    <button
+                      key={`${day.day}-${idx}`}
+                      type="button"
+                      onClick={() => void confirmAdaptedDayImport(idx)}
+                      disabled={importAdaptLoading}
+                      className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+                    >
+                      Merge into {day.day}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, WorkoutSetLog, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork } from "./types";
+import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, WorkoutSetLog, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork, ExerciseSubstitutionPreference } from "./types";
 import { getTodayLocal } from "./date-utils";
 import { dedupeMealsByDateAndId } from "./meals-dedupe";
 import { mergeWorkoutSetLogs } from "./workout-set-logs";
@@ -30,6 +30,7 @@ const STORAGE_KEYS = {
   groupCache: "recomp_group_cache",
   groupMessagesCache: "recomp_group_messages",
   measurementTargets: "recomp_measurement_targets",
+  exerciseSubstitutions: "recomp_exercise_substitutions",
   hydration: "recomp_hydration",
   fastingSessions: "recomp_fasting",
   biofeedback: "recomp_biofeedback",
@@ -81,6 +82,20 @@ export function getMeasurementTargets(): MeasurementTargets | null {
 export function saveMeasurementTargets(targets: MeasurementTargets): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.measurementTargets, JSON.stringify(targets));
+}
+
+export function getExerciseSubstitutions(): ExerciseSubstitutionPreference[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<ExerciseSubstitutionPreference[]>(
+    localStorage.getItem(STORAGE_KEYS.exerciseSubstitutions),
+    []
+  );
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+export function saveExerciseSubstitutions(substitutions: ExerciseSubstitutionPreference[]): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.exerciseSubstitutions, JSON.stringify(substitutions.slice(-200)));
 }
 
 export function getMeals(): MealEntry[] {
@@ -634,6 +649,7 @@ function buildSyncPayload() {
   const workoutSetLogs = getWorkoutSetLogs();
   const metabolicModel = getMetabolicModel();
   const measurementTargets = getMeasurementTargets();
+  const exerciseSubstitutions = getExerciseSubstitutions();
   const recentExerciseNames = getRecentExerciseNames();
 
   // Strip base64 photo data from body scans — photos are stored in localStorage only.
@@ -658,6 +674,7 @@ function buildSyncPayload() {
     activityLog, workoutProgress, workoutSetLogs, recentExerciseNames,
     metabolicModel: metabolicModel ?? undefined,
     measurementTargets: measurementTargets ?? undefined,
+    exerciseSubstitutions: exerciseSubstitutions.length > 0 ? exerciseSubstitutions : undefined,
   };
 }
 

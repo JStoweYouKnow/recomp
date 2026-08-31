@@ -55,7 +55,7 @@ import {
   type WearableInbound,
 } from "@/lib/wearable-normalize";
 import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
-import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, WorkoutSetLog, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets } from "@/lib/types";
+import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, WorkoutSetLog, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets, ExerciseSubstitutionPreference } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync"), 60, 60_000);
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
-    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, workoutSetLogs, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets } = parsed.data;
+    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, workoutSetLogs, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets, exerciseSubstitutions } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -169,7 +169,7 @@ export async function POST(req: NextRequest) {
       promises.push(dbSaveMilestones(userId, milestones as Milestone[]));
     }
 
-    if (xp !== undefined || hasAdjusted !== undefined || ricoHistory || measurementTargets !== undefined) {
+    if (xp !== undefined || hasAdjusted !== undefined || ricoHistory || measurementTargets !== undefined || exerciseSubstitutions !== undefined) {
       promises.push(
         (async () => {
           const existing = await dbGetMeta(userId);
@@ -182,6 +182,10 @@ export async function POST(req: NextRequest) {
               measurementTargets !== undefined
                 ? (measurementTargets as MeasurementTargets | null)
                 : existing.measurementTargets,
+            exerciseSubstitutions:
+              exerciseSubstitutions !== undefined
+                ? (exerciseSubstitutions as ExerciseSubstitutionPreference[])
+                : existing.exerciseSubstitutions,
           });
         })()
       );
@@ -378,6 +382,7 @@ export async function GET(req: NextRequest) {
         hasAdjusted: meta.hasAdjusted,
         ricoHistory: meta.ricoHistory,
         measurementTargets: meta.measurementTargets ?? undefined,
+        exerciseSubstitutions: meta.exerciseSubstitutions ?? undefined,
       },
       metabolicModel: metabolicModel ?? undefined,
     };

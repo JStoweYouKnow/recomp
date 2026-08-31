@@ -79,6 +79,41 @@ export interface WorkoutDay {
   finishers?: WorkoutExercise[];
 }
 
+/** User-taught or system-suggested exercise swap remembered for future imports. */
+export interface ExerciseSubstitutionPreference {
+  original: string;
+  normalizedOriginal: string;
+  replacement: string;
+  reason?: string;
+  learnedAt: string;
+  useCount: number;
+  source?: "import" | "rico" | "manual";
+}
+
+export type WorkoutAdaptSection = "warmups" | "exercises" | "finishers";
+
+export type WorkoutAdaptSwapSource = "learned" | "catalog" | "llm" | "none";
+
+/** One substitution applied (or suggested) during equipment-aware import adaptation. */
+export interface WorkoutAdaptSwap {
+  dayLabel?: string;
+  section: WorkoutAdaptSection;
+  index: number;
+  original: string;
+  replacement: string;
+  reason: string;
+  source: WorkoutAdaptSwapSource;
+}
+
+export interface WorkoutAdaptResult {
+  workout?: WorkoutDay;
+  days?: WorkoutDay[];
+  swaps: WorkoutAdaptSwap[];
+  learnedApplied: number;
+  catalogApplied: number;
+  llmApplied: number;
+}
+
 export type AdvancementMode = "calendar" | "completion";
 export type MissedSessionStatus = "missed" | "skipped" | "rescheduled";
 export type ScheduleAction =

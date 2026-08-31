@@ -323,6 +323,16 @@ const measurementTargetsSchema = z.looseObject({
   targetMuscleMassLbs: z.number().optional(),
 });
 
+const exerciseSubstitutionPreferenceSchema = z.object({
+  original: z.string().max(200),
+  normalizedOriginal: z.string().max(200),
+  replacement: z.string().max(200),
+  reason: z.string().max(300).optional(),
+  learnedAt: z.string().max(50),
+  useCount: z.number().int().min(0).max(10000),
+  source: z.enum(["import", "rico", "manual"]).optional(),
+});
+
 // Loose profile schema — unknown fields pass through without breaking validation
 const profileSchema = z.looseObject({
   id: z.string().max(100),
@@ -389,6 +399,7 @@ export const syncBodySchema = z.object({
   recentExerciseNames: z.array(z.string().max(200)).max(100).optional(),
   metabolicModel: metabolicModelSchema.optional().nullable(),
   measurementTargets: measurementTargetsSchema.optional().nullable(),
+  exerciseSubstitutions: z.array(exerciseSubstitutionPreferenceSchema).max(200).optional(),
 });
 
 export type SyncBody = z.infer<typeof syncBodySchema>;

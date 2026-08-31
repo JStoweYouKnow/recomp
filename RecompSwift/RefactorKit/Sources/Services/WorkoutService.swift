@@ -698,6 +698,28 @@ public final class WorkoutService {
         try await parseWorkoutImport(url).workout
     }
 
+    /// Equipment-aware adaptation after parse (web `/api/workouts/adapt` parity).
+    public func adaptWorkoutImport(workout: WorkoutDay? = nil, days: [WorkoutDay]? = nil) async throws -> WorkoutAdaptResult {
+        let response: WorkoutAdaptResponse = try await api.request(
+            WorkoutAPI.adapt(workout: workout, days: days)
+        )
+        let primary = response.workout ?? response.days?.first ?? WorkoutDay(day: "Day 1", focus: "Workout", exercises: [])
+        return WorkoutAdaptResult(
+            workout: primary,
+            days: response.days,
+            swaps: response.swaps,
+            learnedApplied: response.learnedApplied ?? 0,
+            catalogApplied: response.catalogApplied ?? 0,
+            llmApplied: response.llmApplied ?? 0
+        )
+    }
+
+    /// Persist user-approved substitutions for future imports.
+    public func teachExerciseSubstitutions(_ items: [SubstitutionTeachItem]) async throws {
+        struct EmptyResponse: Decodable {}
+        let _: EmptyResponse = try await api.request(WorkoutAPI.teachSubstitutions(substitutions: items))
+    }
+
     /// Uploads a text-based workout PDF (web `/api/workouts/parse-pdf` parity).
     public func parseWorkoutPdf(_ data: Data, fileName: String = "workout.pdf") async throws -> WorkoutImportResult {
         let response: WorkoutImportResponse = try await api.upload(
