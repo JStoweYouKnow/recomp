@@ -53,6 +53,7 @@ You have access to tools! You are an AGENT, not just a chatbot.
 7. If the user asks what to cook, which saved recipe fits their macros, or wants dinner ideas from their recipe library, use the 'suggest_recipes' tool. Pass mealType when they mention breakfast/lunch/dinner/snack.
 8. If the user shares a recipe URL to save (or asks to save a recipe link), use the 'save_recipe_from_url' tool with the URL.
 9. If the user asks to change when their imported or multi-week program starts (e.g. "start my program next Monday", "push week 1 to June 20"), use the 'adjust_program_start' tool with startDate as YYYY-MM-DD (any day in the week they want as program week 1).
+9b. If the user is eating out or ordering delivery and names a restaurant (e.g. "ordering Chipotle tonight, what fits?", "what should I get at Sweetgreen", "I'm getting Uber Eats from Panda Express"), use the 'recommend_restaurant_order' tool. Do NOT use log_meal for these — they haven't eaten yet. Never invent menu items or macros in your text; the tool returns the real picks.
 10. When completedWorkoutToday or workoutHistory is present, use it to personalize advice. After workouts, suggest recovery nutrition (protein/carbs timing). For nextWorkout, recommend progressive overload, exercise variety, or deloads based on exerciseFrequency, recentSessions, and workoutPerformance (last weights/reps/volume). Use swap_exercise, add_exercise, or update_workout_day to apply concrete plan tweaks when appropriate.
 11. PRESCRIBE NUMBERS, NOT VIBES. When nextSessionTargets is present, give the user the exact load and reps ("Squat 245 x 5 for 4 sets") and the reason from its rationale. Never say "go a little heavier" or "add some weight" when a target exists. If an entry's action is "deload", explain that backing off is what breaks the plateau. If it is "establish_baseline", ask them to log the session so future targets get sharper. When strengthTrend.stalled is non-empty, raise it directly and address it.
 12. WATCH THE VOLUME BALANCE. When weeklyVolume.underdosed is non-empty, name the specific muscles and how many sets short they are (entries[].setsToMev) — undertrained groups are the most common reason a physique stalls while the scale moves. When a group is overdosed (above mrv), say so plainly and suggest trimming sets rather than adding more. Use add_exercise or update_workout_day to fix real gaps.
@@ -305,6 +306,26 @@ const RICO_TOOLS: ToolConfiguration = {
     },
     {
       toolSpec: {
+        name: "recommend_restaurant_order",
+        description:
+          "Looks up a restaurant's published nutrition and ranks its menu against the user's remaining macros today. Use when the user is ordering delivery or eating out and asks what to get.",
+        inputSchema: {
+          json: {
+            type: "object",
+            properties: {
+              restaurant: { type: "string", description: "Restaurant or chain name, e.g. 'Chipotle'" },
+              craving: {
+                type: "string",
+                description: "Optional — what they're in the mood for (e.g. 'something spicy', 'a salad')",
+              },
+            },
+            required: ["restaurant"],
+          },
+        },
+      },
+    },
+    {
+      toolSpec: {
         name: "adjust_program_start",
         description:
           "Sets program week 1 to start on a specific calendar week. Use when the user wants to shift an imported or multi-week workout plan to a different Monday/week anchor.",
@@ -503,6 +524,9 @@ export function isMealLogIntent(message: string): boolean {
   ];
   if (patterns.some((p) => p.test(m))) return true;
 
+  // Planning an order ("ordering Chipotle, burrito bowl") is a recommendation request, not a log.
+  if (/\b(order|ordering|uber\s?eats|door\s?dash|grubhub|postmates|delivery|eating out|going to get)\b/.test(m)) return false;
+
   // Short food-only messages in coach (e.g. "cheeseburger", "2 eggs scrambled", "bunch of grapes").
   if (m.length > 120) return false;
   if (/\b(workout|exercise|swap|replace|regenerate|program|schedule|target)\b/.test(m)) return false;
@@ -651,6 +675,8 @@ function parseRicoBedrockOutput(output: Message | undefined): RicoOutput {
       replyText = "Here are recipes that fit your remaining macros today:";
     } else if (a.type === "save_recipe_from_url") {
       replyText = "Saved that recipe to your library!";
+    } else if (a.type === "recommend_restaurant_order") {
+      replyText = `Pulling up ${(a.payload as { restaurant?: string }).restaurant ?? "that restaurant"}'s menu…`;
     } else if (a.type === "adjust_program_start") {
       replyText = `Program week 1 now starts the week of ${(a.payload as { startDate?: string }).startDate ?? "that date"}.`;
     }

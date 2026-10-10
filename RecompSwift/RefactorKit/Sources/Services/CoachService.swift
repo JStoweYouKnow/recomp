@@ -12,6 +12,10 @@ public final class CoachService {
     public private(set) var isResponding = false
     public private(set) var shouldRegeneratePlan = false
     public private(set) var pendingRegenerateOptions = RegeneratePlanOptions.default
+    /// Restaurant picks keyed by assistant message id (this session only; the reply text persists).
+    public private(set) var restaurantPicks: [String: RestaurantPicks] = [:]
+    /// "\(messageId)#\(pick.name)" for picks already logged from chat.
+    public private(set) var loggedPickKeys: Set<String> = []
 
     private let api: APIClient
 
@@ -113,9 +117,36 @@ public final class CoachService {
         let assistantMessage = CoachMessage(role: .assistant, content: replyText)
         context.insert(assistantMessage)
         messages.append(assistantMessage)
+        if let picks = response.restaurantPicks, !picks.items.isEmpty {
+            restaurantPicks[assistantMessage.id] = picks
+        }
 
         try context.save()
         commitCoachTurn(context: context, applyResult: applyResult)
+    }
+
+    /// One-tap log of a restaurant pick from The Ref's recommendations.
+    public func logRestaurantPick(_ pick: MenuPick, restaurant: String, messageId: String, context: ModelContext) {
+        let key = "\(messageId)#\(pick.name)"
+        guard !loggedPickKeys.contains(key) else { return }
+        let hour = Calendar.current.component(.hour, from: .now)
+        let mealType: MealType = hour < 11 ? .breakfast : hour < 16 ? .lunch : hour < 21 ? .dinner : .snack
+        let entry = MealEntry(
+            date: DateHelpers.todayString(),
+            mealType: mealType,
+            name: "\(pick.name) (\(restaurant))",
+            macros: pick.estimatedMacros,
+            synced: false
+        )
+        context.insert(entry)
+        do {
+            try context.save()
+            loggedPickKeys.insert(key)
+            MealChangeNotifier.postLocalMealsChanged()
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+        } catch {
+            Self.logger.error("Failed to log restaurant pick: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     public func clearHistory(context: ModelContext) {
@@ -123,6 +154,7 @@ public final class CoachService {
             context.delete(message)
         }
         messages.removeAll()
+        restaurantPicks.removeAll()
         try? context.save()
         CoachHistoryStore.mergeIntoDefaults(container: context.container)
     }
@@ -485,6 +517,9 @@ public final class CoachService {
                 result.touchedPlan = true
                 result.recordApplied("adjust_program_start")
 
+            case .unknown("suggest_recipes"), .unknown("save_recipe_from_url"), .unknown("recommend_restaurant_order"):
+                // Informational — the server already resolved these into the response.
+                continue
             case .unknown(let actionType):
                 result.recordSkipped(type: actionType, reason: "unsupported action")
                 Self.logger.warning("Unhandled Rico action type: \(actionType, privacy: .public)")

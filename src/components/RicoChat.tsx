@@ -19,7 +19,7 @@ import {
   playAudioResponse,
   isAudioSupported,
 } from "@/lib/audio-utils";
-import type { RicoMessage, CookingAppRecipe } from "@/lib/types";
+import type { RicoMessage, CookingAppRecipe, RestaurantPick } from "@/lib/types";
 import type { RegeneratePlanOptions } from "@/lib/multi-week-plan";
 import type { AudioRecorder, StreamingRecorder } from "@/lib/audio-utils";
 
@@ -32,6 +32,14 @@ function formatRecipeSuggestions(
       `${i + 1}. **${s.name}** (${s.calories} cal, ${s.protein}g P, score ${s.fitScore}) — ${s.fitReason}${s.recipeUrl ? ` [link](${s.recipeUrl})` : ""}`
   );
   return `\n\n${lines.join("\n")}`;
+}
+
+function mealTypeForNow(): "breakfast" | "lunch" | "dinner" | "snack" {
+  const h = new Date().getHours();
+  if (h < 11) return "breakfast";
+  if (h < 16) return "lunch";
+  if (h < 21) return "dinner";
+  return "snack";
 }
 
 export function RicoChat({
@@ -78,6 +86,29 @@ export function RicoChat({
   const recorderRef = useRef<AudioRecorder | StreamingRecorder | null>(null);
   const streamFetchRef = useRef<Promise<Response> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [loggedPicks, setLoggedPicks] = useState<Set<string>>(() => new Set());
+
+  const logRestaurantPick = (key: string, restaurant: string, pick: RestaurantPick) => {
+    if (loggedPicks.has(key)) return;
+    const m = pick.estimatedMacros;
+    processRicoActions(
+      [
+        {
+          type: "log_meal",
+          payload: {
+            name: `${pick.name} (${restaurant})`,
+            mealType: mealTypeForNow(),
+            calories: m.calories,
+            protein: m.protein,
+            carbs: m.carbs,
+            fat: m.fat,
+          },
+        },
+      ],
+      { defaultDate: getTodayLocal() },
+    );
+    setLoggedPicks((prev) => new Set(prev).add(key));
+  };
 
   useEffect(() => {
     setMessages(getRicoHistory());
@@ -212,7 +243,11 @@ export function RicoChat({
         }
       }
 
-      addMessage({ role: "assistant", content: reply, at: new Date().toISOString() });
+      const restaurantPicks =
+        data.restaurantPicks && Array.isArray(data.restaurantPicks.items) && data.restaurantPicks.items.length > 0
+          ? { restaurant: String(data.restaurantPicks.restaurant ?? ""), items: data.restaurantPicks.items as RestaurantPick[] }
+          : undefined;
+      addMessage({ role: "assistant", content: reply, at: new Date().toISOString(), restaurantPicks });
     } catch (e) {
       console.error(e);
       addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again in a sec.", at: new Date().toISOString() });
@@ -462,6 +497,42 @@ export function RicoChat({
                     </span>
                   ) : displayContent}
                 </p>
+                {m.restaurantPicks && (
+                  <ul className="mt-2 space-y-1.5">
+                    {m.restaurantPicks.items.map((pick, j) => {
+                      const key = `${m.at}-${j}`;
+                      const logged = loggedPicks.has(key);
+                      const mac = pick.estimatedMacros;
+                      return (
+                        <li
+                          key={j}
+                          className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
+                            pick.recommended ? "border-[var(--accent)]/50 bg-[var(--accent)]/5" : "border-[var(--border-soft)]"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-medium">
+                              {pick.recommended && <span className="mr-1 text-[var(--accent)]">✓</span>}
+                              {pick.name}
+                            </p>
+                            <p className="text-[10px] text-[var(--muted)]">
+                              {mac.calories} cal · {mac.protein}g P · {mac.carbs}g C · {mac.fat}g F
+                              {pick.source !== "official" && " · est."}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={logged}
+                            onClick={() => logRestaurantPick(key, m.restaurantPicks!.restaurant, pick)}
+                            className="shrink-0 rounded-md bg-[var(--accent)] px-2 py-1 text-[11px] font-medium text-white disabled:opacity-50"
+                          >
+                            {logged ? "Logged" : "Log"}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </div>
             </div>
           );})}

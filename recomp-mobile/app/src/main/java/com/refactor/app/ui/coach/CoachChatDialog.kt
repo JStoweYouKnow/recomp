@@ -48,6 +48,7 @@ import com.refactor.app.api.SyncRepository
 import com.refactor.app.db.CoachMessageDao
 import com.refactor.app.db.SyncCacheDao
 import com.refactor.app.ui.legal.MedicalDisclaimerText
+import com.refactor.app.ui.meals.MenuPickRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,6 +74,8 @@ fun CoachChatDialog(
     val regeneratingPlan by vm.regeneratingPlan.collectAsStateWithLifecycle()
     val err by vm.error.collectAsStateWithLifecycle()
     val pushNote by vm.lastPushNote.collectAsStateWithLifecycle()
+    val restaurantPicks by vm.restaurantPicks.collectAsStateWithLifecycle()
+    val loggedPicks by vm.loggedPicks.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf("") }
     val speech = remember(context) { SpeechRecognizer.createSpeechRecognizer(context) }
     DisposableEffect(speech) {
@@ -142,6 +145,17 @@ fun CoachChatDialog(
                                 style = style.first,
                                 color = style.second,
                             )
+                            restaurantPicks[line.id]?.let { picks ->
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    picks.items.forEach { pick ->
+                                        MenuPickRow(
+                                            pick = pick,
+                                            isLogged = "${line.id}#${pick.name}" in loggedPicks,
+                                            onLog = { vm.logRestaurantPick(line.id, picks.restaurant, pick) },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                     Row(

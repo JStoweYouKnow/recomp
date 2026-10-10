@@ -110,7 +110,8 @@ public actor APIClient {
         fileData: Data,
         fieldName: String = "image",
         fileName: String = "photo.jpg",
-        mimeType: String = "image/jpeg"
+        mimeType: String = "image/jpeg",
+        fields: [String: String] = [:]
     ) async throws -> T {
         var request = try buildRequest(for: endpoint)
 
@@ -118,6 +119,11 @@ public actor APIClient {
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
         var body = Data()
+        for (key, value) in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(value)\r\n".data(using: .utf8)!)
+        }
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"\(fieldName)\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)

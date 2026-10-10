@@ -45,9 +45,11 @@ public struct CoachChatResponse: Decodable {
     public let actions: [RicoAction]
     public let recipeSuggestions: [ScoredRecipeSuggestion]?
     public let recipeSaved: SavedRecipeDTO?
+    /// Ranked menu picks when Rico ran `recommend_restaurant_order`.
+    public let restaurantPicks: RestaurantPicks?
 
     enum CodingKeys: String, CodingKey {
-        case reply, actions, recipeSuggestions, recipeSaved
+        case reply, actions, recipeSuggestions, recipeSaved, restaurantPicks
     }
 
     private struct LooseRicoElement: Decodable {
@@ -63,6 +65,8 @@ public struct CoachChatResponse: Decodable {
         reply =
             (try c.decodeIfPresent(String.self, forKey: .reply)?.trimmingCharacters(in: .whitespacesAndNewlines))
                 ?? ""
+
+        restaurantPicks = try? c.decodeIfPresent(RestaurantPicks.self, forKey: .restaurantPicks)
 
         guard c.contains(.actions) else {
             actions = []

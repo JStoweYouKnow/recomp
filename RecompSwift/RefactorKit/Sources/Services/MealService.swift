@@ -46,15 +46,23 @@ public final class MealService {
         return response.meals
     }
 
-    public func analyzeMenu(imageData: Data) async throws -> [SuggestedMeal] {
+    /// Extracts menu items from a menu photo or delivery-app screenshot and ranks them
+    /// against `remaining` (the server derives it from the user's plan when nil).
+    public func analyzeMenu(imageData: Data, remaining: Macros?, date: String) async throws -> MenuAnalysisResponse {
         isLoading = true
         defer { isLoading = false }
 
-        let response: PhotoAnalysisResponse = try await api.upload(
+        var fields = ["date": date]
+        if let remaining,
+           let json = try? JSONEncoder().encode(remaining),
+           let str = String(data: json, encoding: .utf8) {
+            fields["remainingMacros"] = str
+        }
+        return try await api.upload(
             MealAPI.analyzeMenu,
-            imageData: imageData
+            fileData: imageData,
+            fields: fields
         )
-        return response.meals
     }
 
     public func lookupNutrition(query: String) async throws -> NutritionLookupResponse {

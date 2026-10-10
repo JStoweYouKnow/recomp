@@ -4,6 +4,8 @@ import { dbGetUserIdByPhone } from "@/lib/db";
 import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
 import { invokeRico, buildRicoContextFromServer, persistHeadlessRicoActions } from "@/lib/services/rico";
 import { logError } from "@/lib/logger";
+import { resolveRestaurantPicksAction, restaurantPicksHeadline, formatRestaurantPicksText } from "@/lib/services/menu-picks";
+import { getTodayLocal } from "@/lib/date-utils";
 
 /** Twilio webhook for incoming SMS. Configure your Twilio number's "A MESSAGE COMES IN" to this URL. */
 export async function POST(req: NextRequest) {
@@ -85,6 +87,11 @@ export async function POST(req: NextRequest) {
     if (actions.length > 0) {
       const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
       replyText += replySuffix;
+    }
+    const restaurantResult = await resolveRestaurantPicksAction(userId, actions, { date: getTodayLocal() });
+    if (restaurantResult) {
+      replyText = restaurantPicksHeadline(restaurantResult);
+      if (restaurantResult.picks) replyText += `\n${formatRestaurantPicksText(restaurantResult.picks)}`;
     }
 
     const res = new MessagingResponse();

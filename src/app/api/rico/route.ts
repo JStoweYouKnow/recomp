@@ -10,6 +10,7 @@ import { resolveMealLogDate } from "@/lib/date-utils";
 import { rankWithDiscovery } from "@/lib/recipe-library";
 import { remainingMacros } from "@/lib/recipe-fit";
 import type { CookingAppRecipe } from "@/lib/types";
+import { resolveRestaurantPicksAction, restaurantPicksHeadline } from "@/lib/services/menu-picks";
 
 export const POST = withRequestLogging("/api/rico", async function POST(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "rico"), 20, 60_000);
@@ -68,6 +69,20 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
         }
       }
     }
+
+    const restaurantResult = await resolveRestaurantPicksAction(userId, actions, {
+      date: defaultDate,
+      remainingMacros:
+        ctx.remainingMacros ??
+        (ctx.macroTargets && ctx.todayMacros
+          ? remainingMacros(
+              ctx.macroTargets as Parameters<typeof remainingMacros>[0],
+              ctx.todayMacros as Parameters<typeof remainingMacros>[1],
+            )
+          : undefined),
+      goal: ctx.goal,
+    });
+    if (restaurantResult) replyText = restaurantPicksHeadline(restaurantResult);
 
     if (userId && actions.length > 0) {
       for (const action of actions) {
@@ -147,6 +162,7 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
       actions,
       recipeSuggestions,
       recipeSaved,
+      restaurantPicks: restaurantResult?.picks ?? undefined,
     });
   } catch (err) {
     logError("Rico chat failed", err, { route: "rico" });

@@ -84,6 +84,33 @@ public struct PhotoAnalysisResponse: Decodable {
     public let meals: [SuggestedMeal]
 }
 
+/// A menu item ranked against the user's remaining macros (`/api/meals/analyze-menu`, Rico restaurant picks).
+public struct MenuPick: Decodable, Identifiable, Hashable, Sendable {
+    public var id: String { name }
+    public let name: String
+    public let description: String?
+    public let estimatedMacros: Macros
+    /// "official" when from restaurant-published nutrition; otherwise an estimate.
+    public let source: String?
+    public let fitScore: Int?
+    public let fitReason: String?
+    /// "Macro approved" — a top pick that fits the remaining budget.
+    public let recommended: Bool?
+
+    public var isApproved: Bool { recommended == true }
+}
+
+public struct MenuAnalysisResponse: Decodable, Sendable {
+    public let items: [MenuPick]
+    public let restaurantName: String?
+    public let remainingMacros: Macros?
+}
+
+public struct RestaurantPicks: Decodable, Hashable, Sendable {
+    public let restaurant: String
+    public let items: [MenuPick]
+}
+
 public struct NutritionLookupResponse: Decodable {
     public let name: String
     public let macros: Macros

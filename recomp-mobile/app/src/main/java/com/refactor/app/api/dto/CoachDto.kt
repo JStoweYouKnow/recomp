@@ -118,6 +118,34 @@ data class CoachChatResponse(
     val actions: List<RicoToolActionWire> = emptyList(),
     val recipeSuggestions: List<ScoredRecipeSuggestionDto>? = null,
     val recipeSaved: SavedRecipeDto? = null,
+    /** Ranked menu picks when Ref ran `recommend_restaurant_order`. */
+    val restaurantPicks: RestaurantPicksDto? = null,
+)
+
+/** A menu item ranked against remaining macros (`/api/meals/analyze-menu`, Ref restaurant picks). */
+@Serializable
+data class MenuPickDto(
+    val name: String,
+    val description: String? = null,
+    val estimatedMacros: MealMacrosDto = MealMacrosDto(),
+    /** "official" = restaurant-published nutrition; otherwise an estimate. */
+    val source: String? = null,
+    val fitScore: Int? = null,
+    val fitReason: String? = null,
+    /** "Macro approved" — a top pick that fits the remaining budget. */
+    val recommended: Boolean = false,
+)
+
+@Serializable
+data class RestaurantPicksDto(
+    val restaurant: String = "",
+    val items: List<MenuPickDto> = emptyList(),
+)
+
+@Serializable
+data class MenuAnalysisDto(
+    val items: List<MenuPickDto> = emptyList(),
+    val restaurantName: String? = null,
 )
 
 @Serializable

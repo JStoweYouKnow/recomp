@@ -366,9 +366,19 @@ fun MealsScreen(
         }
     }
 
+    // Image shared into the app → open Add Meal straight into a ranked menu scan.
+    var sharedMenuImage by remember { mutableStateOf<ByteArray?>(null) }
+    LaunchedEffect(com.refactor.app.ui.ShortcutRouter.sharedMenuImage) {
+        val bytes = com.refactor.app.ui.ShortcutRouter.sharedMenuImage ?: return@LaunchedEffect
+        com.refactor.app.ui.ShortcutRouter.sharedMenuImage = null
+        sharedMenuImage = bytes
+        showAdd = true
+    }
+
     if (showAdd) {
         AddMealSheet(
             date = dateStr,
+            sharedMenuImage = sharedMenuImage,
             recentMeals = allMeals,
             mealRepository = mealRepository,
             syncCacheDao = syncCacheDao,
@@ -377,8 +387,10 @@ fun MealsScreen(
             onDismiss = {
                 showAdd = false
                 addPrefill = null
+                sharedMenuImage = null
             },
             onSave = { draft ->
+                sharedMenuImage = null
                 val next = allMeals + draft
                 persistAll(next)
                 // Feedback + Health Connect export + protein-goal celebration (mirrors iOS).

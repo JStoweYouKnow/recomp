@@ -12,4 +12,7 @@ import androidx.compose.runtime.setValue
 object ShortcutRouter {
     /** Host of the launching recomp:// URI, e.g. "workout", "dashboard". Cleared once handled. */
     var pending by mutableStateOf<String?>(null)
+
+    /** JPEG bytes of an image shared into the app (e.g. an Uber Eats screenshot) to scan as a menu. */
+    var sharedMenuImage by mutableStateOf<ByteArray?>(null)
 }

@@ -38,6 +38,7 @@ import com.refactor.app.ui.AppShell
 import com.refactor.app.ui.auth.AuthViewModel
 import com.refactor.app.ui.theme.RecompTheme
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
 
@@ -68,11 +69,32 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         intent.data?.host?.let { com.refactor.app.ui.ShortcutRouter.pending = it }
+        handleSharedImage(intent)
+    }
+
+    /** "Share → Recomp" from Uber Eats / DoorDash screenshots: open Meals and scan it as a menu. */
+    private fun handleSharedImage(intent: android.content.Intent?) {
+        if (intent?.action != android.content.Intent.ACTION_SEND) return
+        if (intent.type?.startsWith("image/") != true) return
+        val uri = androidx.core.content.IntentCompat.getParcelableExtra(
+            intent,
+            android.content.Intent.EXTRA_STREAM,
+            android.net.Uri::class.java,
+        ) ?: return
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val bytes = runCatching { com.refactor.app.util.ImageDownscale.jpegFromUri(applicationContext, uri) }.getOrNull()
+                ?: return@launch
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                com.refactor.app.ui.ShortcutRouter.sharedMenuImage = bytes
+                com.refactor.app.ui.ShortcutRouter.pending = "meals"
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         intent?.data?.host?.let { com.refactor.app.ui.ShortcutRouter.pending = it }
+        handleSharedImage(intent)
         LocalReminderScheduler.rescheduleAll(applicationContext, notificationPrefs)
         enableEdgeToEdge()
         val factory = AuthViewModel.Factory(authRepository, appDb.coachMessageDao(), application)

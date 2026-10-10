@@ -17,3 +17,11 @@ describe("rico meal logging helpers", () => {
     expect(replyClaimsMealLogged("Here are some dinner ideas.")).toBe(false);
   });
 });
+
+describe("isMealLogIntent — ordering", () => {
+  it("does not treat planned delivery orders as eaten meals", () => {
+    expect(isMealLogIntent("ordering chipotle tonight, burrito bowl")).toBe(false);
+    expect(isMealLogIntent("getting uber eats, chicken sandwich")).toBe(false);
+    expect(isMealLogIntent("I had a burrito bowl from chipotle")).toBe(true);
+  });
+});
