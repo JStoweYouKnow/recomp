@@ -4,6 +4,8 @@ import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
 import { invokeRico, buildRicoContextFromServer, persistHeadlessRicoActions } from "@/lib/services/rico";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { logError } from "@/lib/logger";
+import { resolveRestaurantPicksAction, restaurantPicksHeadline, formatRestaurantPicksText } from "@/lib/services/menu-picks";
+import { getTodayLocal } from "@/lib/date-utils";
 
 /**
  * Token-based Rico endpoint for Siri Shortcuts and other headless clients.
@@ -55,6 +57,11 @@ export async function POST(req: NextRequest) {
     if (actions.length > 0) {
       const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
       replyText += replySuffix;
+    }
+    const restaurantResult = await resolveRestaurantPicksAction(userId, actions, { date: getTodayLocal() });
+    if (restaurantResult) {
+      replyText = restaurantPicksHeadline(restaurantResult);
+      if (restaurantResult.picks) replyText += `\n${formatRestaurantPicksText(restaurantResult.picks)}`;
     }
 
     return NextResponse.json({ reply: replyText });

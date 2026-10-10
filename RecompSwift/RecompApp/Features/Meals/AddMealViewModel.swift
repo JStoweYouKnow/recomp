@@ -33,12 +33,23 @@ final class AddMealViewModel {
         isAnalyzing = false
     }
 
-    func analyzeMenu(data: Data) async {
+    /// Ranked menu items from the last menu scan (separate from `analysisResults` so they
+    /// can carry "macro approved" badges and one-tap logging).
+    var menuPicks: [MenuPick] = []
+    var menuRestaurant: String?
+
+    func analyzeMenu(data: Data, remaining: Macros?, date: String) async {
         isAnalyzing = true
+        menuPicks = []
+        menuRestaurant = nil
         do {
-            analysisResults = try await mealService.analyzeMenu(imageData: data)
+            let response = try await mealService.analyzeMenu(imageData: data, remaining: remaining, date: date)
+            menuPicks = response.items
+            menuRestaurant = response.restaurantName
+            if response.items.isEmpty {
+                menuScanError = "Couldn't read any menu items. Try a clearer screenshot."
+            }
         } catch {
-            analysisResults = []
             menuScanError = error.localizedDescription
         }
         isAnalyzing = false

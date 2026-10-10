@@ -148,7 +148,8 @@ export function MealsView({
   const [similarLoading, setSimilarLoading] = useState(false);
   const [generatePlanLoading, setGeneratePlanLoading] = useState(false);
   const [menuScanLoading, setMenuScanLoading] = useState(false);
-  const [menuItems, setMenuItems] = useState<{ name: string; description?: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number }; confidence: string }[]>([]);
+  const [menuItems, setMenuItems] = useState<{ name: string; description?: string | null; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number }; confidence?: string; fitScore?: number; fitReason?: string; recommended?: boolean }[]>([]);
+  const [menuRestaurant, setMenuRestaurant] = useState<string | null>(null);
   const { showToast } = useToast();
   const activeFast = getActiveFastingSession();
   const [savedRestaurantMeals, setSavedRestaurantMeals] = useState(() => getSavedRestaurantMeals());
@@ -674,12 +675,26 @@ export function MealsView({
       const blob = await prepareImageForUpload(file);
       const fd = new FormData();
       fd.append("image", blob, "menu.jpg");
+      fd.append("date", activeDate);
+      fd.append("goal", goal);
+      fd.append(
+        "remainingMacros",
+        JSON.stringify({ calories: remainingCal, protein: remainingPro, carbs: remainingCarbs, fat: remainingFat }),
+      );
       const res = await fetch("/api/meals/analyze-menu", { method: "POST", body: fd });
       const data = await res.json();
       if (data.items?.length) {
         setMenuItems(data.items);
+        setMenuRestaurant(typeof data.restaurantName === "string" ? data.restaurantName : null);
         setShowAdd(true);
-        showToast?.(`Found ${data.items.length} menu items`);
+        const approved = data.items.filter((i: { recommended?: boolean }) => i.recommended).length;
+        showToast?.(
+          approved > 0
+            ? `${approved} macro-approved pick${approved === 1 ? "" : "s"} out of ${data.items.length} items`
+            : `Found ${data.items.length} menu items`,
+        );
+      } else {
+        showToast?.("Couldn't read any menu items. Try a clearer screenshot.");
       }
     } catch {
       showToast?.("Menu scan failed");
@@ -696,6 +711,31 @@ export function MealsView({
     setFat(String(item.estimatedMacros.fat ?? ""));
     setPortions(1);
     setMenuItems([]);
+  };
+
+  /** One tap: log the menu item as-is to the active day. */
+  const logMenuItem = (item: { name: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number } }) => {
+    const m = item.estimatedMacros;
+    const meal: MealEntry = {
+      id: uuidv4(),
+      date: activeDate,
+      mealType,
+      name: menuRestaurant ? `${item.name} (${menuRestaurant})` : item.name,
+      macros: {
+        calories: Math.round(m.calories ?? 0),
+        protein: Math.round(m.protein ?? 0),
+        carbs: Math.round(m.carbs ?? 0),
+        fat: Math.round(m.fat ?? 0),
+      },
+      loggedAt: new Date().toISOString(),
+    };
+    onAddMeal(meal);
+    embedMealBackground(meal);
+    saveRecentMealTemplate({ name: meal.name, macros: meal.macros });
+    setMenuItems([]);
+    setMenuRestaurant(null);
+    setShowAdd(false);
+    showToast?.(`Logged ${item.name}`);
   };
 
   const saveRestaurantMeal = (item: { name: string; estimatedMacros: { calories: number; protein: number; carbs: number; fat: number } }, restaurantName = "Menu") => {
@@ -903,7 +943,7 @@ export function MealsView({
               <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
               {receiptLoading ? "Scanning…" : "Scan receipt"}
             </label>
-            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of restaurant menu — extract items with macros">
+            <label className="btn-secondary !text-xs cursor-pointer" title="Menu photo or Uber Eats / DoorDash screenshot — ranks items against your remaining macros">
               <input type="file" accept="image/*" className="hidden" onChange={handleMenuScan} disabled={menuScanLoading} />
               {menuScanLoading ? "Scanning…" : "Scan menu"}
             </label>
@@ -940,28 +980,51 @@ export function MealsView({
           )}
           {menuItems.length > 0 && (
             <div className="mb-3 space-y-2">
-              <p className="text-xs font-medium text-[var(--muted)]">Menu items — click to use, 📌 to save</p>
-              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              <p className="text-xs font-medium text-[var(--muted)]">
+                {menuRestaurant ? `${menuRestaurant} — ` : ""}ranked for your remaining {remainingCal} cal · {remainingPro}g protein
+              </p>
+              <ul className="max-h-72 space-y-1.5 overflow-y-auto">
                 {menuItems.map((item, i) => (
-                  <div key={i} className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => applyMenuItem(item)}
-                      className="px-2.5 py-1.5 text-xs text-[var(--foreground)] hover:border-[var(--accent)]/40"
-                    >
-                      {item.name} · {item.estimatedMacros?.calories ?? "?"} cal
+                  <li
+                    key={i}
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 ${
+                      item.recommended
+                        ? "border-[var(--accent)]/50 bg-[var(--accent)]/5"
+                        : "border-[var(--border-soft)] bg-[var(--surface-elevated)]"
+                    }`}
+                  >
+                    <button type="button" onClick={() => applyMenuItem(item)} className="min-w-0 flex-1 text-left" title="Edit before logging">
+                      <span className="flex items-center gap-1.5">
+                        <span className="truncate text-xs font-medium text-[var(--foreground)]">{item.name}</span>
+                        {item.recommended && (
+                          <span className="shrink-0 rounded-full bg-[var(--accent)] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                            Macro approved
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-[11px] text-[var(--muted)]">
+                        {item.estimatedMacros?.calories ?? "?"} cal · {item.estimatedMacros?.protein ?? "?"}g P · {item.estimatedMacros?.carbs ?? "?"}g C · {item.estimatedMacros?.fat ?? "?"}g F
+                      </span>
+                      {item.fitReason && <span className="block truncate text-[10px] text-[var(--muted)]">{item.fitReason}</span>}
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); saveRestaurantMeal(item); }}
-                      className="px-1.5 py-1.5 text-[10px] text-[var(--muted)] hover:text-[var(--accent)] border-l border-[var(--border-soft)]"
+                      onClick={() => logMenuItem(item)}
+                      className="shrink-0 rounded-md bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white hover:opacity-90"
+                    >
+                      Log
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); saveRestaurantMeal(item, menuRestaurant ?? "Menu"); }}
+                      className="shrink-0 px-1 text-[10px] text-[var(--muted)] hover:text-[var(--accent)]"
                       title="Save for later"
                     >
                       📌
                     </button>
-                  </div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
           {savedRestaurantMeals.length > 0 && (

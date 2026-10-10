@@ -44,6 +44,13 @@
                 <data android:scheme="recomp" />
             </intent-filter>
 
+            <!-- Share a menu screenshot (Uber Eats, DoorDash…) to rank it against your macros -->
+            <intent-filter android:label="Scan menu for macros">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+
             <!-- Health Connect permission-rationale (Android 13 / HC APK) -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />

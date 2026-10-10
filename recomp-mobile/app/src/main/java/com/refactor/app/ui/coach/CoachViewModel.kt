@@ -8,7 +8,10 @@ import com.refactor.app.api.ApiException
 import com.refactor.app.api.CoachRepository
 import com.refactor.app.api.RicoContextFactory
 import com.refactor.app.api.SyncRepository
+import com.refactor.app.api.dto.MenuPickDto
 import com.refactor.app.api.dto.RegeneratePlanOptions
+import com.refactor.app.api.dto.RestaurantPicksDto
+import com.refactor.app.api.dto.RicoToolActionWire
 import com.refactor.app.api.dto.RicoHistoryMessageDto
 import com.refactor.app.api.dto.ScoredRecipeSuggestionDto
 import com.refactor.app.api.stripRicoDiagnosticMarkup
@@ -23,11 +26,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import java.util.UUID
 
 enum class ChatRole { User, Assistant }
 
-data class ChatLine(val role: ChatRole, val content: String)
+data class ChatLine(val role: ChatRole, val content: String, val id: String = "")
 
 class CoachViewModel(
     private val appContext: Context,
@@ -44,6 +49,7 @@ class CoachViewModel(
                     ChatLine(
                         role = if (e.role == "user") ChatRole.User else ChatRole.Assistant,
                         content = e.content,
+                        id = e.id,
                     )
                 }
             }
@@ -58,6 +64,14 @@ class CoachViewModel(
     /** Hint after auto-upload post-coach (optional). */
     private val _lastPushNote = MutableStateFlow<String?>(null)
     val lastPushNote: StateFlow<String?> = _lastPushNote.asStateFlow()
+
+    /** Ref's restaurant picks keyed by assistant message id (this session; the reply text persists). */
+    private val _restaurantPicks = MutableStateFlow<Map<String, RestaurantPicksDto>>(emptyMap())
+    val restaurantPicks: StateFlow<Map<String, RestaurantPicksDto>> = _restaurantPicks.asStateFlow()
+
+    /** "$messageId#${pick.name}" for picks already logged from chat. */
+    private val _loggedPicks = MutableStateFlow<Set<String>>(emptySet())
+    val loggedPicks: StateFlow<Set<String>> = _loggedPicks.asStateFlow()
 
     private val _regeneratingPlan = MutableStateFlow(false)
     val regeneratingPlan: StateFlow<Boolean> = _regeneratingPlan.asStateFlow()
@@ -95,7 +109,8 @@ class CoachViewModel(
             _busy.value = true
             coachRepository.chat(trimmed, ctx, history).fold(
                 onSuccess = { res ->
-                    val serverHandledActions = setOf("regenerate_plan", "suggest_recipes", "save_recipe_from_url")
+                    val serverHandledActions =
+                        setOf("regenerate_plan", "suggest_recipes", "save_recipe_from_url", "recommend_restaurant_order")
                     val needsRegenerate = res.actions.any { it.type == "regenerate_plan" }
                     val localActions = res.actions.filter { it.type !in serverHandledActions }
                     val applyOutcome = if (localActions.isNotEmpty()) {
@@ -158,9 +173,13 @@ class CoachViewModel(
                         }
                         applyResult?.statusSuffix()?.takeIf { it.isNotBlank() }?.let { append(it) }
                     }
+                    val assistantId = UUID.randomUUID().toString()
+                    res.restaurantPicks?.takeIf { it.items.isNotEmpty() }?.let { picks ->
+                        _restaurantPicks.value = _restaurantPicks.value + (assistantId to picks)
+                    }
                     coachMessageDao.insert(
                         CoachMessageEntity(
-                            id = UUID.randomUUID().toString(),
+                            id = assistantId,
                             role = "assistant",
                             content = assistantText.ifBlank { "…" },
                             createdAtEpochMillis = System.currentTimeMillis(),
@@ -193,6 +212,49 @@ class CoachViewModel(
                 },
             )
             _busy.value = false
+        }
+    }
+
+    /** One-tap log of a restaurant pick — same local path as Ref's `log_meal`, then sync. */
+    fun logRestaurantPick(messageId: String, restaurant: String, pick: MenuPickDto) {
+        val key = "$messageId#${pick.name}"
+        if (key in _loggedPicks.value) return
+        _loggedPicks.value = _loggedPicks.value + key
+        viewModelScope.launch {
+            val hour = java.time.LocalTime.now().hour
+            val mealType = when {
+                hour < 11 -> "breakfast"
+                hour < 16 -> "lunch"
+                hour < 21 -> "dinner"
+                else -> "snack"
+            }
+            val m = pick.estimatedMacros
+            val action = RicoToolActionWire(
+                type = "log_meal",
+                payload = buildJsonObject {
+                    put("name", "${pick.name} ($restaurant)")
+                    put("mealType", mealType)
+                    put("calories", m.calories)
+                    put("protein", m.protein)
+                    put("carbs", m.carbs)
+                    put("fat", m.fat)
+                },
+            )
+            syncRepository.applyRicoActionsToCache(listOf(action)).fold(
+                onSuccess = { outcome ->
+                    _lastPushNote.value = "Logged ${pick.name}."
+                    syncRepository.pushCachedSnapshot()
+                    if (outcome.changed) {
+                        syncRepository.readCachedSnapshot()?.let { snap ->
+                            RecompWidgetUpdater.updateFromSnapshot(appContext, snap)
+                        } ?: RecompWidgetUpdater.refreshWidgets(appContext)
+                    }
+                },
+                onFailure = { e ->
+                    _loggedPicks.value = _loggedPicks.value - key
+                    _error.value = e.message ?: "Couldn't log ${pick.name}"
+                },
+            )
         }
     }
 

@@ -233,6 +233,11 @@ export function applyRicoActionsToState(
         applied.push("adjust_program_start");
         break;
       }
+      case "suggest_recipes":
+      case "save_recipe_from_url":
+      case "recommend_restaurant_order":
+        // Informational — resolved server-side by /api/rico, nothing to apply locally.
+        break;
       default:
         skipped.push({ type: act.type, reason: "unsupported on this client" });
         break;

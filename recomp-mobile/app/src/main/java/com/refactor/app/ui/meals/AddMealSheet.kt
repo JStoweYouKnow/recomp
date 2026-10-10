@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -67,6 +68,7 @@ import com.refactor.app.prefs.AiConsentPrefs
 import com.refactor.app.ui.consent.AIConsentDialog
 import com.refactor.app.api.dto.MealEntryDto
 import com.refactor.app.api.dto.MealMacrosDto
+import com.refactor.app.api.dto.MenuPickDto
 import com.refactor.app.api.dto.SuggestedMealDto
 import com.refactor.app.api.dto.SyncGetResponse
 import com.refactor.app.db.SyncCacheDao
@@ -103,6 +105,8 @@ fun AddMealSheet(
     onDismiss: () -> Unit,
     onSave: (MealEntryDto) -> Unit,
     prefill: com.refactor.app.util.MealRecommendation? = null,
+    /** Image shared into the app (e.g. an Uber Eats / DoorDash screenshot) to scan as a menu. */
+    sharedMenuImage: ByteArray? = null,
 ) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -126,6 +130,8 @@ fun AddMealSheet(
     var analyzing by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var suggestions by remember { mutableStateOf<List<SuggestedMealDto>>(emptyList()) }
+    var menuPicks by remember { mutableStateOf<List<MenuPickDto>>(emptyList()) }
+    var menuRestaurant by remember { mutableStateOf<String?>(null) }
     var listening by remember { mutableStateOf(false) }
     var showAiConsent by remember { mutableStateOf(false) }
     var pendingAiAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -166,8 +172,53 @@ fun AddMealSheet(
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) startVoiceListening(speech, ctx) { listening = true }
     }
+    /** Remaining macros for [date] from the cached plan + meals; null if nothing cached yet. */
+    suspend fun remainingMacros(): MealMacrosDto? {
+        val raw = syncCacheDao.getOnce()?.payloadJson ?: return null
+        val snap = runCatching { SyncJson.format.decodeFromString<SyncGetResponse>(raw) }.getOrNull() ?: return null
+        val targets = snap.plan?.dietPlan?.dailyTargets ?: return null
+        val consumed = snap.meals.orEmpty().filter { it.date == date }
+            .fold(MealMacrosDto()) { acc, m ->
+                MealMacrosDto(
+                    calories = acc.calories + m.macros.calories,
+                    protein = acc.protein + m.macros.protein,
+                    carbs = acc.carbs + m.macros.carbs,
+                    fat = acc.fat + m.macros.fat,
+                )
+            }
+        return MealMacrosDto(
+            calories = (targets.calories - consumed.calories).coerceAtLeast(0.0),
+            protein = (targets.protein - consumed.protein).coerceAtLeast(0.0),
+            carbs = (targets.carbs - consumed.carbs).coerceAtLeast(0.0),
+            fat = (targets.fat - consumed.fat).coerceAtLeast(0.0),
+        )
+    }
+
+    fun scanMenu(bytes: ByteArray) {
+        scope.launch {
+            analyzing = true
+            error = null
+            menuPicks = emptyList()
+            menuRestaurant = null
+            mealRepository.analyzeMenuRanked(bytes, remainingMacros(), date).fold(
+                onSuccess = {
+                    menuPicks = it.items
+                    menuRestaurant = it.restaurantName
+                    if (it.items.isEmpty()) error = "Couldn't read any menu items. Try a clearer screenshot."
+                },
+                onFailure = { error = it.message },
+            )
+            analyzing = false
+        }
+    }
+
     val pickPhoto = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
+        if (advancedMode == MealInputMode.Menu) {
+            runCatching { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+                ?.let(::scanMenu) ?: run { error = "Could not read image" }
+            return@rememberLauncherForActivityResult
+        }
         scope.launch {
             analyzing = true
             error = null
@@ -175,7 +226,6 @@ fun AddMealSheet(
                 val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: error("Could not read image")
                 val analyze = when (advancedMode) {
-                    MealInputMode.Menu -> mealRepository::analyzeMenu
                     MealInputMode.Receipt -> mealRepository::analyzeReceipt
                     else -> mealRepository::analyzePhoto
                 }
@@ -186,6 +236,29 @@ fun AddMealSheet(
             }.onFailure { error = it.message }
             analyzing = false
         }
+    }
+
+    LaunchedEffect(sharedMenuImage) {
+        val bytes = sharedMenuImage ?: return@LaunchedEffect
+        advancedMode = MealInputMode.Menu
+        runWithConsent { scanMenu(bytes) }
+    }
+
+    fun menuPickName(pick: MenuPickDto): String =
+        menuRestaurant?.takeIf { it.isNotBlank() }?.let { "${pick.name} ($it)" } ?: pick.name
+
+    /** One tap: save the pick as-is. */
+    fun logMenuPick(pick: MenuPickDto) {
+        onSave(
+            MealEntryDto(
+                id = UUID.randomUUID().toString(),
+                date = date,
+                mealType = mealType.lowercase(),
+                name = menuPickName(pick),
+                macros = pick.estimatedMacros,
+                loggedAt = Instant.now().toString(),
+            ),
+        )
     }
 
     fun applySuggestion(s: SuggestedMealDto) {
@@ -391,7 +464,7 @@ fun AddMealSheet(
                 MealInputMode.Photo, MealInputMode.Menu, MealInputMode.Receipt -> {
                     Text(
                         when (advancedMode) {
-                            MealInputMode.Menu -> "Select a menu photo to extract items and macros."
+                            MealInputMode.Menu -> "Pick a menu photo or an Uber Eats / DoorDash screenshot. We'll flag what fits your macros. (Tip: share a screenshot straight to Recomp.)"
                             MealInputMode.Receipt -> "Select a receipt photo to extract food items."
                             else -> "Select a meal photo for AI nutrition analysis."
                         },
@@ -600,6 +673,22 @@ fun AddMealSheet(
                 }
             }
             error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+
+            if (advancedMode == MealInputMode.Menu && menuPicks.isNotEmpty()) {
+                Text(
+                    menuRestaurant?.let { "$it — ranked for your macros" } ?: "Ranked for your macros",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                menuPicks.forEach { pick ->
+                    MenuPickRow(
+                        pick = pick,
+                        onLog = { logMenuPick(pick) },
+                        onEdit = {
+                            applySuggestion(SuggestedMealDto(menuPickName(pick), macros = pick.estimatedMacros))
+                        },
+                    )
+                }
+            }
 
             if (suggestions.isNotEmpty()) {
                 Text("Results", style = MaterialTheme.typography.titleSmall)

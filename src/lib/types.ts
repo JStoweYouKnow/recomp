@@ -298,10 +298,22 @@ export interface Milestone {
   progress?: number; // for partial progress
 }
 
+export interface RestaurantPick {
+  name: string;
+  estimatedMacros: Macros;
+  /** "official" = restaurant-published nutrition; otherwise an estimate. */
+  source?: string;
+  fitScore: number;
+  fitReason: string;
+  recommended: boolean;
+}
+
 export interface RicoMessage {
   role: "user" | "assistant";
   content: string;
   at: string;
+  /** Ranked menu picks from the recommend_restaurant_order tool. */
+  restaurantPicks?: { restaurant: string; items: RestaurantPick[] };
 }
 
 export interface WeeklyReview {

@@ -24,6 +24,21 @@ struct CoachChatView: View {
                         ForEach(coachService.messages, id: \.id) { message in
                             MessageBubble(message: message)
                                 .id(message.id)
+                            if let picks = coachService.restaurantPicks[message.id] {
+                                RestaurantPicksCard(
+                                    picks: picks,
+                                    isLogged: { coachService.loggedPickKeys.contains("\(message.id)#\($0.name)") },
+                                    onLog: { pick in
+                                        coachService.logRestaurantPick(
+                                            pick,
+                                            restaurant: picks.restaurant,
+                                            messageId: message.id,
+                                            context: context
+                                        )
+                                        ToastCenter.show("Logged \(pick.name)", type: .success)
+                                    }
+                                )
+                            }
                         }
 
                         if coachService.isResponding {
@@ -219,6 +234,30 @@ struct MessageBubble: View {
             }
 
             if !isUser { Spacer(minLength: 60) }
+        }
+    }
+}
+
+/// The Ref's ranked picks for a restaurant, each loggable with one tap.
+private struct RestaurantPicksCard: View {
+    let picks: RestaurantPicks
+    let isLogged: (MenuPick) -> Bool
+    let onLog: (MenuPick) -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(picks.restaurant)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                ForEach(picks.items) { pick in
+                    MenuPickRow(pick: pick, isLogged: isLogged(pick), onLog: { onLog(pick) })
+                    if pick.id != picks.items.last?.id { Divider() }
+                }
+            }
+            .padding(12)
+            .background(Color.recompSurface, in: RoundedRectangle(cornerRadius: 14))
+            Spacer(minLength: 24)
         }
     }
 }

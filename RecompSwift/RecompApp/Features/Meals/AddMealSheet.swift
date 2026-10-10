@@ -432,14 +432,14 @@ struct AddMealSheet: View {
 
     private var menuScanSection: some View {
         Section("Menu scan") {
-            PhotosPicker("Select menu photo", selection: $selectedMenuPhoto, matching: .images)
+            PhotosPicker("Select menu photo or delivery screenshot", selection: $selectedMenuPhoto, matching: .images)
                 .onChange(of: selectedMenuPhoto) { _, newValue in
                     guard let item = newValue else { return }
                     vm.menuScanError = nil
                     runWithConsent {
                         Task {
                             guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                            await vm.analyzeMenu(data: data)
+                            await vm.analyzeMenu(data: data, remaining: remainingMacros, date: date)
                         }
                     }
                 }
@@ -449,7 +449,49 @@ struct AddMealSheet: View {
             if let err = vm.menuScanError {
                 Text(err).font(.caption).foregroundStyle(Color.appError)
             }
+            if vm.menuPicks.isEmpty && !vm.isAnalyzing {
+                Text("Screenshot a restaurant in Uber Eats or DoorDash and we'll flag the items that fit your macros.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(vm.menuPicks) { pick in
+                MenuPickRow(pick: pick, onEdit: { applyMenuPick(pick) }, onLog: { logMenuPick(pick) })
+            }
         }
+    }
+
+    /// Today's remaining budget for `date`, from plan targets minus meals already logged.
+    private var remainingMacros: Macros {
+        let target = planService.targets(for: DateHelpers.date(from: date) ?? .now, context: context)
+        let consumed = allMeals
+            .filter { $0.date == date }
+            .reduce(Macros.zero) { $0.adding($1.macros) }
+        return Macros(
+            calories: max(0, target.calories - consumed.calories),
+            protein: max(0, target.protein - consumed.protein),
+            carbs: max(0, target.carbs - consumed.carbs),
+            fat: max(0, target.fat - consumed.fat)
+        )
+    }
+
+    private func menuPickName(_ pick: MenuPick) -> String {
+        if let r = vm.menuRestaurant, !r.isEmpty { return "\(pick.name) (\(r))" }
+        return pick.name
+    }
+
+    private func applyMenuPick(_ pick: MenuPick) {
+        name = menuPickName(pick)
+        calories = pick.estimatedMacros.calories
+        protein = pick.estimatedMacros.protein
+        carbs = pick.estimatedMacros.carbs
+        fat = pick.estimatedMacros.fat
+        servings = 1
+    }
+
+    /// One tap: log the pick as-is and close the sheet.
+    private func logMenuPick(_ pick: MenuPick) {
+        applyMenuPick(pick)
+        saveMeal()
     }
 
     private var receiptScanSection: some View {

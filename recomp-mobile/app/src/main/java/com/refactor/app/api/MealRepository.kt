@@ -3,6 +3,7 @@ package com.refactor.app.api
 import com.refactor.app.BuildConfig
 import com.refactor.app.api.dto.MealMacrosDto
 import com.refactor.app.api.dto.MealSuggestResponseDto
+import com.refactor.app.api.dto.MenuAnalysisDto
 import com.refactor.app.api.dto.NutritionLookupResponseDto
 import com.refactor.app.api.dto.RecipeParseResponseDto
 import com.refactor.app.api.dto.RecipeSaveResponseDto
@@ -60,6 +61,37 @@ class MealRepository(
                 )
             }
         }
+
+    /**
+     * Menu photo or delivery-app screenshot → items ranked against [remaining]
+     * (the server derives the budget from the user's plan when null).
+     */
+    suspend fun analyzeMenuRanked(
+        imageBytes: ByteArray,
+        remaining: MealMacrosDto?,
+        date: String,
+    ): Result<MenuAnalysisDto> = runCatching {
+        val response = client.post("$baseUrl/api/meals/analyze-menu") {
+            setBody(
+                MultiPartFormDataContent(
+                    formData {
+                        append("date", date)
+                        remaining?.let { append("remainingMacros", SyncJson.format.encodeToString(MealMacrosDto.serializer(), it)) }
+                        append(
+                            "image",
+                            imageBytes,
+                            Headers.build {
+                                append(HttpHeaders.ContentType, "image/jpeg")
+                                append(HttpHeaders.ContentDisposition, "form-data; name=\"image\"; filename=\"menu.jpg\"")
+                            },
+                        )
+                    },
+                ),
+            )
+        }
+        response.ensureSuccessOrThrow()
+        SyncJson.format.decodeFromString<MenuAnalysisDto>(response.bodyAsText())
+    }
 
     suspend fun analyzeReceipt(imageBytes: ByteArray): Result<List<SuggestedMealDto>> =
         uploadImage("$baseUrl/api/meals/analyze-receipt", imageBytes) { raw ->
