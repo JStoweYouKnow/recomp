@@ -3,6 +3,7 @@ import { invokeNovaWithExtendedThinking } from "@/lib/nova";
 import { logError, logInfo, withRequestLogging } from "@/lib/logger";
 import type { UserProfile, FitnessPlan, Macros, MeasurementTargets } from "@/lib/types";
 import { calculateMacros, splitTrainingRestTargets, type MacroCalculatorInput } from "@/lib/macro-calculator";
+import { seedWeekdayTargetsFromPlan } from "@/lib/weekday-macros";
 import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/lib/auth";
 import {
@@ -426,6 +427,12 @@ function buildStarterPlan(profile: UserProfile, userId: string, macroInputs: Mac
   });
 
   const { trainingTargets: starterTraining, restTargets: starterRest } = splitTrainingRestTargets(dailyTargets);
+  const weekdayTargets = seedWeekdayTargetsFromPlan(
+    dailyTargets,
+    starterTraining,
+    starterRest,
+    workoutPlanDays
+  );
   return {
     id: uuidv4(),
     userId,
@@ -434,6 +441,7 @@ function buildStarterPlan(profile: UserProfile, userId: string, macroInputs: Mac
       dailyTargets,
       trainingTargets: starterTraining,
       restTargets: starterRest,
+      weekdayTargets,
       weeklyPlan: dietPlanDays,
       tips: goalMeals.tips,
     },
@@ -709,6 +717,20 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
     parsed.dailyTargets = computedDailyTargets;
     parsed.dietDays = alignDietDaysToDailyTargets(parsed.dietDays, computedDailyTargets);
 
+    const workoutDays = parsed.workoutDays.map((d) => ({
+      day: d.day,
+      focus: d.focus,
+      warmups: d.warmups ?? [],
+      exercises: d.exercises,
+      finishers: d.finishers ?? [],
+    }));
+    const weekdayTargets = seedWeekdayTargetsFromPlan(
+      parsed.dailyTargets,
+      trainingTargets,
+      restTargets,
+      workoutDays
+    );
+
     const plan: FitnessPlan = {
       id: uuidv4(),
       userId,
@@ -717,6 +739,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
         dailyTargets: parsed.dailyTargets,
         trainingTargets,
         restTargets,
+        weekdayTargets,
         weeklyPlan: parsed.dietDays.map((d) => ({
           day: d.day,
           meals: d.meals.map((m) => ({
@@ -728,13 +751,7 @@ OUTPUT FORMAT (your entire reply must be valid JSON):
         tips: parsed.dietTips,
       },
       workoutPlan: {
-        weeklyPlan: parsed.workoutDays.map((d) => ({
-          day: d.day,
-          focus: d.focus,
-          warmups: d.warmups ?? [],
-          exercises: d.exercises,
-          finishers: d.finishers ?? [],
-        })),
+        weeklyPlan: workoutDays,
         tips: parsed.workoutTips,
       },
     };

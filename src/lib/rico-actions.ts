@@ -1,4 +1,6 @@
-import type { FitnessPlan, MealEntry, WorkoutExercise } from "./types";
+import type { FitnessPlan, MealEntry, WorkoutExercise, Macros } from "./types";
+import { WEEKDAY_KEYS, type WeekdayKey } from "./weekday-macros";
+import { splitTrainingRestTargets } from "./macro-calculator";
 import type { RegeneratePlanOptions } from "./multi-week-plan";
 import { parseRegeneratePlanPayload } from "./multi-week-plan";
 import { getTodayLocal, getWeekStart, parseClientDateString } from "./date-utils";
@@ -66,12 +68,19 @@ export function applyRicoActionsToState(
           break;
         }
         const p = act.payload;
-        plan.dietPlan.dailyTargets = {
+        const daily: Macros = {
           calories: num(p.calories),
           protein: num(p.protein),
           carbs: num(p.carbs),
           fat: num(p.fat),
         };
+        plan.dietPlan.dailyTargets = daily;
+        const { trainingTargets, restTargets } = splitTrainingRestTargets(daily);
+        plan.dietPlan.trainingTargets = trainingTargets;
+        plan.dietPlan.restTargets = restTargets;
+        const weekday = {} as Record<WeekdayKey, Macros>;
+        for (const key of WEEKDAY_KEYS) weekday[key] = daily;
+        plan.dietPlan.weekdayTargets = weekday;
         changed = true;
         touchedPlan = true;
         applied.push("update_macros");

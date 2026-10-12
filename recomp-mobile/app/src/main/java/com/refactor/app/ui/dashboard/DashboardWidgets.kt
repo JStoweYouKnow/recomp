@@ -114,29 +114,13 @@ fun sumMacrosForDate(meals: List<MealEntryDto>?, date: String): MealMacrosDto {
 fun defaultMacroTargets(): MealMacrosDto =
     MealMacrosDto(calories = 2000.0, protein = 150.0, carbs = 200.0, fat = 65.0)
 
-/** Matches iOS `PlanService.todaysTargets` — training/rest split by today's workout. */
+/** Matches iOS `PlanService.todaysTargets` — weekday map when set, else training/rest split. */
 fun todaysMacroTargets(snap: SyncGetResponse, date: LocalDate = LocalDate.now()): MealMacrosDto {
     val fallback = defaultMacroTargets()
     val plan = snap.plan ?: return fallback
-    val diet = plan.dietPlan ?: return fallback
-
-    val workoutDay = WorkoutProgramSchedule.planIndexForDate(plan, date)
-        ?.let { idx -> plan.workoutPlan?.weeklyPlan?.getOrNull(idx) }
-
-    if (workoutDay != null) {
-        val focus = workoutDay.focus.lowercase()
-        val isRest = focus.contains("rest") || focus.contains("recovery") || focus.contains("off")
-        if (isRest) {
-            diet.restTargets?.takeIf { it.calories > 0 }?.let { return it }
-        } else {
-            diet.trainingTargets?.takeIf { it.calories > 0 }?.let { return it }
-        }
-    } else {
-        diet.restTargets?.takeIf { it.calories > 0 }?.let { return it }
+    return com.refactor.app.domain.WeekdayMacros.resolve(plan, date).let {
+        if (it.calories > 0) it else fallback
     }
-
-    val daily = diet.dailyTargets ?: MealMacrosDto()
-    return if (daily.calories > 0) daily else fallback
 }
 
 fun activityCalorieAdjustmentForDate(log: List<com.refactor.app.api.dto.ActivityLogEntryDto>?, date: String): Int =

@@ -52,14 +52,43 @@ struct WorkoutsView: View {
     private func dismissRestTimer(playChime: Bool = false) {
         guard restTimer != nil else { return }
         if playChime { Haptics.chime() }
-        withAnimation { restTimer = nil }
         RestTimerNotifier.cancel()
+        // Avoid `withAnimation` here — dismissing during a TimelineView tick or set
+        // completion was still crashing with "Publishing changes from within view updates".
+        restTimer = nil
+    }
+
+    private func startRestTimer(exerciseName: String, seconds: Int) {
+        Task { @MainActor in
+            await Task.yield()
+            if let plan = currentPlan, let item = selectedWorkoutItem(plan: plan) {
+                let progressKey = WorkoutProgramSchedule.progressDayKey(
+                    for: item.day,
+                    weekContaining: selectedDate
+                )
+                // Last set of the workout — onChange will present the summary; skip rest UI.
+                if workoutService.isWorkoutDayFullyComplete(
+                    item.day,
+                    dayKey: progressKey,
+                    planIndex: item.planIndex,
+                    planId: plan.id
+                ) {
+                    return
+                }
+            }
+            restTimer = RestTimerState(
+                exerciseName: exerciseName,
+                endDate: .now.addingTimeInterval(TimeInterval(seconds)),
+                totalSeconds: seconds
+            )
+            RestTimerNotifier.schedule(after: seconds, exerciseName: exerciseName)
+        }
     }
 
     private func extendRestTimer(by seconds: Int) {
         guard var timer = restTimer else { return }
         timer.extend(by: seconds)
-        withAnimation { restTimer = timer }
+        restTimer = timer
         RestTimerNotifier.schedule(
             after: max(1, Int(timer.endDate.timeIntervalSinceNow.rounded())),
             exerciseName: timer.exerciseName
@@ -144,14 +173,7 @@ struct WorkoutsView: View {
                                         editRoute = WorkoutDayEditRoute(planIndex: item.planIndex)
                                     },
                                     onStartRestTimer: { exerciseName, seconds in
-                                        withAnimation(.spring(duration: 0.3)) {
-                                            restTimer = RestTimerState(
-                                                exerciseName: exerciseName,
-                                                endDate: .now.addingTimeInterval(TimeInterval(seconds)),
-                                                totalSeconds: seconds
-                                            )
-                                        }
-                                        RestTimerNotifier.schedule(after: seconds, exerciseName: exerciseName)
+                                        startRestTimer(exerciseName: exerciseName, seconds: seconds)
                                     },
                                     onCancelRestTimer: {
                                         dismissRestTimer()
@@ -728,6 +750,7 @@ struct WorkoutDayCard: View {
             guard complete, isToday, !setsDisabled else { return }
             Task { @MainActor in
                 onCancelRestTimer?()
+                await Task.yield()
                 finishWorkoutDay()
             }
         }
@@ -1362,9 +1385,9 @@ struct ExerciseRow: View {
     private func setRPE(_ index: Int, _ value: Double?) {
         guard sets.indices.contains(index) else { return }
         sets[index].rpe = value
-        // Keep an already-logged set in sync so a rating added after the checkmark
-        // still reaches the progression engine.
-        relogIfComplete(index)
+        Task { @MainActor in
+            relogIfComplete(index)
+        }
     }
 
     private func addSet() {
@@ -1383,15 +1406,17 @@ struct ExerciseRow: View {
     private func removeLastSet() {
         guard sets.count > prescribedSetCount, let index = sets.indices.last else { return }
         if isSetComplete(index) {
-            workoutService.unmarkSetComplete(
-                exerciseName: exercise.name,
-                setIndex: index,
-                dayKey: progressDayKey,
-                planIndex: planIndex,
-                globalSlot: globalSlot,
-                webContext: webContext,
-                exerciseForWeb: exercise
-            )
+            Task { @MainActor in
+                workoutService.unmarkSetComplete(
+                    exerciseName: exercise.name,
+                    setIndex: index,
+                    dayKey: progressDayKey,
+                    planIndex: planIndex,
+                    globalSlot: globalSlot,
+                    webContext: webContext,
+                    exerciseForWeb: exercise
+                )
+            }
         }
         sets.removeLast()
     }
@@ -1401,24 +1426,30 @@ struct ExerciseRow: View {
         hideKeyboard()
 
         if isSetComplete(index) {
-            workoutService.unmarkSetComplete(
-                exerciseName: exercise.name,
-                setIndex: index,
-                dayKey: progressDayKey,
-                planIndex: planIndex,
-                globalSlot: globalSlot,
-                webContext: webContext,
-                exerciseForWeb: exercise
-            )
             Haptics.impact(.soft)
-            onCancelRestTimer?()
+            Task { @MainActor in
+                workoutService.unmarkSetComplete(
+                    exerciseName: exercise.name,
+                    setIndex: index,
+                    dayKey: progressDayKey,
+                    planIndex: planIndex,
+                    globalSlot: globalSlot,
+                    webContext: webContext,
+                    exerciseForWeb: exercise
+                )
+                onCancelRestTimer?()
+            }
             return
         }
 
-        logSet(index)
         Haptics.impact(.light)
-        celebratePRIfEarned(index)
-        onStartRestTimer?(exercise.name, exercise.restSeconds)
+        // Defer observable + parent `@State` updates out of the button action — doing
+        // both synchronously while SwiftUI re-renders set rows caused intermittent crashes.
+        Task { @MainActor in
+            logSet(index)
+            celebratePRIfEarned(index)
+            onStartRestTimer?(exercise.name, exercise.restSeconds)
+        }
     }
 
     /// Writes this set's own weight/reps/RPE. Weight is converted to pounds because
@@ -1508,9 +1539,17 @@ private extension Array {
 // MARK: - Rest Timer
 
 struct RestTimerState: Equatable {
+    let id: UUID
     var exerciseName: String
     var endDate: Date
     var totalSeconds: Int
+
+    init(exerciseName: String, endDate: Date, totalSeconds: Int) {
+        self.id = UUID()
+        self.exerciseName = exerciseName
+        self.endDate = endDate
+        self.totalSeconds = totalSeconds
+    }
 
     mutating func extend(by seconds: Int) {
         endDate = endDate.addingTimeInterval(TimeInterval(seconds))
@@ -1524,23 +1563,35 @@ struct RestTimerBanner: View {
     let onAdd15: () -> Void
     let onFinished: () -> Void
 
+    @State private var remaining: Int = 0
+
+    private var taskToken: String {
+        "\(state.id.uuidString)-\(state.endDate.timeIntervalSince1970)"
+    }
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = max(0, Int(ceil(state.endDate.timeIntervalSince(context.date))))
-            bannerContent(remaining: remaining)
-        }
-        // Never call `onFinished` from `onAppear` inside TimelineView — that mutates
-        // parent `@State` during a view update and can crash SwiftUI mid-countdown.
-        .task(id: state.endDate) {
-            let delay = state.endDate.timeIntervalSinceNow
-            if delay > 0 {
-                try? await Task.sleep(for: .seconds(delay))
+        bannerContent(remaining: remaining)
+            .onAppear {
+                remaining = secondsRemaining()
             }
-            guard !Task.isCancelled else { return }
-            await MainActor.run {
+            // TimelineView ticked every second while parent `@State` changed — replaced
+            // with a cancellable task so countdown + completion never fight SwiftUI layout.
+            .task(id: taskToken) {
+                while !Task.isCancelled {
+                    let next = secondsRemaining()
+                    remaining = next
+                    if next <= 0 { break }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+                guard !Task.isCancelled else { return }
+                await Task.yield()
+                guard !Task.isCancelled else { return }
                 onFinished()
             }
-        }
+    }
+
+    private func secondsRemaining() -> Int {
+        max(0, Int(ceil(state.endDate.timeIntervalSinceNow)))
     }
 
     @ViewBuilder
@@ -1560,7 +1611,6 @@ struct RestTimerBanner: View {
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Color.appAccent)
-                    .contentTransition(.numericText())
             }
 
             GeometryReader { geo in

@@ -15,6 +15,7 @@ import {
   replaceWorkoutSetLogsFromServer,
 } from "@/lib/storage";
 import { buildRicoWorkoutLearningContext } from "@/lib/workout-learning";
+import { resolveMacroTargetsForDate, resolveMacroTargetsForToday } from "@/lib/weekday-macros";
 import { hasCompletedDeloadWeek } from "@/lib/mesocycle";
 import { trainingWeeksElapsed } from "@/lib/workout-schedule";
 import { remainingMacros } from "@/lib/recipe-fit";
@@ -284,7 +285,7 @@ export default function Home() {
     // log meals must still be evaluated.
     if (meals.length === 0 && setLogs.length === 0 && wData.length === 0) return;
 
-    const targets = plan.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+    const targets = resolveMacroTargetsForToday(plan, getTodayLocal());
     const conns = getWearableConnections();
     const wearableCount = conns.length + (wData.length > 0 ? 1 : 0);
     const stored = getMilestones();
@@ -359,7 +360,9 @@ export default function Home() {
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   );
-  const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
+  const targets = plan
+    ? resolveMacroTargetsForToday(plan, today)
+    : { calories: 2000, protein: 150, carbs: 200, fat: 65 };
 
   const handleOnboard = async (data: Partial<UserProfile> & { password?: string }) => {
     const newProfile: UserProfile = {
@@ -754,6 +757,7 @@ export default function Home() {
               meals={meals}
               todaysMeals={todaysMeals}
               todaysTotals={todaysTotals}
+              plan={plan}
               targets={targets}
               goal={profile?.goal ?? "maintain"}
               onAddMeal={(m) => {
@@ -803,7 +807,7 @@ export default function Home() {
               wearableData={wearableData}
               meals={meals}
               streak={getCurrentStreakFromMeals(meals)}
-              macroTargets={plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
+              macroTargets={plan ? resolveMacroTargetsForToday(plan, today) : { calories: 2000, protein: 150, carbs: 200, fat: 65 }}
               onDataFetched={(data) => {
                 const merged = mergeWearableIncoming(getWearableData(), data as WearableDaySummary[]);
                 saveWearableData(merged);
@@ -830,7 +834,7 @@ export default function Home() {
               result={adjustResult}
               loading={loading}
               onAdjust={handleAdjust}
-              onApplyAdjustments={({ daily, training, rest }) => {
+              onApplyAdjustments={({ daily, training, rest, weekdayTargets }) => {
                 if (plan) {
                   setHasAdjustedPlan();
                   const updated = {
@@ -840,6 +844,7 @@ export default function Home() {
                       ...(daily ? { dailyTargets: daily } : {}),
                       ...(training !== undefined ? { trainingTargets: training } : {}),
                       ...(rest !== undefined ? { restTargets: rest } : {}),
+                      ...(weekdayTargets ? { weekdayTargets } : {}),
                     },
                   };
                   savePlan(updated);
@@ -935,7 +940,7 @@ export default function Home() {
               })(),
               activeFast: getActiveFastingSession() ? "User is currently fasting" : null,
               workoutPlan: plan?.workoutPlan ?? null,
-              macroTargets: plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 },
+              macroTargets: plan ? resolveMacroTargetsForToday(plan, getTodayLocal()) : { calories: 2000, protein: 150, carbs: 200, fat: 65 },
               todayMacros: (() => {
                 const today = getTodayLocal();
                 return meals
@@ -951,8 +956,10 @@ export default function Home() {
                   );
               })(),
               remainingMacros: (() => {
-                const targets = plan?.dietPlan?.dailyTargets ?? { calories: 2000, protein: 150, carbs: 200, fat: 65 };
                 const today = getTodayLocal();
+                const targets = plan
+                  ? resolveMacroTargetsForToday(plan, today)
+                  : { calories: 2000, protein: 150, carbs: 200, fat: 65 };
                 const consumed = meals
                   .filter((m) => m.date === today)
                   .reduce(

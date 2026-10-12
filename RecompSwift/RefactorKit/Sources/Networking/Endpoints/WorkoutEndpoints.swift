@@ -103,6 +103,22 @@ public struct WorkoutAdaptResult: Sendable {
     public let catalogApplied: Int
     public let llmApplied: Int
 
+    public init(
+        workout: WorkoutDay,
+        days: [WorkoutDay]?,
+        swaps: [WorkoutAdaptSwap],
+        learnedApplied: Int,
+        catalogApplied: Int,
+        llmApplied: Int
+    ) {
+        self.workout = workout
+        self.days = days
+        self.swaps = swaps
+        self.learnedApplied = learnedApplied
+        self.catalogApplied = catalogApplied
+        self.llmApplied = llmApplied
+    }
+
     public var isFullProgram: Bool {
         (days?.count ?? 0) > 1
     }
@@ -119,6 +135,12 @@ public struct WorkoutImportResult: Sendable {
     public let workout: WorkoutDay
     public let days: [WorkoutDay]?
     public let programTitle: String?
+
+    public init(workout: WorkoutDay, days: [WorkoutDay]?, programTitle: String?) {
+        self.workout = workout
+        self.days = days
+        self.programTitle = programTitle
+    }
 
     public var isFullProgram: Bool {
         (days?.count ?? 0) > 1

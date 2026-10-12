@@ -1,5 +1,6 @@
 package com.refactor.app.ui.more
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -144,7 +146,12 @@ fun SyncProfileScreen(onBack: (() -> Unit)?, syncCacheDao: SyncCacheDao) {
     }
 }
 
-private enum class TargetMode { Base, Training, Rest }
+private data class MacroFieldStrings(
+    val cal: String = "",
+    val pro: String = "",
+    val carb: String = "",
+    val fat: String = "",
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -162,23 +169,12 @@ fun SyncAdjustScreen(
     }
     val plan = snap?.plan
 
-    // Macro editor state (Base)
-    var baseCal by rememberSaveable { mutableStateOf("") }
-    var basePro by rememberSaveable { mutableStateOf("") }
-    var baseCarb by rememberSaveable { mutableStateOf("") }
-    var baseFat by rememberSaveable { mutableStateOf("") }
-    // Training
-    var trainCal by rememberSaveable { mutableStateOf("") }
-    var trainPro by rememberSaveable { mutableStateOf("") }
-    var trainCarb by rememberSaveable { mutableStateOf("") }
-    var trainFat by rememberSaveable { mutableStateOf("") }
-    // Rest
-    var restCal by rememberSaveable { mutableStateOf("") }
-    var restPro by rememberSaveable { mutableStateOf("") }
-    var restCarb by rememberSaveable { mutableStateOf("") }
-    var restFat by rememberSaveable { mutableStateOf("") }
-
-    var targetMode by rememberSaveable { mutableStateOf(TargetMode.Base) }
+    var activeWeekday by rememberSaveable { mutableStateOf(com.refactor.app.domain.WeekdayKey.Mon) }
+    var fieldsByDay by remember { mutableStateOf<Map<com.refactor.app.domain.WeekdayKey, MacroFieldStrings>>(emptyMap()) }
+    var cal by rememberSaveable { mutableStateOf("") }
+    var pro by rememberSaveable { mutableStateOf("") }
+    var carb by rememberSaveable { mutableStateOf("") }
+    var fat by rememberSaveable { mutableStateOf("") }
     var targetSaveError by remember { mutableStateOf<String?>(null) }
     var targetSaved by remember { mutableStateOf(false) }
     var savingTargets by remember { mutableStateOf(false) }
@@ -191,41 +187,24 @@ fun SyncAdjustScreen(
     var applyingChanges by remember { mutableStateOf(false) }
     var changesSaved by remember { mutableStateOf(false) }
 
-    // Populate fields from plan on first load
+    fun loadActiveWeekdayFields(map: Map<com.refactor.app.domain.WeekdayKey, MacroFieldStrings>) {
+        val f = map[activeWeekday] ?: MacroFieldStrings()
+        cal = f.cal; pro = f.pro; carb = f.carb; fat = f.fat
+    }
+
     LaunchedEffect(plan?.id) {
-        val base = plan?.dietPlan?.dailyTargets
-        if (base != null) {
-            baseCal = base.calories.roundToInt().toString()
-            basePro = base.protein.roundToInt().toString()
-            baseCarb = base.carbs.roundToInt().toString()
-            baseFat = base.fat.roundToInt().toString()
+        val p = plan ?: return@LaunchedEffect
+        val map = com.refactor.app.domain.WeekdayMacros.effectiveWeekdayMap(p)
+        val next = map.mapValues { (_, m) ->
+            MacroFieldStrings(
+                cal = m.calories.roundToInt().toString(),
+                pro = m.protein.roundToInt().toString(),
+                carb = m.carbs.roundToInt().toString(),
+                fat = m.fat.roundToInt().toString(),
+            )
         }
-        val train = plan?.dietPlan?.trainingTargets
-        if (train != null) {
-            trainCal = train.calories.roundToInt().toString()
-            trainPro = train.protein.roundToInt().toString()
-            trainCarb = train.carbs.roundToInt().toString()
-            trainFat = train.fat.roundToInt().toString()
-        } else if (base != null) {
-            // Formula defaults
-            trainCal = (base.calories.roundToInt() + 200).toString()
-            trainPro = base.protein.roundToInt().toString()
-            trainCarb = (base.carbs.roundToInt() + 50).toString()
-            trainFat = base.fat.roundToInt().toString()
-        }
-        val rest = plan?.dietPlan?.restTargets
-        if (rest != null) {
-            restCal = rest.calories.roundToInt().toString()
-            restPro = rest.protein.roundToInt().toString()
-            restCarb = rest.carbs.roundToInt().toString()
-            restFat = rest.fat.roundToInt().toString()
-        } else if (base != null) {
-            // Formula defaults
-            restCal = maxOf(0, base.calories.roundToInt() - 200).toString()
-            restPro = base.protein.roundToInt().toString()
-            restCarb = maxOf(0, base.carbs.roundToInt() - 50).toString()
-            restFat = base.fat.roundToInt().toString()
-        }
+        fieldsByDay = next
+        loadActiveWeekdayFields(next)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -252,83 +231,70 @@ fun SyncAdjustScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Macro Targets", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Set separate targets for training and rest days, or a single base average.",
+                        "Set calories and macros for each day of the week (Mon–Sun).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
 
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        val modes = TargetMode.entries
-                        modes.forEachIndexed { i, mode ->
-                            SegmentedButton(
-                                selected = targetMode == mode,
-                                onClick = { targetMode = mode },
-                                shape = SegmentedButtonDefaults.itemShape(i, modes.size),
-                            ) {
-                                Text(mode.name, style = MaterialTheme.typography.labelMedium)
-                            }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        com.refactor.app.domain.WeekdayKey.all.forEach { day ->
+                            FilterChip(
+                                selected = activeWeekday == day,
+                                onClick = {
+                                    fieldsByDay = fieldsByDay + (activeWeekday to MacroFieldStrings(cal, pro, carb, fat))
+                                    activeWeekday = day
+                                    loadActiveWeekdayFields(fieldsByDay)
+                                },
+                                label = { Text(day.shortLabel) },
+                            )
                         }
                     }
 
-                    when (targetMode) {
-                        TargetMode.Base -> {
-                            Text(
-                                "Weekly average — used as a fallback when no workout is scheduled.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    MacroFieldsRow(
+                        cal = cal, onCal = { cal = it },
+                        pro = pro, onPro = { pro = it },
+                        carb = carb, onCarb = { carb = it },
+                        fat = fat, onFat = { fat = it },
+                    )
+
+                    Button(
+                        onClick = {
+                            val p = plan ?: return@Button
+                            val b = p.dietPlan?.dailyTargets ?: return@Button
+                            val training = p.dietPlan?.trainingTargets ?: MealMacrosDto(
+                                calories = b.calories + 200,
+                                protein = b.protein,
+                                carbs = b.carbs + 50,
+                                fat = b.fat,
                             )
-                            MacroFieldsRow(
-                                cal = baseCal, onCal = { baseCal = it },
-                                pro = basePro, onPro = { basePro = it },
-                                carb = baseCarb, onCarb = { baseCarb = it },
-                                fat = baseFat, onFat = { baseFat = it },
+                            val rest = p.dietPlan?.restTargets ?: MealMacrosDto(
+                                calories = maxOf(0.0, b.calories - 200),
+                                protein = b.protein,
+                                carbs = maxOf(0.0, b.carbs - 50),
+                                fat = b.fat,
                             )
-                        }
-                        TargetMode.Training -> {
-                            Text(
-                                "Used on workout days. Formula default: base +200 kcal / +50g carbs.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            val seeded = com.refactor.app.domain.WeekdayMacros.seedFromSchedule(
+                                training,
+                                rest,
+                                p.workoutPlan?.weeklyPlan.orEmpty(),
                             )
-                            MacroFieldsRow(
-                                cal = trainCal, onCal = { trainCal = it },
-                                pro = trainPro, onPro = { trainPro = it },
-                                carb = trainCarb, onCarb = { trainCarb = it },
-                                fat = trainFat, onFat = { trainFat = it },
-                            )
-                            Button(
-                                onClick = {
-                                    val bc = baseCal.toIntOrNull() ?: 2000
-                                    val bcarb = baseCarb.toIntOrNull() ?: 200
-                                    trainCal = (bc + 200).toString()
-                                    trainCarb = (bcarb + 50).toString()
-                                },
-                                colors = ButtonDefaults.textButtonColors(),
-                            ) { Text("Reset to formula") }
-                        }
-                        TargetMode.Rest -> {
-                            Text(
-                                "Used on rest/recovery days. Formula default: base −200 kcal / −50g carbs.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            MacroFieldsRow(
-                                cal = restCal, onCal = { restCal = it },
-                                pro = restPro, onPro = { restPro = it },
-                                carb = restCarb, onCarb = { restCarb = it },
-                                fat = restFat, onFat = { restFat = it },
-                            )
-                            Button(
-                                onClick = {
-                                    val bc = baseCal.toIntOrNull() ?: 2000
-                                    val bcarb = baseCarb.toIntOrNull() ?: 200
-                                    restCal = maxOf(0, bc - 200).toString()
-                                    restCarb = maxOf(0, bcarb - 50).toString()
-                                },
-                                colors = ButtonDefaults.textButtonColors(),
-                            ) { Text("Reset to formula") }
-                        }
-                    }
+                            fieldsByDay = seeded.mapValues { (_, m) ->
+                                MacroFieldStrings(
+                                    cal = m.calories.roundToInt().toString(),
+                                    pro = m.protein.roundToInt().toString(),
+                                    carb = m.carbs.roundToInt().toString(),
+                                    fat = m.fat.roundToInt().toString(),
+                                )
+                            }
+                            loadActiveWeekdayFields(fieldsByDay)
+                        },
+                        colors = ButtonDefaults.textButtonColors(),
+                    ) { Text("Fill from workout schedule") }
 
                     targetSaveError?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -337,36 +303,26 @@ fun SyncAdjustScreen(
                     Button(
                         onClick = {
                             targetSaveError = null
-                            val bc = baseCal.toIntOrNull()
-                            if (bc == null || bc < 800 || bc > 5000) {
-                                targetSaveError = "Base calories must be between 800 and 5000."
-                                return@Button
+                            val mergedMap = fieldsByDay.toMutableMap()
+                            mergedMap[activeWeekday] = MacroFieldStrings(cal, pro, carb, fat)
+                            val weekdayTargets = mutableMapOf<String, MealMacrosDto>()
+                            for (day in com.refactor.app.domain.WeekdayKey.all) {
+                                val f = mergedMap[day] ?: MacroFieldStrings()
+                                val c = f.cal.toIntOrNull()
+                                if (c == null || c < 800 || c > 5000) {
+                                    targetSaveError = "Each day needs calories between 800 and 5000."
+                                    return@Button
+                                }
+                                weekdayTargets[day.key] = MealMacrosDto(
+                                    calories = c.toDouble(),
+                                    protein = f.pro.toDoubleOrNull() ?: 0.0,
+                                    carbs = f.carb.toDoubleOrNull() ?: 0.0,
+                                    fat = f.fat.toDoubleOrNull() ?: 0.0,
+                                )
                             }
                             scope.launch {
                                 savingTargets = true
-                                val base = MealMacrosDto(
-                                    calories = baseCal.toDoubleOrNull() ?: 0.0,
-                                    protein = basePro.toDoubleOrNull() ?: 0.0,
-                                    carbs = baseCarb.toDoubleOrNull() ?: 0.0,
-                                    fat = baseFat.toDoubleOrNull() ?: 0.0,
-                                )
-                                val training = trainCal.toIntOrNull()?.let {
-                                    MealMacrosDto(
-                                        calories = trainCal.toDoubleOrNull() ?: 0.0,
-                                        protein = trainPro.toDoubleOrNull() ?: 0.0,
-                                        carbs = trainCarb.toDoubleOrNull() ?: 0.0,
-                                        fat = trainFat.toDoubleOrNull() ?: 0.0,
-                                    )
-                                }
-                                val rest = restCal.toIntOrNull()?.let {
-                                    MealMacrosDto(
-                                        calories = restCal.toDoubleOrNull() ?: 0.0,
-                                        protein = restPro.toDoubleOrNull() ?: 0.0,
-                                        carbs = restCarb.toDoubleOrNull() ?: 0.0,
-                                        fat = restFat.toDoubleOrNull() ?: 0.0,
-                                    )
-                                }
-                                syncRepository.saveMacroTargets(base, training, rest)
+                                syncRepository.saveWeekdayMacroTargets(weekdayTargets)
                                 syncRepository.pushCachedSnapshot()
                                 savingTargets = false
                                 targetSaved = true
@@ -378,7 +334,7 @@ fun SyncAdjustScreen(
                         if (savingTargets) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                         } else {
-                            Text(if (targetSaved) "Saved!" else "Save targets")
+                            Text(if (targetSaved) "Saved!" else "Save weekly targets")
                         }
                     }
                 }
@@ -482,12 +438,12 @@ fun SyncAdjustScreen(
                                         carbs = maxOf(0.0, t.carbs - 50),
                                         fat = t.fat,
                                     )
-                                    // Update editor fields
-                                    baseCal = t.calories.toString()
-                                    basePro = t.protein.roundToInt().toString()
-                                    baseCarb = t.carbs.roundToInt().toString()
-                                    baseFat = t.fat.roundToInt().toString()
-                                    syncRepository.saveMacroTargets(base, training, rest)
+                                    val weekday = com.refactor.app.domain.WeekdayMacros.seedFromSchedule(
+                                        training,
+                                        rest,
+                                        plan?.workoutPlan?.weeklyPlan.orEmpty(),
+                                    )
+                                    syncRepository.saveMacroTargets(base, training, rest, weekday)
                                     syncRepository.pushCachedSnapshot()
                                     applyingChanges = false
                                     changesSaved = true

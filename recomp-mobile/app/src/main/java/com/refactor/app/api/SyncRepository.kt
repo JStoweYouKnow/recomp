@@ -360,6 +360,7 @@ class SyncRepository(
         base: MealMacrosDto,
         training: MealMacrosDto? = null,
         rest: MealMacrosDto? = null,
+        weekdayTargets: Map<String, MealMacrosDto>? = null,
     ): Result<Unit> = mutateCachedSnapshot { snap ->
         val updatedPlan = snap.plan?.let { fp ->
             fp.copy(
@@ -367,10 +368,31 @@ class SyncRepository(
                     dailyTargets = base,
                     trainingTargets = training,
                     restTargets = rest,
+                    weekdayTargets = weekdayTargets ?: fp.dietPlan?.weekdayTargets,
                 ),
             )
         }
         snap.copy(plan = updatedPlan)
+    }
+
+    /** Saves a full Mon–Sun map and updates weekly average + legacy training/rest fields. */
+    suspend fun saveWeekdayMacroTargets(
+        weekdayTargets: Map<String, MealMacrosDto>,
+    ): Result<Unit> {
+        val avg = com.refactor.app.domain.WeekdayMacros.average(weekdayTargets)
+        val training = MealMacrosDto(
+            calories = avg.calories + 200,
+            protein = avg.protein,
+            carbs = avg.carbs + 50,
+            fat = avg.fat,
+        )
+        val rest = MealMacrosDto(
+            calories = maxOf(0.0, avg.calories - 200),
+            protein = avg.protein,
+            carbs = maxOf(0.0, avg.carbs - 50),
+            fat = avg.fat,
+        )
+        return saveMacroTargets(avg, training, rest, weekdayTargets)
     }
 
     /**
@@ -416,7 +438,12 @@ class SyncRepository(
             carbs = maxOf(0.0, macros.carbs - 50),
             fat = macros.fat,
         )
-        saveMacroTargets(macros, training, rest).getOrThrow()
+        val weekday = com.refactor.app.domain.WeekdayMacros.seedFromSchedule(
+            training = training,
+            rest = rest,
+            workoutDays = snap.plan?.workoutPlan?.weeklyPlan.orEmpty(),
+        )
+        saveMacroTargets(macros, training, rest, weekday).getOrThrow()
         pushCachedSnapshot().getOrThrow()
         macros
     }

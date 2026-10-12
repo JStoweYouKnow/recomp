@@ -8,7 +8,8 @@ import { MemoryRecommendations } from "./meals/MemoryRecommendations";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
 import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
-import type { MealEntry, Macros, CookingAppRecipe } from "@/lib/types";
+import type { MealEntry, Macros, CookingAppRecipe, FitnessPlan } from "@/lib/types";
+import { resolveMacroTargetsForDate } from "@/lib/weekday-macros";
 import { v4 as uuidv4 } from "uuid";
 import { CalendarView } from "./CalendarView";
 import { PantrySection } from "./meals/PantrySection";
@@ -30,6 +31,7 @@ export function MealsView({
   meals,
   todaysMeals,
   todaysTotals,
+  plan,
   targets,
   goal = "maintain",
   onAddMeal,
@@ -39,6 +41,7 @@ export function MealsView({
   meals: MealEntry[];
   todaysMeals: MealEntry[];
   todaysTotals: Macros;
+  plan?: FitnessPlan | null;
   targets: Macros;
   goal?: string;
   onAddMeal: (m: MealEntry) => void;
@@ -48,6 +51,12 @@ export function MealsView({
   const [today, setToday] = useState(() => getTodayLocal());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(today);
+
+  const activeDate = calendarOpen ? selectedDate : today;
+  const targetsForDay = useMemo(() => {
+    if (plan) return resolveMacroTargetsForDate(plan, activeDate);
+    return targets;
+  }, [plan, activeDate, targets]);
 
   useEffect(() => {
     const refreshToday = () => {
@@ -162,10 +171,10 @@ export function MealsView({
     return upcoming.filter((d) => !mealsByDate.has(d));
   }, [meals, today]);
 
-  const remainingCal = Math.max(0, targets.calories - displayTotals.calories);
-  const remainingPro = Math.max(0, targets.protein - displayTotals.protein);
-  const remainingCarbs = Math.max(0, targets.carbs - displayTotals.carbs);
-  const remainingFat = Math.max(0, targets.fat - displayTotals.fat);
+  const remainingCal = Math.max(0, targetsForDay.calories - displayTotals.calories);
+  const remainingPro = Math.max(0, targetsForDay.protein - displayTotals.protein);
+  const remainingCarbs = Math.max(0, targetsForDay.carbs - displayTotals.carbs);
+  const remainingFat = Math.max(0, targetsForDay.fat - displayTotals.fat);
 
   const savedRecipes = useMemo(() => getSavedRecipes(), [meals.length]);
 
@@ -184,7 +193,7 @@ export function MealsView({
       rankMealQuickPicks(
         meals,
         getRecentMealTemplates(),
-        targets,
+        targetsForDay,
         displayTotals,
         {
           calories: remainingCal,
@@ -196,7 +205,7 @@ export function MealsView({
       ),
     [
       meals,
-      targets,
+      targetsForDay,
       displayTotals,
       remainingCal,
       remainingPro,
@@ -266,7 +275,7 @@ export function MealsView({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              remainingMacros: { calories: remainingCal || 500, protein: remainingPro || 30, carbs: Math.max(0, targets.carbs - displayTotals.carbs), fat: Math.max(0, targets.fat - displayTotals.fat) },
+              remainingMacros: { calories: remainingCal || 500, protein: remainingPro || 30, carbs: Math.max(0, targetsForDay.carbs - displayTotals.carbs), fat: Math.max(0, targetsForDay.fat - displayTotals.fat) },
               timeOfDay,
               recentMeals: recentMealNames,
               pantryItems: pantry.map((p) => p.name),
@@ -417,8 +426,6 @@ export function MealsView({
     e.target.value = "";
   };
 
-  /** Date to assign to new meals — uses calendar selection when open, otherwise today */
-  const activeDate = calendarOpen ? selectedDate : today;
   const loggingToPastDay = calendarOpen && selectedDate !== today;
 
   const handleAddReceiptItems = () => {
@@ -807,7 +814,7 @@ export function MealsView({
       <div className="grid gap-4 sm:grid-cols-2">
         <PantrySection />
         <MealPrepSection
-          targets={targets}
+          targets={targetsForDay}
           onAddMeals={(meals) => {
             for (const m of meals) {
               const entry: MealEntry = {
@@ -910,7 +917,7 @@ export function MealsView({
         {(["calories", "protein", "carbs", "fat"] as const).map((k) => (
           <div key={k} className="stat-card !p-4">
             <p className="stat-label">{k}</p>
-            <p className="text-lg font-bold">{displayTotals[k]} <span className="stat-value-dim !text-sm">/ {targets[k]}{k !== "calories" ? "g" : ""}</span></p>
+            <p className="text-lg font-bold">{displayTotals[k]} <span className="stat-value-dim !text-sm">/ {targetsForDay[k]}{k !== "calories" ? "g" : ""}</span></p>
           </div>
         ))}
       </div>
@@ -920,7 +927,7 @@ export function MealsView({
           meals={meals}
           templates={getRecentMealTemplates()}
           savedRecipes={savedRecipes}
-          targets={targets}
+          targets={targetsForDay}
           consumed={displayTotals}
           goal={goal}
           onSelect={applyRecommendation}
@@ -1303,7 +1310,7 @@ export function MealsView({
 
       {/* ─── Recipe macro fit ─── */}
       <AskRefRecipes
-        macroTargets={targets}
+        macroTargets={targetsForDay}
         todayMacros={displayTotals}
         goal={goal}
         onApply={(s) => {

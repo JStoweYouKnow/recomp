@@ -187,38 +187,26 @@ struct AdjustView: View {
 
 // MARK: - Macro targets editor card
 
+private struct MacroFieldStrings {
+    var cal = ""
+    var pro = ""
+    var carb = ""
+    var fat = ""
+}
+
 private struct MacroTargetsEditorCard: View {
     var planService: PlanService
     var context: ModelContext
     var syncEngine: SyncEngine?
 
-    enum TargetMode: String, CaseIterable {
-        case base = "Base"
-        case training = "Training"
-        case rest = "Rest"
-    }
-
-    @State private var mode: TargetMode = .base
+    @State private var activeDay: WeekdayMacroKey = .mon
+    @State private var fieldsByDay: [WeekdayMacroKey: MacroFieldStrings] = [:]
+    @State private var cal = ""
+    @State private var pro = ""
+    @State private var carb = ""
+    @State private var fat = ""
     @State private var saved = false
     @State private var errorMessage: String?
-
-    // Base
-    @State private var baseCal = ""
-    @State private var basePro = ""
-    @State private var baseCarb = ""
-    @State private var baseFat = ""
-
-    // Training
-    @State private var trainCal = ""
-    @State private var trainPro = ""
-    @State private var trainCarb = ""
-    @State private var trainFat = ""
-
-    // Rest
-    @State private var restCal = ""
-    @State private var restPro = ""
-    @State private var restCarb = ""
-    @State private var restFat = ""
 
     private var plan: FitnessPlan? { planService.currentPlan(context: context) }
 
@@ -227,32 +215,35 @@ private struct MacroTargetsEditorCard: View {
             Text("Macro Targets")
                 .font(.headline)
 
-            Text("Set separate targets for training and rest days, or a single base average.")
+            Text("Set calories and macros for each day of the week (Mon–Sun).")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            Picker("", selection: $mode) {
-                ForEach(TargetMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(WeekdayMacroKey.allCases, id: \.self) { day in
+                        Button {
+                            persistActiveDayFields()
+                            activeDay = day
+                            loadActiveDayFields()
+                        } label: {
+                            Text(day.shortLabel)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(activeDay == day ? Color.appAccent.opacity(0.2) : Color.secondary.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
-            .pickerStyle(.segmented)
 
-            switch mode {
-            case .base:
-                modeDescription("Weekly average — used as a fallback when no workout data is available.")
-                macroFields(cal: $baseCal, pro: $basePro, carb: $baseCarb, fat: $baseFat)
-            case .training:
-                modeDescription("Used on workout days. Formula default: base +200 kcal / +50g carbs.")
-                macroFields(cal: $trainCal, pro: $trainPro, carb: $trainCarb, fat: $trainFat)
-                Button("Reset to formula") { resetToFormula(mode: .training) }
-                    .font(.caption)
-                    .foregroundStyle(Color.appAccent)
-            case .rest:
-                modeDescription("Used on rest/recovery days. Formula default: base −200 kcal / −50g carbs.")
-                macroFields(cal: $restCal, pro: $restPro, carb: $restCarb, fat: $restFat)
-                Button("Reset to formula") { resetToFormula(mode: .rest) }
-                    .font(.caption)
-                    .foregroundStyle(Color.appAccent)
-            }
+            macroFields
+
+            Button("Fill from workout schedule") { fillFromSchedule() }
+                .font(.caption)
+                .foregroundStyle(Color.appAccent)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -260,36 +251,37 @@ private struct MacroTargetsEditorCard: View {
                     .foregroundStyle(Color.appError)
             }
 
-            Button {
-                saveCurrentMode()
-            } label: {
-                Text(saved ? "Saved" : "Save targets")
+            Button { saveWeek() } label: {
+                Text(saved ? "Saved" : "Save weekly targets")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .disabled(plan == nil)
         }
-        .onAppear { loadFromPlan() }
-        .onChange(of: plan?.id) { loadFromPlan() }
+        .onAppear { loadFromPlan(); loadActiveDayFields() }
+        .onChange(of: plan?.id) { loadFromPlan(); loadActiveDayFields() }
     }
 
-    private func modeDescription(_ text: String) -> some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-    }
-
-    private func macroFields(cal: Binding<String>, pro: Binding<String>, carb: Binding<String>, fat: Binding<String>) -> some View {
+    private var macroFields: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                macroField("Calories", value: cal, range: 800...5000)
-                macroField("Protein g", value: pro, range: 20...400)
+                macroField("Calories", value: $cal, range: 800...5000)
+                macroField("Protein g", value: $pro, range: 20...400)
             }
             HStack(spacing: 12) {
-                macroField("Carbs g", value: carb, range: 0...600)
-                macroField("Fat g", value: fat, range: 0...200)
+                macroField("Carbs g", value: $carb, range: 0...600)
+                macroField("Fat g", value: $fat, range: 0...200)
             }
         }
+    }
+
+    private func persistActiveDayFields() {
+        fieldsByDay[activeDay] = MacroFieldStrings(cal: cal, pro: pro, carb: carb, fat: fat)
+    }
+
+    private func loadActiveDayFields() {
+        let f = fieldsByDay[activeDay] ?? MacroFieldStrings()
+        cal = f.cal; pro = f.pro; carb = f.carb; fat = f.fat
     }
 
     private func macroField(_ label: String, value: Binding<String>, range: ClosedRange<Int>) -> some View {
@@ -306,55 +298,63 @@ private struct MacroTargetsEditorCard: View {
 
     private func loadFromPlan() {
         guard let p = plan else { return }
-        let b = p.dietPlan.dailyTargets
-        baseCal = "\(b.calories)"; basePro = "\(Int(b.protein))"
-        baseCarb = "\(Int(b.carbs))"; baseFat = "\(Int(b.fat))"
-
-        let t = p.dietPlan.trainingTargets ?? Macros(calories: b.calories + 200, protein: b.protein, carbs: b.carbs + 50, fat: b.fat)
-        trainCal = "\(t.calories)"; trainPro = "\(Int(t.protein))"
-        trainCarb = "\(Int(t.carbs))"; trainFat = "\(Int(t.fat))"
-
-        let r = p.dietPlan.restTargets ?? Macros(calories: b.calories - 200, protein: b.protein, carbs: max(0, b.carbs - 50), fat: b.fat)
-        restCal = "\(r.calories)"; restPro = "\(Int(r.protein))"
-        restCarb = "\(Int(r.carbs))"; restFat = "\(Int(r.fat))"
-    }
-
-    private func resetToFormula(mode: TargetMode) {
-        let baseCals = Int(baseCal) ?? (plan.map { $0.dietPlan.dailyTargets.calories } ?? 2000)
-        let baseCarbs = Int(baseCarb) ?? (plan.map { Int($0.dietPlan.dailyTargets.carbs) } ?? 200)
-        if mode == .training {
-            trainCal = "\(baseCals + 200)"
-            trainCarb = "\(baseCarbs + 50)"
-        } else {
-            restCal = "\(baseCals - 200)"
-            restCarb = "\(max(0, baseCarbs - 50))"
+        let map = WeekdayMacros.effectiveWeekdayMap(for: p)
+        var next = [WeekdayMacroKey: MacroFieldStrings]()
+        for key in WeekdayMacroKey.allCases {
+            let m = map[key] ?? p.dietPlan.dailyTargets
+            next[key] = MacroFieldStrings(
+                cal: "\(m.calories)",
+                pro: "\(Int(m.protein))",
+                carb: "\(Int(m.carbs))",
+                fat: "\(Int(m.fat))"
+            )
         }
+        fieldsByDay = next
+        loadActiveDayFields()
     }
 
-    private func saveCurrentMode() {
+    private func fillFromSchedule() {
+        guard let p = plan else { return }
+        let b = p.dietPlan.dailyTargets
+        let training = p.dietPlan.trainingTargets ?? Macros(
+            calories: b.calories + 200, protein: b.protein, carbs: b.carbs + 50, fat: b.fat
+        )
+        let rest = p.dietPlan.restTargets ?? Macros(
+            calories: max(0, b.calories - 200), protein: b.protein, carbs: max(0, b.carbs - 50), fat: b.fat
+        )
+        let seeded = WeekdayMacros.seedFromSchedule(
+            training: training,
+            rest: rest,
+            workoutDays: p.workoutPlan.weeklyPlan
+        )
+        var next = [WeekdayMacroKey: MacroFieldStrings]()
+        for key in WeekdayMacroKey.allCases {
+            let m = seeded[key.rawValue] ?? b
+            next[key] = MacroFieldStrings(
+                cal: "\(m.calories)",
+                pro: "\(Int(m.protein))",
+                carb: "\(Int(m.carbs))",
+                fat: "\(Int(m.fat))"
+            )
+        }
+        fieldsByDay = next
+        loadActiveDayFields()
+    }
+
+    private func saveWeek() {
         guard let plan else { return }
         errorMessage = nil
-        switch mode {
-        case .base:
-            guard let m = parsedMacros(cal: baseCal, pro: basePro, carb: baseCarb, fat: baseFat) else {
-                errorMessage = "Calories must be between 800 and 5000."
+        persistActiveDayFields()
+        var merged = [String: Macros]()
+        for key in WeekdayMacroKey.allCases {
+            let f = fieldsByDay[key] ?? MacroFieldStrings()
+            guard let m = parsedMacros(cal: f.cal, pro: f.pro, carb: f.carb, fat: f.fat) else {
+                errorMessage = "Each day needs calories between 800 and 5000."
                 return
             }
-            plan.dietPlan.dailyTargets = m
-        case .training:
-            guard let m = parsedMacros(cal: trainCal, pro: trainPro, carb: trainCarb, fat: trainFat) else {
-                errorMessage = "Calories must be between 800 and 5000."
-                return
-            }
-            plan.dietPlan.trainingTargets = m
-        case .rest:
-            guard let m = parsedMacros(cal: restCal, pro: restPro, carb: restCarb, fat: restFat) else {
-                errorMessage = "Calories must be between 800 and 5000."
-                return
-            }
-            plan.dietPlan.restTargets = m
+            merged[key.rawValue] = m
         }
-        plan.synced = false
+        planService.applyWeekdayTargets(merged, to: plan)
         do {
             try context.save()
             Task { await syncEngine?.markDirty() }

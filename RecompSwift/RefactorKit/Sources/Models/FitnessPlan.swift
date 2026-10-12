@@ -34,6 +34,8 @@ public struct DietPlan: Codable, Sendable {
     public var dailyTargets: Macros
     public var trainingTargets: Macros?
     public var restTargets: Macros?
+    /// Keys: `mon` … `sun` — per-weekday macro targets when set on web or mobile.
+    public var weekdayTargets: [String: Macros]?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
 
@@ -41,12 +43,14 @@ public struct DietPlan: Codable, Sendable {
         dailyTargets: Macros,
         trainingTargets: Macros? = nil,
         restTargets: Macros? = nil,
-        weeklyPlan: [DietDay],
-        tips: [String]
+        weekdayTargets: [String: Macros]? = nil,
+        weeklyPlan: [DietDay] = [],
+        tips: [String] = []
     ) {
         self.dailyTargets = dailyTargets
         self.trainingTargets = trainingTargets
         self.restTargets = restTargets
+        self.weekdayTargets = weekdayTargets
         self.weeklyPlan = weeklyPlan
         self.tips = tips
     }

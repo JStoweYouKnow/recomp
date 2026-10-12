@@ -542,6 +542,7 @@ public actor SyncService: ModelActor {
             dailyTargets:    dto.dietPlan.dailyTargets,
             trainingTargets: dto.dietPlan.trainingTargets,
             restTargets:     dto.dietPlan.restTargets,
+            weekdayTargets:  dto.dietPlan.weekdayTargets,
             weeklyPlan:      dto.dietPlan.weeklyPlan,
             tips:            dto.dietPlan.tips
         )
@@ -722,6 +723,7 @@ public extension FitnessPlanDTO {
                 dailyTargets:    plan.dietPlan.dailyTargets,
                 trainingTargets: plan.dietPlan.trainingTargets,
                 restTargets:     plan.dietPlan.restTargets,
+                weekdayTargets:  plan.dietPlan.weekdayTargets,
                 weeklyPlan:      plan.dietPlan.weeklyPlan,
                 tips:            plan.dietPlan.tips
             ),

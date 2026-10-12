@@ -162,6 +162,7 @@ data class DietPlanSectionDto(
     val dailyTargets: MealMacrosDto? = null,
     val trainingTargets: MealMacrosDto? = null,
     val restTargets: MealMacrosDto? = null,
+    val weekdayTargets: Map<String, MealMacrosDto>? = null,
 )
 
 /** Mirrors `FitnessPlan` from sync GET (workout + optional diet targets). */

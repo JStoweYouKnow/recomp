@@ -102,6 +102,7 @@ public struct PlanDietPlanDTO: Codable, Sendable {
     public var dailyTargets: Macros
     public var trainingTargets: Macros?
     public var restTargets: Macros?
+    public var weekdayTargets: [String: Macros]?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
 }

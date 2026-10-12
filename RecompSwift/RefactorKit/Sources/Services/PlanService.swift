@@ -278,16 +278,8 @@ public final class PlanService {
     public func targets(for date: Date, plan: FitnessPlan?) -> Macros {
         let fallback = Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
         guard let plan else { return fallback }
-        if let workout = workout(for: date, plan: plan) {
-            let f = workout.focus.lowercased()
-            let isRest = f.contains("rest") || f.contains("recovery") || f.contains("off")
-            if isRest, let t = plan.dietPlan.restTargets, t.calories > 0 { return t }
-            if !isRest, let t = plan.dietPlan.trainingTargets, t.calories > 0 { return t }
-        } else if let t = plan.dietPlan.restTargets, t.calories > 0 {
-            return t
-        }
-        let daily = plan.dietPlan.dailyTargets
-        return daily.calories > 0 ? daily : fallback
+        let resolved = WeekdayMacros.resolve(for: plan, date: date)
+        return resolved.calories > 0 ? resolved : fallback
     }
 
     /// Returns today's macro target — training targets on workout days, rest targets on rest days, falling back to `dailyTargets`.
@@ -303,17 +295,45 @@ public final class PlanService {
     public func applyBaseTargets(_ targets: Macros, to plan: FitnessPlan) {
         plan.dietPlan.dailyTargets = targets
         let carbSwing: Double = 50
-        plan.dietPlan.trainingTargets = Macros(
+        let training = Macros(
             calories: targets.calories + 200,
             protein: targets.protein,
             carbs: targets.carbs + carbSwing,
             fat: targets.fat
         )
-        plan.dietPlan.restTargets = Macros(
+        let rest = Macros(
             calories: targets.calories - 200,
             protein: targets.protein,
             carbs: max(0, targets.carbs - carbSwing),
             fat: targets.fat
+        )
+        plan.dietPlan.trainingTargets = training
+        plan.dietPlan.restTargets = rest
+        plan.dietPlan.weekdayTargets = WeekdayMacros.seedFromSchedule(
+            training: training,
+            rest: rest,
+            workoutDays: plan.workoutPlan.weeklyPlan
+        )
+        plan.synced = false
+    }
+
+    /// Saves a full Mon–Sun target map, updates weekly average and legacy training/rest split.
+    public func applyWeekdayTargets(_ map: [String: Macros], to plan: FitnessPlan) {
+        plan.dietPlan.weekdayTargets = map
+        let avg = WeekdayMacros.averageStringKeyed(map)
+        plan.dietPlan.dailyTargets = avg
+        let carbSwing: Double = 50
+        plan.dietPlan.trainingTargets = Macros(
+            calories: avg.calories + 200,
+            protein: avg.protein,
+            carbs: avg.carbs + carbSwing,
+            fat: avg.fat
+        )
+        plan.dietPlan.restTargets = Macros(
+            calories: max(0, avg.calories - 200),
+            protein: avg.protein,
+            carbs: max(0, avg.carbs - carbSwing),
+            fat: avg.fat
         )
         plan.synced = false
     }
@@ -415,6 +435,7 @@ public final class PlanService {
                 dailyTargets: dto.dietPlan.dailyTargets,
                 trainingTargets: dto.dietPlan.trainingTargets,
                 restTargets: dto.dietPlan.restTargets,
+                weekdayTargets: dto.dietPlan.weekdayTargets,
                 weeklyPlan: dto.dietPlan.weeklyPlan,
                 tips: dto.dietPlan.tips
             ),

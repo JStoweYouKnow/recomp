@@ -45,6 +45,11 @@ export interface Macros {
   fat: number;
 }
 
+/** Calendar weekday keys for per-day macro targets (Mon–Sun). */
+export type WeekdayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+
+export type WeekdayMacroTargets = Partial<Record<WeekdayKey, Macros>>;
+
 export interface MealEntry {
   id: string;
   date: string; // ISO date
@@ -164,6 +169,8 @@ export interface FitnessPlan {
     dailyTargets: Macros;
     trainingTargets?: Macros;
     restTargets?: Macros;
+    /** Per-weekday macro targets; when set, overrides training/rest split for that day. */
+    weekdayTargets?: WeekdayMacroTargets;
     weeklyPlan: DietDay[];
     tips: string[];
   };

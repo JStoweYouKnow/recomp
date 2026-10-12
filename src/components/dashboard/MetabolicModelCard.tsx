@@ -6,6 +6,7 @@ import type { FitnessPlan, MetabolicModel, MetabolicDataPoint } from "@/lib/type
 import { getMetabolicModel, saveMetabolicModel, getMeals, getWearableData, getProfile, getPlan, savePlan, getMeasurementTargets } from "@/lib/storage";
 import { syncToServer } from "@/lib/storage";
 import { calculateMacros, splitTrainingRestTargets } from "@/lib/macro-calculator";
+import { seedWeekdayTargetsFromPlan } from "@/lib/weekday-macros";
 
 const lbsToKg = (lbs: number) => lbs * 0.45359237;
 
@@ -208,9 +209,15 @@ export function MetabolicModelCard({ onPlanUpdate }: { onPlanUpdate?: (plan: Fit
         currentMuscleMassLbs,
       });
       const { trainingTargets, restTargets } = splitTrainingRestTargets(macros);
+      const weekdayTargets = seedWeekdayTargetsFromPlan(
+        macros,
+        trainingTargets,
+        restTargets,
+        plan.workoutPlan?.weeklyPlan ?? []
+      );
       const updated: FitnessPlan = {
         ...plan,
-        dietPlan: { ...plan.dietPlan, dailyTargets: macros, trainingTargets, restTargets },
+        dietPlan: { ...plan.dietPlan, dailyTargets: macros, trainingTargets, restTargets, weekdayTargets },
       };
       if (onPlanUpdate) {
         onPlanUpdate(updated); // Home saves + syncs and refreshes dashboard state

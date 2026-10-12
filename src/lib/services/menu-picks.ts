@@ -3,6 +3,8 @@ import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
 import { remainingMacros, type MacroBudget } from "@/lib/recipe-fit";
 import { normalizeMenuItems, rankMenuItems, type RankedMenuItem } from "@/lib/menu-fit";
 import { logError } from "@/lib/logger";
+import { resolveMacroTargetsForDate } from "@/lib/weekday-macros";
+import type { FitnessPlan } from "@/lib/types";
 
 const DEFAULT_TARGETS: MacroBudget = { calories: 2000, protein: 150, carbs: 200, fat: 65 };
 
@@ -35,7 +37,10 @@ export async function resolveMenuBudget(
 
   let budget = clientBudget;
   if (!budget) {
-    const targets = plan?.dietPlan?.dailyTargets ?? DEFAULT_TARGETS;
+    const targets =
+      plan && plan.dietPlan
+        ? resolveMacroTargetsForDate(plan as FitnessPlan, opts.date)
+        : DEFAULT_TARGETS;
     const consumed = meals
       .filter((m) => m.date.slice(0, 10) === opts.date)
       .reduce(

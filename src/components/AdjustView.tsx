@@ -1,14 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import type { UserProfile, FitnessPlan, Macros } from "@/lib/types";
+import { useState, useEffect, useMemo } from "react";
+import type { UserProfile, FitnessPlan, Macros, WeekdayKey } from "@/lib/types";
+import {
+  WEEKDAY_KEYS,
+  WEEKDAY_SHORT,
+  averageWeekdayTargets,
+  effectiveWeekdayTargets,
+  seedWeekdayTargetsFromPlan,
+} from "@/lib/weekday-macros";
+import { splitTrainingRestTargets } from "@/lib/macro-calculator";
 
 const DEFAULT_TARGETS: Macros = { calories: 2000, protein: 150, carbs: 200, fat: 65 };
-const CAL_SWING = 200;
-const CARB_SWING = 50;
 
-export type TargetUpdate = { daily?: Macros; training?: Macros; rest?: Macros };
-type TargetMode = "base" | "training" | "rest";
+export type TargetUpdate = {
+  daily?: Macros;
+  training?: Macros;
+  rest?: Macros;
+  weekdayTargets?: Record<WeekdayKey, Macros>;
+};
 
 function macroInputs(
   values: { cal: string; pro: string; carb: string; fat: string },
@@ -53,6 +63,15 @@ function parseMacro(cal: string, pro: string, carb: string, fat: string): Macros
   };
 }
 
+function macrosToFields(m: Macros) {
+  return {
+    cal: String(m.calories),
+    pro: String(m.protein),
+    carb: String(m.carbs),
+    fat: String(m.fat),
+  };
+}
+
 export function AdjustView({
   plan,
   goal,
@@ -77,76 +96,72 @@ export function AdjustView({
   const suggestion = result?.suggestion as { newTargets?: Macros; explanation?: string; changes?: string[] } | undefined;
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchSummary, setResearchSummary] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TargetMode>("base");
-  const [savedTab, setSavedTab] = useState<TargetMode | null>(null);
+  const [activeDay, setActiveDay] = useState<WeekdayKey>("mon");
+  const [saved, setSaved] = useState(false);
 
-  const base = plan?.dietPlan?.dailyTargets ?? DEFAULT_TARGETS;
-  const training = plan?.dietPlan?.trainingTargets ?? { ...base, calories: base.calories + CAL_SWING, carbs: base.carbs + CARB_SWING };
-  const rest = plan?.dietPlan?.restTargets ?? { ...base, calories: base.calories - CAL_SWING, carbs: Math.max(0, base.carbs - CARB_SWING) };
+  const weekdayMap = useMemo(
+    () => (plan ? effectiveWeekdayTargets(plan) : null),
+    [plan]
+  );
 
-  const [baseCal, setBaseCal] = useState(String(base.calories));
-  const [basePro, setBasePro] = useState(String(base.protein));
-  const [baseCarb, setBaseCarb] = useState(String(base.carbs));
-  const [baseFat, setBaseFat] = useState(String(base.fat));
-
-  const [trainCal, setTrainCal] = useState(String(training.calories));
-  const [trainPro, setTrainPro] = useState(String(training.protein));
-  const [trainCarb, setTrainCarb] = useState(String(training.carbs));
-  const [trainFat, setTrainFat] = useState(String(training.fat));
-
-  const [restCal, setRestCal] = useState(String(rest.calories));
-  const [restPro, setRestPro] = useState(String(rest.protein));
-  const [restCarb, setRestCarb] = useState(String(rest.carbs));
-  const [restFat, setRestFat] = useState(String(rest.fat));
-
-  useEffect(() => {
-    setBaseCal(String(base.calories)); setBasePro(String(base.protein));
-    setBaseCarb(String(base.carbs)); setBaseFat(String(base.fat));
-  }, [base.calories, base.protein, base.carbs, base.fat]);
-
-  useEffect(() => {
-    setTrainCal(String(training.calories)); setTrainPro(String(training.protein));
-    setTrainCarb(String(training.carbs)); setTrainFat(String(training.fat));
-  }, [training.calories, training.protein, training.carbs, training.fat]);
-
-  useEffect(() => {
-    setRestCal(String(rest.calories)); setRestPro(String(rest.protein));
-    setRestCarb(String(rest.carbs)); setRestFat(String(rest.fat));
-  }, [rest.calories, rest.protein, rest.carbs, rest.fat]);
-
-  const handleSave = (tab: TargetMode) => {
-    let update: TargetUpdate = {};
-    if (tab === "base") {
-      const m = parseMacro(baseCal, basePro, baseCarb, baseFat);
-      if (!m) return;
-      update.daily = m;
-    } else if (tab === "training") {
-      const m = parseMacro(trainCal, trainPro, trainCarb, trainFat);
-      if (!m) return;
-      update.training = m;
-    } else {
-      const m = parseMacro(restCal, restPro, restCarb, restFat);
-      if (!m) return;
-      update.rest = m;
+  const [fieldsByDay, setFieldsByDay] = useState<Record<WeekdayKey, { cal: string; pro: string; carb: string; fat: string }>>(
+    () => {
+      const init = {} as Record<WeekdayKey, { cal: string; pro: string; carb: string; fat: string }>;
+      for (const key of WEEKDAY_KEYS) {
+        init[key] = macrosToFields(DEFAULT_TARGETS);
+      }
+      return init;
     }
-    onApplyAdjustments(update);
-    setSavedTab(tab);
-    setTimeout(() => setSavedTab(null), 2000);
+  );
+
+  useEffect(() => {
+    if (!weekdayMap) return;
+    const next = {} as Record<WeekdayKey, { cal: string; pro: string; carb: string; fat: string }>;
+    for (const key of WEEKDAY_KEYS) {
+      next[key] = macrosToFields(weekdayMap[key]);
+    }
+    setFieldsByDay(next);
+  }, [weekdayMap]);
+
+  const activeFields = fieldsByDay[activeDay];
+
+  const handleSaveWeek = () => {
+    if (!plan) return;
+    const merged = {} as Record<WeekdayKey, Macros>;
+    for (const key of WEEKDAY_KEYS) {
+      const f = fieldsByDay[key];
+      const parsed = parseMacro(f.cal, f.pro, f.carb, f.fat);
+      if (!parsed) return;
+      merged[key] = parsed;
+    }
+    const avg = averageWeekdayTargets(merged);
+    const { trainingTargets, restTargets } = splitTrainingRestTargets(avg);
+
+    onApplyAdjustments({
+      weekdayTargets: merged,
+      daily: avg,
+      training: trainingTargets,
+      rest: restTargets,
+    });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
   };
 
-  const resetToFormula = (tab: "training" | "rest") => {
-    const b = parseMacro(baseCal, basePro, baseCarb, baseFat) ?? base;
-    if (tab === "training") {
-      setTrainCal(String(b.calories + CAL_SWING));
-      setTrainPro(String(b.protein));
-      setTrainCarb(String(b.carbs + CARB_SWING));
-      setTrainFat(String(b.fat));
-    } else {
-      setRestCal(String(b.calories - CAL_SWING));
-      setRestPro(String(b.protein));
-      setRestCarb(String(Math.max(0, b.carbs - CARB_SWING)));
-      setRestFat(String(b.fat));
+  const fillFromWorkoutSchedule = () => {
+    if (!plan) return;
+    const base = plan.dietPlan.dailyTargets;
+    const { trainingTargets, restTargets } = splitTrainingRestTargets(base);
+    const seeded = seedWeekdayTargetsFromPlan(
+      base,
+      trainingTargets,
+      restTargets,
+      plan.workoutPlan?.weeklyPlan ?? []
+    );
+    const next = {} as Record<WeekdayKey, { cal: string; pro: string; carb: string; fat: string }>;
+    for (const key of WEEKDAY_KEYS) {
+      next[key] = macrosToFields(seeded[key]);
     }
+    setFieldsByDay(next);
   };
 
   const handleGetLatestGuidance = async () => {
@@ -175,12 +190,6 @@ export function AdjustView({
     }
   };
 
-  const tabs: { id: TargetMode; label: string }[] = [
-    { id: "base", label: "Base (average)" },
-    { id: "training", label: "Training day" },
-    { id: "rest", label: "Rest day" },
-  ];
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
@@ -189,145 +198,122 @@ export function AdjustView({
         <p className="text-[10px] uppercase tracking-wider text-[var(--muted)] mt-0.5">Powered by Nova Lite</p>
       </div>
 
-      {/* Macro targets with training/rest split */}
       <div className="card p-6">
-        <h3 className="font-semibold text-[var(--foreground)] mb-1">Macro targets</h3>
+        <h3 className="font-semibold text-[var(--foreground)] mb-1">Macro targets by day</h3>
         <p className="text-sm text-[var(--muted)] mb-4">
-          Set separate targets for training days and rest days, or a single base average.
+          Set calories and macros for each day of the week (Mon–Sun). Meals and dashboard rings use the target for the day you are viewing.
         </p>
 
-        {/* Tab switcher */}
-        <div className="flex gap-1 mb-5 rounded-lg bg-[var(--surface-2)] p-1">
-          {tabs.map((t) => (
+        <div className="flex gap-1 mb-4 overflow-x-auto pb-1">
+          {WEEKDAY_KEYS.map((key) => (
             <button
-              key={t.id}
+              key={key}
               type="button"
-              onClick={() => setActiveTab(t.id)}
-              className={`flex-1 rounded-md py-1.5 text-sm font-medium transition-colors ${
-                activeTab === t.id
-                  ? "bg-[var(--card)] text-[var(--foreground)] shadow-sm"
-                  : "text-[var(--muted)] hover:text-[var(--foreground)]"
+              onClick={() => setActiveDay(key)}
+              className={`shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                activeDay === key
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--surface-2)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
-              {t.label}
+              {WEEKDAY_SHORT[key]}
             </button>
           ))}
         </div>
 
-        {activeTab === "base" && (
-          <>
-            <p className="text-xs text-[var(--muted)] mb-3">
-              Weekly average — used as a fallback on days with no workout data and as the basis for the formula split.
-            </p>
-            {macroInputs(
-              { cal: baseCal, pro: basePro, carb: baseCarb, fat: baseFat },
-              { setCal: setBaseCal, setPro: setBasePro, setCarb: setBaseCarb, setFat: setBaseFat },
-            )}
-          </>
-        )}
+        <p className="text-xs text-[var(--muted)] mb-3">
+          Editing <strong className="text-[var(--foreground)]">{WEEKDAY_SHORT[activeDay]}</strong>. Saving updates your full weekly map and refreshes the plan average.
+        </p>
 
-        {activeTab === "training" && (
-          <>
-            <p className="text-xs text-[var(--muted)] mb-3">
-              Used on workout days. Formula default: base +{CAL_SWING} kcal / +{CARB_SWING}g carbs.
-            </p>
-            {macroInputs(
-              { cal: trainCal, pro: trainPro, carb: trainCarb, fat: trainFat },
-              { setCal: setTrainCal, setPro: setTrainPro, setCarb: setTrainCarb, setFat: setTrainFat },
-            )}
-            <button type="button" onClick={() => resetToFormula("training")} className="mt-3 text-xs text-[var(--accent)] hover:underline">
-              Reset to formula
-            </button>
-          </>
-        )}
-
-        {activeTab === "rest" && (
-          <>
-            <p className="text-xs text-[var(--muted)] mb-3">
-              Used on rest/recovery days. Formula default: base −{CAL_SWING} kcal / −{CARB_SWING}g carbs.
-            </p>
-            {macroInputs(
-              { cal: restCal, pro: restPro, carb: restCarb, fat: restFat },
-              { setCal: setRestCal, setPro: setRestPro, setCarb: setRestCarb, setFat: setRestFat },
-            )}
-            <button type="button" onClick={() => resetToFormula("rest")} className="mt-3 text-xs text-[var(--accent)] hover:underline">
-              Reset to formula
-            </button>
-          </>
-        )}
-
-        <button
-          type="button"
-          onClick={() => handleSave(activeTab)}
-          disabled={!plan}
-          className="mt-4 btn-primary"
-        >
-          {savedTab === activeTab ? "Saved" : "Save targets"}
-        </button>
-      </div>
-
-      <div className="card p-6">
-        <label className="label">Feedback (how are you feeling? any changes?)</label>
-        <textarea
-          value={feedback}
-          onChange={(e) => setFeedback(e.target.value)}
-          placeholder={
-            unitSystem === "metric"
-              ? "e.g. Feeling tired, want to increase protein, lost 2 kg..."
-              : "e.g. Feeling tired, want to increase protein, lost 4 lbs..."
+        {macroInputs(
+          { cal: activeFields.cal, pro: activeFields.pro, carb: activeFields.carb, fat: activeFields.fat },
+          {
+            setCal: (v) => setFieldsByDay((prev) => ({ ...prev, [activeDay]: { ...prev[activeDay], cal: v } })),
+            setPro: (v) => setFieldsByDay((prev) => ({ ...prev, [activeDay]: { ...prev[activeDay], pro: v } })),
+            setCarb: (v) => setFieldsByDay((prev) => ({ ...prev, [activeDay]: { ...prev[activeDay], carb: v } })),
+            setFat: (v) => setFieldsByDay((prev) => ({ ...prev, [activeDay]: { ...prev[activeDay], fat: v } })),
           }
-          rows={3}
-          className="w-full input-base"
-        />
-        <div className="mt-3 flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="button" onClick={handleGetLatestGuidance} disabled={researchLoading} className="btn-secondary !text-xs" title="Add current nutrition guidelines to your feedback">
-              {researchLoading ? "Pulling guidance..." : "Add latest guidelines to my feedback"}
-            </button>
-            {researchSummary && (
-              <p className="text-caption flex-1">Added: {researchSummary.slice(0, 90)}...</p>
-            )}
-          </div>
-          <p className="text-[10px] text-[var(--muted)]">Powered by Nova — web search when available</p>
-        </div>
+        )}
 
-        <div className="mt-5">
-          <button onClick={onAdjust} disabled={loading || !plan} className="btn-primary">
-            {loading ? "Analyzing..." : "Get AI suggestions"}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={handleSaveWeek} disabled={!plan} className="btn-primary">
+            {saved ? "Saved" : "Save weekly targets"}
+          </button>
+          <button
+            type="button"
+            onClick={fillFromWorkoutSchedule}
+            disabled={!plan}
+            className="text-sm text-[var(--accent)] hover:underline disabled:opacity-50"
+          >
+            Fill from workout schedule
           </button>
         </div>
       </div>
 
-      {result && suggestion && (
-        <div className="card p-6 space-y-4 animate-slide-up">
-          <h3 className="section-title !text-base text-[var(--accent)]">Nova&apos;s suggestions</h3>
-          {suggestion.explanation && (
-            <p className="text-sm leading-relaxed">{suggestion.explanation}</p>
-          )}
-          {suggestion.changes && suggestion.changes.length > 0 && (
-            <ul className="text-sm space-y-1 list-disc list-inside text-[var(--muted)]">
-              {suggestion.changes.map((c, i) => <li key={i}>{c}</li>)}
-            </ul>
-          )}
-          {suggestion.newTargets && (
-            <button
-              onClick={() => {
-                const t = suggestion.newTargets as Macros;
-                if (t && typeof t.calories === "number") {
-                  onApplyAdjustments({
-                    daily: t,
-                    training: { ...t, calories: t.calories + CAL_SWING, carbs: t.carbs + CARB_SWING },
-                    rest: { ...t, calories: t.calories - CAL_SWING, carbs: Math.max(0, t.carbs - CARB_SWING) },
-                  });
-                }
-              }}
-              className="btn-secondary"
-            >
-              Apply new calorie/macro targets
-            </button>
-          )}
+      <div className="card p-6">
+        <h3 className="font-semibold text-[var(--foreground)] mb-2">AI adjustment</h3>
+        <p className="text-sm text-[var(--muted)] mb-4">
+          Describe how you are feeling, what is working, or what you want to change. The Ref will suggest updated targets.
+        </p>
+        <textarea
+          value={feedback}
+          onChange={(e) => setFeedback(e.target.value)}
+          placeholder="e.g. I'm losing too fast, energy is low on training days…"
+          className="input-base w-full min-h-[100px] mb-3"
+        />
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={onAdjust} disabled={loading || !feedback.trim()} className="btn-primary">
+            {loading ? "Thinking…" : "Get AI suggestion"}
+          </button>
+          <button
+            type="button"
+            onClick={handleGetLatestGuidance}
+            disabled={researchLoading}
+            className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+          >
+            {researchLoading ? "Loading…" : "Add latest guidance"}
+          </button>
         </div>
-      )}
+        {researchSummary && (
+          <p className="mt-3 text-xs text-[var(--muted)] border-l-2 border-[var(--accent)] pl-3">{researchSummary}</p>
+        )}
+        {suggestion?.newTargets && (
+          <div className="mt-4 rounded-lg border border-[var(--border-soft)] bg-[var(--surface-elevated)] p-4 space-y-2">
+            <p className="text-sm font-medium">Suggested base targets</p>
+            {suggestion.explanation && <p className="text-sm text-[var(--muted)]">{suggestion.explanation}</p>}
+            <p className="text-sm tabular-nums">
+              {suggestion.newTargets.calories} cal · {suggestion.newTargets.protein}g P · {suggestion.newTargets.carbs}g C ·{" "}
+              {suggestion.newTargets.fat}g F
+            </p>
+            <button
+              type="button"
+              className="text-sm text-[var(--accent)] hover:underline"
+              onClick={() => {
+                if (!plan || !suggestion.newTargets) return;
+                const { trainingTargets, restTargets } = splitTrainingRestTargets(suggestion.newTargets);
+                const seeded = seedWeekdayTargetsFromPlan(
+                  suggestion.newTargets,
+                  trainingTargets,
+                  restTargets,
+                  plan.workoutPlan?.weeklyPlan ?? []
+                );
+                onApplyAdjustments({
+                  daily: suggestion.newTargets,
+                  training: trainingTargets,
+                  rest: restTargets,
+                  weekdayTargets: seeded,
+                });
+              }}
+            >
+              Apply suggestion to plan
+            </button>
+          </div>
+        )}
+      </div>
+
+      <p className="text-xs text-[var(--muted)]">
+        Units: {unitSystem === "metric" ? "metric" : "US"}. Training/rest presets remain on the plan for older app versions; day-of-week targets take priority when set.
+      </p>
     </div>
   );
 }
