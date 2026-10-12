@@ -542,7 +542,7 @@ public actor SyncService: ModelActor {
             dailyTargets:    dto.dietPlan.dailyTargets,
             trainingTargets: dto.dietPlan.trainingTargets,
             restTargets:     dto.dietPlan.restTargets,
-            weekdayTargets:  dto.dietPlan.weekdayTargets,
+            weekdayTargetList: dto.dietPlan.weekdayTargets.map { WeekdayMacros.weekdayList(from: $0) },
             weeklyPlan:      dto.dietPlan.weeklyPlan,
             tips:            dto.dietPlan.tips
         )
@@ -723,7 +723,7 @@ public extension FitnessPlanDTO {
                 dailyTargets:    plan.dietPlan.dailyTargets,
                 trainingTargets: plan.dietPlan.trainingTargets,
                 restTargets:     plan.dietPlan.restTargets,
-                weekdayTargets:  plan.dietPlan.weekdayTargets,
+                weekdayTargets:  plan.dietPlan.weekdayTargetList.map { WeekdayMacros.stringMap(from: $0) },
                 weeklyPlan:      plan.dietPlan.weeklyPlan,
                 tips:            plan.dietPlan.tips
             ),

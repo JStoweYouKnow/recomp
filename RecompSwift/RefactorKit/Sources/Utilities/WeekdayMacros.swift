@@ -27,13 +27,42 @@ public enum WeekdayMacroKey: String, CaseIterable, Sendable {
         }
         return .mon
     }
+
+    public var listIndex: Int {
+        Self.allCases.firstIndex(of: self) ?? 0
+    }
 }
 
 public enum WeekdayMacros {
 
+    public static let listLength = WeekdayMacroKey.allCases.count
+
+    public static func stringMap(from list: [Macros]) -> [String: Macros] {
+        var out: [String: Macros] = [:]
+        for (i, key) in WeekdayMacroKey.allCases.enumerated() where i < list.count {
+            out[key.rawValue] = list[i]
+        }
+        return out
+    }
+
+    public static func weekdayList(from map: [String: Macros]) -> [Macros] {
+        WeekdayMacroKey.allCases.map { map[$0.rawValue] ?? Macros(calories: 0, protein: 0, carbs: 0, fat: 0) }
+    }
+
+    public static func hasExplicitList(_ list: [Macros]?) -> Bool {
+        guard let list, list.count >= listLength else { return false }
+        return list.contains { $0.calories > 0 }
+    }
+
     public static func hasExplicit(_ map: [String: Macros]?) -> Bool {
         guard let map else { return false }
         return WeekdayMacroKey.allCases.contains { (map[$0.rawValue]?.calories ?? 0) > 0 }
+    }
+
+    private static func targetsForKey(_ key: WeekdayMacroKey, diet: DietPlan) -> Macros? {
+        guard let list = diet.weekdayTargetList, key.listIndex < list.count else { return nil }
+        let m = list[key.listIndex]
+        return m.calories > 0 ? m : nil
     }
 
     private static func trainingRestPair(diet: DietPlan) -> (training: Macros, rest: Macros) {
@@ -87,8 +116,8 @@ public enum WeekdayMacros {
     }
 
     public static func resolve(for plan: FitnessPlan, date: Date) -> Macros {
-        let key = WeekdayMacroKey.from(date: date).rawValue
-        if let m = plan.dietPlan.weekdayTargets?[key], m.calories > 0 { return m }
+        let key = WeekdayMacroKey.from(date: date)
+        if let m = targetsForKey(key, diet: plan.dietPlan) { return m }
         return legacyTargets(for: plan, date: date)
     }
 
@@ -96,8 +125,8 @@ public enum WeekdayMacros {
         if let d = DateHelpers.date(from: dateString) {
             return resolve(for: plan, date: d)
         }
-        let key = WeekdayMacroKey.from(dateString: dateString).rawValue
-        if let m = plan.dietPlan.weekdayTargets?[key], m.calories > 0 { return m }
+        let key = WeekdayMacroKey.from(dateString: dateString)
+        if let m = targetsForKey(key, diet: plan.dietPlan) { return m }
         return legacyTargets(for: plan, date: .now)
     }
 
@@ -106,9 +135,9 @@ public enum WeekdayMacros {
         let pair = trainingRestPair(diet: plan.dietPlan)
         var out = Dictionary(uniqueKeysWithValues: WeekdayMacroKey.allCases.map { ($0, pair.rest) })
 
-        if hasExplicit(plan.dietPlan.weekdayTargets) {
+        if hasExplicitList(plan.dietPlan.weekdayTargetList) {
             for key in WeekdayMacroKey.allCases {
-                if let m = plan.dietPlan.weekdayTargets?[key.rawValue], m.calories > 0 {
+                if let m = targetsForKey(key, diet: plan.dietPlan) {
                     out[key] = m
                 } else {
                     out[key] = base
@@ -153,6 +182,14 @@ public enum WeekdayMacros {
         return out
     }
 
+    public static func seedListFromSchedule(
+        training: Macros,
+        rest: Macros,
+        workoutDays: [WorkoutDay]
+    ) -> [Macros] {
+        weekdayList(from: seedFromSchedule(training: training, rest: rest, workoutDays: workoutDays))
+    }
+
     public static func average(_ map: [WeekdayMacroKey: Macros]) -> Macros {
         var cal = 0.0, pro = 0.0, carb = 0.0, fat = 0.0
         for key in WeekdayMacroKey.allCases {
@@ -172,10 +209,8 @@ public enum WeekdayMacros {
     }
 
     public static func averageStringKeyed(_ map: [String: Macros]) -> Macros {
-        var keyed = [WeekdayMacroKey: Macros]()
-        for key in WeekdayMacroKey.allCases {
-            keyed[key] = map[key.rawValue] ?? Macros(calories: 0, protein: 0, carbs: 0, fat: 0)
-        }
-        return average(keyed)
+        average(Dictionary(uniqueKeysWithValues: WeekdayMacroKey.allCases.map {
+            ($0, map[$0.rawValue] ?? Macros(calories: 0, protein: 0, carbs: 0, fat: 0))
+        }))
     }
 }

@@ -293,7 +293,6 @@ public final class PlanService {
 
     /// Sets `dailyTargets` and re-derives the training/rest split (±200 kcal / ±50g carbs) from the new base.
     public func applyBaseTargets(_ targets: Macros, to plan: FitnessPlan) {
-        plan.dietPlan.dailyTargets = targets
         let carbSwing: Double = 50
         let training = Macros(
             calories: targets.calories + 200,
@@ -307,34 +306,41 @@ public final class PlanService {
             carbs: max(0, targets.carbs - carbSwing),
             fat: targets.fat
         )
-        plan.dietPlan.trainingTargets = training
-        plan.dietPlan.restTargets = rest
-        plan.dietPlan.weekdayTargets = WeekdayMacros.seedFromSchedule(
+        var diet = plan.dietPlan
+        diet.dailyTargets = targets
+        diet.trainingTargets = training
+        diet.restTargets = rest
+        diet.weekdayTargetList = WeekdayMacros.seedListFromSchedule(
             training: training,
             rest: rest,
             workoutDays: plan.workoutPlan.weeklyPlan
         )
+        plan.dietPlan = diet
         plan.synced = false
     }
 
     /// Saves a full Mon–Sun target map, updates weekly average and legacy training/rest split.
     public func applyWeekdayTargets(_ map: [String: Macros], to plan: FitnessPlan) {
-        plan.dietPlan.weekdayTargets = map
         let avg = WeekdayMacros.averageStringKeyed(map)
-        plan.dietPlan.dailyTargets = avg
         let carbSwing: Double = 50
-        plan.dietPlan.trainingTargets = Macros(
+        let training = Macros(
             calories: avg.calories + 200,
             protein: avg.protein,
             carbs: avg.carbs + carbSwing,
             fat: avg.fat
         )
-        plan.dietPlan.restTargets = Macros(
+        let rest = Macros(
             calories: max(0, avg.calories - 200),
             protein: avg.protein,
             carbs: max(0, avg.carbs - carbSwing),
             fat: avg.fat
         )
+        var diet = plan.dietPlan
+        diet.weekdayTargetList = WeekdayMacros.weekdayList(from: map)
+        diet.dailyTargets = avg
+        diet.trainingTargets = training
+        diet.restTargets = rest
+        plan.dietPlan = diet
         plan.synced = false
     }
 
@@ -435,7 +441,7 @@ public final class PlanService {
                 dailyTargets: dto.dietPlan.dailyTargets,
                 trainingTargets: dto.dietPlan.trainingTargets,
                 restTargets: dto.dietPlan.restTargets,
-                weekdayTargets: dto.dietPlan.weekdayTargets,
+                weekdayTargetList: dto.dietPlan.weekdayTargets.map { WeekdayMacros.weekdayList(from: $0) },
                 weeklyPlan: dto.dietPlan.weeklyPlan,
                 tips: dto.dietPlan.tips
             ),

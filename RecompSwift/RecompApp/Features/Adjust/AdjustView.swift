@@ -258,8 +258,8 @@ private struct MacroTargetsEditorCard: View {
             .buttonStyle(.borderedProminent)
             .disabled(plan == nil)
         }
-        .onAppear { loadFromPlan(); loadActiveDayFields() }
-        .onChange(of: plan?.id) { loadFromPlan(); loadActiveDayFields() }
+        .onAppear { loadFromPlan() }
+        .onChange(of: plan?.id) { _, _ in loadFromPlan() }
     }
 
     private var macroFields: some View {
@@ -355,6 +355,7 @@ private struct MacroTargetsEditorCard: View {
             merged[key.rawValue] = m
         }
         planService.applyWeekdayTargets(merged, to: plan)
+        RecompAppGroupDefaults.shared.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
         do {
             try context.save()
             Task { await syncEngine?.markDirty() }
