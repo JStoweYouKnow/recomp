@@ -49,9 +49,26 @@ public enum WeekdayMacros {
         WeekdayMacroKey.allCases.map { map[$0.rawValue] ?? Macros(calories: 0, protein: 0, carbs: 0, fat: 0) }
     }
 
+    public static func encodeList(_ list: [Macros]) -> Data? {
+        try? JSONEncoder().encode(list)
+    }
+
+    public static func decodeList(_ data: Data?) -> [Macros]? {
+        guard let data, !data.isEmpty else { return nil }
+        return try? JSONDecoder().decode([Macros].self, from: data)
+    }
+
+    public static func storedList(for plan: FitnessPlan) -> [Macros]? {
+        decodeList(plan.weekdayTargetBlob)
+    }
+
     public static func hasExplicitList(_ list: [Macros]?) -> Bool {
         guard let list, list.count >= listLength else { return false }
         return list.contains { $0.calories > 0 }
+    }
+
+    public static func hasExplicitStoredTargets(for plan: FitnessPlan) -> Bool {
+        hasExplicitList(storedList(for: plan))
     }
 
     public static func hasExplicit(_ map: [String: Macros]?) -> Bool {
@@ -59,8 +76,8 @@ public enum WeekdayMacros {
         return WeekdayMacroKey.allCases.contains { (map[$0.rawValue]?.calories ?? 0) > 0 }
     }
 
-    private static func targetsForKey(_ key: WeekdayMacroKey, diet: DietPlan) -> Macros? {
-        guard let list = diet.weekdayTargetList, key.listIndex < list.count else { return nil }
+    private static func targetsForKey(_ key: WeekdayMacroKey, plan: FitnessPlan) -> Macros? {
+        guard let list = storedList(for: plan), key.listIndex < list.count else { return nil }
         let m = list[key.listIndex]
         return m.calories > 0 ? m : nil
     }
@@ -117,7 +134,7 @@ public enum WeekdayMacros {
 
     public static func resolve(for plan: FitnessPlan, date: Date) -> Macros {
         let key = WeekdayMacroKey.from(date: date)
-        if let m = targetsForKey(key, diet: plan.dietPlan) { return m }
+        if let m = targetsForKey(key, plan: plan) { return m }
         return legacyTargets(for: plan, date: date)
     }
 
@@ -126,7 +143,7 @@ public enum WeekdayMacros {
             return resolve(for: plan, date: d)
         }
         let key = WeekdayMacroKey.from(dateString: dateString)
-        if let m = targetsForKey(key, diet: plan.dietPlan) { return m }
+        if let m = targetsForKey(key, plan: plan) { return m }
         return legacyTargets(for: plan, date: .now)
     }
 
@@ -135,9 +152,9 @@ public enum WeekdayMacros {
         let pair = trainingRestPair(diet: plan.dietPlan)
         var out = Dictionary(uniqueKeysWithValues: WeekdayMacroKey.allCases.map { ($0, pair.rest) })
 
-        if hasExplicitList(plan.dietPlan.weekdayTargetList) {
+        if hasExplicitStoredTargets(for: plan) {
             for key in WeekdayMacroKey.allCases {
-                if let m = targetsForKey(key, diet: plan.dietPlan) {
+                if let m = targetsForKey(key, plan: plan) {
                     out[key] = m
                 } else {
                     out[key] = base

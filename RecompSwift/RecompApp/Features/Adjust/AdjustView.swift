@@ -199,6 +199,8 @@ private struct MacroTargetsEditorCard: View {
     var context: ModelContext
     var syncEngine: SyncEngine?
 
+    @Query(sort: \FitnessPlan.createdAt, order: .reverse) private var plans: [FitnessPlan]
+
     @State private var activeDay: WeekdayMacroKey = .mon
     @State private var fieldsByDay: [WeekdayMacroKey: MacroFieldStrings] = [:]
     @State private var cal = ""
@@ -208,7 +210,7 @@ private struct MacroTargetsEditorCard: View {
     @State private var saved = false
     @State private var errorMessage: String?
 
-    private var plan: FitnessPlan? { planService.currentPlan(context: context) }
+    private var plan: FitnessPlan? { plans.first }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -219,23 +221,21 @@ private struct MacroTargetsEditorCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(WeekdayMacroKey.allCases, id: \.self) { day in
-                        Button {
-                            persistActiveDayFields()
-                            activeDay = day
-                            loadActiveDayFields()
-                        } label: {
-                            Text(day.shortLabel)
-                                .font(.caption.weight(.semibold))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(activeDay == day ? Color.appAccent.opacity(0.2) : Color.secondary.opacity(0.12))
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
+            HStack(spacing: 8) {
+                ForEach(WeekdayMacroKey.allCases, id: \.self) { day in
+                    Button {
+                        persistActiveDayFields()
+                        activeDay = day
+                        loadActiveDayFields()
+                    } label: {
+                        Text(day.shortLabel)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(activeDay == day ? Color.appAccent.opacity(0.2) : Color.secondary.opacity(0.12))
+                            .clipShape(Capsule())
                     }
+                    .buttonStyle(.plain)
                 }
             }
 
@@ -259,7 +259,7 @@ private struct MacroTargetsEditorCard: View {
             .disabled(plan == nil)
         }
         .onAppear { loadFromPlan() }
-        .onChange(of: plan?.id) { _, _ in loadFromPlan() }
+        .onChange(of: plans.first?.id) { _, _ in loadFromPlan() }
     }
 
     private var macroFields: some View {
@@ -342,7 +342,7 @@ private struct MacroTargetsEditorCard: View {
     }
 
     private func saveWeek() {
-        guard let plan else { return }
+        guard let plan = plans.first else { return }
         errorMessage = nil
         persistActiveDayFields()
         var merged = [String: Macros]()
@@ -358,8 +358,11 @@ private struct MacroTargetsEditorCard: View {
         RecompAppGroupDefaults.shared.set(true, forKey: RecompUserDefaultsKeys.hasAdjustedPlan)
         do {
             try context.save()
-            Task { await syncEngine?.markDirty() }
             saved = true
+            let engine = syncEngine
+            Task {
+                await engine?.markDirty()
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { saved = false }
         } catch {
             errorMessage = error.localizedDescription

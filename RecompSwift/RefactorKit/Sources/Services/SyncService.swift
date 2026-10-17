@@ -538,11 +538,13 @@ public actor SyncService: ModelActor {
         descriptor.fetchLimit = 1
 
         let createdAt = iso8601.date(from: dto.createdAt) ?? .now
+        let weekdayBlob: Data? = dto.dietPlan.weekdayTargets.flatMap { map in
+            WeekdayMacros.encodeList(WeekdayMacros.weekdayList(from: map))
+        }
         let dietPlan = DietPlan(
             dailyTargets:    dto.dietPlan.dailyTargets,
             trainingTargets: dto.dietPlan.trainingTargets,
             restTargets:     dto.dietPlan.restTargets,
-            weekdayTargetList: dto.dietPlan.weekdayTargets.map { WeekdayMacros.weekdayList(from: $0) },
             weeklyPlan:      dto.dietPlan.weeklyPlan,
             tips:            dto.dietPlan.tips
         )
@@ -558,11 +560,12 @@ public actor SyncService: ModelActor {
         )
 
         if let existing = (try? modelContext.fetch(descriptor))?.first {
-            existing.createdAt   = createdAt
-            existing.dietPlan    = dietPlan
-            existing.workoutPlan = workoutPlan
-            existing.reasoning   = dto.reasoning
-            existing.synced      = true
+            existing.createdAt         = createdAt
+            existing.dietPlan          = dietPlan
+            existing.workoutPlan       = workoutPlan
+            existing.reasoning         = dto.reasoning
+            existing.weekdayTargetBlob = weekdayBlob
+            existing.synced            = true
         } else {
             modelContext.insert(FitnessPlan(
                 id:          dto.id,
@@ -571,7 +574,8 @@ public actor SyncService: ModelActor {
                 dietPlan:    dietPlan,
                 workoutPlan: workoutPlan,
                 reasoning:   dto.reasoning,
-                synced:      true
+                synced:      true,
+                weekdayTargetBlob: weekdayBlob
             ))
         }
     }
@@ -723,7 +727,7 @@ public extension FitnessPlanDTO {
                 dailyTargets:    plan.dietPlan.dailyTargets,
                 trainingTargets: plan.dietPlan.trainingTargets,
                 restTargets:     plan.dietPlan.restTargets,
-                weekdayTargets:  plan.dietPlan.weekdayTargetList.map { WeekdayMacros.stringMap(from: $0) },
+                weekdayTargets:  WeekdayMacros.storedList(for: plan).map { WeekdayMacros.stringMap(from: $0) },
                 weeklyPlan:      plan.dietPlan.weeklyPlan,
                 tips:            plan.dietPlan.tips
             ),

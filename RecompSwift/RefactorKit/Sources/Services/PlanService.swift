@@ -310,10 +310,12 @@ public final class PlanService {
         diet.dailyTargets = targets
         diet.trainingTargets = training
         diet.restTargets = rest
-        diet.weekdayTargetList = WeekdayMacros.seedListFromSchedule(
-            training: training,
-            rest: rest,
-            workoutDays: plan.workoutPlan.weeklyPlan
+        plan.weekdayTargetBlob = WeekdayMacros.encodeList(
+            WeekdayMacros.seedListFromSchedule(
+                training: training,
+                rest: rest,
+                workoutDays: plan.workoutPlan.weeklyPlan
+            )
         )
         plan.dietPlan = diet
         plan.synced = false
@@ -336,10 +338,10 @@ public final class PlanService {
             fat: avg.fat
         )
         var diet = plan.dietPlan
-        diet.weekdayTargetList = WeekdayMacros.weekdayList(from: map)
         diet.dailyTargets = avg
         diet.trainingTargets = training
         diet.restTargets = rest
+        plan.weekdayTargetBlob = WeekdayMacros.encodeList(WeekdayMacros.weekdayList(from: map))
         plan.dietPlan = diet
         plan.synced = false
     }
@@ -434,14 +436,16 @@ public final class PlanService {
     }
 
     private func mapPlan(_ dto: FitnessPlanDTO) -> FitnessPlan {
-        FitnessPlan(
+        let weekdayBlob: Data? = dto.dietPlan.weekdayTargets.flatMap { map in
+            WeekdayMacros.encodeList(WeekdayMacros.weekdayList(from: map))
+        }
+        return FitnessPlan(
             id: dto.id,
             userId: dto.userId,
             dietPlan: DietPlan(
                 dailyTargets: dto.dietPlan.dailyTargets,
                 trainingTargets: dto.dietPlan.trainingTargets,
                 restTargets: dto.dietPlan.restTargets,
-                weekdayTargetList: dto.dietPlan.weekdayTargets.map { WeekdayMacros.weekdayList(from: $0) },
                 weeklyPlan: dto.dietPlan.weeklyPlan,
                 tips: dto.dietPlan.tips
             ),
@@ -455,7 +459,8 @@ public final class PlanService {
                 missedSessions: dto.workoutPlan.missedSessions,
                 catchUpBannerDismissedAt: dto.workoutPlan.catchUpBannerDismissedAt
             ),
-            reasoning: dto.reasoning
+            reasoning: dto.reasoning,
+            weekdayTargetBlob: weekdayBlob
         )
     }
 

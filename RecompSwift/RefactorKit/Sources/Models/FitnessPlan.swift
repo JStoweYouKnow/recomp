@@ -10,6 +10,8 @@ public final class FitnessPlan: @unchecked Sendable {
     public var workoutPlan: WorkoutPlan
     public var reasoning: String?
     public var synced: Bool
+    /// JSON-encoded `[Macros]` (Mon–Sun). Stored on the model root — not inside `DietPlan` — for SwiftData stability.
+    public var weekdayTargetBlob: Data?
 
     public init(
         id: String = UUID().uuidString,
@@ -18,7 +20,8 @@ public final class FitnessPlan: @unchecked Sendable {
         dietPlan: DietPlan,
         workoutPlan: WorkoutPlan,
         reasoning: String? = nil,
-        synced: Bool = false
+        synced: Bool = false,
+        weekdayTargetBlob: Data? = nil
     ) {
         self.id = id
         self.userId = userId
@@ -27,6 +30,7 @@ public final class FitnessPlan: @unchecked Sendable {
         self.workoutPlan = workoutPlan
         self.reasoning = reasoning
         self.synced = synced
+        self.weekdayTargetBlob = weekdayTargetBlob
     }
 }
 
@@ -34,8 +38,6 @@ public struct DietPlan: Codable, Sendable {
     public var dailyTargets: Macros
     public var trainingTargets: Macros?
     public var restTargets: Macros?
-    /// Mon–Sun targets in `WeekdayMacroKey.allCases` order (SwiftData-safe; sync maps to `weekdayTargets` JSON).
-    public var weekdayTargetList: [Macros]?
     public var weeklyPlan: [DietDay]
     public var tips: [String]
 
@@ -43,53 +45,14 @@ public struct DietPlan: Codable, Sendable {
         dailyTargets: Macros,
         trainingTargets: Macros? = nil,
         restTargets: Macros? = nil,
-        weekdayTargetList: [Macros]? = nil,
         weeklyPlan: [DietDay] = [],
         tips: [String] = []
     ) {
         self.dailyTargets = dailyTargets
         self.trainingTargets = trainingTargets
         self.restTargets = restTargets
-        self.weekdayTargetList = weekdayTargetList
         self.weeklyPlan = weeklyPlan
         self.tips = tips
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case dailyTargets
-        case trainingTargets
-        case restTargets
-        case weeklyPlan
-        case tips
-        case weekdayTargetList
-        /// Prior build persisted a string-keyed map; migrate into `weekdayTargetList` on decode.
-        case weekdayTargets
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        dailyTargets = try c.decode(Macros.self, forKey: .dailyTargets)
-        trainingTargets = try c.decodeIfPresent(Macros.self, forKey: .trainingTargets)
-        restTargets = try c.decodeIfPresent(Macros.self, forKey: .restTargets)
-        weeklyPlan = try c.decodeIfPresent([DietDay].self, forKey: .weeklyPlan) ?? []
-        tips = try c.decodeIfPresent([String].self, forKey: .tips) ?? []
-        if let list = try c.decodeIfPresent([Macros].self, forKey: .weekdayTargetList) {
-            weekdayTargetList = list
-        } else if let map = try c.decodeIfPresent([String: Macros].self, forKey: .weekdayTargets) {
-            weekdayTargetList = WeekdayMacros.weekdayList(from: map)
-        } else {
-            weekdayTargetList = nil
-        }
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(dailyTargets, forKey: .dailyTargets)
-        try c.encodeIfPresent(trainingTargets, forKey: .trainingTargets)
-        try c.encodeIfPresent(restTargets, forKey: .restTargets)
-        try c.encode(weeklyPlan, forKey: .weeklyPlan)
-        try c.encode(tips, forKey: .tips)
-        try c.encodeIfPresent(weekdayTargetList, forKey: .weekdayTargetList)
     }
 }
 
