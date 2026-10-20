@@ -106,7 +106,12 @@ public final class WorkoutService {
     }
 
     private func postSyncNotification() {
-        NotificationCenter.default.post(name: .recompScheduleDataSync, object: nil)
+        // Push workout progress only. `recompScheduleDataSync` runs fetchAndApply (deletes/reinserts
+        // FitnessPlan + meals) and crashed SwiftData while Workouts/Meals @Query observers were live.
+        Task { @MainActor in
+            await Task.yield()
+            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+        }
     }
 
     // MARK: - Server merge (pull)

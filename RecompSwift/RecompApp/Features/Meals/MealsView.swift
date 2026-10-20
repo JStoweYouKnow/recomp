@@ -208,12 +208,13 @@ struct MealsView: View {
                                 context.delete(meal)
                                 do {
                                     try context.save()
-                                    Haptics.impact(.rigid)
-                                    MealChangeNotifier.postLocalMealsChanged()
-                                    ToastCenter.show("Meal deleted", type: .info)
-                                    Task {
+                                    Task { @MainActor in
+                                        await Task.yield()
+                                        Haptics.impact(.rigid)
+                                        MealChangeNotifier.postLocalMealsChanged()
+                                        ToastCenter.show("Meal deleted", type: .info)
                                         await syncEngine?.markDirty()
-                                        _ = await syncEngine?.syncNow()
+                                        NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
                                     }
                                 } catch {
                                     // The row snaps back with no explanation otherwise —

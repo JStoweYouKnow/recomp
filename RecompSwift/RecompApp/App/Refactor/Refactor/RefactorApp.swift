@@ -226,13 +226,13 @@ struct RootView: View {
             Task { await engine.scheduleSync() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompPhoneDidSync)) { _ in
-            pushWatchDashboard(from: modelContext)
+            schedulePushWatchDashboard(from: modelContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompMealsDidChange)) { _ in
-            pushWatchDashboard(from: modelContext)
+            schedulePushWatchDashboard(from: modelContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompPlanDidChange)) { _ in
-            pushWatchDashboard(from: modelContext)
+            schedulePushWatchDashboard(from: modelContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .recompNavigateToMeals)) { _ in
             coordinator.navigate(to: .meals)
@@ -369,6 +369,14 @@ struct RootView: View {
         WidgetCenter.shared.reloadAllTimelines()
         PhoneSessionManager.shared.pushDataRefresh()
     }
+
+    /// Avoid reading SwiftData for widget/watch snapshots in the same frame as a meal/plan save.
+    private func schedulePushWatchDashboard(from context: ModelContext) {
+        Task { @MainActor in
+            await Task.yield()
+            pushWatchDashboard(from: context)
+        }
+    }
 }
 
 /// Non-intrusive banner shown when the on-disk store failed to open and the app is
@@ -394,12 +402,16 @@ private struct RootFeedbackOverlay: ViewModifier {
                 let message = note.userInfo?["message"] as? String ?? ""
                 let type = note.userInfo?["type"] as? ToastType ?? .info
                 guard !message.isEmpty else { return }
-                toastManager.show(message, type: type)
+                Task { @MainActor in
+                    await Task.yield()
+                    toastManager.show(message, type: type)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: .recompCelebrate)) { _ in
-                Haptics.success()
-                withAnimation(.easeIn(duration: 0.2)) { showConfetti = true }
                 Task { @MainActor in
+                    await Task.yield()
+                    Haptics.success()
+                    withAnimation(.easeIn(duration: 0.2)) { showConfetti = true }
                     try? await Task.sleep(for: .seconds(2.2))
                     withAnimation(.easeOut(duration: 0.4)) { showConfetti = false }
                 }

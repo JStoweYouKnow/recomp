@@ -245,7 +245,10 @@ struct WorkoutsView: View {
                             }
                         }
                         Button {
-                            withAnimation { workoutService.resetDayProgress(dayKey: DateHelpers.todayString()) }
+                            Task { @MainActor in
+                                await Task.yield()
+                                workoutService.resetDayProgress(dayKey: DateHelpers.todayString())
+                            }
                         } label: {
                             Label("Reset today's progress", systemImage: "arrow.counterclockwise.circle")
                         }
@@ -740,8 +743,12 @@ struct WorkoutDayCard: View {
         .onChange(of: completedExercises) { _, _ in
             // `markSetComplete` stamps the clock itself, so logging a set without tapping
             // Start still begins a session — pick that up so the timer appears.
-            if sessionStart == nil {
-                sessionStart = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+            guard sessionStart == nil else { return }
+            Task { @MainActor in
+                await Task.yield()
+                if sessionStart == nil {
+                    sessionStart = WorkoutSessionClock.startDate(dayKey: progressDayKey)
+                }
             }
         }
         .onChange(of: allExercisesComplete) { _, complete in
@@ -813,16 +820,18 @@ struct WorkoutDayCard: View {
             Menu {
                 Button {
                     let willClear = allExercisesComplete
-                    withAnimation {
+                    let markComplete = !allExercisesComplete
+                    Task { @MainActor in
+                        await Task.yield()
                         workoutService.setDayCompletion(
                             day: day,
                             dayKey: progressDayKey,
                             planIndex: planIndex,
                             planId: planId,
-                            complete: !allExercisesComplete
+                            complete: markComplete
                         )
+                        if willClear { Haptics.impact(.soft) }
                     }
-                    if willClear { Haptics.impact(.soft) }
                 } label: {
                     Label(
                         allExercisesComplete ? "Clear completion" : "Mark all complete",
@@ -1147,50 +1156,50 @@ struct ExerciseRow: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(exercise.name)
-                    .font(.subheadline)
-                Text("\(exercise.sets) × \(exercise.reps)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let restLabel = exercise.restDisplayLabel {
-                    Text("\(restLabel) rest")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.appSlate)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.appSlate.opacity(0.12), in: Capsule())
-                } else if let notes = exercise.notes, !notes.isEmpty {
-                    Text(notes)
-                        .font(.caption2)
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(exercise.name)
+                        .font(.subheadline)
+                    Text("\(exercise.sets) × \(exercise.reps)")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                    if let restLabel = exercise.restDisplayLabel {
+                        Text("\(restLabel) rest")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.appSlate)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.appSlate.opacity(0.12), in: Capsule())
+                    } else if let notes = exercise.notes, !notes.isEmpty {
+                        Text(notes)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
                 }
-            }
-            Spacer()
-            // GIF demo toggle — only rendered once the demo has actually loaded,
-            // so exercises without an available demo never show a play button.
-            if gifData != nil {
-                Button {
-                    withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
-                } label: {
-                    Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
+                Spacer()
+                // GIF demo toggle — only rendered once the demo has actually loaded,
+                // so exercises without an available demo never show a play button.
+                if gifData != nil {
+                    Button {
+                        withAnimation(.spring(duration: 0.25)) { showGif.toggle() }
+                    } label: {
+                        Image(systemName: showGif ? "eye.slash.fill" : "play.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(showGif ? Color.secondary : Color.appAccent)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showGif ? "Hide exercise demo" : "Show exercise demo")
             }
         }
     }
 
     private var futureDayNotice: some View {
         Text("Future workouts can't be logged yet.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
     }
 
     // MARK: Sets
@@ -1311,14 +1320,14 @@ struct ExerciseRow: View {
     }
 
     private func rpeMenu(index: Int, done: Bool) -> some View {
-        Menu {
+                    Menu {
             Button("Not rated") { setRPE(index, nil) }
-            ForEach(Array(stride(from: 10.0, through: 6.0, by: -0.5)), id: \.self) { value in
+                        ForEach(Array(stride(from: 10.0, through: 6.0, by: -0.5)), id: \.self) { value in
                 Button(Self.rpeLabel(value)) { setRPE(index, value) }
-            }
-        } label: {
+                        }
+                    } label: {
             Text(sets[safe: index]?.rpe.map { Self.rpeLabel($0) } ?? "—")
-                .font(.caption.weight(.medium))
+                                .font(.caption.weight(.medium))
                 .foregroundStyle(sets[safe: index]?.rpe == nil ? Color.secondary : Color.appAccent)
                 .frame(width: 52)
                 .frame(minHeight: 36)
@@ -1361,14 +1370,14 @@ struct ExerciseRow: View {
 
     private func isSetComplete(_ index: Int) -> Bool {
         workoutService.isSetComplete(
-            exerciseName: exercise.name,
+                            exerciseName: exercise.name,
             setIndex: index,
-            dayKey: progressDayKey,
-            planIndex: planIndex,
-            globalSlot: globalSlot,
-            webContext: webContext,
-            exercise: exercise
-        )
+                            dayKey: progressDayKey,
+                            planIndex: planIndex,
+                            globalSlot: globalSlot,
+                            webContext: webContext,
+                            exercise: exercise
+                        )
     }
 
     /// Binding onto one field of one set, safe against the row list shrinking underneath it.
@@ -1386,6 +1395,7 @@ struct ExerciseRow: View {
         guard sets.indices.contains(index) else { return }
         sets[index].rpe = value
         Task { @MainActor in
+            await Task.yield()
             relogIfComplete(index)
         }
     }
@@ -1407,6 +1417,7 @@ struct ExerciseRow: View {
         guard sets.count > prescribedSetCount, let index = sets.indices.last else { return }
         if isSetComplete(index) {
             Task { @MainActor in
+                await Task.yield()
                 workoutService.unmarkSetComplete(
                     exerciseName: exercise.name,
                     setIndex: index,
@@ -1425,9 +1436,14 @@ struct ExerciseRow: View {
         guard !setsDisabled, sets.indices.contains(index) else { return }
         hideKeyboard()
 
-        if isSetComplete(index) {
-            Haptics.impact(.soft)
-            Task { @MainActor in
+        let wasComplete = isSetComplete(index)
+        Task { @MainActor in
+            // Must run after the current view update — `@Observable` WorkoutService updates
+            // from the button action were crashing with "Publishing changes from within view updates".
+            await Task.yield()
+
+            if wasComplete {
+                Haptics.impact(.soft)
                 workoutService.unmarkSetComplete(
                     exerciseName: exercise.name,
                     setIndex: index,
@@ -1438,14 +1454,10 @@ struct ExerciseRow: View {
                     exerciseForWeb: exercise
                 )
                 onCancelRestTimer?()
+                return
             }
-            return
-        }
 
-        Haptics.impact(.light)
-        // Defer observable + parent `@State` updates out of the button action — doing
-        // both synchronously while SwiftUI re-renders set rows caused intermittent crashes.
-        Task { @MainActor in
+            Haptics.impact(.light)
             logSet(index)
             celebratePRIfEarned(index)
             onStartRestTimer?(exercise.name, exercise.restSeconds)
@@ -1596,48 +1608,48 @@ struct RestTimerBanner: View {
 
     @ViewBuilder
     private func bannerContent(remaining: Int) -> some View {
-        VStack(spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Rest")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(state.exerciseName)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                }
-                Spacer()
-                Text(formatCountdown(remaining))
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(Color.appAccent)
-            }
-
-            GeometryReader { geo in
-                let progress = Double(remaining) / Double(max(1, state.totalSeconds))
-                Capsule()
-                    .fill(Color.secondary.opacity(0.15))
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.appAccent)
-                            .frame(width: geo.size.width * progress)
+                VStack(spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Rest")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            Text(state.exerciseName)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                        Text(formatCountdown(remaining))
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.appAccent)
                     }
-            }
-            .frame(height: 6)
 
-            HStack(spacing: 10) {
-                Button("Skip", action: onSkip)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                Button("+15s", action: onAdd15)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                Spacer()
-            }
-        }
-        .padding()
+                    GeometryReader { geo in
+                        let progress = Double(remaining) / Double(max(1, state.totalSeconds))
+                        Capsule()
+                            .fill(Color.secondary.opacity(0.15))
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(Color.appAccent)
+                                    .frame(width: geo.size.width * progress)
+                            }
+                    }
+                    .frame(height: 6)
+
+                    HStack(spacing: 10) {
+                        Button("Skip", action: onSkip)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Button("+15s", action: onAdd15)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        Spacer()
+                    }
+                }
+                .padding()
         .cardSurface(cornerRadius: 16)
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+                .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
     }
 
     private func formatCountdown(_ seconds: Int) -> String {

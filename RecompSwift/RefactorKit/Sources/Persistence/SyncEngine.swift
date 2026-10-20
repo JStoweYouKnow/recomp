@@ -47,8 +47,7 @@ public actor SyncEngine {
         await performSync()
     }
 
-    /// Debounced `fetchAndApply()` for workout completion / Web progress keys (`recompScheduleDataSync`).
-    /// Uses pull-then-push so a stale local `FitnessPlan` (e.g. old macro targets) does not overwrite web edits on DynamoDB.
+    /// Debounced `fetchAndApply()` for manual refresh (`recompScheduleDataSync`), e.g. catch-up banner sync.
     public func scheduleFetchAndApply() {
         workoutPullPushDebounceTask?.cancel()
         workoutPullPushDebounceTask = Task {

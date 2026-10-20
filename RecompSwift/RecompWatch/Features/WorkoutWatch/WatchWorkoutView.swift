@@ -105,15 +105,18 @@ struct WatchWorkoutView: View {
                         exercise: exercise
                     )
                     Button {
-                        workoutService.markSetComplete(
-                            exerciseName: exercise.name,
-                            setIndex: setIdx,
-                            dayKey: progressDayKey,
-                            planIndex: planIndex,
-                            globalSlot: globalSlot,
-                            webContext: webCtx,
-                            exerciseForWeb: exercise
-                        )
+                        Task { @MainActor in
+                            await Task.yield()
+                            workoutService.markSetComplete(
+                                exerciseName: exercise.name,
+                                setIndex: setIdx,
+                                dayKey: progressDayKey,
+                                planIndex: planIndex,
+                                globalSlot: globalSlot,
+                                webContext: webCtx,
+                                exerciseForWeb: exercise
+                            )
+                        }
                     } label: {
                         ZStack {
                             Circle()

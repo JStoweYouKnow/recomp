@@ -46,6 +46,7 @@ struct AddMealSheet: View {
     @State private var showAIConsent = false
     @State private var pendingAIAction: (() -> Void)?
     @State private var saveError: String?
+    @State private var isSaving = false
 
     enum InputMode: String, CaseIterable, Identifiable {
         case photo = "Photo"
@@ -173,7 +174,7 @@ struct AddMealSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveMeal() }
-                        .disabled(name.isEmpty)
+                        .disabled(name.isEmpty || isSaving)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -785,7 +786,8 @@ struct AddMealSheet: View {
 
     private func saveMeal() {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty, !isSaving else { return }
+        isSaving = true
 
         let meal = MealEntry(
             date: date,
@@ -805,21 +807,24 @@ struct AddMealSheet: View {
         context.insert(meal)
         do {
             try context.save()
-            MealChangeNotifier.postLocalMealsChanged()
-            HealthKitWriter.saveMeal(name: meal.name, macros: meal.macros, date: DateHelpers.date(from: date) ?? .now)
-            if crossedProteinGoal {
-                ToastCenter.celebrate()
-                ToastCenter.show("Protein goal hit! 🎯", type: .success)
-            } else {
-                Haptics.success()
-                ToastCenter.show("Meal logged", type: .success)
-            }
-            dismiss()
-            Task {
+            Task { @MainActor in
+                await Task.yield()
+                MealChangeNotifier.postLocalMealsChanged()
+                HealthKitWriter.saveMeal(name: meal.name, macros: meal.macros, date: DateHelpers.date(from: date) ?? .now)
+                if crossedProteinGoal {
+                    ToastCenter.celebrate()
+                    ToastCenter.show("Protein goal hit! 🎯", type: .success)
+                } else {
+                    Haptics.success()
+                    ToastCenter.show("Meal logged", type: .success)
+                }
+                dismiss()
                 await syncEngine?.markDirty()
-                _ = await syncEngine?.syncNow()
+                NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+                isSaving = false
             }
         } catch {
+            isSaving = false
             Haptics.error()
             saveError = error.localizedDescription
         }
