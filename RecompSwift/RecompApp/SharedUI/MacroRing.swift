@@ -3,8 +3,8 @@ import RefactorKit
 
 // MARK: - Macro detail model
 
-struct MacroDetail: Identifiable {
-    let id = UUID()
+struct MacroDetail: Identifiable, Equatable {
+    var id: String { label }
     let label: String
     let current: Double
     let target: Double
@@ -28,6 +28,8 @@ struct MacroRing: View {
     let unit: String
     var onTap: (() -> Void)? = nil
 
+    private let ringSize: CGFloat = 70
+
     private var progress: Double {
         guard target > 0 else { return 0 }
         return min(current / target, 1.0)
@@ -40,6 +42,7 @@ struct MacroRing: View {
             ZStack {
                 Circle()
                     .stroke(color.opacity(0.15), lineWidth: 7)
+                    .frame(width: ringSize, height: ringSize)
 
                 Circle()
                     .trim(from: 0, to: progress)
@@ -48,8 +51,8 @@ struct MacroRing: View {
                         style: StrokeStyle(lineWidth: 7, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
+                    .frame(width: ringSize, height: ringSize)
                     .shadow(color: (isOverTarget ? Color.appError : color).opacity(0.35), radius: 3)
-                    .animation(.spring(duration: 0.4), value: progress)
 
                 VStack(spacing: 1) {
                     Text("\(Int(current.rounded()))")
@@ -61,7 +64,10 @@ struct MacroRing: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 70, height: 70)
+            .frame(width: ringSize, height: ringSize)
+            .clipShape(Circle())
+            .contentShape(Circle())
+            .accessibilityAddTraits(onTap != nil ? .isButton : [])
             .onTapGesture { onTap?() }
 
             Text(label)
@@ -71,27 +77,16 @@ struct MacroRing: View {
     }
 }
 
-// MARK: - Popup sheet
+// MARK: - Detail panel (overlay — avoids iOS 26 full-screen sheet expansion)
 
-struct MacroDetailSheet: View {
+struct MacroDetailPanel: View {
     let detail: MacroDetail
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
 
     var body: some View {
         VStack(spacing: 20) {
-            // Header
             HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .stroke(detail.color.opacity(0.2), lineWidth: 5)
-                    Circle()
-                        .trim(from: 0, to: detail.progress)
-                        .stroke(detail.isOver ? Color.appError : detail.color,
-                                style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-                .frame(width: 48, height: 48)
-
+                macroMiniRing
                 VStack(alignment: .leading, spacing: 2) {
                     Text(detail.label)
                         .font(.title3.weight(.bold))
@@ -99,8 +94,8 @@ struct MacroDetailSheet: View {
                         .font(.subheadline)
                         .foregroundStyle(detail.isOver ? Color.appError : Color.secondary)
                 }
-                Spacer()
-                Button { dismiss() } label: {
+                Spacer(minLength: 0)
+                Button(action: onClose) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.title2)
                         .foregroundStyle(.secondary)
@@ -110,7 +105,6 @@ struct MacroDetailSheet: View {
 
             Divider()
 
-            // Stats grid
             HStack(spacing: 0) {
                 statCell(
                     title: "Consumed",
@@ -144,7 +138,30 @@ struct MacroDetailSheet: View {
             }
         }
         .padding(24)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: 420)
+        .fixedSize(horizontal: false, vertical: true)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.15), radius: 16, y: 8)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var macroMiniRing: some View {
+        ZStack {
+            Circle()
+                .stroke(detail.color.opacity(0.2), lineWidth: 5)
+                .frame(width: 48, height: 48)
+            Circle()
+                .trim(from: 0, to: detail.progress)
+                .stroke(
+                    detail.isOver ? Color.appError : detail.color,
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .frame(width: 48, height: 48)
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(Circle())
     }
 
     private func statCell(title: String, value: String, unit: String, color: Color) -> some View {
@@ -177,41 +194,75 @@ struct MacroDetailSheet: View {
 struct MacroPillsView: View {
     let consumed: Macros
     let target: Macros
-
-    @State private var activeMacro: MacroDetail?
+    @Binding var activeMacro: MacroDetail?
 
     var body: some View {
         HStack(spacing: 0) {
             MacroRing(current: Double(consumed.calories), target: Double(target.calories), color: .appWarm, label: "Cal", unit: "kcal") {
-                activeMacro = MacroDetail(label: "Calories", current: Double(consumed.calories), target: Double(target.calories), unit: "kcal", color: .appWarm)
+                presentDetail(MacroDetail(label: "Calories", current: Double(consumed.calories), target: Double(target.calories), unit: "kcal", color: .appWarm))
             }
             Spacer()
             MacroRing(current: consumed.protein, target: target.protein, color: .appAccent, label: "Protein", unit: "g") {
-                activeMacro = MacroDetail(label: "Protein", current: consumed.protein, target: target.protein, unit: "g", color: .appAccent)
+                presentDetail(MacroDetail(label: "Protein", current: consumed.protein, target: target.protein, unit: "g", color: .appAccent))
             }
             Spacer()
             MacroRing(current: consumed.carbs, target: target.carbs, color: .appSage, label: "Carbs", unit: "g") {
-                activeMacro = MacroDetail(label: "Carbs", current: consumed.carbs, target: target.carbs, unit: "g", color: .appSage)
+                presentDetail(MacroDetail(label: "Carbs", current: consumed.carbs, target: target.carbs, unit: "g", color: .appSage))
             }
             Spacer()
             MacroRing(current: consumed.fat, target: target.fat, color: .appTerracotta, label: "Fat", unit: "g") {
-                activeMacro = MacroDetail(label: "Fat", current: consumed.fat, target: target.fat, unit: "g", color: .appTerracotta)
+                presentDetail(MacroDetail(label: "Fat", current: consumed.fat, target: target.fat, unit: "g", color: .appTerracotta))
             }
         }
         .padding(.horizontal, 8)
-        .sheet(item: $activeMacro) { detail in
-            MacroDetailSheet(detail: detail)
-                .presentationDetents([.height(220)])
-                .presentationDragIndicator(.visible)
-                .presentationCornerRadius(24)
+    }
+
+    private func presentDetail(_ detail: MacroDetail) {
+        Task { @MainActor in
+            await Task.yield()
+            if activeMacro?.id == detail.id {
+                activeMacro = nil
+            } else {
+                activeMacro = detail
+            }
         }
     }
 }
 
+extension View {
+    /// Compact macro breakdown — custom overlay instead of `.sheet` (full-screen on first tap on iOS 26).
+    func macroDetailOverlay(_ activeMacro: Binding<MacroDetail?>) -> some View {
+        overlay {
+            if let detail = activeMacro.wrappedValue {
+                ZStack {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) { activeMacro.wrappedValue = nil }
+                        }
+                        .accessibilityLabel("Dismiss macro details")
+                        .accessibilityAddTraits(.isButton)
+
+                    MacroDetailPanel(detail: detail) {
+                        withAnimation(.easeOut(duration: 0.2)) { activeMacro.wrappedValue = nil }
+                    }
+                    .padding(.horizontal, 16)
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
+                }
+                .zIndex(50)
+            }
+        }
+        .animation(.spring(duration: 0.28, bounce: 0.15), value: activeMacro.wrappedValue?.id)
+    }
+}
+
 #Preview {
+    @Previewable @State var active: MacroDetail?
     MacroPillsView(
         consumed: Macros(calories: 1200, protein: 80, carbs: 120, fat: 40),
-        target: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65)
+        target: Macros(calories: 2000, protein: 150, carbs: 200, fat: 65),
+        activeMacro: $active
     )
+    .macroDetailOverlay($active)
     .padding()
 }

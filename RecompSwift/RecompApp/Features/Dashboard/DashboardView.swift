@@ -15,6 +15,7 @@ struct DashboardView: View {
     /// Secondary dashboard cards/widgets mount after the first frame so cold launch
     /// does not register a dozen SwiftData @Query observers before sync runs.
     @State private var secondaryDashboardReady = false
+    @State private var activeMacroDetail: MacroDetail?
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var plans: [FitnessPlan]
@@ -121,6 +122,7 @@ struct DashboardView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .macroDetailOverlay($activeMacroDetail)
             .refreshable {
                 await auth.checkSession()
                 if let engine = syncEngine {
@@ -238,7 +240,7 @@ struct DashboardView: View {
                 baseCalories: targets.calories,
                 activityAdjustment: activityAdj
             )
-            MacroPillsView(consumed: consumed, target: targets)
+            MacroPillsView(consumed: consumed, target: targets, activeMacro: $activeMacroDetail)
         }
         .padding(.horizontal)
     }

@@ -16,6 +16,7 @@ struct MealsView: View {
     @State private var addMealPrefill: MealRecommendation?
     @State private var recTab: RecommendationCategory = .meal
     @State private var mealEditToken: EditableMealToken?
+    @State private var activeMacroDetail: MacroDetail?
 
     @Query(sort: \MealEntry.loggedAt, order: .reverse)
     private var allMeals: [MealEntry]
@@ -96,13 +97,14 @@ struct MealsView: View {
                 guard let engine = syncEngine else { return }
                 try? await engine.fetchAndApply()
             }
+            .macroDetailOverlay($activeMacroDetail)
         }
     }
 
     private var macroSummary: some View {
         let consumed = mealsForDate.reduce(Macros.zero) { $0.adding($1.macros) }
         let targets = planService.targets(for: selectedDate, context: context)
-        return MacroPillsView(consumed: consumed, target: targets)
+        return MacroPillsView(consumed: consumed, target: targets, activeMacro: $activeMacroDetail)
             .padding(.horizontal)
             .padding(.top, 12)
             .padding(.bottom, 8)
