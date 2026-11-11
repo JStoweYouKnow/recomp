@@ -807,6 +807,11 @@ struct AddMealSheet: View {
         context.insert(meal)
         do {
             try context.save()
+            // Schedule the upload before the sheet dismisses. The deferred task below only
+            // handles UI; if it is cancelled, the meal must still be queued for sync.
+            Task { @MainActor in
+                await syncEngine?.markDirty()
+            }
             Task { @MainActor in
                 await Task.yield()
                 MealChangeNotifier.postLocalMealsChanged()
@@ -819,8 +824,6 @@ struct AddMealSheet: View {
                     ToastCenter.show("Meal logged", type: .success)
                 }
                 dismiss()
-                await syncEngine?.markDirty()
-                NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
                 isSaving = false
             }
         } catch {

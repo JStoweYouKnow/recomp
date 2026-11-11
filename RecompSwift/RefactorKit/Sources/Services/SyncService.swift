@@ -59,7 +59,6 @@ public actor SyncService: ModelActor {
         defer { syncActivityGeneration &+= 1 }
         let attemptedGeneration = dirtyGeneration
         do {
-            let meals           = fetchAllMealsFromStore()
             let milestones      = (try? modelContext.fetch(FetchDescriptor<Milestone>())) ?? []
             let plans           = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>())) ?? []
             let profiles        = (try? modelContext.fetch(FetchDescriptor<UserProfile>())) ?? []
@@ -75,7 +74,6 @@ public actor SyncService: ModelActor {
             let wearableDays    = (try? modelContext.fetch(FetchDescriptor<WearableDaySummary>())) ?? []
             let metabolicModels = (try? modelContext.fetch(FetchDescriptor<MetabolicModel>())) ?? []
 
-            let mealDTOs        = meals.map { MealEntryDTO(from: $0, iso8601: iso8601) }
             let milestoneDTOs   = milestones.map { MilestoneEntryDTO(from: $0, iso8601: iso8601) }
             let planDTO         = plans.first.map { FitnessPlanDTO(from: $0, iso8601: iso8601) }
             let profileDTO      = profiles.first.map { $0.toDTO(createdAtISO: iso8601.string(from: $0.createdAt)) }
@@ -106,6 +104,15 @@ public actor SyncService: ModelActor {
             }()
 
             let planModel = plans.first
+            // Re-read meals on the main actor immediately before POST. The actor context (and a
+            // fetch taken at the start of this method) can miss a meal the UI just saved, and the
+            // server treats the meal array as the full set — a stale payload drops the new row.
+            let mealDTOs: [MealEntryDTO] = await MainActor.run {
+                let ctx = ModelContext(modelContainer)
+                let rows = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
+                return rows.map { MealEntryDTO(from: $0, iso8601: iso8601) }
+            }
+            let pushedMealKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
             let workoutMerged = await MainActor.run {
                 WorkoutService.shared.webWorkoutProgressMergedForSync(plan: planModel)
             }
@@ -177,7 +184,7 @@ public actor SyncService: ModelActor {
                 measurementTargets: measurementTargetsPayload
             )
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
-            markAllMealsSyncedInStore()
+            markMealsSyncedInStore(pushedMealKeys)
             // Only clear the dirty flag if no new edits landed while the push was
             // in flight; otherwise leave it set so the queued resync picks them up.
             if dirtyGeneration == attemptedGeneration {
@@ -469,19 +476,18 @@ public actor SyncService: ModelActor {
 
     // MARK: - Meal store helpers
 
-    /// Reads meals from a fresh context so UI-thread saves are visible before push/pull.
-    private func fetchAllMealsFromStore() -> [MealEntry] {
-        let fresh = ModelContext(modelContainer)
-        return (try? fresh.fetch(FetchDescriptor<MealEntry>())) ?? []
-    }
-
-    private func markAllMealsSyncedInStore() {
+    /// Marks only the rows included in the payload that just succeeded. Meals saved after
+    /// that snapshot stay `synced == false` so a later pull cannot delete them.
+    private func markMealsSyncedInStore(_ pushedKeys: Set<String>) {
+        guard !pushedKeys.isEmpty else { return }
         let fresh = ModelContext(modelContainer)
         let meals = (try? fresh.fetch(FetchDescriptor<MealEntry>())) ?? []
-        for meal in meals {
+        var changed = false
+        for meal in meals where pushedKeys.contains(meal.syncKey) && !meal.synced {
             meal.synced = true
+            changed = true
         }
-        try? fresh.save()
+        if changed { try? fresh.save() }
     }
 
     /// Merges server meals on a fresh context so the ModelActor cache cannot resurrect deleted rows.
@@ -493,21 +499,24 @@ public actor SyncService: ModelActor {
     private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO], skipDeletions: Bool) throws {
         let fresh = ModelContext(modelContainer)
         let localMeals = try fresh.fetch(FetchDescriptor<MealEntry>())
-        var knownKeys = Set(localMeals.map(\.syncKey))
 
         if !skipDeletions {
-            let pendingKeys = Set(localMeals.filter { !$0.synced }.map(\.syncKey))
-            let graceCutoff = Date().addingTimeInterval(-120)
-            var protectedKeys = Set<String>()
-            for meal in localMeals where meal.synced {
-                if meal.loggedAt > graceCutoff {
-                    protectedKeys.insert(meal.syncKey)
+            let serverKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
+            let graceCutoff = Date().addingTimeInterval(-24 * 60 * 60)
+            for meal in localMeals {
+                if serverKeys.contains(meal.syncKey) { continue }
+                // Never drop a meal the server has not confirmed. A push that raced ahead of
+                // the save used to mark these synced, and the next pull deleted them.
+                if !meal.synced || meal.loggedAt > graceCutoff {
+                    meal.synced = false
                     continue
                 }
                 fresh.delete(meal)
             }
-            knownKeys = pendingKeys.union(protectedKeys)
         }
+
+        let localAfter = try fresh.fetch(FetchDescriptor<MealEntry>())
+        var knownKeys = Set(localAfter.map(\.syncKey))
 
         for dto in mealDTOs {
             let key = Self.mealSyncKey(date: dto.date, id: dto.id)

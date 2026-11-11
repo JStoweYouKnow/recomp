@@ -144,11 +144,12 @@ struct EditMealSheet: View {
         do {
             try context.save()
             Task { @MainActor in
+                await syncEngine?.markDirty()
+            }
+            Task { @MainActor in
                 await Task.yield()
                 MealChangeNotifier.postLocalMealsChanged()
                 dismiss()
-                await syncEngine?.markDirty()
-                NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
             }
         } catch {
             saveError = error.localizedDescription
