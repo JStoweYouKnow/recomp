@@ -91,6 +91,7 @@ struct QuickMealLogView: View {
         )
         context.insert(meal)
         try? context.save()
+        RecentMealMemory.record(name: meal.name, macros: meal.macros, mealType: meal.mealType)
         MealChangeNotifier.postLocalMealsChanged()
         Task {
             await syncEngine?.markDirty()

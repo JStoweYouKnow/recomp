@@ -142,6 +142,7 @@ public final class CoachService {
         do {
             try context.save()
             loggedPickKeys.insert(key)
+            RecentMealMemory.record(name: entry.name, macros: entry.macros, mealType: entry.mealType)
             MealChangeNotifier.postLocalMealsChanged()
             NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
         } catch {
@@ -342,6 +343,7 @@ public final class CoachService {
                 modelContext.insert(entry)
                 result.touchedMeals = true
                 result.recordApplied("log_meal")
+                RecentMealMemory.record(name: entry.name, macros: entry.macros, mealType: entry.mealType)
 
             case .updateMacros(let payload):
                 guard let plan = fetchLatestPlan(modelContext: modelContext) else {

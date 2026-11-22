@@ -30,6 +30,16 @@ public enum DateHelpers {
         dateFormatter.string(from: date)
     }
 
+    /// First `yyyy-MM-dd` in a stored meal date. Sync sometimes round-trips a full timestamp,
+    /// which would hide the meal on the calendar day it was logged.
+    public static func calendarDay(from raw: String) -> String {
+        guard raw.count >= 10 else { return raw }
+        let prefix = raw.prefix(10)
+        let chars = Array(prefix)
+        guard chars[4] == "-", chars[7] == "-" else { return raw }
+        return String(prefix)
+    }
+
     public static func timeString(from date: Date) -> String {
         timeFormatter.string(from: date)
     }

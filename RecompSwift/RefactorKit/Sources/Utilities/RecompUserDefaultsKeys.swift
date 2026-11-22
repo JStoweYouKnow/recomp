@@ -16,4 +16,6 @@ public enum RecompUserDefaultsKeys {
     public static let savedRecipesJSON = "recomp_sync_saved_recipes_json"
     /// Pending recipe URL from Share / deep link (Phase 2).
     public static let pendingRecipeSaveURL = "recomp_pending_recipe_save_url"
+    /// How many meals the last non-partial upload contained. A much smaller read is not pushed.
+    public static let lastPushedMealCount = "recomp_last_pushed_meal_count"
 }

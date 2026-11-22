@@ -41,7 +41,7 @@ struct DashboardView: View {
     private var currentPlan: FitnessPlan? { plans.first }
     private var todaysMeals: [MealEntry] {
         let today = DateHelpers.todayString()
-        return allMeals.filter { $0.date == today }
+        return allMeals.filter { DateHelpers.calendarDay(from: $0.date) == today }
     }
     private var profileDaysPerWeek: Int {
         let d = profiles.first?.workoutDaysPerWeek ?? 4

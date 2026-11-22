@@ -10,7 +10,7 @@ struct DailyQuestsCard: View {
 
     private var todaysMeals: [MealEntry] {
         let today = DateHelpers.todayString()
-        return allMeals.filter { $0.date == today }
+        return allMeals.filter { DateHelpers.calendarDay(from: $0.date) == today }
     }
 
     private var quests: [(String, Bool)] {

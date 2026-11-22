@@ -54,7 +54,7 @@ import {
   repairWearableScaleRowsForCanonicalLbs,
   type WearableInbound,
 } from "@/lib/wearable-normalize";
-import { dedupeMealsByDateAndId } from "@/lib/meals-dedupe";
+import { dedupeMealsByDateAndId, mealsOmittedBySnapshot } from "@/lib/meals-dedupe";
 import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, WorkoutSetLog, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets, ExerciseSubstitutionPreference } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -139,15 +139,8 @@ export async function POST(req: NextRequest) {
         (async () => {
           const uniqueIncoming = dedupeMealsByDateAndId(meals as MealEntry[]);
           const existing = await dbGetMeals(userId);
-          const incomingKeys = new Set(
-            uniqueIncoming.filter((m) => m?.id && typeof m.date === "string").map((m) => `${m.date}\t${m.id}`)
-          );
-          await Promise.all(
-            existing
-              .filter((ex) => ex?.id && typeof ex.date === "string")
-              .filter((ex) => !incomingKeys.has(`${ex.date}\t${ex.id}`))
-              .map((ex) => dbDeleteMeal(userId, ex))
-          );
+          const omitted = mealsOmittedBySnapshot(existing, uniqueIncoming);
+          await Promise.all(omitted.map((ex) => dbDeleteMeal(userId, ex)));
           for (const m of uniqueIncoming) {
             await dbSaveMeal(userId, m);
             if (m.name && m.macros && m.macros.calories > 0) {

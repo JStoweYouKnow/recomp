@@ -3,6 +3,16 @@ import SwiftData
 import PhotosUI
 import RefactorKit
 
+private struct MealSuggestion: Identifiable {
+    var id: String { name.lowercased() }
+    let name: String
+    let calories: Int
+    let protein: Double
+    let carbs: Double
+    let fat: Double
+    let mealType: MealType
+}
+
 struct AddMealSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
@@ -318,16 +328,51 @@ struct AddMealSheet: View {
 
     // MARK: - History
 
-    /// Distinct meals from the user's own log — filtered when typing, most-recent-first
-    /// when the field is empty.
-    private var suggestedMeals: [MealEntry] {
+    /// Distinct foods the user has logged, newest first. SwiftData rows and the
+    /// on-device memory are merged so a food typed for the first time is not buried
+    /// under older meals that share the same calendar day.
+    private var suggestedMeals: [MealSuggestion] {
         let query = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        var seen = Set<String>()
-        let matches = allMeals.filter { entry in
-            guard query.isEmpty || entry.name.localizedCaseInsensitiveContains(query) else { return false }
-            return seen.insert(entry.name.lowercased()).inserted
+        var byName: [String: (meal: MealSuggestion, at: Date)] = [:]
+
+        func consider(_ meal: MealSuggestion, at: Date) {
+            guard query.isEmpty || meal.name.localizedCaseInsensitiveContains(query) else { return }
+            let key = meal.name.lowercased()
+            if let existing = byName[key], existing.at >= at { return }
+            byName[key] = (meal, at)
         }
-        return Array(matches.prefix(query.isEmpty ? 6 : 8))
+
+        for entry in allMeals {
+            consider(
+                MealSuggestion(
+                    name: entry.name,
+                    calories: entry.macros.calories,
+                    protein: entry.macros.protein,
+                    carbs: entry.macros.carbs,
+                    fat: entry.macros.fat,
+                    mealType: entry.mealType
+                ),
+                at: entry.loggedAt
+            )
+        }
+        for remembered in RecentMealMemory.load() {
+            consider(
+                MealSuggestion(
+                    name: remembered.name,
+                    calories: remembered.calories,
+                    protein: remembered.protein,
+                    carbs: remembered.carbs,
+                    fat: remembered.fat,
+                    mealType: MealType(rawValue: remembered.mealType) ?? .snack
+                ),
+                at: remembered.lastUsed
+            )
+        }
+
+        return byName.values
+            .sorted { $0.at > $1.at }
+            .prefix(query.isEmpty ? 12 : 16)
+            .map(\.meal)
     }
 
     @ViewBuilder
@@ -343,7 +388,7 @@ struct AddMealSheet: View {
                                 Text(entry.name)
                                     .foregroundStyle(.primary)
                                     .multilineTextAlignment(.leading)
-                                Text("\(entry.macros.calories) cal · P:\(Int(entry.macros.protein))g C:\(Int(entry.macros.carbs))g F:\(Int(entry.macros.fat))g")
+                                Text("\(entry.calories) cal · P:\(Int(entry.protein))g C:\(Int(entry.carbs))g F:\(Int(entry.fat))g")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -359,12 +404,12 @@ struct AddMealSheet: View {
         }
     }
 
-    private func apply(_ entry: MealEntry) {
+    private func apply(_ entry: MealSuggestion) {
         name = entry.name
-        calories = entry.macros.calories
-        protein = entry.macros.protein
-        carbs = entry.macros.carbs
-        fat = entry.macros.fat
+        calories = entry.calories
+        protein = entry.protein
+        carbs = entry.carbs
+        fat = entry.fat
         mealType = entry.mealType
         servings = 1
         Haptics.impact(.light)
@@ -465,7 +510,7 @@ struct AddMealSheet: View {
     private var remainingMacros: Macros {
         let target = planService.targets(for: DateHelpers.date(from: date) ?? .now, context: context)
         let consumed = allMeals
-            .filter { $0.date == date }
+            .filter { DateHelpers.calendarDay(from: $0.date) == date }
             .reduce(Macros.zero) { $0.adding($1.macros) }
         return Macros(
             calories: max(0, target.calories - consumed.calories),
@@ -807,6 +852,7 @@ struct AddMealSheet: View {
         context.insert(meal)
         do {
             try context.save()
+            RecentMealMemory.record(name: trimmed, macros: meal.macros, mealType: mealType)
             // Schedule the upload before the sheet dismisses. The deferred task below only
             // handles UI; if it is cancelled, the meal must still be queued for sync.
             Task { @MainActor in
@@ -840,7 +886,7 @@ struct AddMealSheet: View {
         let target = planService.targets(for: .now, context: context).protein
         guard target > 0 else { return false }
         let priorProtein = allMeals
-            .filter { $0.date == date }
+            .filter { DateHelpers.calendarDay(from: $0.date) == date }
             .reduce(0.0) { $0 + $1.macros.protein }
         return priorProtein < target && priorProtein + addedProtein >= target
     }

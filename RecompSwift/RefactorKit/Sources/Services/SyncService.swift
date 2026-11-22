@@ -104,15 +104,6 @@ public actor SyncService: ModelActor {
             }()
 
             let planModel = plans.first
-            // Re-read meals on the main actor immediately before POST. The actor context (and a
-            // fetch taken at the start of this method) can miss a meal the UI just saved, and the
-            // server treats the meal array as the full set — a stale payload drops the new row.
-            let mealDTOs: [MealEntryDTO] = await MainActor.run {
-                let ctx = ModelContext(modelContainer)
-                let rows = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
-                return rows.map { MealEntryDTO(from: $0, iso8601: iso8601) }
-            }
-            let pushedMealKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
             let workoutMerged = await MainActor.run {
                 WorkoutService.shared.webWorkoutProgressMergedForSync(plan: planModel)
             }
@@ -157,6 +148,17 @@ public actor SyncService: ModelActor {
                 )
             }()
 
+            // Read the UI's main context last. A second ModelContext often misses the meal
+            // that was just inserted — especially the first new food in a session — and the
+            // server then stores a list without it.
+            let mealDTOs = await mealDTOsFromMainContext()
+            let pushedMealKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
+            if Self.mealPayloadLooksPartial(mealDTOs.count) {
+                // A short read used to replace the server log and delete the missing days.
+                mealDTOs = []
+                pushedMealKeys = []
+            }
+
             let payload = SyncPayload(
                 profile: profileDTO,
                 meals: mealDTOs.isEmpty ? nil : mealDTOs,
@@ -184,7 +186,10 @@ public actor SyncService: ModelActor {
                 measurementTargets: measurementTargetsPayload
             )
             try await api.requestVoid(MiscAPI.dataSync(payload: payload))
-            markMealsSyncedInStore(pushedMealKeys)
+            await markMealsSyncedInStore(pushedMealKeys)
+            if !pushedMealKeys.isEmpty {
+                RecompAppGroupDefaults.shared.set(pushedMealKeys.count, forKey: RecompUserDefaultsKeys.lastPushedMealCount)
+            }
             // Only clear the dirty flag if no new edits landed while the push was
             // in flight; otherwise leave it set so the queued resync picks them up.
             if dirtyGeneration == attemptedGeneration {
@@ -397,7 +402,7 @@ public actor SyncService: ModelActor {
 
         if let mealDTOsFromServer {
             let racedWithConcurrentPush = syncActivityGeneration != syncActivityAtPullStart
-            try applyMealPullFromServer(mealDTOsFromServer, skipDeletions: racedWithConcurrentPush)
+            try await applyMealPullFromServer(mealDTOsFromServer, skipDeletions: racedWithConcurrentPush)
         }
 
         let planForWorkouts = (try? modelContext.fetch(FetchDescriptor<FitnessPlan>()))?.first
@@ -476,18 +481,35 @@ public actor SyncService: ModelActor {
 
     // MARK: - Meal store helpers
 
+    /// The context SwiftUI saves into. A freshly allocated `ModelContext` does not
+    /// reliably see a meal inserted a moment earlier on this one.
+    private func mealDTOsFromMainContext() async -> [MealEntryDTO] {
+        let container = modelContainer
+        return await MainActor.run {
+            let ctx = container.mainContext
+            ctx.processPendingChanges()
+            let formatter = ISO8601DateFormatter()
+            let rows = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
+            return rows.map { MealEntryDTO(from: $0, iso8601: formatter) }
+        }
+    }
+
     /// Marks only the rows included in the payload that just succeeded. Meals saved after
     /// that snapshot stay `synced == false` so a later pull cannot delete them.
-    private func markMealsSyncedInStore(_ pushedKeys: Set<String>) {
+    private func markMealsSyncedInStore(_ pushedKeys: Set<String>) async {
         guard !pushedKeys.isEmpty else { return }
-        let fresh = ModelContext(modelContainer)
-        let meals = (try? fresh.fetch(FetchDescriptor<MealEntry>())) ?? []
-        var changed = false
-        for meal in meals where pushedKeys.contains(meal.syncKey) && !meal.synced {
-            meal.synced = true
-            changed = true
+        let container = modelContainer
+        await MainActor.run {
+            let ctx = container.mainContext
+            ctx.processPendingChanges()
+            let meals = (try? ctx.fetch(FetchDescriptor<MealEntry>())) ?? []
+            var changed = false
+            for meal in meals where pushedKeys.contains(Self.normalizedStoredKey(meal.syncKey)) && !meal.synced {
+                meal.synced = true
+                changed = true
+            }
+            if changed { try? ctx.save() }
         }
-        if changed { try? fresh.save() }
     }
 
     /// Merges server meals on a fresh context so the ModelActor cache cannot resurrect deleted rows.
@@ -496,43 +518,57 @@ public actor SyncService: ModelActor {
     /// `mealDTOs` (see `fetchAndApply`): that response can't be trusted as complete anymore, so
     /// we only add what it knows about and leave every local row alone — the next, unraced pull
     /// will reconcile deletions once the dust settles.
-    private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO], skipDeletions: Bool) throws {
-        let fresh = ModelContext(modelContainer)
-        let localMeals = try fresh.fetch(FetchDescriptor<MealEntry>())
+    private func applyMealPullFromServer(_ mealDTOs: [MealEntryDTO], skipDeletions: Bool) async throws {
+        let container = modelContainer
+        try await MainActor.run {
+            let ctx = container.mainContext
+            ctx.processPendingChanges()
+            let formatter = ISO8601DateFormatter()
+            let localMeals = try ctx.fetch(FetchDescriptor<MealEntry>())
 
-        if !skipDeletions {
-            let serverKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
-            let graceCutoff = Date().addingTimeInterval(-24 * 60 * 60)
-            for meal in localMeals {
-                if serverKeys.contains(meal.syncKey) { continue }
-                // Never drop a meal the server has not confirmed. A push that raced ahead of
-                // the save used to mark these synced, and the next pull deleted them.
-                if !meal.synced || meal.loggedAt > graceCutoff {
+            if !skipDeletions {
+                let serverKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
+                for meal in localMeals {
+                    if serverKeys.contains(Self.normalizedStoredKey(meal.syncKey)) { continue }
+                    // Keep the row and upload it again. Deleting anything the server omitted
+                    // was dropping meals from the previous several days after a short sync.
                     meal.synced = false
-                    continue
                 }
-                fresh.delete(meal)
             }
-        }
 
-        let localAfter = try fresh.fetch(FetchDescriptor<MealEntry>())
-        var knownKeys = Set(localAfter.map(\.syncKey))
+            let localAfter = try ctx.fetch(FetchDescriptor<MealEntry>())
+            var knownKeys = Set(localAfter.map(\.syncKey))
 
-        for dto in mealDTOs {
-            let key = Self.mealSyncKey(date: dto.date, id: dto.id)
-            guard !knownKeys.contains(key) else { continue }
-            if let meal = MealEntry(dto: dto, iso8601: iso8601) {
-                fresh.insert(meal)
-                knownKeys.insert(key)
+            for dto in mealDTOs {
+                let key = Self.mealSyncKey(date: dto.date, id: dto.id)
+                guard !knownKeys.contains(key) else { continue }
+                if let meal = MealEntry(dto: dto, iso8601: formatter) {
+                    ctx.insert(meal)
+                    knownKeys.insert(key)
+                }
             }
+            try ctx.save()
         }
-        try fresh.save()
     }
 
     // MARK: - Upsert helpers
 
     private static func mealSyncKey(date: String, id: String) -> String {
-        "\(date)#\(id)"
+        "\(DateHelpers.calendarDay(from: date))#\(id)"
+    }
+
+    /// True when this read is much smaller than the last upload. Pushing it would delete
+    /// the meals that were not returned.
+    private static func mealPayloadLooksPartial(_ count: Int) -> Bool {
+        let last = RecompAppGroupDefaults.shared.integer(forKey: RecompUserDefaultsKeys.lastPushedMealCount)
+        return last >= 4 && count * 2 < last && last - count >= 3
+    }
+
+    private static func normalizedStoredKey(_ syncKey: String) -> String {
+        guard let hash = syncKey.firstIndex(of: "#") else { return syncKey }
+        let date = String(syncKey[..<hash])
+        let id = String(syncKey[syncKey.index(after: hash)...])
+        return mealSyncKey(date: date, id: id)
     }
 
     /// Thin wrapper over the shared `UserProfile.upsert(from:in:)` so the pull path
@@ -623,7 +659,7 @@ extension MealEntry {
         let loggedAt = dto.loggedAt.flatMap { iso8601.date(from: $0) } ?? .now
         self.init(
             id:       dto.id,
-            date:     dto.date,
+            date:     DateHelpers.calendarDay(from: dto.date),
             mealType: mealType,
             name:     dto.name,
             macros:   dto.macros,

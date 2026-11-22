@@ -23,11 +23,13 @@ struct MealsView: View {
 
     private var mealsForDate: [MealEntry] {
         let dateStr = DateHelpers.dateString(from: selectedDate)
-        return allMeals.filter { $0.date == dateStr }
+        return allMeals
+            .filter { DateHelpers.calendarDay(from: $0.date) == dateStr }
+            .sorted { $0.loggedAt < $1.loggedAt }
     }
 
     private var mealDates: Set<String> {
-        Set(allMeals.map(\.date))
+        Set(allMeals.map { DateHelpers.calendarDay(from: $0.date) })
     }
 
     var body: some View {
