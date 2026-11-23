@@ -2,6 +2,7 @@
  * Shared Rico AI chat logic for API routes, Twilio SMS, and Siri Shortcuts.
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
+import { groundLogMealActions } from "@/lib/meal-macro-grounding";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
 import { dbDeleteMeal, dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
@@ -45,7 +46,7 @@ CONTEXT YOU RECEIVE (JSON fields in the [Context: ...] prefix):
 
 You have access to tools! You are an AGENT, not just a chatbot.
 1. If the user asks to change their calorie or macro targets, use the 'update_macros' tool.
-2. If the user says they ate/had/consumed a food or meal (e.g. "I had a chicken salad", "I ate a burrito", "log my lunch: grilled salmon"), ALWAYS use the 'log_meal' tool. Estimate accurate macros based on the food. Do not ask for confirmation—log it immediately.
+2. If the user says they ate/had/consumed a food or meal (e.g. "I had a chicken salad", "I ate a burrito", "log my lunch: grilled salmon"), ALWAYS use the 'log_meal' tool. Name the food the way the user said it, including brand, restaurant, and size. Do not ask for confirmation—log it immediately. A nutrition lookup replaces your macro numbers with published values before the meal is saved, so do not quote specific calories in your reply.
 3. If the user asks to swap/replace an exercise (e.g. "swap bench press for dumbbell press", "replace squats with leg press", "I can't do pull-ups, give me an alternative"), use the 'swap_exercise' tool. Pick the correct day from their plan context. ALWAYS check context.injuries and context.equipment before choosing a replacement—only suggest exercises the user can actually do.
 4. If the user asks to add an exercise to a workout day (e.g. "add face pulls to my upper body day", "throw in some calf raises on leg day"), use the 'add_exercise' tool.
 5. If the user asks to change a whole workout day's focus, restructure it, or remove exercises (e.g. "make Monday a push day", "remove all finishers from Tuesday", "change Wednesday to cardio only"), use the 'update_workout_day' tool.
@@ -748,6 +749,11 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
       const name = (result.actions[result.actions.length - 1].payload.name as string) ?? "your meal";
       result.reply = `I've logged ${name} for you.`;
     }
+  }
+
+  const grounded = await groundLogMealActions(result.actions);
+  if (grounded.length > 0) {
+    result.reply = `${result.reply.trim()} Logged ${grounded.join("; ")}.`.trim();
   }
 
   return result;
