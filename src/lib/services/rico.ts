@@ -1,7 +1,13 @@
 /**
  * Shared Rico AI chat logic for API routes, Twilio SMS, and Siri Shortcuts.
  */
-import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  ConverseStreamCommand,
+  type Message,
+  type ToolConfiguration,
+} from "@aws-sdk/client-bedrock-runtime";
 import { groundLogMealActionsFast } from "@/lib/meal-macro-grounding";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
 import { dbDeleteMeal, dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
@@ -710,6 +716,127 @@ async function callRicoBedrock(
   );
 
   return parseRicoBedrockOutput(response.output?.message);
+}
+
+export type RicoStreamEvent =
+  | { type: "text"; content: string }
+  | { type: "done"; reply: string; actions: { type: string; payload: Record<string, unknown> }[] };
+
+/**
+ * Stream The Ref's reply text as it generates. Tool calls are collected until the
+ * stream ends, then returned on the final `done` event (same shape as invokeRico).
+ */
+export async function* invokeRicoStream(input: RicoInput): AsyncGenerator<RicoStreamEvent> {
+  const { message, history = [], context = {}, persona } = input;
+  const msg = typeof message === "string" ? message.trim() : "";
+  if (!msg) throw new Error("Message required");
+
+  let systemPrompt = RICO_SYSTEM;
+  if (Object.keys(context).length > 0) {
+    systemPrompt += `\n\n[USER CONTEXT: ${JSON.stringify(context)}]`;
+  }
+  if (persona && PERSONA_PROMPTS[persona]) {
+    systemPrompt += PERSONA_PROMPTS[persona];
+  }
+  systemPrompt += getHolidayContext();
+
+  const client = new BedrockRuntimeClient({ region: REGION });
+  const messages = buildRicoMessages(history, msg);
+  const mealIntent = isMealLogIntent(msg);
+
+  const response = await client.send(
+    new ConverseStreamCommand({
+      modelId: NOVA_LITE_MODEL_ID,
+      messages,
+      system: [{ text: systemPrompt }],
+      toolConfig: {
+        ...RICO_TOOLS,
+        toolChoice: mealIntent ? { tool: { name: "log_meal" } } : { auto: {} },
+      },
+      inferenceConfig: {
+        temperature: mealIntent ? 0.25 : 0.7,
+        maxTokens: 1024,
+        topP: 0.9,
+      },
+    }),
+  );
+
+  let replyText = "";
+  const actions: { type: string; payload: Record<string, unknown> }[] = [];
+  let currentToolName = "";
+  let currentToolInput = "";
+
+  for await (const event of response.stream ?? []) {
+    const textDelta = event.contentBlockDelta?.delta?.text;
+    if (typeof textDelta === "string" && textDelta.length > 0) {
+      replyText += textDelta;
+      yield { type: "text", content: textDelta };
+    }
+
+    const toolStart = event.contentBlockStart?.start?.toolUse;
+    if (toolStart?.name) {
+      currentToolName = toolStart.name;
+      currentToolInput = "";
+    }
+    const toolInputDelta = event.contentBlockDelta?.delta?.toolUse?.input;
+    if (typeof toolInputDelta === "string") {
+      currentToolInput += toolInputDelta;
+    }
+    if (event.contentBlockStop && currentToolName) {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = JSON.parse(currentToolInput || "{}") as Record<string, unknown>;
+      } catch {
+        payload = {};
+      }
+      actions.push({ type: currentToolName, payload });
+      currentToolName = "";
+      currentToolInput = "";
+    }
+  }
+
+  let result: RicoOutput = { reply: replyText.trim(), actions };
+
+  if (mealIntent && !result.actions.some((a) => a.type === "log_meal")) {
+    result = await callRicoBedrock(client, systemPrompt, messages, {
+      temperature: 0.2,
+      toolChoice: { any: {} },
+    });
+    if (result.reply && result.reply !== replyText.trim()) {
+      const extra = result.reply.slice(replyText.trim().length);
+      if (extra) yield { type: "text", content: extra };
+      replyText = result.reply;
+    }
+  }
+
+  if (!result.actions.some((a) => a.type === "log_meal") && (mealIntent || replyClaimsMealLogged(result.reply))) {
+    result.actions.push(synthesizeLogMealAction(msg));
+    if (!result.reply.trim() || replyClaimsMealLogged(result.reply)) {
+      const name = (result.actions[result.actions.length - 1].payload.name as string) ?? "your meal";
+      result.reply = `I've logged ${name} for you.`;
+      yield { type: "text", content: result.reply };
+      replyText = result.reply;
+    }
+  }
+
+  const grounded = await groundLogMealActionsFast(result.actions);
+  if (grounded.length > 0) {
+    const note = ` Logged ${grounded.join("; ")}.`;
+    result.reply = `${result.reply.trim()}${note}`.trim();
+    yield { type: "text", content: note };
+    replyText = result.reply;
+  }
+
+  if (!result.reply.trim() && result.actions.length > 0) {
+    const a = result.actions[0];
+    if (a.type === "log_meal") result.reply = `I've logged ${(a.payload as { name?: string }).name ?? "your meal"} for you.`;
+    else if (a.type === "update_macros") result.reply = "I've updated your daily targets!";
+    else result.reply = "Done.";
+    yield { type: "text", content: result.reply };
+    replyText = result.reply;
+  }
+
+  yield { type: "done", reply: replyText.trim() || result.reply, actions: result.actions };
 }
 
 /** Invoke Rico and return reply text + optional tool actions. */

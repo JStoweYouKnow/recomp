@@ -309,6 +309,8 @@ struct SignUpFormView: View {
         Task {
             do {
                 try await auth.register(payload)
+                // Dashboard picks this up and starts plan generation (same as web onboard).
+                RecompAppGroupDefaults.shared.set(true, forKey: RecompUserDefaultsKeys.pendingInitialPlanGeneration)
             } catch {
                 errorMessage = error.localizedDescription
             }

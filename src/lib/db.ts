@@ -96,7 +96,39 @@ export async function dbSavePlan(userId: string, plan: FitnessPlan): Promise<voi
 }
 
 // ── Meals ────────────────────────────────────────────────
+/** Full meal history (paginated). Prefer `dbGetMealsSince` on interactive sync GETs. */
 export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
+  return dbQueryMeals(userId, {
+    KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
+    ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
+  });
+}
+
+/**
+ * Meals on/after a calendar day. SK is `MEAL#yyyy-MM-dd#id`, so a BETWEEN on the
+ * sort key avoids paging the entire lifetime log on every sync GET.
+ */
+export async function dbGetMealsSince(userId: string, sinceDay: string): Promise<MealEntry[]> {
+  const day = sinceDay.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return dbGetMeals(userId);
+  return dbQueryMeals(userId, {
+    KeyConditionExpression: "PK = :pk AND SK BETWEEN :start AND :end",
+    ExpressionAttributeValues: {
+      ":pk": `USER#${userId}`,
+      ":start": `MEAL#${day}`,
+      // Upper bound past any real date so the day window is open-ended.
+      ":end": "MEAL#9999-12-31#~",
+    },
+  });
+}
+
+async function dbQueryMeals(
+  _userId: string,
+  query: {
+    KeyConditionExpression: string;
+    ExpressionAttributeValues: Record<string, string>;
+  }
+): Promise<MealEntry[]> {
   const doc = getDocClient();
   const all: MealEntry[] = [];
   const seenSk = new Set<string>();
@@ -105,15 +137,10 @@ export async function dbGetMeals(userId: string): Promise<MealEntry[]> {
     const { Items, LastEvaluatedKey } = await doc.send(
       new QueryCommand({
         TableName: TABLE,
-        KeyConditionExpression: "PK = :pk AND begins_with(SK, :prefix)",
-        ExpressionAttributeValues: { ":pk": `USER#${userId}`, ":prefix": "MEAL#" },
+        KeyConditionExpression: query.KeyConditionExpression,
+        ExpressionAttributeValues: query.ExpressionAttributeValues,
         ExclusiveStartKey,
-        // Strongly consistent: a pull immediately following a push (e.g. logging a
-        // meal via Rico, then the scenePhase-triggered fetchAndApply on the next
-        // foreground) must see that write. Without this, an eventually-consistent
-        // read can miss the just-written row, and the client's pull-merge logic
-        // deletes any local "synced" meal absent from this response — silently
-        // destroying a meal that was, in fact, just saved successfully.
+        // Strongly consistent so a pull right after a push sees the write.
         ConsistentRead: true,
       })
     );

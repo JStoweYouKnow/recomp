@@ -51,6 +51,8 @@ const STORAGE_KEYS = {
   coachPersona: "recomp_coach_persona",
   dailyQuests: "recomp_daily_quests",
   hiddenBadgeTracking: "recomp_hidden_badge_tracking",
+  /** Dirty bit: local edits still need a successful cloud push. */
+  syncPending: "recomp_sync_pending",
 } as const;
 
 function safeParse<T>(data: string | null, fallback: T): T {
@@ -712,6 +714,21 @@ function buildSyncPayload() {
   };
 }
 
+function markSyncPending(): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STORAGE_KEYS.syncPending, String(Date.now()));
+}
+
+function clearSyncPending(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(STORAGE_KEYS.syncPending);
+}
+
+export function hasPendingSync(): boolean {
+  if (typeof window === "undefined") return false;
+  return Boolean(localStorage.getItem(STORAGE_KEYS.syncPending));
+}
+
 async function doSync(): Promise<void> {
   const payload = buildSyncPayload();
   const pendingDeletes = Array.isArray(payload.deletedMeals) ? payload.deletedMeals : [];
@@ -737,12 +754,14 @@ async function doSync(): Promise<void> {
   if (pendingDeletes.length > 0 && body?.persisted !== false) {
     clearPendingMealDeletions(pendingDeletes as MealDeletionRef[]);
   }
+  clearSyncPending();
 }
 
 async function doSyncWithRetry(attemptsLeft = 3): Promise<void> {
   try {
     await doSync();
   } catch (err) {
+    markSyncPending();
     const isClientError = err instanceof Error && /^4\d\d:/.test(err.message) && !/^429:/.test(err.message);
     if (attemptsLeft <= 1 || isClientError) {
       if (!isClientError) {
@@ -762,6 +781,7 @@ async function doSyncWithRetry(attemptsLeft = 3): Promise<void> {
 /** Persist current localStorage state to DynamoDB (fire-and-forget). Debounced so rapid changes result in a single sync. */
 export function syncToServer(): void {
   if (typeof window === "undefined") return;
+  markSyncPending();
   if (_syncTimeout) clearTimeout(_syncTimeout);
   _syncTimeout = setTimeout(() => {
     _syncTimeout = null;
@@ -776,7 +796,18 @@ export async function flushSync(): Promise<void> {
     clearTimeout(_syncTimeout);
     _syncTimeout = null;
   }
-  try { await doSync(); } catch { }
+  markSyncPending();
+  try { await doSync(); } catch { markSyncPending(); }
+}
+
+/**
+ * Push again if a previous sync never got a server ack (boot, tab focus, or back online).
+ * Safe to call often — no-ops when nothing is pending.
+ */
+export function flushPendingSync(): void {
+  if (typeof window === "undefined") return;
+  if (!hasPendingSync() && getPendingMealDeletions().length === 0) return;
+  doSyncWithRetry().catch(() => {});
 }
 
 // ── Client-side nutrition cache ─────────────────────────────────────────

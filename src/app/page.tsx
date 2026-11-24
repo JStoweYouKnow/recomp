@@ -173,7 +173,18 @@ export default function Home() {
     setProfile(data.profile as UserProfile);
     if (data.plan) { savePlan(data.plan as FitnessPlan); setPlan(data.plan as FitnessPlan); }
     if (Array.isArray(data.meals)) {
-      const mealsClean = dedupeMealsByDateAndId(data.meals as MealEntry[]);
+      const incoming = dedupeMealsByDateAndId(data.meals as MealEntry[]);
+      // Truncated pulls cover a recent window only — keep older local meals so a
+      // 90-day sync cannot erase the rest of the log.
+      let mealsClean = incoming;
+      if (data.mealsTruncated && typeof data.mealsSince === "string") {
+        const since = (data.mealsSince as string).slice(0, 10);
+        const older = getMeals().filter((m) => {
+          const day = typeof m.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(m.date) ? m.date.slice(0, 10) : m.date;
+          return day < since;
+        });
+        mealsClean = dedupeMealsByDateAndId([...older, ...incoming]);
+      }
       saveMeals(mealsClean);
       setMeals(mealsClean);
     }
@@ -206,7 +217,7 @@ export default function Home() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pullFromServer = useCallback(async (): Promise<boolean> => {
-    const res = await fetch("/api/data/sync", { credentials: "include" });
+    const res = await fetch("/api/data/sync?mealsDays=90", { credentials: "include" });
     if (!res.ok) throw new Error("sync-failed");
     const data = await res.json();
     return applyServerData(data);
@@ -235,7 +246,7 @@ export default function Home() {
     // would overwrite them with the stale server state and they'd be lost.
     (p ? flushSync() : Promise.resolve())
       .catch(() => {})
-      .then(() => fetch("/api/data/sync", { credentials: "include" }))
+      .then(() => fetch("/api/data/sync?mealsDays=90", { credentials: "include" }))
       .then(async (res) => {
         if (!res.ok) {
           // 401: no session cookie on this browser — localStorage is device-only

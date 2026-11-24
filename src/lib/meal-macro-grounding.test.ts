@@ -31,7 +31,7 @@ describe("groundLogMealActionsFast", () => {
     }));
     expect(actions[0].payload.calories).toBe(665);
     expect(actions[0].payload.protein).toBe(32);
-    expect(actions[0].payload.macroSource).toBe("cache(web-grounding)");
+    expect(actions[0].payload.macroSource as string).toBe("cache(web-grounding)");
     expect(notes[0]).toContain("665 cal");
   });
 });

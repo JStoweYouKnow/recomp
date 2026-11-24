@@ -1,7 +1,7 @@
 import Foundation
 
 public enum CoachAPI: APIEndpoint {
-    case chat(message: String, history: [CoachMessageDTO], context: RicoContextPayload? = nil)
+    case chat(message: String, history: [CoachMessageDTO], context: RicoContextPayload? = nil, stream: Bool = false)
     case checkIn(payload: CoachCheckInRequest)
     case confront(payload: CoachConfrontRequest)
 
@@ -17,8 +17,8 @@ public enum CoachAPI: APIEndpoint {
 
     public var body: (any Encodable)? {
         switch self {
-        case .chat(let message, let history, let context):
-            return AnyEncodable(CoachChatPayload(message: message, history: history, context: context))
+        case .chat(let message, let history, let context, let stream):
+            return AnyEncodable(CoachChatPayload(message: message, history: history, context: context, stream: stream ? true : nil))
         case .checkIn(let payload):
             return AnyEncodable(payload)
         case .confront(let payload):
@@ -31,6 +31,52 @@ public struct CoachChatPayload: Encodable {
     let message: String
     let history: [CoachMessageDTO]
     let context: RicoContextPayload?
+    let stream: Bool?
+}
+
+/// One NDJSON line from `POST /api/rico` with `stream: true`.
+public struct CoachStreamEventDTO: Decodable, Sendable {
+    public let type: String
+    public let content: String?
+    public let reply: String?
+    public let error: String?
+    public let actions: [RicoAction]
+    public let recipeSuggestions: [ScoredRecipeSuggestion]?
+    public let recipeSaved: SavedRecipeDTO?
+    public let restaurantPicks: RestaurantPicks?
+
+    enum CodingKeys: String, CodingKey {
+        case type, content, reply, error, actions, recipeSuggestions, recipeSaved, restaurantPicks
+    }
+
+    private struct LooseRicoElement: Decodable {
+        let value: RicoAction?
+        nonisolated init(from decoder: Decoder) throws {
+            value = try? RicoAction(from: decoder)
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decode(String.self, forKey: .type)
+        content = try c.decodeIfPresent(String.self, forKey: .content)
+        reply = try c.decodeIfPresent(String.self, forKey: .reply)
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        recipeSuggestions = try c.decodeIfPresent([ScoredRecipeSuggestion].self, forKey: .recipeSuggestions)
+        recipeSaved = try c.decodeIfPresent(SavedRecipeDTO.self, forKey: .recipeSaved)
+        restaurantPicks = try? c.decodeIfPresent(RestaurantPicks.self, forKey: .restaurantPicks)
+        guard c.contains(.actions) else {
+            actions = []
+            return
+        }
+        var nested = try c.nestedUnkeyedContainer(forKey: .actions)
+        var out: [RicoAction] = []
+        while !nested.isAtEnd {
+            let wrap = try nested.decode(LooseRicoElement.self)
+            if let value = wrap.value { out.append(value) }
+        }
+        actions = out
+    }
 }
 
 public struct CoachMessageDTO: Codable, Sendable {

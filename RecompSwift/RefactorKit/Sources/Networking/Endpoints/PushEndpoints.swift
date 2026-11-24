@@ -83,6 +83,10 @@ public enum MiscAPI: APIEndpoint {
         switch self {
         case .calendarFeed(let token):
             return [URLQueryItem(name: "token", value: token)]
+        case .dataFetch:
+            // Match the web default: last 90 days of meals. Older local rows stay
+            // because applyMealPullFromServer no longer deletes omissions.
+            return [URLQueryItem(name: "mealsDays", value: "90")]
         default:
             return nil
         }

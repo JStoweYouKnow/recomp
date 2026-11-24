@@ -63,46 +63,84 @@ public final class CoachService {
 
         let ricoContext = buildRicoContext(modelContext: context)
 
-        let response: CoachChatResponse
+        let assistantMessage = CoachMessage(role: .assistant, content: "")
+        context.insert(assistantMessage)
+        messages.append(assistantMessage)
+
+        var replyText = ""
+        var actions: [RicoAction] = []
+        var recipeSuggestions: [ScoredRecipeSuggestion] = []
+        var restaurantPicksPayload: RestaurantPicks?
+        let decoder = JSONDecoder()
+
         do {
-            response = try await api.request(
-                CoachAPI.chat(message: trimmed, history: historyDTOs, context: ricoContext)
-            )
+            for try await lineData in api.stream(
+                CoachAPI.chat(message: trimmed, history: historyDTOs, context: ricoContext, stream: true)
+            ) {
+                guard let event = try? decoder.decode(CoachStreamEventDTO.self, from: lineData) else { continue }
+                switch event.type {
+                case "text":
+                    if let chunk = event.content, !chunk.isEmpty {
+                        replyText += chunk
+                        assistantMessage.content = replyText
+                    }
+                case "recipeSuggestions":
+                    if let suggestions = event.recipeSuggestions {
+                        recipeSuggestions = suggestions
+                    }
+                case "recipeSaved":
+                    if let saved = event.recipeSaved {
+                        let record = SavedRecipeRecord(
+                            id: saved.id,
+                            name: saved.name,
+                            description: saved.description,
+                            calories: saved.calories,
+                            protein: saved.protein,
+                            carbs: saved.carbs,
+                            fat: saved.fat,
+                            recipeUrl: saved.recipeUrl,
+                            source: saved.source,
+                            mealTypes: saved.mealTypes,
+                            servings: saved.servings,
+                            addedAt: saved.addedAt
+                        )
+                        SavedRecipesStorage.append(record)
+                        NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+                    }
+                case "done":
+                    if let final = event.reply, !final.isEmpty {
+                        replyText = final
+                    }
+                    if !event.actions.isEmpty {
+                        actions = event.actions
+                    }
+                    if let suggestions = event.recipeSuggestions {
+                        recipeSuggestions = suggestions
+                    }
+                    restaurantPicksPayload = event.restaurantPicks
+                case "error":
+                    throw APIError.serverError(event.error ?? "The Ref is taking a breather.")
+                default:
+                    break
+                }
+            }
         } catch {
             context.delete(userMessage)
-            messages.removeAll { $0.id == userMessage.id }
+            context.delete(assistantMessage)
+            messages.removeAll { $0.id == userMessage.id || $0.id == assistantMessage.id }
             throw error
         }
 
-        var replyText = RicoReplySanitizer.stripDiagnosticMarkup(
-            response.reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        replyText = RicoReplySanitizer.stripDiagnosticMarkup(
+            replyText.trimmingCharacters(in: .whitespacesAndNewlines)
         )
-        if let suggestions = response.recipeSuggestions, !suggestions.isEmpty {
-            replyText += Self.formatRecipeSuggestions(suggestions)
-        }
-
-        if let saved = response.recipeSaved {
-            let record = SavedRecipeRecord(
-                id: saved.id,
-                name: saved.name,
-                description: saved.description,
-                calories: saved.calories,
-                protein: saved.protein,
-                carbs: saved.carbs,
-                fat: saved.fat,
-                recipeUrl: saved.recipeUrl,
-                source: saved.source,
-                mealTypes: saved.mealTypes,
-                servings: saved.servings,
-                addedAt: saved.addedAt
-            )
-            SavedRecipesStorage.append(record)
-            NotificationCenter.default.post(name: .recompSchedulePushSync, object: nil)
+        if !recipeSuggestions.isEmpty {
+            replyText += Self.formatRecipeSuggestions(recipeSuggestions)
         }
 
         var applyResult = RicoApplyResult()
-        if !response.actions.isEmpty {
-            applyResult = applyActions(response.actions, modelContext: context)
+        if !actions.isEmpty {
+            applyResult = applyActions(actions, modelContext: context)
         } else if Self.replyClaimsMealLogged(replyText) {
             Self.logger.warning("Rico reply claims meal logged but actions array was empty")
         }
@@ -114,10 +152,10 @@ public final class CoachService {
                 "\n\nThat meal wasn't saved — Ref didn't return a log action. Try again or add it manually in Meals."
         }
 
-        let assistantMessage = CoachMessage(role: .assistant, content: replyText)
-        context.insert(assistantMessage)
-        messages.append(assistantMessage)
-        if let picks = response.restaurantPicks, !picks.items.isEmpty {
+        assistantMessage.content = replyText.isEmpty
+            ? "Sorry, I'm having a moment. Try again in a sec."
+            : replyText
+        if let picks = restaurantPicksPayload, !picks.items.isEmpty {
             restaurantPicks[assistantMessage.id] = picks
         }
 

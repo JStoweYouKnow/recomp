@@ -202,7 +202,7 @@ export function RicoChat({
     }
   }, [addMessage]);
 
-  // Text-based send
+  // Text-based send (NDJSON stream when available; JSON fallback)
   const send = async () => {
     const trimmed = input.trim();
     if (!trimmed || loading) return;
@@ -210,47 +210,179 @@ export function RicoChat({
     addMessage({ role: "user", content: trimmed, at: new Date().toISOString() });
     setInput("");
     setLoading(true);
+    setStreamingContent("");
+    addMessage({ role: "assistant", content: "", at: new Date().toISOString() });
 
     try {
       const res = await fetch("/api/rico", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, context: { ...context, name: userName }, persona }),
+        body: JSON.stringify({
+          message: trimmed,
+          context: { ...context, name: userName },
+          persona,
+          stream: true,
+        }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
 
-      let reply = data.reply as string;
-      if (Array.isArray(data.recipeSuggestions) && data.recipeSuggestions.length > 0) {
-        reply += formatRecipeSuggestions(data.recipeSuggestions);
-      }
-      if (data.recipeSaved) {
-        const saved = data.recipeSaved as CookingAppRecipe;
-        const existing = getSavedRecipes();
-        const next = [
-          saved,
-          ...existing.filter((r) => (r.recipeUrl ?? "").toLowerCase() !== (saved.recipeUrl ?? "").toLowerCase()),
-        ];
-        saveSavedRecipes(next);
-        syncToServer();
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Request failed");
       }
 
-      if (data.actions && Array.isArray(data.actions)) {
-        const applyResult = processRicoActions(data.actions, { defaultDate: getTodayLocal() });
-        reply += formatRicoApplyStatus(applyResult);
-        if (applyResult.regeneratePlan && onRegeneratePlan) {
-          void onRegeneratePlan(applyResult.regeneratePlanOptions);
+      if (contentType.includes("application/x-ndjson") && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullText = "";
+        let actions: unknown[] | undefined;
+        let restaurantPicks: { restaurant: string; items: RestaurantPick[] } | undefined;
+        let recipeSuggestions: Parameters<typeof formatRecipeSuggestions>[0] | undefined;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let ev: {
+              type: string;
+              content?: string;
+              reply?: string;
+              actions?: unknown[];
+              error?: string;
+              recipeSuggestions?: Parameters<typeof formatRecipeSuggestions>[0];
+              recipeSaved?: CookingAppRecipe;
+              restaurantPicks?: { restaurant?: string; items?: RestaurantPick[] };
+            };
+            try {
+              ev = JSON.parse(line);
+            } catch {
+              continue;
+            }
+            if (ev.type === "text" && ev.content) {
+              fullText += ev.content;
+              setStreamingContent(fullText);
+            }
+            if (ev.type === "recipeSuggestions" && Array.isArray(ev.recipeSuggestions)) {
+              recipeSuggestions = ev.recipeSuggestions;
+            }
+            if (ev.type === "recipeSaved" && ev.recipeSaved) {
+              const saved = ev.recipeSaved;
+              const existing = getSavedRecipes();
+              const next = [
+                saved,
+                ...existing.filter((r) => (r.recipeUrl ?? "").toLowerCase() !== (saved.recipeUrl ?? "").toLowerCase()),
+              ];
+              saveSavedRecipes(next);
+              syncToServer();
+            }
+            if (ev.type === "done") {
+              fullText = ev.reply ?? fullText;
+              actions = ev.actions;
+              if (ev.restaurantPicks && Array.isArray(ev.restaurantPicks.items) && ev.restaurantPicks.items.length > 0) {
+                restaurantPicks = {
+                  restaurant: String(ev.restaurantPicks.restaurant ?? ""),
+                  items: ev.restaurantPicks.items,
+                };
+              }
+            }
+            if (ev.type === "error") throw new Error(ev.error || "Stream error");
+          }
         }
-      }
 
-      const restaurantPicks =
-        data.restaurantPicks && Array.isArray(data.restaurantPicks.items) && data.restaurantPicks.items.length > 0
-          ? { restaurant: String(data.restaurantPicks.restaurant ?? ""), items: data.restaurantPicks.items as RestaurantPick[] }
-          : undefined;
-      addMessage({ role: "assistant", content: reply, at: new Date().toISOString(), restaurantPicks });
+        let reply = fullText;
+        if (recipeSuggestions && recipeSuggestions.length > 0) {
+          reply += formatRecipeSuggestions(recipeSuggestions);
+        }
+        if (Array.isArray(actions)) {
+          const applyResult = processRicoActions(actions as Parameters<typeof processRicoActions>[0], {
+            defaultDate: getTodayLocal(),
+          });
+          reply += formatRicoApplyStatus(applyResult);
+          if (applyResult.regeneratePlan && onRegeneratePlan) {
+            void onRegeneratePlan(applyResult.regeneratePlanOptions);
+          }
+        }
+        setStreamingContent("");
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = {
+              ...last,
+              content: reply || "Sorry, I'm having a moment. Try again in a sec.",
+              restaurantPicks,
+            };
+          }
+          saveRicoHistory(next);
+          return next;
+        });
+      } else {
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        let reply = data.reply as string;
+        if (Array.isArray(data.recipeSuggestions) && data.recipeSuggestions.length > 0) {
+          reply += formatRecipeSuggestions(data.recipeSuggestions);
+        }
+        if (data.recipeSaved) {
+          const saved = data.recipeSaved as CookingAppRecipe;
+          const existing = getSavedRecipes();
+          const next = [
+            saved,
+            ...existing.filter((r) => (r.recipeUrl ?? "").toLowerCase() !== (saved.recipeUrl ?? "").toLowerCase()),
+          ];
+          saveSavedRecipes(next);
+          syncToServer();
+        }
+        if (data.actions && Array.isArray(data.actions)) {
+          const applyResult = processRicoActions(data.actions, { defaultDate: getTodayLocal() });
+          reply += formatRicoApplyStatus(applyResult);
+          if (applyResult.regeneratePlan && onRegeneratePlan) {
+            void onRegeneratePlan(applyResult.regeneratePlanOptions);
+          }
+        }
+        const restaurantPicks =
+          data.restaurantPicks && Array.isArray(data.restaurantPicks.items) && data.restaurantPicks.items.length > 0
+            ? { restaurant: String(data.restaurantPicks.restaurant ?? ""), items: data.restaurantPicks.items as RestaurantPick[] }
+            : undefined;
+        setStreamingContent("");
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last?.role === "assistant") {
+            next[next.length - 1] = { ...last, content: reply, restaurantPicks };
+          } else {
+            next.push({ role: "assistant", content: reply, at: new Date().toISOString(), restaurantPicks });
+          }
+          saveRicoHistory(next);
+          return next;
+        });
+      }
     } catch (e) {
       console.error(e);
-      addMessage({ role: "assistant", content: "Sorry, I'm having a moment. Try again in a sec.", at: new Date().toISOString() });
+      setStreamingContent("");
+      setMessages((m) => {
+        const next = [...m];
+        const last = next[next.length - 1];
+        if (last?.role === "assistant" && !last.content) {
+          next[next.length - 1] = {
+            ...last,
+            content: "Sorry, I'm having a moment. Try again in a sec.",
+          };
+        } else {
+          next.push({
+            role: "assistant",
+            content: "Sorry, I'm having a moment. Try again in a sec.",
+            at: new Date().toISOString(),
+          });
+        }
+        saveRicoHistory(next);
+        return next;
+      });
     } finally {
       setLoading(false);
     }

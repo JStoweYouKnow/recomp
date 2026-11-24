@@ -29,6 +29,7 @@ export function MealList({
   photoLoading: boolean;
 }) {
   const [editDraft, setEditDraft] = useState<MealEntry | null>(null);
+  const [showMore, setShowMore] = useState(false);
 
   const handleSaveEdit = () => {
     if (!editDraft) return;
@@ -47,25 +48,37 @@ export function MealList({
             </svg>
           </div>
           <p className="text-sm font-semibold text-[var(--foreground)]">
-            {isViewingToday ? "Log your first meal" : "No meals for this date"}
+            {isViewingToday ? "Nothing logged yet" : "No meals for this date"}
           </p>
           <p className="mt-1.5 text-sm text-[var(--muted)]">
             {isViewingToday
-              ? "Try one of these quick options to get started."
+              ? "Add what you ate — macros fill in as you go."
               : "Log meals on that day or switch to today."}
           </p>
           {isViewingToday && (
-            <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <button onClick={onShowAdd} className="btn-primary !text-xs">
-                Add manually
+            <div className="mt-5 flex flex-col items-center gap-3">
+              <button onClick={onShowAdd} className="btn-primary">
+                Log a meal
               </button>
-              <button onClick={onVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs">
-                {voiceLoading ? "Listening…" : "Voice log"}
+              <button
+                type="button"
+                onClick={() => setShowMore((v) => !v)}
+                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)]"
+                aria-expanded={showMore}
+              >
+                {showMore ? "Hide other ways" : "More ways to log"}
               </button>
-              <label className="btn-secondary !text-xs cursor-pointer">
-                <input type="file" accept="image/*" capture="environment" onChange={onPhotoLog} className="sr-only" />
-                {photoLoading ? "Analyzing…" : "Snap plate"}
-              </label>
+              {showMore && (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <button onClick={onVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs">
+                    {voiceLoading ? "Listening…" : "Voice log"}
+                  </button>
+                  <label className="btn-secondary !text-xs cursor-pointer">
+                    <input type="file" accept="image/*" capture="environment" onChange={onPhotoLog} className="sr-only" />
+                    {photoLoading ? "Analyzing…" : "Snap plate"}
+                  </label>
+                </div>
+              )}
             </div>
           )}
         </div>

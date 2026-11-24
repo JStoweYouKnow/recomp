@@ -16,6 +16,8 @@ import { MealPrepSection } from "./meals/MealPrepSection";
 import { CookingAppSync } from "./meals/CookingAppSync";
 import { AskRefRecipes } from "./meals/AskRefRecipes";
 import { MealList } from "./meals/MealList";
+import { MealLoggingToolbar } from "./meals/MealLoggingToolbar";
+import { NutritionLookupControls } from "./meals/NutritionLookupControls";
 
 type NutritionData = {
   nutrition?: { calories?: number; protein?: number; carbs?: number; fat?: number };
@@ -130,6 +132,7 @@ export function MealsView({
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   }, [isViewingToday, selectedDate]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showMoreTools, setShowMoreTools] = useState(false);
   const [name, setName] = useState("");
   const [mealType, setMealType] = useState<MealEntry["mealType"]>("lunch");
   const [cal, setCal] = useState("");
@@ -926,29 +929,21 @@ export function MealsView({
         />
       )}
 
-      {!showAdd ? (
-        <div className="space-y-2">
-          <p className="text-xs text-[var(--muted)]">Log with one tap, or use voice or a photo for faster entry.</p>
-          <div className="flex flex-wrap gap-2 items-center">
-            <button onClick={() => setShowAdd(true)} className="btn-primary">+ Log a meal</button>
-            <button onClick={handleVoiceLog} disabled={voiceLoading} className="btn-secondary !text-xs disabled:opacity-50" title="Describe your meal by voice">
-              {voiceLoading ? "Listening…" : "Voice log"}
-            </button>
-            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of your plate — JPEG/PNG, large photos auto-resize for best results">
-              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoLog} disabled={photoLoading} />
-              {photoLoading ? "Analyzing…" : "Snap plate"}
-            </label>
-            <label className="btn-secondary !text-xs cursor-pointer" title="Photo of receipt — JPEG/PNG, large photos auto-resize">
-              <input type="file" accept="image/*" className="hidden" onChange={handleReceiptScan} disabled={receiptLoading} />
-              {receiptLoading ? "Scanning…" : "Scan receipt"}
-            </label>
-            <label className="btn-secondary !text-xs cursor-pointer" title="Menu photo or Uber Eats / DoorDash screenshot — ranks items against your remaining macros">
-              <input type="file" accept="image/*" className="hidden" onChange={handleMenuScan} disabled={menuScanLoading} />
-              {menuScanLoading ? "Scanning…" : "Scan menu"}
-            </label>
-          </div>
-        </div>
-      ) : (
+      {!showAdd && displayMeals.length > 0 ? (
+        <MealLoggingToolbar
+          showMoreTools={showMoreTools}
+          onToggleMore={() => setShowMoreTools((v) => !v)}
+          onShowAdd={() => setShowAdd(true)}
+          onVoiceLog={handleVoiceLog}
+          onPhotoLog={handlePhotoLog}
+          onReceiptScan={handleReceiptScan}
+          onMenuScan={handleMenuScan}
+          voiceLoading={voiceLoading}
+          photoLoading={photoLoading}
+          receiptLoading={receiptLoading}
+          menuScanLoading={menuScanLoading}
+        />
+      ) : !showAdd ? null : (
         <div className="card p-4 sm:p-5 animate-slide-up max-w-2xl">
           <h3 className="section-title !text-base mb-1">Add meal</h3>
           <p className="text-sm text-[var(--muted)] mb-3">Enter a name, or use the buttons below to fill in quickly.</p>
@@ -1106,39 +1101,15 @@ export function MealsView({
               </div>
             </div>
           )}
-          <div className="mb-3 flex flex-wrap gap-2">
-            <div className="flex flex-col gap-1">
-              <button
-                type="button"
-                onClick={handleNutritionLookup}
-                disabled={nutritionLookupLoading || !name.trim()}
-                className="rounded-lg border border-[var(--accent-sage)] bg-[var(--accent-sage)]/10 px-4 py-2 text-sm text-[var(--accent-sage)] disabled:opacity-50"
-              >
-                {nutritionLookupLoading ? "Looking up nutrition..." : "Auto-fill nutrition"}
-              </button>
-              {nutritionLookupLoading && (
-                <span className="text-[10px] text-[var(--muted)] animate-pulse">
-                  {nutritionLookupStatus ?? "Looking up nutrition..."}
-                </span>
-              )}
-              {nutritionSource && (
-                <span className="text-[10px] text-[var(--muted)]">
-                  {nutritionSource === "usda" && "Source: USDA FoodData Central"}
-                  {nutritionSource === "openfoodfacts" && "Source: Open Food Facts"}
-                  {nutritionSource === "web" && "Source: web search"}
-                  {nutritionSource === "estimated" && "Estimated — install nova-act for real USDA lookup"}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={handleGenerateInspiration}
-              disabled={inspirationLoading}
-              className="rounded-lg border border-[var(--accent-warm)] bg-[var(--accent-warm-10)] px-4 py-2 text-sm text-[var(--accent-warm)] disabled:opacity-50"
-            >
-              {inspirationLoading ? "Generating visual..." : "Generate meal visual"}
-            </button>
-          </div>
+          <NutritionLookupControls
+            name={name}
+            nutritionLookupLoading={nutritionLookupLoading}
+            nutritionLookupStatus={nutritionLookupStatus}
+            nutritionSource={nutritionSource}
+            inspirationLoading={inspirationLoading}
+            onNutritionLookup={handleNutritionLookup}
+            onGenerateInspiration={handleGenerateInspiration}
+          />
           <div className="flex flex-col gap-2">
             <label className="label !mb-0">Import from recipe URL</label>
             <div className="flex gap-2">

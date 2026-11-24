@@ -20,4 +20,6 @@ public enum RecompUserDefaultsKeys {
     public static let lastPushedMealCount = "recomp_last_pushed_meal_count"
     /// JSON array of `{id,date}` meal tombstones waiting for a successful sync ack.
     public static let pendingMealDeletionsJSON = "recomp_pending_meal_deletions_json"
+    /// Set after sign-up so Dashboard can auto-start the first plan generation.
+    public static let pendingInitialPlanGeneration = "recomp_pending_initial_plan_generation"
 }

@@ -119,8 +119,8 @@ struct RootView: View {
 
     @State private var showPaywall = false
     @State private var showAIConsentOnboarding = false
-    /// Tab shell stays hidden until the first pull-merge sync completes so SwiftData
-    /// @Query views are not observing the store while fetchAndApply bulk-deletes/reinserts rows.
+    /// Tab shell mounts on local SwiftData as soon as the session is known; server sync
+    /// fills in afterward. Meal pull no longer deletes local rows, so observers stay safe.
     @State private var mainShellReady = false
     @State private var startupSyncTask: Task<Void, Never>?
 
@@ -208,7 +208,8 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active, mainShellReady, auth.isAuthenticated, let engine = syncEngine else { return }
             Task {
-                try? await engine.fetchAndApply()
+                // Background catch-up — do not block the visible shell on a full pull.
+                engine.scheduleFetchAndApply()
                 if PendingIntentSync.consume() {
                     await engine.markDirty()
                     _ = await engine.syncNow()
@@ -309,8 +310,8 @@ struct RootView: View {
         "\(didResolveSession)-\(auth.isAuthenticated)-\(mainShellReady)"
     }
 
-    /// The landing screen is done when the session is known, and — for a signed-in user —
-    /// the first sync has mounted the shell. A signed-out user goes straight to onboarding.
+    /// The landing screen is done when the session is known. Signed-in users see local
+    /// data immediately; signed-out users go straight to onboarding.
     private var launchWorkComplete: Bool {
         guard didResolveSession else { return false }
         return auth.isAuthenticated ? mainShellReady : true
@@ -337,21 +338,18 @@ struct RootView: View {
         startupSyncTask = Task { await prepareMainShellAndSync() }
     }
 
-    /// Pull-merge **before** mounting tabs. Prior builds mounted MainTabView first; on
-    /// TestFlight, fetchAndApply then deleted/reinserted meals, fasting sessions, etc. while
-    /// dashboard @Query observers were live, which crashed SwiftData on iOS 26.
+    /// Mount tabs on whatever is already in SwiftData, then pull from the server in the
+    /// background. Waiting on fetchAndApply used to hold the splash for the whole sync.
     @MainActor
     private func prepareMainShellAndSync() async {
         guard auth.isAuthenticated else {
             mainShellReady = false
             return
         }
-        mainShellReady = false
-        defer {
-            if auth.isAuthenticated {
-                mainShellReady = true
-            }
-        }
+        mainShellReady = true
+        auth.refreshCurrentUserFromStore()
+        subscriptions.proAccessOverride = auth.currentUser?.proAccess == true
+        pushWatchDashboard(from: modelContext)
 
         guard !Task.isCancelled, let engine = syncEngine else { return }
         try? await engine.fetchAndApply()

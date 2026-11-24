@@ -7,6 +7,7 @@ import {
   dbSaveProfile,
   dbGetPlan,
   dbGetMeals,
+  dbGetMealsSince,
   dbGetMilestones,
   dbGetMeta,
   dbGetWearableConnections,
@@ -281,6 +282,19 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Default window for interactive sync GETs. `mealsDays=all` returns the full history. */
+const DEFAULT_MEALS_DAYS = 90;
+
+function resolveMealsSince(req: NextRequest): { sinceDay: string | null; truncated: boolean } {
+  const raw = req.nextUrl.searchParams.get("mealsDays");
+  if (raw === "all" || raw === "0") return { sinceDay: null, truncated: false };
+  const days = raw != null && /^\d+$/.test(raw) ? Math.min(3650, Math.max(1, parseInt(raw, 10))) : DEFAULT_MEALS_DAYS;
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - (days - 1));
+  const sinceDay = since.toISOString().slice(0, 10);
+  return { sinceDay, truncated: true };
+}
+
 export async function GET(req: NextRequest) {
   const rl = await fixedWindowRateLimit(getClientKey(getRequestIp(req), "data-sync-get"), 10, 60_000);
   if (!rl.ok) return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
@@ -292,6 +306,8 @@ export async function GET(req: NextRequest) {
 
     const userId = await getUserId(req.headers);
     if (!userId) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+    const { sinceDay: mealsSinceDay, truncated: mealsTruncated } = resolveMealsSince(req);
 
     const [
       profile,
@@ -318,7 +334,7 @@ export async function GET(req: NextRequest) {
     ] = await Promise.all([
       dbGetProfile(userId),
       dbGetPlan(userId),
-      dbGetMeals(userId),
+      mealsSinceDay ? dbGetMealsSince(userId, mealsSinceDay) : dbGetMeals(userId),
       dbGetMilestones(userId),
       dbGetMeta(userId),
       dbGetWearableConnections(userId),
@@ -361,6 +377,8 @@ export async function GET(req: NextRequest) {
       // means the iOS `if let mealDTOs = response.meals` guard short-circuits, preserving
       // local state. The web client handles undefined by treating it as an empty array.
       meals: mealsDeduped.length > 0 ? mealsDeduped : undefined,
+      mealsSince: mealsTruncated && mealsSinceDay ? mealsSinceDay : undefined,
+      mealsTruncated: mealsTruncated || undefined,
       milestones,
       wearableConnections: wearableConnections.length > 0 ? wearableConnections : undefined,
       wearableData: wearableDataRepaired.length > 0 ? wearableDataRepaired : undefined,

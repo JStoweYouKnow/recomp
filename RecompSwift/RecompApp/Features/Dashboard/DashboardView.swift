@@ -16,6 +16,13 @@ struct DashboardView: View {
     /// does not register a dozen SwiftData @Query observers before sync runs.
     @State private var secondaryDashboardReady = false
     @State private var activeMacroDetail: MacroDetail?
+    @State private var generatingStatusIndex = 0
+    private let generatingStatusMessages = [
+        "Analyzing your profile…",
+        "Calibrating calories and macros…",
+        "Drafting meals and workouts…",
+        "Finalizing your plan…",
+    ]
 
     @Query(sort: \FitnessPlan.createdAt, order: .reverse)
     private var plans: [FitnessPlan]
@@ -85,10 +92,22 @@ struct DashboardView: View {
             .coachToolbarItem()
             .onAppear {
                 workoutDaysPerWeek = profileDaysPerWeek
+                maybeStartInitialPlanGeneration()
                 guard !secondaryDashboardReady else { return }
                 Task { @MainActor in
                     await Task.yield()
                     secondaryDashboardReady = true
+                }
+            }
+            .task(id: planService.isGenerating) {
+                guard planService.isGenerating else {
+                    generatingStatusIndex = 0
+                    return
+                }
+                while !Task.isCancelled, planService.isGenerating {
+                    try? await Task.sleep(for: .seconds(3.2))
+                    guard !Task.isCancelled, planService.isGenerating else { break }
+                    generatingStatusIndex = (generatingStatusIndex + 1) % generatingStatusMessages.count
                 }
             }
             .onChange(of: profileDaysPerWeek) { _, newValue in
@@ -172,8 +191,10 @@ struct DashboardView: View {
     private var planGeneratingSection: some View {
         VStack(spacing: 10) {
             ProgressView()
-            Text("Creating your plan…")
+            Text(generatingStatusMessages[generatingStatusIndex])
                 .font(.headline)
+                .multilineTextAlignment(.center)
+                .animation(.easeInOut(duration: 0.25), value: generatingStatusIndex)
             Text(programWeeks > 1
                  ? "Building your \(programWeeks)-week program. This may take a few minutes."
                  : "This can take up to a minute.")
@@ -184,6 +205,20 @@ struct DashboardView: View {
         .padding(20)
         .cardSurface(cornerRadius: 16)
         .padding(.horizontal)
+    }
+
+    /// After sign-up, generate the first plan automatically (web onboard parity).
+    private func maybeStartInitialPlanGeneration() {
+        let defaults = RecompAppGroupDefaults.shared
+        guard defaults.bool(forKey: RecompUserDefaultsKeys.pendingInitialPlanGeneration) else { return }
+        guard !hasPlan, !planService.isGenerating else {
+            if hasPlan {
+                defaults.set(false, forKey: RecompUserDefaultsKeys.pendingInitialPlanGeneration)
+            }
+            return
+        }
+        defaults.set(false, forKey: RecompUserDefaultsKeys.pendingInitialPlanGeneration)
+        Task { await regeneratePlan() }
     }
 
     private func regeneratePlan() async {
