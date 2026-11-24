@@ -361,9 +361,20 @@ public struct MealPrepPlanDTO: Codable, Sendable {
     }
 }
 
+public struct MealDeletionDTO: Codable, Sendable, Equatable {
+    public let id: String
+    public let date: String
+
+    public init(id: String, date: String) {
+        self.id = id
+        self.date = date
+    }
+}
+
 public struct SyncPayload: Encodable, Sendable {
     public let profile: UserProfileDTO?
     public let meals: [MealEntryDTO]?
+    public let deletedMeals: [MealDeletionDTO]?
     public let plan: FitnessPlanDTO?
     public let milestones: [MilestoneEntryDTO]?
     public let hydration: [HydrationEntryDTO]?
@@ -390,6 +401,7 @@ public struct SyncPayload: Encodable, Sendable {
     public init(
         profile: UserProfileDTO? = nil,
         meals: [MealEntryDTO]? = nil,
+        deletedMeals: [MealDeletionDTO]? = nil,
         plan: FitnessPlanDTO? = nil,
         milestones: [MilestoneEntryDTO]? = nil,
         hydration: [HydrationEntryDTO]? = nil,
@@ -415,6 +427,7 @@ public struct SyncPayload: Encodable, Sendable {
     ) {
         self.profile = profile
         self.meals = meals
+        self.deletedMeals = deletedMeals
         self.plan = plan
         self.milestones = milestones
         self.hydration = hydration
@@ -438,6 +451,13 @@ public struct SyncPayload: Encodable, Sendable {
         self.recentExerciseNames = recentExerciseNames
         self.measurementTargets = measurementTargets
     }
+}
+
+/// Body returned by POST /api/data/sync.
+public struct SyncPushResultDTO: Decodable, Sendable {
+    public let ok: Bool?
+    public let persisted: Bool?
+    public let mode: String?
 }
 
 public struct SyncResponseDTO: Decodable, Sendable {

@@ -33,8 +33,9 @@ export const POST = withRequestLogging("/api/act/nutrition", async function POST
       return res;
     }
 
-    const body = (await req.json()) as { food?: string };
+    const body = (await req.json()) as { food?: string; skipSlowLookup?: boolean };
     food = (body?.food && typeof body.food === "string") ? body.food.trim() : "unknown";
+    const skipSlowLookup = body?.skipSlowLookup === true;
     if (!food || food === "unknown") {
       return NextResponse.json({ error: "Food name required" }, { status: 400 });
     }
@@ -180,6 +181,28 @@ export const POST = withRequestLogging("/api/act/nutrition", async function POST
       }
     } catch {
       // Continue to Act service fallback.
+    }
+
+    // Interactive meal logging uses skipSlowLookup so the UI never waits on Nova Act.
+    if (skipSlowLookup) {
+      const res = NextResponse.json({
+        food,
+        error: "No fast nutrition match",
+        source: "fast-miss",
+      }, { status: 404 });
+      const headers = getRateLimitHeaderValues(rl);
+      res.headers.set("X-RateLimit-Limit", headers.limit);
+      res.headers.set("X-RateLimit-Remaining", headers.remaining);
+      res.headers.set("X-RateLimit-Reset", headers.reset);
+      recordJudgeTrace({
+        action: "actNutrition",
+        service: "fast-path",
+        model: "fast-path",
+        status: "fallback",
+        durationMs: Date.now() - startedAt,
+        detail: "skip-slow-lookup",
+      });
+      return res;
     }
 
     const serviceResult = await callActService<Record<string, unknown>>("/nutrition", { food }, { timeoutMs: TIMEOUT_MS });

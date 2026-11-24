@@ -3,6 +3,7 @@ import { getUserId } from "@/lib/auth";
 import { fixedWindowRateLimit, getClientKey, getRequestIp } from "@/lib/server-rate-limit";
 import { requireAuthForAI } from "@/lib/judgeMode";
 import { logInfo, logError, withRequestLogging } from "@/lib/logger";
+import { enrichPersistedLogMeals } from "@/lib/meal-macro-grounding";
 import { invokeRico, persistHeadlessRicoActions, replyClaimsMealLogged } from "@/lib/services/rico";
 import { stripRicoDiagnosticMarkup } from "@/lib/rico-reply-sanitizer";
 import { dbGetMeals, dbGetSavedRecipes, dbSaveSavedRecipes } from "@/lib/db";
@@ -46,6 +47,9 @@ export const POST = withRequestLogging("/api/rico", async function POST(req: Nex
     if (userId && actions.length > 0) {
       const { replySuffix } = await persistHeadlessRicoActions(userId, actions, { defaultDate });
       replyText += replySuffix;
+      if (actions.some((a) => a.type === "log_meal")) {
+        void enrichPersistedLogMeals(userId, actions).catch(() => {});
+      }
     } else if (actions.length > 0 && !userId) {
       logError("Rico returned actions but user is not authenticated — meals will not persist server-side", undefined, {
         route: "rico",

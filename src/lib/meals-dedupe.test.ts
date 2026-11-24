@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { dedupeMealsByDateAndId, mealsOmittedBySnapshot } from "./meals-dedupe";
+import {
+  dedupeMealsByDateAndId,
+  mealsMatchingDeletions,
+  mealsOmittedBySnapshot,
+} from "./meals-dedupe";
 import type { MealEntry } from "./types";
 
 describe("dedupeMealsByDateAndId", () => {
@@ -36,19 +40,28 @@ describe("dedupeMealsByDateAndId", () => {
 describe("mealsOmittedBySnapshot", () => {
   const row = (id: string, date: string) => ({ id, date });
 
-  it("deletes a meal the client left out of a full snapshot", () => {
+  it("never deletes from a sparse snapshot", () => {
     const existing = [row("a", "2026-11-15"), row("b", "2026-11-16")];
-    expect(mealsOmittedBySnapshot(existing, [row("a", "2026-11-15")]).map((m) => m.id)).toEqual(["b"]);
+    expect(mealsOmittedBySnapshot(existing, [row("a", "2026-11-15")])).toEqual([]);
   });
 
   it("does not wipe several days when the client sends only a fragment", () => {
-    const existing = Array.from({ length: 12 }, (_, i) => row(`m${i}`, `2026-11-${String(i + 1).padStart(2, "0")}`));
+    const existing = Array.from({ length: 12 }, (_, i) =>
+      row(`m${i}`, `2026-11-${String(i + 1).padStart(2, "0")}`)
+    );
     const incoming = existing.slice(0, 2);
     expect(mealsOmittedBySnapshot(existing, incoming)).toEqual([]);
   });
+});
 
-  it("matches a calendar day to a timestamped stored date", () => {
-    const existing = [row("a", "2026-11-15T08:00:00.000Z")];
-    expect(mealsOmittedBySnapshot(existing, [row("a", "2026-11-15")])).toEqual([]);
+describe("mealsMatchingDeletions", () => {
+  it("deletes only meals the client explicitly tombstoned", () => {
+    const existing = [
+      { id: "a", date: "2026-11-15" },
+      { id: "b", date: "2026-11-16T08:00:00.000Z" },
+    ];
+    expect(
+      mealsMatchingDeletions(existing, [{ id: "b", date: "2026-11-16" }]).map((m) => m.id)
+    ).toEqual(["b"]);
   });
 });

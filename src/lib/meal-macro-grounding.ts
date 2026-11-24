@@ -1,6 +1,7 @@
-import { dbGetNutritionCache, dbSaveNutritionCache } from "@/lib/db";
+import { dbGetMeals, dbGetNutritionCache, dbSaveMeal, dbSaveNutritionCache } from "@/lib/db";
 import { COMMON_FOODS, parseQuantityAndFood } from "@/lib/food-quantity-parser";
 import { invokeNovaWithWebGroundingOrFallback } from "@/lib/nova";
+import { mealIdentityKey } from "@/lib/meals-dedupe";
 
 export type GroundedMacros = {
   calories: number;
@@ -49,12 +50,8 @@ export function exactCommonFood(name: string): GroundedMacros | null {
   return { ...roundMacros(known, quantity), source: "common-foods" };
 }
 
-/**
- * Replace The Ref's guessed macros with a published nutrition lookup.
- * Exact staple foods use USDA serving tables. Everything else is web-grounded
- * so a named meal matches what a Google search shows.
- */
-export async function groundMealMacros(name: string): Promise<GroundedMacros | null> {
+/** Instant path: exact staples + Dynamo nutrition cache. Never hits the web. */
+export async function groundMealMacrosFast(name: string): Promise<GroundedMacros | null> {
   const query = name.trim();
   if (!query) return null;
 
@@ -75,6 +72,19 @@ export async function groundMealMacros(name: string): Promise<GroundedMacros | n
   } catch {
     /* cache is optional */
   }
+  return null;
+}
+
+/**
+ * Full lookup including web grounding. Prefer `groundMealMacrosFast` on the chat
+ * critical path and call this after the meal is already saved.
+ */
+export async function groundMealMacros(name: string): Promise<GroundedMacros | null> {
+  const query = name.trim();
+  if (!query) return null;
+
+  const fast = await groundMealMacrosFast(query);
+  if (fast) return fast;
 
   try {
     const { text, source } = await invokeNovaWithWebGroundingOrFallback(
@@ -101,9 +111,19 @@ export async function groundMealMacros(name: string): Promise<GroundedMacros | n
 
 type LogAction = { type: string; payload: Record<string, unknown> };
 
-export async function groundLogMealActions(
+function mealNeedsWebGrounding(action: LogAction): boolean {
+  if (action.type !== "log_meal") return false;
+  const source = typeof action.payload.macroSource === "string" ? action.payload.macroSource : "";
+  return !source.startsWith("common-foods") && !source.startsWith("cache(");
+}
+
+/**
+ * Apply only fast lookups so The Ref can reply without waiting on web search.
+ * Sets `macroSource` on the payload when a fast hit lands.
+ */
+export async function groundLogMealActionsFast(
   actions: LogAction[],
-  lookup: (name: string) => Promise<GroundedMacros | null> = groundMealMacros,
+  lookup: (name: string) => Promise<GroundedMacros | null> = groundMealMacrosFast,
 ): Promise<string[]> {
   const notes: string[] = [];
   await Promise.all(
@@ -117,10 +137,59 @@ export async function groundLogMealActions(
       action.payload.protein = grounded.protein;
       action.payload.carbs = grounded.carbs;
       action.payload.fat = grounded.fat;
+      action.payload.macroSource = grounded.source;
       notes.push(
         `${name}: ${grounded.calories} cal, ${grounded.protein}g protein, ${grounded.carbs}g carbs, ${grounded.fat}g fat`,
       );
     }),
   );
   return notes;
+}
+
+/** @deprecated Prefer groundLogMealActionsFast on the chat path. */
+export async function groundLogMealActions(
+  actions: LogAction[],
+  lookup: (name: string) => Promise<GroundedMacros | null> = groundMealMacros,
+): Promise<string[]> {
+  return groundLogMealActionsFast(actions, lookup);
+}
+
+/**
+ * After a meal is persisted, refine macros with web grounding and rewrite the row.
+ * Fire-and-forget from API routes — never block the chat reply on this.
+ */
+export async function enrichPersistedLogMeals(
+  userId: string,
+  actions: LogAction[],
+): Promise<void> {
+  const pending = actions.filter(mealNeedsWebGrounding);
+  if (pending.length === 0) return;
+
+  const existing = await dbGetMeals(userId);
+  await Promise.all(
+    pending.map(async (action) => {
+      const name = typeof action.payload.name === "string" ? action.payload.name.trim() : "";
+      const id = typeof action.payload.id === "string" ? action.payload.id : "";
+      const date = typeof action.payload.date === "string" ? action.payload.date : "";
+      if (!name || !id || !date) return;
+
+      const grounded = await groundMealMacros(name);
+      if (!grounded || grounded.calories <= 0) return;
+      if (grounded.source.startsWith("common-foods") || grounded.source.startsWith("cache(")) return;
+
+      const key = mealIdentityKey({ id, date });
+      const meal = existing.find((m) => mealIdentityKey(m) === key);
+      if (!meal) return;
+
+      await dbSaveMeal(userId, {
+        ...meal,
+        macros: {
+          calories: grounded.calories,
+          protein: grounded.protein,
+          carbs: grounded.carbs,
+          fat: grounded.fat,
+        },
+      });
+    }),
+  );
 }

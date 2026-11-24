@@ -209,6 +209,7 @@ struct MealsView: View {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
+                                PendingMealDeletions.record(id: meal.id, date: meal.date)
                                 context.delete(meal)
                                 do {
                                     try context.save()

@@ -378,6 +378,16 @@ export const syncBodySchema = z.object({
   profile: profileSchema.optional().nullable(),
   plan: fitnessPlanSchema.optional().nullable(),
   meals: z.array(mealEntrySchema).max(5000).optional(),
+  /** Explicit meal deletes. Snapshot `meals` is upsert-only — omissions no longer delete. */
+  deletedMeals: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(100),
+        date: z.string().min(1).max(50),
+      })
+    )
+    .max(500)
+    .optional(),
   milestones: z.array(milestoneSchema).max(500).optional(),
   xp: z.number().min(0).max(1_000_000).optional(),
   hasAdjusted: z.boolean().optional(),

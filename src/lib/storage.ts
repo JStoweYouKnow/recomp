@@ -1,11 +1,12 @@
 import type { UserProfile, MeasurementTargets, MealEntry, FitnessPlan, Macros, WearableConnection, WearableDaySummary, Milestone, RicoMessage, WeeklyReview, CookingAppConnection, ActivityLogEntry, WorkoutSetLog, CookingAppRecipe, SocialSettings, GroupMembership, Group, GroupMessage, HydrationEntry, FastingSession, BiofeedbackEntry, MetabolicModel, RecoveryAssessment, PantryItem, MealPrepPlan, SavedRestaurantMeal, CoachSchedule, Challenge, MusicPreference, BodyScan, Supplement, BloodWork, ExerciseSubstitutionPreference } from "./types";
 import { getTodayLocal } from "./date-utils";
-import { dedupeMealsByDateAndId } from "./meals-dedupe";
+import { dedupeMealDeletions, dedupeMealsByDateAndId, type MealDeletionRef } from "./meals-dedupe";
 import { mergeWorkoutSetLogs } from "./workout-set-logs";
 
 const STORAGE_KEYS = {
   profile: "recomp_profile",
   meals: "recomp_meals",
+  deletedMeals: "recomp_deleted_meals",
   plan: "recomp_plan",
   mealEmbeddings: "recomp_meal_embeddings",
   wearableConnections: "recomp_wearable_connections",
@@ -108,6 +109,35 @@ export function getMeals(): MealEntry[] {
 export function saveMeals(meals: MealEntry[]): void {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEYS.meals, JSON.stringify(dedupeMealsByDateAndId(meals)));
+}
+
+export function getPendingMealDeletions(): MealDeletionRef[] {
+  if (typeof window === "undefined") return [];
+  const parsed = safeParse<MealDeletionRef[]>(localStorage.getItem(STORAGE_KEYS.deletedMeals), []);
+  return dedupeMealDeletions(parsed.filter((d) => d?.id && typeof d.date === "string"));
+}
+
+export function recordMealDeletion(id: string, date: string): void {
+  if (typeof window === "undefined" || !id || !date) return;
+  const next = dedupeMealDeletions([...getPendingMealDeletions(), { id, date }]);
+  localStorage.setItem(STORAGE_KEYS.deletedMeals, JSON.stringify(next.slice(-500)));
+}
+
+export function clearPendingMealDeletions(acked: MealDeletionRef[]): void {
+  if (typeof window === "undefined" || acked.length === 0) return;
+  const ackedKeys = new Set(acked.map((d) => `${d.date.slice(0, 10)}\t${d.id}`));
+  const remaining = getPendingMealDeletions().filter(
+    (d) => !ackedKeys.has(`${d.date.slice(0, 10)}\t${d.id}`)
+  );
+  localStorage.setItem(STORAGE_KEYS.deletedMeals, JSON.stringify(remaining));
+}
+
+type SyncFailureHandler = (message: string) => void;
+let syncFailureHandler: SyncFailureHandler | null = null;
+
+/** Register a UI hook for cloud sync failures (toast / banner). */
+export function onSyncFailure(handler: SyncFailureHandler | null): void {
+  syncFailureHandler = handler;
 }
 
 export function getPlan(): FitnessPlan | null {
@@ -664,9 +694,13 @@ function buildSyncPayload() {
     },
   }));
 
+  const deletedMeals = getPendingMealDeletions();
+
   return {
     profile: profile ?? undefined,
-    plan, meals, milestones, xp, hasAdjusted, ricoHistory,
+    plan, meals,
+    deletedMeals: deletedMeals.length > 0 ? deletedMeals : undefined,
+    milestones, xp, hasAdjusted, ricoHistory,
     wearableConnections, wearableData,
     hydration, fastingSessions, biofeedback, pantry, savedRecipes,
     mealPrepPlan: mealPrepPlan ?? undefined,
@@ -679,16 +713,29 @@ function buildSyncPayload() {
 }
 
 async function doSync(): Promise<void> {
+  const payload = buildSyncPayload();
+  const pendingDeletes = Array.isArray(payload.deletedMeals) ? payload.deletedMeals : [];
   const res = await fetch("/api/data/sync", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(buildSyncPayload()),
+    body: JSON.stringify(payload),
   });
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const detail = body?.details ? JSON.stringify(body.details).slice(0, 300) : (body?.error ?? "");
+    const detail = body?.details ? JSON.stringify(body.details).slice(0, 300) : (body?.error ?? body?.mode ?? "");
+    if (body?.persisted === false) {
+      syncFailureHandler?.("Couldn't save to the cloud. Your changes are still on this device.");
+    }
     throw new Error(`${res.status}: ${detail}`);
+  }
+  // Demo / judge modes intentionally skip Dynamo — do not treat as a user-facing failure.
+  if (body?.persisted === false && body?.mode !== "judge-fallback") {
+    syncFailureHandler?.("Couldn't save to the cloud. Your changes are still on this device.");
+    throw new Error(`503: ${String(body?.mode ?? "not-persisted")}`);
+  }
+  if (pendingDeletes.length > 0 && body?.persisted !== false) {
+    clearPendingMealDeletions(pendingDeletes as MealDeletionRef[]);
   }
 }
 

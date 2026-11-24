@@ -18,4 +18,6 @@ public enum RecompUserDefaultsKeys {
     public static let pendingRecipeSaveURL = "recomp_pending_recipe_save_url"
     /// How many meals the last non-partial upload contained. A much smaller read is not pushed.
     public static let lastPushedMealCount = "recomp_last_pushed_meal_count"
+    /// JSON array of `{id,date}` meal tombstones waiting for a successful sync ack.
+    public static let pendingMealDeletionsJSON = "recomp_pending_meal_deletions_json"
 }

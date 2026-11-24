@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exactCommonFood, groundLogMealActions } from "./meal-macro-grounding";
+import { exactCommonFood, groundLogMealActionsFast } from "./meal-macro-grounding";
 
 describe("exactCommonFood", () => {
   it("uses the USDA serving for a counted staple", () => {
@@ -14,23 +14,24 @@ describe("exactCommonFood", () => {
   });
 });
 
-describe("groundLogMealActions", () => {
-  it("replaces guessed macros with the lookup", async () => {
+describe("groundLogMealActionsFast", () => {
+  it("replaces guessed macros with the fast lookup", async () => {
     const actions = [
       {
         type: "log_meal",
         payload: { name: "Chipotle chicken burrito", calories: 400, protein: 20, carbs: 30, fat: 10 },
       },
     ];
-    const notes = await groundLogMealActions(actions, async () => ({
+    const notes = await groundLogMealActionsFast(actions, async () => ({
       calories: 665,
       protein: 32,
       carbs: 64,
       fat: 24,
-      source: "web-grounding",
+      source: "cache(web-grounding)",
     }));
     expect(actions[0].payload.calories).toBe(665);
     expect(actions[0].payload.protein).toBe(32);
+    expect(actions[0].payload.macroSource).toBe("cache(web-grounding)");
     expect(notes[0]).toContain("665 cal");
   });
 });

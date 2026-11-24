@@ -2,7 +2,7 @@
  * Shared Rico AI chat logic for API routes, Twilio SMS, and Siri Shortcuts.
  */
 import { BedrockRuntimeClient, ConverseCommand, type Message, type ToolConfiguration } from "@aws-sdk/client-bedrock-runtime";
-import { groundLogMealActions } from "@/lib/meal-macro-grounding";
+import { groundLogMealActionsFast } from "@/lib/meal-macro-grounding";
 import { NOVA_LITE_MODEL_ID } from "@/lib/nova";
 import { dbDeleteMeal, dbGetMeals, dbGetPlan, dbSaveMeal, dbSavePlan } from "@/lib/db";
 import type { MealEntry, FitnessPlan } from "../types";
@@ -751,7 +751,8 @@ export async function invokeRico(input: RicoInput): Promise<RicoOutput> {
     }
   }
 
-  const grounded = await groundLogMealActions(result.actions);
+  // Fast path only (staples + cache). Web grounding runs after persist so chat stays snappy.
+  const grounded = await groundLogMealActionsFast(result.actions);
   if (grounded.length > 0) {
     result.reply = `${result.reply.trim()} Logged ${grounded.join("; ")}.`.trim();
   }

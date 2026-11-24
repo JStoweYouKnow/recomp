@@ -7,7 +7,6 @@ import type { MealRecommendation } from "@/lib/meal-recommendations";
 import { MemoryRecommendations } from "./meals/MemoryRecommendations";
 import { getTodayLocal, getUpcomingDates } from "@/lib/date-utils";
 import { useToast } from "@/components/Toast";
-import { callActDirect, isActServiceConfigured } from "@/lib/act-client";
 import type { MealEntry, Macros, CookingAppRecipe, FitnessPlan } from "@/lib/types";
 import { resolveMacroTargetsForDate } from "@/lib/weekday-macros";
 import { v4 as uuidv4 } from "uuid";
@@ -491,32 +490,25 @@ export function MealsView({
       let lookupPromise = inFlightNutritionLookups.current.get(lookupKey);
       if (!lookupPromise) {
         lookupPromise = (async () => {
-          // ── 2. Act API first — always returns nutrition (USDA, Python, or estimated fallback) ──
+          // Fast path first (common foods / cache / Open Food Facts), then web.
+          // Nova Act is never on the interactive path — it can take minutes.
           let data: NutritionData | null = null;
 
           setNutritionLookupStatus("Checking nutrition databases...");
-          if (isActServiceConfigured()) {
-            try {
-              const d = await callActDirect<NutritionData>("/nutrition", { food }, { timeoutMs: 240_000 });
-              if (d?.nutrition) data = d;
-            } catch {
-              /* fall through to API */
-            }
-          }
-          if (!data?.nutrition) {
-            setNutritionLookupStatus("Running nutrition lookup service...");
+          try {
             const res = await fetch("/api/act/nutrition", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ food }),
+              body: JSON.stringify({ food, skipSlowLookup: true }),
             });
             if (res.ok) {
               const d = (await res.json()) as NutritionData;
               if (d?.nutrition) data = d;
             }
+          } catch {
+            /* fall through to web */
           }
 
-          // ── 3. Web grounding fallback if Act failed or returned error ──
           if (!data?.nutrition) {
             setNutritionLookupStatus("Searching the web for nutrition...");
             try {

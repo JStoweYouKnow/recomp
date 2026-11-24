@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import twilio from "twilio";
 import { dbGetUserIdByPhone } from "@/lib/db";
 import { dbGetMeals, dbGetPlan, dbGetProfile, dbGetMeta } from "@/lib/db";
+import { enrichPersistedLogMeals } from "@/lib/meal-macro-grounding";
 import { invokeRico, buildRicoContextFromServer, persistHeadlessRicoActions } from "@/lib/services/rico";
 import { logError } from "@/lib/logger";
 import { resolveRestaurantPicksAction, restaurantPicksHeadline, formatRestaurantPicksText } from "@/lib/services/menu-picks";
@@ -87,6 +88,9 @@ export async function POST(req: NextRequest) {
     if (actions.length > 0) {
       const { replySuffix } = await persistHeadlessRicoActions(userId, actions);
       replyText += replySuffix;
+      if (actions.some((a) => a.type === "log_meal")) {
+        void enrichPersistedLogMeals(userId, actions).catch(() => {});
+      }
     }
     const restaurantResult = await resolveRestaurantPicksAction(userId, actions, { date: getTodayLocal() });
     if (restaurantResult) {

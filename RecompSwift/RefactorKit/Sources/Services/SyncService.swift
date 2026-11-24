@@ -151,17 +151,21 @@ public actor SyncService: ModelActor {
             // Read the UI's main context last. A second ModelContext often misses the meal
             // that was just inserted — especially the first new food in a session — and the
             // server then stores a list without it.
-            let mealDTOs = await mealDTOsFromMainContext()
-            let pushedMealKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
+            var mealDTOs = await mealDTOsFromMainContext()
+            var pushedMealKeys = Set(mealDTOs.map { Self.mealSyncKey(date: $0.date, id: $0.id) })
             if Self.mealPayloadLooksPartial(mealDTOs.count) {
-                // A short read used to replace the server log and delete the missing days.
+                // A short read used to replace the server log — omit meals so we only upsert
+                // what we are sure about. Deletes go through pending tombstones instead.
                 mealDTOs = []
                 pushedMealKeys = []
             }
+            let pendingDeletes = PendingMealDeletions.load()
+            let deletedMealDTOs = pendingDeletes.map { MealDeletionDTO(id: $0.id, date: $0.date) }
 
             let payload = SyncPayload(
                 profile: profileDTO,
                 meals: mealDTOs.isEmpty ? nil : mealDTOs,
+                deletedMeals: deletedMealDTOs.isEmpty ? nil : deletedMealDTOs,
                 plan: planDTO,
                 milestones: milestoneDTOs.isEmpty ? nil : milestoneDTOs,
                 hydration: hydrationDTOs.isEmpty ? nil : hydrationDTOs,
@@ -185,10 +189,17 @@ public actor SyncService: ModelActor {
                 recentExerciseNames: nil,
                 measurementTargets: measurementTargetsPayload
             )
-            try await api.requestVoid(MiscAPI.dataSync(payload: payload))
+            let pushData = try await api.requestRaw(MiscAPI.dataSync(payload: payload))
+            let pushResult = try? JSONDecoder().decode(SyncPushResultDTO.self, from: pushData)
+            if pushResult?.persisted == false, pushResult?.mode != "judge-fallback" {
+                throw URLError(.cannotWriteToFile)
+            }
             await markMealsSyncedInStore(pushedMealKeys)
             if !pushedMealKeys.isEmpty {
                 RecompAppGroupDefaults.shared.set(pushedMealKeys.count, forKey: RecompUserDefaultsKeys.lastPushedMealCount)
+            }
+            if pushResult?.persisted != false {
+                PendingMealDeletions.clear(pendingDeletes)
             }
             // Only clear the dirty flag if no new edits landed while the push was
             // in flight; otherwise leave it set so the queued resync picks them up.

@@ -109,6 +109,7 @@ public final class MealService {
     }
 
     public func deleteMeal(_ meal: MealEntry, context: ModelContext) {
+        PendingMealDeletions.record(id: meal.id, date: meal.date)
         context.delete(meal)
         try? context.save()
     }

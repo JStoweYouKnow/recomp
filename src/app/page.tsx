@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals,
+  getProfile, getPlan, getMeals, saveProfile, savePlan, saveMeals, recordMealDeletion, onSyncFailure,
   getWearableData, saveWearableData, mergeWearableIncoming, getWearableConnections, saveWearableConnections,
   getMilestones, saveMilestones, getXP, saveXP, getHasAdjustedPlan, setHasAdjustedPlan,
   syncToServer, flushSync, saveWeeklyReview, saveActivityLog, saveWorkoutProgress,
@@ -86,6 +86,11 @@ function buildPlanGenerateBody(profile: UserProfile, options?: RegeneratePlanOpt
 }
 export default function Home() {
   const { showToast } = useToast();
+
+  useEffect(() => {
+    onSyncFailure((message) => showToast(message, "error"));
+    return () => onSyncFailure(null);
+  }, [showToast]);
   const { trigger: triggerConfetti, ConfettiOverlay } = useConfetti();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [plan, setPlan] = useState<FitnessPlan | null>(null);
@@ -775,6 +780,7 @@ export default function Home() {
                 syncToServer();
               }}
               onDeleteMeal={(date, id) => {
+                recordMealDeletion(id, date);
                 const next = meals.filter((x) => !(x.date === date && x.id === id));
                 setMeals(next);
                 saveMeals(next);

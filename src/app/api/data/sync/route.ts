@@ -54,7 +54,11 @@ import {
   repairWearableScaleRowsForCanonicalLbs,
   type WearableInbound,
 } from "@/lib/wearable-normalize";
-import { dedupeMealsByDateAndId, mealsOmittedBySnapshot } from "@/lib/meals-dedupe";
+import {
+  dedupeMealDeletions,
+  dedupeMealsByDateAndId,
+  mealsMatchingDeletions,
+} from "@/lib/meals-dedupe";
 import type { FitnessPlan, MealEntry, Milestone, UserProfile, WearableConnection, ActivityLogEntry, WorkoutSetLog, HydrationEntry, FastingSession, BiofeedbackEntry, PantryItem, CookingAppRecipe, MealPrepPlan, BodyScan, Supplement, BloodWork, MetabolicModel, MeasurementTargets, ExerciseSubstitutionPreference } from "@/lib/types";
 
 export async function POST(req: NextRequest) {
@@ -91,7 +95,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid sync payload", details: parsed.error.issues }, { status: 400 });
     }
 
-    const { profile, plan, meals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, workoutSetLogs, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets, exerciseSubstitutions } = parsed.data;
+    const { profile, plan, meals, deletedMeals, milestones, xp, hasAdjusted, ricoHistory, wearableConnections, wearableData, activityLog, workoutProgress, workoutSetLogs, hydration, fastingSessions, biofeedback, pantry, savedRecipes, mealPrepPlan, bodyScans, supplements, bloodWork, recentExerciseNames, metabolicModel, measurementTargets, exerciseSubstitutions } = parsed.data;
 
     const promises: Promise<void>[] = [];
 
@@ -131,27 +135,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Full meal list sync: upsert incoming rows and **delete** DynamoDB meals that
-    // are no longer in the client payload. Otherwise removed/deduped meals reappear
-    // on the next GET after reload.
-    if (Array.isArray(meals)) {
+    // Meals: upsert the snapshot; delete only rows listed in `deletedMeals`.
+    // Omitting a meal from `meals` no longer deletes it — that path wiped multi-day logs.
+    if (Array.isArray(meals) || Array.isArray(deletedMeals)) {
       promises.push(
         (async () => {
-          const uniqueIncoming = dedupeMealsByDateAndId(meals as MealEntry[]);
           const existing = await dbGetMeals(userId);
-          const omitted = mealsOmittedBySnapshot(existing, uniqueIncoming);
-          await Promise.all(omitted.map((ex) => dbDeleteMeal(userId, ex)));
-          for (const m of uniqueIncoming) {
-            await dbSaveMeal(userId, m);
-            if (m.name && m.macros && m.macros.calories > 0) {
-              dbSaveCommunityFood({
-                name: m.name,
-                calories: m.macros.calories,
-                protein: m.macros.protein,
-                carbs: m.macros.carbs,
-                fat: m.macros.fat,
-                source: "user",
-              }).catch(() => {});
+          if (Array.isArray(deletedMeals) && deletedMeals.length > 0) {
+            const toDelete = mealsMatchingDeletions(existing, dedupeMealDeletions(deletedMeals));
+            await Promise.all(toDelete.map((ex) => dbDeleteMeal(userId, ex)));
+          }
+          if (Array.isArray(meals)) {
+            const uniqueIncoming = dedupeMealsByDateAndId(meals as MealEntry[]);
+            for (const m of uniqueIncoming) {
+              await dbSaveMeal(userId, m);
+              if (m.name && m.macros && m.macros.calories > 0) {
+                dbSaveCommunityFood({
+                  name: m.name,
+                  calories: m.macros.calories,
+                  protein: m.macros.protein,
+                  carbs: m.macros.carbs,
+                  fat: m.macros.fat,
+                  source: "user",
+                }).catch(() => {});
+              }
             }
           }
         })()
@@ -264,10 +271,13 @@ export async function POST(req: NextRequest) {
     }
 
     await Promise.all(promises);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, persisted: true });
   } catch (err) {
     console.error("Sync error:", err);
-    return NextResponse.json({ ok: true, mode: "dynamo-unavailable", persisted: false });
+    return NextResponse.json(
+      { ok: false, mode: "dynamo-unavailable", persisted: false },
+      { status: 503 }
+    );
   }
 }
 
